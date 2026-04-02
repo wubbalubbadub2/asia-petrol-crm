@@ -96,6 +96,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  a, button, [role="button"], [type="button"], [type="submit"] {
+    cursor: pointer;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: 'DM Sans', sans-serif;
