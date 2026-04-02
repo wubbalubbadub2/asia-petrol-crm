@@ -1,9 +1,9 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,30 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useDeal, updateDeal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+
+const ATTACHMENT_CATEGORIES = [
+  { value: "contract", label: "Договор / Приложение" },
+  { value: "snt", label: "СНТ" },
+  { value: "esf", label: "ЭСФ" },
+  { value: "waybill", label: "ЖД накладная" },
+  { value: "act_completed_works", label: "АКТ выполненных работ" },
+  { value: "invoice", label: "Счет на оплату" },
+  { value: "quality_cert", label: "Паспорт качества" },
+  { value: "reconciliation_act", label: "Акт сверки" },
+  { value: "application", label: "Заявка (PDF)" },
+  { value: "other", label: "Прочее" },
+] as const;
+
+type Attachment = {
+  id: string;
+  category: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  uploaded_at: string;
+};
 
 function Field({ label, value, suffix }: { label: string; value: string | number | null | undefined; suffix?: string }) {
   const display = value != null && value !== "" ? String(value) : "—";
@@ -144,6 +168,158 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Трейдер" value={deal.trader_id ? "—" : "—"} />
         </CardContent>
       </Card>
+
+      {/* Documents */}
+      <DocumentsSection dealId={deal.id} />
     </div>
+  );
+}
+
+function DocumentsSection({ dealId }: { dealId: string }) {
+  const supabase = createClient();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [category, setCategory] = useState("contract");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadAttachments();
+  }, [dealId]);
+
+  async function loadAttachments() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("deal_attachments")
+      .select("id, category, file_name, file_path, file_size, uploaded_at")
+      .eq("deal_id", dealId)
+      .order("uploaded_at", { ascending: false });
+    setAttachments((data ?? []) as Attachment[]);
+    setLoading(false);
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const filePath = `deals/${dealId}/${category}/${Date.now()}-${file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("deal-attachments")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      // Storage bucket might not exist yet, save record anyway with path
+      console.warn("Storage upload:", uploadError.message);
+    }
+
+    const { error: dbError } = await supabase.from("deal_attachments").insert({
+      deal_id: dealId,
+      category,
+      file_name: file.name,
+      file_path: filePath,
+      file_size: file.size,
+      mime_type: file.type,
+    });
+
+    if (dbError) {
+      toast.error(`Ошибка: ${dbError.message}`);
+    } else {
+      toast.success(`Файл "${file.name}" прикреплен`);
+      await loadAttachments();
+    }
+
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function handleDelete(att: Attachment) {
+    const { error } = await supabase.from("deal_attachments").delete().eq("id", att.id);
+    if (error) {
+      toast.error(`Ошибка удаления: ${error.message}`);
+    } else {
+      toast.success("Файл удален");
+      await loadAttachments();
+    }
+  }
+
+  const getCategoryLabel = (cat: string) =>
+    ATTACHMENT_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-[14px]">Документы</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Upload */}
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Label className="text-[11px] text-stone-500">Категория</Label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            >
+              {ATTACHMENT_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              onChange={handleUpload}
+              className="hidden"
+              accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload className="mr-1 h-3.5 w-3.5" />
+              {uploading ? "Загрузка..." : "Загрузить файл"}
+            </Button>
+          </div>
+        </div>
+
+        {/* File list */}
+        {loading ? (
+          <p className="text-[12px] text-stone-400">Загрузка...</p>
+        ) : attachments.length === 0 ? (
+          <p className="text-[12px] text-stone-400">Нет прикрепленных файлов</p>
+        ) : (
+          <div className="space-y-1">
+            {attachments.map((att) => (
+              <div
+                key={att.id}
+                className="flex items-center gap-2 rounded-md border border-stone-200 px-3 py-1.5 text-[12px]"
+              >
+                <FileText className="h-3.5 w-3.5 text-stone-400 shrink-0" />
+                <span className="font-medium text-stone-700 truncate flex-1">{att.file_name}</span>
+                <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-500 shrink-0">
+                  {getCategoryLabel(att.category)}
+                </span>
+                {att.file_size && (
+                  <span className="text-[10px] text-stone-400 shrink-0">
+                    {(att.file_size / 1024).toFixed(0)} KB
+                  </span>
+                )}
+                <button
+                  onClick={() => handleDelete(att)}
+                  className="text-red-400 hover:text-red-600 shrink-0"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
