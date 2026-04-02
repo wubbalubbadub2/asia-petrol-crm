@@ -17,6 +17,7 @@ import {
 import { useDeals, type Deal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { PassportTable } from "@/components/deals/passport-table";
 
 const tabs = [
   { key: "list", label: "Все сделки" },
@@ -128,10 +129,19 @@ export default function DealsPage() {
         </span>
       </div>
 
-      {/* Table */}
-      {loading ? (
+      {/* Passport views */}
+      {(activeTab === "kg" || activeTab === "kz") && (
+        <PassportTable
+          deals={filtered}
+          loading={loading}
+          dealType={activeTab === "kg" ? "KG" : "KZ"}
+        />
+      )}
+
+      {/* List view */}
+      {activeTab === "list" && loading ? (
         <p className="text-sm text-muted-foreground py-4">Загрузка...</p>
-      ) : filtered.length === 0 ? (
+      ) : activeTab === "list" && filtered.length === 0 ? (
         <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
           <p className="text-sm text-stone-500">Нет сделок за {yearFilter} год</p>
           <Link href="/deals/new" className="mt-2 inline-block">
@@ -141,7 +151,7 @@ export default function DealsPage() {
             </Button>
           </Link>
         </div>
-      ) : (
+      ) : activeTab === "list" ? (
         <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
           <Table>
             <TableHeader>
@@ -196,7 +206,7 @@ export default function DealsPage() {
             </TableBody>
           </Table>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
