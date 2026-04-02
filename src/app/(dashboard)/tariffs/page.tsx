@@ -35,7 +35,7 @@ type Tariff = {
   fuel_type_id: string | null;
   month: number | null;
   year: number | null;
-  tariff_amount: number | null;
+  planned_tariff: number | null;
   factory_id: string | null;
   norm_days: number | null;
   destination_station?: { name: string } | null;
@@ -141,7 +141,7 @@ function AddTariffDialog({
       fuel_type_id: fuelTypeId || null,
       month: month ? parseInt(month) : null,
       year: year ? parseInt(year) : null,
-      tariff_amount: tariffAmount ? parseFloat(tariffAmount) : null,
+      planned_tariff: tariffAmount ? parseFloat(tariffAmount) : null,
       factory_id: factoryId || null,
       norm_days: normDays ? parseFloat(normDays) : null,
     });
@@ -276,18 +276,18 @@ export default function TariffsPage() {
          fuel_type_id,
          month,
          year,
-         tariff_amount,
+         planned_tariff,
          factory_id,
          norm_days,
-         destination_station:stations!tariffs_destination_station_id_fkey(name),
-         departure_station:stations!tariffs_departure_station_id_fkey(name),
+         destination_station:stations!destination_station_id(name),
+         departure_station:stations!departure_station_id(name),
          forwarder:forwarders(name),
          fuel_type:fuel_types(name, color),
          factory:factories(name)`
       )
       .eq("year", yearFilter)
       .order("month")
-      .order("tariff_amount");
+      .order("planned_tariff");
 
     setLoading(false);
     if (error) {
@@ -391,7 +391,7 @@ export default function TariffsPage() {
                     {t.month ? MONTHS_RU[t.month - 1] : "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono text-[11px] tabular-nums text-stone-800">
-                    {formatNum(t.tariff_amount)}
+                    {formatNum(t.planned_tariff)}
                   </TableCell>
                   <TableCell className="text-[12px] text-stone-600">
                     {(t.factory as any)?.name ?? "—"}
