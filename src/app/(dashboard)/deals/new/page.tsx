@@ -1,16 +1,372 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Construction } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { createDeal } from "@/lib/hooks/use-deals";
+import { MONTHS_RU, getQuarterFromMonth } from "@/lib/constants/months-ru";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, PRICE_CONDITIONS } from "@/lib/constants/deal-types";
+
+type RefOption = { id: string; name: string };
+type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
+type ProfileOption = { id: string; full_name: string };
 
 export default function NewDealPage() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [saving, setSaving] = useState(false);
+
+  // Reference data
+  const [factories, setFactories] = useState<RefOption[]>([]);
+  const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
+  const [suppliers, setSuppliers] = useState<CounterpartyOption[]>([]);
+  const [buyers, setBuyers] = useState<CounterpartyOption[]>([]);
+  const [forwarders, setForwarders] = useState<RefOption[]>([]);
+  const [companyGroups, setCompanyGroups] = useState<RefOption[]>([]);
+  const [stations, setStations] = useState<RefOption[]>([]);
+  const [managers, setManagers] = useState<ProfileOption[]>([]);
+
+  // Form fields
+  const [dealType, setDealType] = useState<"KG" | "KZ" | "OIL">("KZ");
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState<string>(MONTHS_RU[new Date().getMonth()]);
+  const [factoryId, setFactoryId] = useState("");
+  const [fuelTypeId, setFuelTypeId] = useState("");
+  const [sulfurPercent, setSulfurPercent] = useState("");
+
+  // Supplier
+  const [supplierId, setSupplierId] = useState("");
+  const [supplierContract, setSupplierContract] = useState("");
+  const [supplierVolume, setSupplierVolume] = useState("");
+  const [supplierPrice, setSupplierPrice] = useState("");
+  const [supplierPriceCondition, setSupplierPriceCondition] = useState("average_month");
+  const [supplierDeliveryBasis, setSupplierDeliveryBasis] = useState("");
+
+  // Buyer
+  const [buyerId, setBuyerId] = useState("");
+  const [buyerContract, setBuyerContract] = useState("");
+  const [buyerVolume, setBuyerVolume] = useState("");
+  const [buyerPrice, setBuyerPrice] = useState("");
+  const [buyerPriceCondition, setBuyerPriceCondition] = useState("average_month");
+  const [buyerDeliveryBasis, setBuyerDeliveryBasis] = useState("");
+  const [buyerStationId, setBuyerStationId] = useState("");
+
+  // Logistics
+  const [forwarderId, setForwarderId] = useState("");
+  const [logisticsCompanyGroupId, setLogisticsCompanyGroupId] = useState("");
+  const [plannedTariff, setPlannedTariff] = useState("");
+  const [preliminaryTonnage, setPreliminaryTonnage] = useState("");
+
+  // Managers
+  const [supplierManagerId, setSupplierManagerId] = useState("");
+  const [buyerManagerId, setBuyerManagerId] = useState("");
+  const [traderId, setTraderId] = useState("");
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from("factories").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
+      supabase.from("counterparties").select("id, full_name, short_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
+      supabase.from("counterparties").select("id, full_name, short_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
+      supabase.from("forwarders").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("company_groups").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("stations").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
+    ]).then(([f, ft, s, b, fw, cg, st, m]) => {
+      setFactories((f.data ?? []) as RefOption[]);
+      setFuelTypes((ft.data ?? []) as RefOption[]);
+      setSuppliers((s.data ?? []) as CounterpartyOption[]);
+      setBuyers((b.data ?? []) as CounterpartyOption[]);
+      setForwarders((fw.data ?? []) as RefOption[]);
+      setCompanyGroups((cg.data ?? []) as RefOption[]);
+      setStations((st.data ?? []) as RefOption[]);
+      setManagers((m.data ?? []) as ProfileOption[]);
+    });
+  }, [supabase]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+
+    const quarter = getQuarterFromMonth(month);
+    const deal = await createDeal({
+      deal_type: dealType,
+      year,
+      quarter,
+      month,
+      factory_id: factoryId || null,
+      fuel_type_id: fuelTypeId || null,
+      sulfur_percent: sulfurPercent || null,
+      supplier_id: supplierId || null,
+      supplier_contract: supplierContract || null,
+      supplier_contracted_volume: supplierVolume ? parseFloat(supplierVolume) : null,
+      supplier_price: supplierPrice ? parseFloat(supplierPrice) : null,
+      supplier_price_condition: supplierPriceCondition || null,
+      supplier_delivery_basis: supplierDeliveryBasis || null,
+      buyer_id: buyerId || null,
+      buyer_contract: buyerContract || null,
+      buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,
+      buyer_price: buyerPrice ? parseFloat(buyerPrice) : null,
+      buyer_price_condition: buyerPriceCondition || null,
+      buyer_delivery_basis: buyerDeliveryBasis || null,
+      buyer_destination_station_id: buyerStationId || null,
+      forwarder_id: forwarderId || null,
+      logistics_company_group_id: logisticsCompanyGroupId || null,
+      planned_tariff: plannedTariff ? parseFloat(plannedTariff) : null,
+      preliminary_tonnage: preliminaryTonnage ? parseFloat(preliminaryTonnage) : null,
+      supplier_manager_id: supplierManagerId || null,
+      buyer_manager_id: buyerManagerId || null,
+      trader_id: traderId || null,
+    });
+
+    setSaving(false);
+    if (deal) router.push("/deals");
+  }
+
+  function SelectField({
+    label, value, onChange, options, placeholder = "Выберите...",
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    options: { value: string; label: string }[];
+    placeholder?: string;
+  }) {
+    return (
+      <div>
+        <Label className="text-[12px] text-stone-500">{label}</Label>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+        >
+          <option value="">{placeholder}</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold">Новая сделка</h1>
-      <Card>
-        <CardContent className="flex items-center gap-3 py-8 text-muted-foreground">
-          <Construction className="h-5 w-5" />
-          <span>Раздел в разработке</span>
-        </CardContent>
-      </Card>
+    <div className="space-y-4 max-w-4xl">
+      <div className="flex items-center gap-3">
+        <Link href="/deals">
+          <Button variant="outline" size="sm">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-xl font-bold">Новая сделка</h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Basic Info */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Основные данные</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-[12px] text-stone-500">Тип сделки</Label>
+              <div className="flex gap-1 mt-1">
+                {DEAL_TYPES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setDealType(t)}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-[12px] font-medium border transition-colors ${
+                      dealType === t
+                        ? "bg-amber-100 text-amber-800 border-amber-300"
+                        : "bg-white text-stone-500 border-stone-200 hover:bg-stone-50"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Год</Label>
+              <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8 text-[13px]" />
+            </div>
+            <SelectField
+              label="Месяц"
+              value={month}
+              onChange={setMonth}
+              options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
+            />
+            <SelectField
+              label="Завод"
+              value={factoryId}
+              onChange={setFactoryId}
+              options={factories.map((f) => ({ value: f.id, label: f.name }))}
+            />
+            <SelectField
+              label="Вид ГСМ"
+              value={fuelTypeId}
+              onChange={setFuelTypeId}
+              options={fuelTypes.map((f) => ({ value: f.id, label: f.name }))}
+            />
+            <div>
+              <Label className="text-[12px] text-stone-500">% серы</Label>
+              <Input value={sulfurPercent} onChange={(e) => setSulfurPercent(e.target.value)} placeholder="0,5%" className="h-8 text-[13px]" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Supplier */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Поставщик</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <SelectField
+              label="Поставщик"
+              value={supplierId}
+              onChange={setSupplierId}
+              options={suppliers.map((s) => ({ value: s.id, label: s.short_name || s.full_name }))}
+            />
+            <div>
+              <Label className="text-[12px] text-stone-500">№ договора</Label>
+              <Input value={supplierContract} onChange={(e) => setSupplierContract(e.target.value)} placeholder="1 от 30.12.24" className="h-8 text-[13px]" />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
+              <Input type="number" step="0.01" value={supplierVolume} onChange={(e) => setSupplierVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Цена</Label>
+              <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => setSupplierPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
+            <SelectField
+              label="Условие фиксации"
+              value={supplierPriceCondition}
+              onChange={setSupplierPriceCondition}
+              options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
+            />
+            <div>
+              <Label className="text-[12px] text-stone-500">Базис поставки</Label>
+              <Input value={supplierDeliveryBasis} onChange={(e) => setSupplierDeliveryBasis(e.target.value)} placeholder="FCA Текесу" className="h-8 text-[13px]" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Buyer */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Покупатель</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <SelectField
+              label="Покупатель"
+              value={buyerId}
+              onChange={setBuyerId}
+              options={buyers.map((b) => ({ value: b.id, label: b.short_name || b.full_name }))}
+            />
+            <div>
+              <Label className="text-[12px] text-stone-500">№ договора</Label>
+              <Input value={buyerContract} onChange={(e) => setBuyerContract(e.target.value)} placeholder="20 от 12.12.2024" className="h-8 text-[13px]" />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
+              <Input type="number" step="0.01" value={buyerVolume} onChange={(e) => setBuyerVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Цена</Label>
+              <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => setBuyerPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
+            <SelectField
+              label="Условие фиксации"
+              value={buyerPriceCondition}
+              onChange={setBuyerPriceCondition}
+              options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
+            />
+            <div>
+              <Label className="text-[12px] text-stone-500">Базис / ст. назначения</Label>
+              <Input value={buyerDeliveryBasis} onChange={(e) => setBuyerDeliveryBasis(e.target.value)} placeholder="СРТ Турксиб эксп" className="h-8 text-[13px]" />
+            </div>
+            <SelectField
+              label="Станция назначения"
+              value={buyerStationId}
+              onChange={setBuyerStationId}
+              options={stations.map((s) => ({ value: s.id, label: s.name }))}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Logistics */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Логистика</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <SelectField
+              label="Экспедитор"
+              value={forwarderId}
+              onChange={setForwarderId}
+              options={forwarders.map((f) => ({ value: f.id, label: f.name }))}
+            />
+            <SelectField
+              label="Группа компании"
+              value={logisticsCompanyGroupId}
+              onChange={setLogisticsCompanyGroupId}
+              options={companyGroups.map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <div>
+              <Label className="text-[12px] text-stone-500">Тариф план</Label>
+              <Input type="number" step="0.01" value={plannedTariff} onChange={(e) => setPlannedTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Объем предварит. (тонн)</Label>
+              <Input type="number" step="0.01" value={preliminaryTonnage} onChange={(e) => setPreliminaryTonnage(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Managers */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Ответственные</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-3 gap-3">
+            <SelectField
+              label="Менеджер поставщика"
+              value={supplierManagerId}
+              onChange={setSupplierManagerId}
+              options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
+            />
+            <SelectField
+              label="Менеджер покупателя"
+              value={buyerManagerId}
+              onChange={setBuyerManagerId}
+              options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
+            />
+            <SelectField
+              label="Трейдер"
+              value={traderId}
+              onChange={setTraderId}
+              options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Submit */}
+        <div className="flex gap-3">
+          <Button type="submit" disabled={saving}>
+            {saving ? "Создание..." : "Создать сделку"}
+          </Button>
+          <Link href="/deals">
+            <Button type="button" variant="outline">Отмена</Button>
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }
