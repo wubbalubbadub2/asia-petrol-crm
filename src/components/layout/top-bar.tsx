@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/use-role";
 import {
@@ -22,7 +22,7 @@ export function TopBar() {
   }
 
   const roleLabels: Record<string, string> = {
-    admin: "Администратор",
+    admin: "Админ",
     manager: "Менеджер",
     logistics: "Логист",
     accounting: "Бухгалтерия",
@@ -30,31 +30,25 @@ export function TopBar() {
   };
 
   return (
-    <header className="flex h-11 items-center justify-between border-b border-stone-200 bg-white px-6">
-      <div />
-      <div className="flex items-center gap-3">
-        {profile && (
-          <>
-            <span className="rounded bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-              {roleLabels[profile.role] ?? profile.role}
-            </span>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[13px] text-stone-600 hover:bg-stone-100"
-              >
-                <User className="h-3.5 w-3.5" />
-                {profile.full_name}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-3.5 w-3.5" />
-                  Выйти
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
-      </div>
+    <header className="flex h-12 items-center justify-end border-b border-stone-200 bg-white px-5">
+      {profile && (
+        <DropdownMenu>
+          <DropdownMenuTrigger className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-stone-600 hover:bg-stone-50 transition-colors">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-[10px] font-semibold text-amber-700">
+              {profile.full_name?.charAt(0)?.toUpperCase() ?? "U"}
+            </div>
+            <span className="font-medium text-stone-700">{profile.full_name}</span>
+            <span className="text-[11px] text-stone-400">{roleLabels[profile.role]}</span>
+            <ChevronDown className="h-3.5 w-3.5 text-stone-400" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleLogout}>
+              <LogOut className="mr-2 h-3.5 w-3.5" />
+              Выйти
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </header>
   );
 }

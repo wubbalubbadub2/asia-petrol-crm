@@ -10,46 +10,47 @@ import { useRole } from "@/lib/hooks/use-role";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
-  const [open, setOpen] = useState(
-    item.children?.some((c) => pathname.startsWith(c.href)) ?? false
-  );
   const isActive =
     pathname === item.href ||
-    item.children?.some((c) => pathname === c.href);
+    (item.href !== "/" && pathname.startsWith(item.href)) ||
+    item.children?.some((c) => pathname.startsWith(c.href));
+  const [open, setOpen] = useState(isActive && !!item.children);
   const Icon = item.icon;
 
   if (item.children) {
     return (
       <div>
-        <button
-          onClick={() => setOpen(!open)}
-          className={cn(
-            "flex w-full items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium transition-colors",
-            isActive
-              ? "bg-[#334155] text-white"
-              : "text-slate-400 hover:bg-[#334155] hover:text-slate-200"
-          )}
-        >
-          <Icon className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left">{item.label}</span>
-          <ChevronDown
+        <div className="flex items-center">
+          <Link
+            href={item.href}
             className={cn(
-              "h-3.5 w-3.5 shrink-0 transition-transform duration-150",
-              open && "rotate-180"
+              "flex flex-1 items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all",
+              isActive
+                ? "bg-amber-50 text-amber-900"
+                : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
             )}
-          />
-        </button>
+          >
+            <Icon className={cn("h-4 w-4", isActive ? "text-amber-600" : "text-stone-400")} />
+            <span className="flex-1">{item.label}</span>
+          </Link>
+          <button
+            onClick={() => setOpen(!open)}
+            className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600 mr-1"
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} />
+          </button>
+        </div>
         {open && (
-          <div className="ml-4 mt-0.5 space-y-0.5 border-l border-slate-600 pl-3">
+          <div className="ml-6 mt-0.5 space-y-0.5 border-l border-stone-200 pl-2.5">
             {item.children.map((child) => (
               <Link
                 key={child.href}
                 href={child.href}
                 className={cn(
-                  "block rounded px-3 py-1 text-[12px] transition-colors",
+                  "block rounded-md px-2.5 py-1.5 text-[12px] transition-all",
                   pathname === child.href
-                    ? "bg-[#334155] font-medium text-amber-400"
-                    : "text-slate-400 hover:bg-[#334155] hover:text-slate-200"
+                    ? "bg-amber-50 font-medium text-amber-800"
+                    : "text-stone-500 hover:bg-stone-50 hover:text-stone-700"
                 )}
               >
                 {child.label}
@@ -65,13 +66,13 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium transition-colors",
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all",
         isActive
-          ? "bg-[#334155] text-white"
-          : "text-slate-400 hover:bg-[#334155] hover:text-slate-200"
+          ? "bg-amber-50 text-amber-900"
+          : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
       )}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className={cn("h-4 w-4", isActive ? "text-amber-600" : "text-stone-400")} />
       {item.label}
     </Link>
   );
@@ -86,20 +87,28 @@ export function Sidebar() {
   );
 
   return (
-    <aside className="flex h-screen w-60 flex-col bg-[#1E293B]">
-      <div className="flex h-12 items-center gap-2 border-b border-slate-700 px-4">
-        <Fuel className="h-5 w-5 text-amber-500" />
-        <span className="text-[15px] font-bold text-white" style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}>
+    <aside className="flex h-screen w-[220px] flex-col border-r border-stone-200 bg-white">
+      <div className="flex h-12 items-center gap-2.5 px-4">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500">
+          <Fuel className="h-4 w-4 text-white" />
+        </div>
+        <span
+          className="text-[15px] font-bold text-stone-900"
+          style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
+        >
           Asia Petrol
         </span>
       </div>
-      <ScrollArea className="flex-1 px-2 py-3">
+      <ScrollArea className="flex-1 px-2.5 py-2">
         <nav className="space-y-0.5">
           {filteredItems.map((item) => (
-            <NavLink key={item.href} item={item} pathname={pathname} />
+            <NavLink key={item.href + item.label} item={item} pathname={pathname} />
           ))}
         </nav>
       </ScrollArea>
+      <div className="border-t border-stone-200 px-4 py-2.5">
+        <p className="text-[10px] text-stone-400">Asia Petrol CRM v0.1</p>
+      </div>
     </aside>
   );
 }
