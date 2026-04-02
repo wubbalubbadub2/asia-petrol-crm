@@ -59,7 +59,7 @@ export default function DealsPage() {
   const [search, setSearch] = useState("");
 
   const dealTypeFilter = activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : undefined;
-  const { data: deals, loading } = useDeals({
+  const { data: deals, loading, reload } = useDeals({
     dealType: dealTypeFilter,
     year: yearFilter,
     isArchived: false,
@@ -134,6 +134,7 @@ export default function DealsPage() {
         <PassportTable
           deals={filtered}
           loading={loading}
+          onDataChanged={reload}
           dealType={activeTab === "kg" ? "KG" : "KZ"}
         />
       )}
