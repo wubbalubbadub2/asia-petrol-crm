@@ -76,11 +76,11 @@ const DEAL_SELECT = `
   *,
   factory:factories(name),
   fuel_type:fuel_types(name, color),
-  supplier:counterparties!deals_supplier_id_fkey(full_name, short_name),
-  buyer:counterparties!deals_buyer_id_fkey(full_name, short_name),
+  supplier:counterparties!supplier_id(full_name, short_name),
+  buyer:counterparties!buyer_id(full_name, short_name),
   forwarder:forwarders(name),
-  supplier_manager:profiles!deals_supplier_manager_id_fkey(full_name),
-  buyer_manager:profiles!deals_buyer_manager_id_fkey(full_name)
+  supplier_manager:profiles!supplier_manager_id(full_name),
+  buyer_manager:profiles!buyer_manager_id(full_name)
 `;
 
 export function useDeals(filters?: {
