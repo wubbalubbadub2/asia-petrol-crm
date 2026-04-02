@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Check, X, FileText, Upload } from "lucide-react";
+import { Plus, Check, X, FileText, Upload, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ import {
   type Application,
 } from "@/lib/hooks/use-applications";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 type RefOption = { id: string; name: string };
 type ProfileOption = { id: string; full_name: string };
@@ -212,10 +213,89 @@ function CreateApplicationDialog({
   );
 }
 
+function LinkDealDialog({
+  open,
+  onClose,
+  applicationId,
+  onLinked,
+}: {
+  open: boolean;
+  onClose: () => void;
+  applicationId: string;
+  onLinked: () => void;
+}) {
+  const supabase = createClient();
+  const [deals, setDeals] = useState<{ id: string; deal_code: string }[]>([]);
+  const [dealId, setDealId] = useState("");
+  const [volume, setVolume] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    supabase
+      .from("deals")
+      .select("id, deal_code")
+      .eq("is_archived", false)
+      .order("deal_code")
+      .then(({ data }) => setDeals((data ?? []) as { id: string; deal_code: string }[]));
+  }, [open, supabase]);
+
+  async function handleLink() {
+    if (!dealId) return;
+    setSaving(true);
+    const { error } = await supabase.from("application_deals").insert({
+      application_id: applicationId,
+      deal_id: dealId,
+      allocated_volume: volume ? parseFloat(volume) : null,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error(`Ошибка: ${error.message}`);
+    } else {
+      toast.success("Заявка привязана к сделке");
+      onLinked();
+      onClose();
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={() => onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Привязать к сделке</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-[12px] text-stone-500">Сделка</Label>
+            <select
+              value={dealId}
+              onChange={(e) => setDealId(e.target.value)}
+              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            >
+              <option value="">Выберите сделку...</option>
+              {deals.map((d) => (
+                <option key={d.id} value={d.id}>{d.deal_code}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Выделенный объем (тонн)</Label>
+            <Input type="number" step="0.01" value={volume} onChange={(e) => setVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <Button onClick={handleLink} disabled={saving || !dealId} className="w-full">
+            {saving ? "Привязка..." : "Привязать"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ApplicationsPage() {
   const { data: applications, loading, reload } = useApplications();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [linkAppId, setLinkAppId] = useState<string | null>(null);
 
   const filtered = applications.filter((a) => {
     if (!search) return true;
@@ -277,6 +357,7 @@ export default function ApplicationsPage() {
                 <TableHead className="text-[11px]">Грузополучатель</TableHead>
                 <TableHead className="text-[11px]">Менеджер</TableHead>
                 <TableHead className="text-[11px] text-center">Статус</TableHead>
+                <TableHead className="text-[11px]">Сделка</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -313,6 +394,15 @@ export default function ApplicationsPage() {
                       <StatusBadge ordered={app.is_ordered} />
                     </button>
                   </TableCell>
+                  <TableCell>
+                    <button
+                      onClick={() => setLinkAppId(app.id)}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-amber-600 hover:bg-amber-50 border border-amber-200"
+                    >
+                      <Link2 className="h-3 w-3" />
+                      Сделка
+                    </button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -325,6 +415,15 @@ export default function ApplicationsPage() {
         onClose={() => setShowCreate(false)}
         onCreated={reload}
       />
+
+      {linkAppId && (
+        <LinkDealDialog
+          open={!!linkAppId}
+          onClose={() => setLinkAppId(null)}
+          applicationId={linkAppId}
+          onLinked={reload}
+        />
+      )}
     </div>
   );
 }
