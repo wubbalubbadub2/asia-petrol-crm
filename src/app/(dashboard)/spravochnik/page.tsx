@@ -74,9 +74,9 @@ export default function SpravochnikPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {sections.map((s) => (
           <Link key={s.href} href={s.href}>
-            <Card className="transition-colors hover:bg-accent/50">
+            <Card className="transition-all hover:border-amber-300 hover:shadow-sm">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">
-                <s.icon className="h-5 w-5 text-muted-foreground" />
+                <s.icon className="h-5 w-5 text-stone-400" />
                 <CardTitle className="text-base">{s.title}</CardTitle>
               </CardHeader>
               <CardContent>

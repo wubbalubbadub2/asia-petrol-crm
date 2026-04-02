@@ -192,7 +192,8 @@ export default function QuotationsPage() {
     return prices.reduce((a, b) => a + b, 0) / prices.length;
   }
 
-  const loading = typesLoading || quotLoading;
+  // Only show loading if types haven't loaded yet; once types are loaded, show content
+  const loading = typesLoading;
 
   return (
     <div className="space-y-4">

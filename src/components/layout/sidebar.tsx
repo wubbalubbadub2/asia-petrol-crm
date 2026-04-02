@@ -35,7 +35,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
           </Link>
           <button
             onClick={() => setOpen(!open)}
-            className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600 mr-1"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-600 mr-1"
           >
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} />
           </button>

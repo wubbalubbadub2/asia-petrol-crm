@@ -14,7 +14,7 @@ export default function DashboardPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">—</div>
+            <div className="text-2xl font-bold font-mono tabular-nums">0</div>
             <p className="text-xs text-muted-foreground">KG / KZ / OIL</p>
           </CardContent>
         </Card>
@@ -26,7 +26,7 @@ export default function DashboardPage() {
             <Truck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">—</div>
+            <div className="text-2xl font-bold font-mono tabular-nums">0</div>
             <p className="text-xs text-muted-foreground">тонн</p>
           </CardContent>
         </Card>
@@ -38,7 +38,7 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">—</div>
+            <div className="text-2xl font-bold font-mono tabular-nums">0</div>
             <p className="text-xs text-muted-foreground">за текущий период</p>
           </CardContent>
         </Card>
@@ -50,7 +50,7 @@ export default function DashboardPage() {
             <ClipboardList className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">—</div>
+            <div className="text-2xl font-bold font-mono tabular-nums">0</div>
             <p className="text-xs text-muted-foreground">
               ожидают обработки
             </p>
