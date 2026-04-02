@@ -69,18 +69,23 @@ const sections = [
 
 export default function SpravochnikPage() {
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Справочник</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-bold">Справочник</h1>
+        <p className="text-[13px] text-stone-500 mt-1">Управление справочными данными системы</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {sections.map((s) => (
           <Link key={s.href} href={s.href}>
-            <Card className="transition-all hover:border-amber-300 hover:shadow-sm">
+            <Card className="group transition-all duration-200 hover:shadow-md hover:shadow-amber-100/50 hover:-translate-y-0.5 hover:border-amber-200 border-stone-200/80">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">
-                <s.icon className="h-5 w-5 text-stone-400" />
-                <CardTitle className="text-base">{s.title}</CardTitle>
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 ring-1 ring-amber-200/50 group-hover:from-amber-100 group-hover:to-amber-200 transition-all">
+                  <s.icon className="h-4 w-4 text-amber-600" />
+                </div>
+                <CardTitle className="text-[14px]">{s.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-[12px] text-muted-foreground leading-relaxed">
                   {s.description}
                 </p>
               </CardContent>

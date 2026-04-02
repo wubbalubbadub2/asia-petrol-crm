@@ -7,73 +7,31 @@ import { ChevronDown, Fuel } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navItems, type NavItem } from "@/lib/constants/nav-items";
 import { useRole } from "@/lib/hooks/use-role";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const isActive =
     pathname === item.href ||
-    (item.href !== "/" && pathname.startsWith(item.href)) ||
-    item.children?.some((c) => pathname.startsWith(c.href));
-  const [open, setOpen] = useState(isActive && !!item.children);
+    (item.href !== "/" && pathname.startsWith(item.href));
   const Icon = item.icon;
-
-  if (item.children) {
-    return (
-      <div>
-        <div className="flex items-center">
-          <Link
-            href={item.href}
-            className={cn(
-              "flex flex-1 items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all",
-              isActive
-                ? "bg-amber-50 text-amber-900"
-                : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
-            )}
-          >
-            <Icon className={cn("h-4 w-4", isActive ? "text-amber-600" : "text-stone-400")} />
-            <span className="flex-1">{item.label}</span>
-          </Link>
-          <button
-            onClick={() => setOpen(!open)}
-            className="flex items-center justify-center w-7 h-7 rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-600 mr-1"
-          >
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} />
-          </button>
-        </div>
-        {open && (
-          <div className="ml-6 mt-0.5 space-y-0.5 border-l border-stone-200 pl-2.5">
-            {item.children.map((child) => (
-              <Link
-                key={child.href}
-                href={child.href}
-                className={cn(
-                  "block rounded-md px-2.5 py-1.5 text-[12px] transition-all",
-                  pathname === child.href
-                    ? "bg-amber-50 font-medium text-amber-800"
-                    : "text-stone-500 hover:bg-stone-50 hover:text-stone-700"
-                )}
-              >
-                {child.label}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all",
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200",
         isActive
-          ? "bg-amber-50 text-amber-900"
-          : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+          ? "bg-amber-500/15 text-amber-400"
+          : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
       )}
     >
-      <Icon className={cn("h-4 w-4", isActive ? "text-amber-600" : "text-stone-400")} />
-      {item.label}
+      <Icon className={cn(
+        "h-[18px] w-[18px] shrink-0 transition-colors",
+        isActive ? "text-amber-400" : "text-slate-500 group-hover:text-slate-300"
+      )} />
+      <span>{item.label}</span>
+      {isActive && (
+        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />
+      )}
     </Link>
   );
 }
@@ -87,27 +45,56 @@ export function Sidebar() {
   );
 
   return (
-    <aside className="flex h-screen w-[220px] flex-col border-r border-stone-200 bg-white">
-      <div className="flex h-12 items-center gap-2.5 px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500">
+    <aside className="flex h-screen w-[240px] flex-col bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-800/50">
+      {/* Logo */}
+      <div className="flex h-14 items-center gap-3 px-5 border-b border-slate-800/50">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/20">
           <Fuel className="h-4 w-4 text-white" />
         </div>
-        <span
-          className="text-[15px] font-bold text-stone-900"
-          style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
-        >
-          Asia Petrol
-        </span>
+        <div>
+          <span
+            className="text-[15px] font-bold text-white tracking-tight"
+            style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
+          >
+            Asia Petrol
+          </span>
+          <p className="text-[10px] text-slate-500 -mt-0.5">CRM System</p>
+        </div>
       </div>
-      <ScrollArea className="flex-1 px-2.5 py-2">
-        <nav className="space-y-0.5">
-          {filteredItems.map((item) => (
-            <NavLink key={item.href + item.label} item={item} pathname={pathname} />
-          ))}
-        </nav>
-      </ScrollArea>
-      <div className="border-t border-stone-200 px-4 py-2.5">
-        <p className="text-[10px] text-stone-400">Asia Petrol CRM v0.1</p>
+
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+          Навигация
+        </p>
+        {filteredItems.slice(0, 4).map((item) => (
+          <NavLink key={item.href + item.label} item={item} pathname={pathname} />
+        ))}
+
+        <div className="my-3 border-t border-slate-800/50" />
+        <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+          Операции
+        </p>
+        {filteredItems.slice(4, 10).map((item) => (
+          <NavLink key={item.href + item.label} item={item} pathname={pathname} />
+        ))}
+
+        {filteredItems.length > 10 && (
+          <>
+            <div className="my-3 border-t border-slate-800/50" />
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+              Система
+            </p>
+            {filteredItems.slice(10).map((item) => (
+              <NavLink key={item.href + item.label} item={item} pathname={pathname} />
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-slate-800/50 px-5 py-3">
+        <p className="text-[10px] text-slate-600">v0.1.0</p>
       </div>
     </aside>
   );

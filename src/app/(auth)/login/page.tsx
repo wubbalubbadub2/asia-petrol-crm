@@ -38,15 +38,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Fuel className="h-6 w-6 text-primary" />
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <Card className="w-full max-w-md shadow-2xl border-0">
+        <CardHeader className="text-center pt-8">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/30">
+            <Fuel className="h-7 w-7 text-white" />
           </div>
-          <CardTitle className="text-2xl">Asia Petrol CRM</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Войдите в систему
+          <CardTitle className="text-2xl">Asia Petrol</CardTitle>
+          <p className="text-[13px] text-muted-foreground">
+            Войдите в CRM систему
           </p>
         </CardHeader>
         <CardContent>
