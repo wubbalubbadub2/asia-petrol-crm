@@ -42,10 +42,6 @@ export const navItems: NavItem[] = [
     label: "Сделки",
     href: "/deals",
     icon: FileText,
-    children: [
-      { label: "Паспорт KG", href: "/deals/passport-kg" },
-      { label: "Паспорт KZ", href: "/deals/passport-kz" },
-    ],
   },
   {
     label: "Заявки",
