@@ -57,6 +57,26 @@ export default function NewDealPage() {
   const [buyerDeliveryBasis, setBuyerDeliveryBasis] = useState("");
   const [buyerStationId, setBuyerStationId] = useState("");
 
+  // Company groups (up to 6)
+  const [dealCompanyGroups, setDealCompanyGroups] = useState<
+    { companyGroupId: string; price: string; contractRef: string }[]
+  >([]);
+
+  function addCompanyGroup() {
+    if (dealCompanyGroups.length >= 6) return;
+    setDealCompanyGroups([...dealCompanyGroups, { companyGroupId: "", price: "", contractRef: "" }]);
+  }
+
+  function updateCompanyGroup(idx: number, field: string, value: string) {
+    const updated = [...dealCompanyGroups];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setDealCompanyGroups(updated);
+  }
+
+  function removeCompanyGroup(idx: number) {
+    setDealCompanyGroups(dealCompanyGroups.filter((_, i) => i !== idx));
+  }
+
   // Logistics
   const [forwarderId, setForwarderId] = useState("");
   const [logisticsCompanyGroupId, setLogisticsCompanyGroupId] = useState("");
@@ -124,6 +144,23 @@ export default function NewDealPage() {
       buyer_manager_id: buyerManagerId || null,
       trader_id: traderId || null,
     });
+
+    // Save company groups
+    if (deal && dealCompanyGroups.length > 0) {
+      const supabase = createClient();
+      const cgRecords = dealCompanyGroups
+        .filter((cg) => cg.companyGroupId)
+        .map((cg, idx) => ({
+          deal_id: deal.id,
+          company_group_id: cg.companyGroupId,
+          position: idx + 1,
+          price: cg.price ? parseFloat(cg.price) : null,
+          contract_ref: cg.contractRef || null,
+        }));
+      if (cgRecords.length > 0) {
+        await supabase.from("deal_company_groups").insert(cgRecords);
+      }
+    }
 
     setSaving(false);
     if (deal) router.push("/deals");
@@ -298,6 +335,57 @@ export default function NewDealPage() {
               onChange={setBuyerStationId}
               options={stations.map((s) => ({ value: s.id, label: s.name }))}
             />
+          </CardContent>
+        </Card>
+
+        {/* Company Groups */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[14px]">Группы компании</CardTitle>
+              {dealCompanyGroups.length < 6 && (
+                <Button type="button" size="sm" variant="outline" onClick={addCompanyGroup}>
+                  + Добавить группу
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {dealCompanyGroups.length === 0 ? (
+              <p className="text-[12px] text-stone-400">Нет групп компании. Нажмите "Добавить группу" (до 6).</p>
+            ) : (
+              <div className="space-y-3">
+                {dealCompanyGroups.map((cg, idx) => (
+                  <div key={idx} className="flex items-end gap-2 p-2 rounded-md bg-stone-50 border border-stone-200">
+                    <span className="text-[11px] text-stone-400 font-mono w-4 shrink-0 pb-2">{idx + 1}</span>
+                    <div className="flex-1">
+                      <Label className="text-[11px] text-stone-500">Группа</Label>
+                      <select
+                        value={cg.companyGroupId}
+                        onChange={(e) => updateCompanyGroup(idx, "companyGroupId", e.target.value)}
+                        className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                      >
+                        <option value="">Выберите...</option>
+                        {companyGroups.map((g) => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-28">
+                      <Label className="text-[11px] text-stone-500">Цена</Label>
+                      <Input type="number" step="0.01" value={cg.price} onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)} className="h-8 text-[13px] font-mono" />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-[11px] text-stone-500">№ договора</Label>
+                      <Input value={cg.contractRef} onChange={(e) => updateCompanyGroup(idx, "contractRef", e.target.value)} placeholder="35 от 02-01-25" className="h-8 text-[13px]" />
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={() => removeCompanyGroup(idx)} className="text-red-500 hover:text-red-700 shrink-0 h-8 w-8 p-0">
+                      ×
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
