@@ -13,6 +13,8 @@ import {
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useRole } from "@/lib/hooks/use-role";
 import { createClient } from "@/lib/supabase/client";
+import { PriceCalculator } from "@/components/quotations/price-calculator";
+import { QuotationSummary } from "@/components/quotations/quotation-summary";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -156,11 +158,18 @@ function AddProductTypeDialog({
   );
 }
 
+const PAGE_TABS = [
+  { key: "grid", label: "Котировки" },
+  { key: "summary", label: "Свод КОТ" },
+  { key: "calculator", label: "Формирование цены" },
+] as const;
+
 export default function QuotationsPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<"grid" | "summary" | "calculator">("grid");
 
   const { data: productTypes, loading: typesLoading, reload: reloadTypes } = useQuotationProductTypes();
   const { data: quotations, loading: quotLoading, upsert, reload: reloadQuot } = useQuotations(year, month);
@@ -213,6 +222,26 @@ export default function QuotationsPage() {
         </div>
       </div>
 
+      <div className="flex gap-1 border-b border-stone-200">
+        {PAGE_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 text-[13px] font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? "border-amber-500 text-amber-700"
+                : "border-transparent text-stone-500 hover:text-stone-700"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "summary" && <QuotationSummary />}
+      {activeTab === "calculator" && <PriceCalculator />}
+
+      {activeTab === "grid" && (<>
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={prevMonth}>
           <ChevronLeft className="h-4 w-4" />
@@ -301,6 +330,7 @@ export default function QuotationsPage() {
           </table>
         </div>
       )}
+      </>)}
 
       <AddProductTypeDialog
         open={showAddDialog}
