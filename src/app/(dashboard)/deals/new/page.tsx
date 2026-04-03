@@ -41,6 +41,11 @@ export default function NewDealPage() {
   const [sulfurPercent, setSulfurPercent] = useState("");
   const [currency, setCurrency] = useState("USD");
 
+  // Quotation types for price linking
+  const [quotationTypes, setQuotationTypes] = useState<RefOption[]>([]);
+  const [supplierQuotTypeId, setSupplierQuotTypeId] = useState("");
+  const [buyerQuotTypeId, setBuyerQuotTypeId] = useState("");
+
   // Supplier
   const [supplierId, setSupplierId] = useState("");
   const [supplierContract, setSupplierContract] = useState("");
@@ -84,6 +89,26 @@ export default function NewDealPage() {
   const [plannedTariff, setPlannedTariff] = useState("");
   const [preliminaryTonnage, setPreliminaryTonnage] = useState("");
 
+  // Auto-lookup tariff when forwarder + station + month + fuel type are set
+  useEffect(() => {
+    if (!forwarderId || !buyerStationId || !month || !fuelTypeId) return;
+    const supabase = createClient();
+    supabase.from("tariffs")
+      .select("planned_tariff")
+      .eq("forwarder_id", forwarderId)
+      .eq("destination_station_id", buyerStationId)
+      .eq("fuel_type_id", fuelTypeId)
+      .eq("month", month)
+      .eq("year", year)
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data?.planned_tariff && !plannedTariff) {
+          setPlannedTariff(String(data.planned_tariff));
+        }
+      });
+  }, [forwarderId, buyerStationId, month, fuelTypeId, year]);
+
   // Managers
   const [supplierManagerId, setSupplierManagerId] = useState("");
   const [buyerManagerId, setBuyerManagerId] = useState("");
@@ -99,7 +124,8 @@ export default function NewDealPage() {
       supabase.from("company_groups").select("id, name").eq("is_active", true).order("name"),
       supabase.from("stations").select("id, name").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-    ]).then(([f, ft, s, b, fw, cg, st, m]) => {
+      supabase.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
+    ]).then(([f, ft, s, b, fw, cg, st, m, qt]) => {
       setFactories((f.data ?? []) as RefOption[]);
       setFuelTypes((ft.data ?? []) as RefOption[]);
       setSuppliers((s.data ?? []) as CounterpartyOption[]);
@@ -108,6 +134,7 @@ export default function NewDealPage() {
       setCompanyGroups((cg.data ?? []) as RefOption[]);
       setStations((st.data ?? []) as RefOption[]);
       setManagers((m.data ?? []) as ProfileOption[]);
+      setQuotationTypes((qt.data ?? []) as RefOption[]);
     });
   }, [supabase]);
 
@@ -301,6 +328,13 @@ export default function NewDealPage() {
               onChange={setSupplierPriceCondition}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
+            <SelectField
+              label="Котировка"
+              value={supplierQuotTypeId}
+              onChange={setSupplierQuotTypeId}
+              options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
+              placeholder="Выбрать котировку..."
+            />
             <div>
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
               <Input value={supplierDeliveryBasis} onChange={(e) => setSupplierDeliveryBasis(e.target.value)} placeholder="FCA Текесу" className="h-8 text-[13px]" />
@@ -337,6 +371,13 @@ export default function NewDealPage() {
               value={buyerPriceCondition}
               onChange={setBuyerPriceCondition}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
+            />
+            <SelectField
+              label="Котировка"
+              value={buyerQuotTypeId}
+              onChange={setBuyerQuotTypeId}
+              options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
+              placeholder="Выбрать котировку..."
             />
             <div>
               <Label className="text-[12px] text-stone-500">Базис / ст. назначения</Label>

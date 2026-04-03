@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, Upload, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -11,7 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useRegistry, type ShipmentRecord } from "@/lib/hooks/use-registry";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useRegistry, createRegistryEntry, type ShipmentRecord } from "@/lib/hooks/use-registry";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 const tabs = [
   { key: "kg" as const, label: "KG (Экспорт)" },
@@ -28,16 +38,101 @@ function formatDate(d: string | null): string {
   return new Date(d).toLocaleDateString("ru-RU");
 }
 
+function AddEntryDialog({ open, onClose, registryType, onCreated }: {
+  open: boolean; onClose: () => void; registryType: "KG" | "KZ"; onCreated: () => void;
+}) {
+  const supabaseRef = useRef(createClient());
+  const [deals, setDeals] = useState<{ id: string; deal_code: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [waybill, setWaybill] = useState("");
+  const [wagon, setWagon] = useState("");
+  const [volume, setVolume] = useState("");
+  const [dealId, setDealId] = useState("");
+  const [tariff, setTariff] = useState("");
+  const [comment, setComment] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    supabaseRef.current.from("deals").select("id, deal_code").eq("deal_type", registryType).eq("is_archived", false).order("deal_code")
+      .then(({ data }) => setDeals((data ?? []) as { id: string; deal_code: string }[]));
+  }, [open, registryType]);
+
+  async function handleSave() {
+    setSaving(true);
+    const result = await createRegistryEntry({
+      registry_type: registryType,
+      date: date || null,
+      waybill_number: waybill || null,
+      wagon_number: wagon || null,
+      shipment_volume: volume ? parseFloat(volume) : null,
+      deal_id: dealId || null,
+      railway_tariff: tariff ? parseFloat(tariff) : null,
+      comment: comment || null,
+    });
+    setSaving(false);
+    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={() => onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Добавить запись в реестр {registryType}</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-[12px] text-stone-500">Дата</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[13px]" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Сделка</Label>
+            <select value={dealId} onChange={(e) => setDealId(e.target.value)}
+              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">Выберите...</option>
+              {deals.map((d) => <option key={d.id} value={d.id}>{d.deal_code}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">№ накладной</Label>
+            <Input value={waybill} onChange={(e) => setWaybill(e.target.value)} className="h-8 text-[13px]" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">№ вагона</Label>
+            <Input value={wagon} onChange={(e) => setWagon(e.target.value)} className="h-8 text-[13px]" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
+            <Input type="number" step="0.001" value={volume} onChange={(e) => setVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Ж/Д тариф</Label>
+            <Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <div className="col-span-2">
+            <Label className="text-[12px] text-stone-500">Комментарий</Label>
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} className="h-8 text-[13px]" />
+          </div>
+        </div>
+        <Button onClick={handleSave} disabled={saving} className="w-full mt-2">{saving ? "Сохранение..." : "Добавить"}</Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function RegistryPage() {
   const [activeTab, setActiveTab] = useState<"kg" | "kz">("kg");
   const { data: records, loading, reload } = useRegistry(activeTab === "kg" ? "KG" : "KZ");
   const currency = activeTab === "kg" ? "$" : "₸";
+  const [showAdd, setShowAdd] = useState(false);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Реестр отгрузки</h1>
         <div className="flex gap-2">
+          <Button size="sm" onClick={() => setShowAdd(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Добавить запись
+          </Button>
           <Button size="sm" variant="outline" onClick={() => window.location.href = "/import"}>
             <Upload className="mr-1.5 h-3.5 w-3.5" />
             Импорт Excel
@@ -125,6 +220,13 @@ export default function RegistryPage() {
           </Table>
         </div>
       )}
+
+      <AddEntryDialog
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        registryType={activeTab === "kg" ? "KG" : "KZ"}
+        onCreated={reload}
+      />
     </div>
   );
 }
