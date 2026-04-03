@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState, useEffect, useRef } from "react";
+// useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Save, Upload, FileText, Trash2 } from "lucide-react";
@@ -36,14 +37,25 @@ type Attachment = {
   uploaded_at: string;
 };
 
-function Field({ label, value, suffix, editing, field, dealId, onSaved }: {
+function Field({ label, value, suffix, editing, field, dealId }: {
   label: string; value: string | number | null | undefined; suffix?: string;
   editing?: boolean; field?: string; dealId?: string; onSaved?: () => void;
 }) {
+  const isNumeric = typeof value === "number";
+  const [displayVal, setDisplayVal] = useState(value);
   const [localVal, setLocalVal] = useState("");
   const [isEditing, setIsEditing] = useState(false);
-  const display = value != null && value !== "" ? String(value) : "—";
-  const isNumeric = typeof value === "number";
+
+  // Sync with prop when not editing
+  useEffect(() => { if (!isEditing) setDisplayVal(value); }, [value, isEditing]);
+
+  const formatted = displayVal != null && displayVal !== ""
+    ? (typeof displayVal === "number"
+      ? Number(displayVal).toLocaleString("ru-RU", { maximumFractionDigits: 2 })
+      : String(displayVal))
+    : "—";
+
+  const monoClass = isNumeric ? "font-mono tabular-nums" : "";
 
   if (editing && field && dealId) {
     if (!isEditing) {
@@ -51,11 +63,10 @@ function Field({ label, value, suffix, editing, field, dealId, onSaved }: {
         <div>
           <span className="text-[11px] text-stone-400 block">{label}</span>
           <button
-            onClick={() => { setLocalVal(value?.toString() ?? ""); setIsEditing(true); }}
-            className="text-[13px] text-stone-800 hover:bg-amber-50 rounded px-1 -ml-1 cursor-text min-w-[40px] text-left"
+            onClick={() => { setLocalVal(displayVal?.toString() ?? ""); setIsEditing(true); }}
+            className={`text-[13px] text-stone-800 hover:bg-amber-50 rounded px-1 -ml-1 cursor-text min-w-[40px] text-left ${monoClass}`}
           >
-            {isNumeric ? Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : display}
-            {suffix && value != null ? ` ${suffix}` : ""}
+            {formatted}{suffix && displayVal != null ? ` ${suffix}` : ""}
           </button>
         </div>
       );
@@ -69,18 +80,23 @@ function Field({ label, value, suffix, editing, field, dealId, onSaved }: {
           step="0.01"
           value={localVal}
           onChange={(e) => setLocalVal(e.target.value)}
-          onBlur={async () => {
+          onBlur={() => {
             setIsEditing(false);
             const newVal = isNumeric
               ? (localVal.trim() === "" ? null : parseFloat(localVal))
               : (localVal.trim() || null);
+            // Optimistic: update display immediately
+            setDisplayVal(newVal);
+            // Save in background silently — only show errors
             if (newVal !== value) {
-              await updateDeal(dealId, { [field]: newVal });
-              onSaved?.();
+              updateDeal(dealId, { [field]: newVal }).catch(() => {
+                // Revert on error
+                setDisplayVal(value);
+              });
             }
           }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setIsEditing(false); }}
-          className="w-full border border-amber-400 rounded px-1 py-0 text-[13px] bg-amber-50 focus:outline-none"
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setIsEditing(false); setDisplayVal(value); } }}
+          className={`w-full border border-amber-300 rounded px-1 py-0 text-[13px] bg-amber-50/50 focus:outline-none focus:border-amber-500 ${monoClass}`}
         />
       </div>
     );
@@ -89,9 +105,8 @@ function Field({ label, value, suffix, editing, field, dealId, onSaved }: {
   return (
     <div>
       <span className="text-[11px] text-stone-400 block">{label}</span>
-      <span className={`text-[13px] text-stone-800 ${isNumeric ? "font-mono tabular-nums" : ""}`}>
-        {isNumeric ? Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : display}
-        {suffix && value != null ? ` ${suffix}` : ""}
+      <span className={`text-[13px] text-stone-800 ${monoClass}`}>
+        {formatted}{suffix && displayVal != null ? ` ${suffix}` : ""}
       </span>
     </div>
   );
@@ -163,20 +178,20 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <Field label="Наименование" value={deal.supplier?.short_name ?? deal.supplier?.full_name} />
-          <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} onSaved={reload} />
-          <Field label="Базис поставки" value={deal.supplier_delivery_basis} editing={editing} field="supplier_delivery_basis" dealId={deal.id} onSaved={reload} />
+          <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
+          <Field label="Базис поставки" value={deal.supplier_delivery_basis} editing={editing} field="supplier_delivery_basis" dealId={deal.id} />
           <Field label="Условие фиксации" value={
             deal.supplier_price_condition === "average_month" ? "Средний месяц" :
             deal.supplier_price_condition === "fixed" ? "Фикс" :
             deal.supplier_price_condition === "trigger" ? "Триггер" : "—"
           } />
-          <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} onSaved={reload} />
-          <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={currencySymbol} editing={editing} field="supplier_contracted_amount" dealId={deal.id} onSaved={reload} />
-          <Field label="Цена" value={deal.supplier_price} suffix={currencySymbol} editing={editing} field="supplier_price" dealId={deal.id} onSaved={reload} />
-          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={currencySymbol} editing={editing} field="supplier_shipped_amount" dealId={deal.id} onSaved={reload} />
-          <Field label="Оплата" value={deal.supplier_payment} suffix={currencySymbol} editing={editing} field="supplier_payment" dealId={deal.id} onSaved={reload} />
-          <Field label="Дата оплаты" value={deal.supplier_payment_date} editing={editing} field="supplier_payment_date" dealId={deal.id} onSaved={reload} />
-          <Field label="Баланс" value={deal.supplier_balance} suffix={currencySymbol} editing={editing} field="supplier_balance" dealId={deal.id} onSaved={reload} />
+          <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
+          <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={currencySymbol} editing={editing} field="supplier_contracted_amount" dealId={deal.id} />
+          <Field label="Цена" value={deal.supplier_price} suffix={currencySymbol} editing={editing} field="supplier_price" dealId={deal.id} />
+          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={currencySymbol} editing={editing} field="supplier_shipped_amount" dealId={deal.id} />
+          <Field label="Оплата" value={deal.supplier_payment} suffix={currencySymbol} editing={editing} field="supplier_payment" dealId={deal.id} />
+          <Field label="Дата оплаты" value={deal.supplier_payment_date} editing={editing} field="supplier_payment_date" dealId={deal.id} />
+          <Field label="Баланс" value={deal.supplier_balance} suffix={currencySymbol} editing={editing} field="supplier_balance" dealId={deal.id} />
         </CardContent>
       </Card>
 
@@ -187,24 +202,24 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <Field label="Наименование" value={deal.buyer?.short_name ?? deal.buyer?.full_name} />
-          <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} onSaved={reload} />
-          <Field label="Базис / ст. назначения" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} onSaved={reload} />
+          <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
+          <Field label="Базис / ст. назначения" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
           <Field label="Условие фиксации" value={
             deal.buyer_price_condition === "average_month" ? "Средний месяц" :
             deal.buyer_price_condition === "fixed" ? "Фикс" :
             deal.buyer_price_condition === "trigger" ? "Триггер" : "—"
           } />
-          <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} onSaved={reload} />
-          <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={currencySymbol} editing={editing} field="buyer_contracted_amount" dealId={deal.id} onSaved={reload} />
-          <Field label="Цена" value={deal.buyer_price} suffix={currencySymbol} editing={editing} field="buyer_price" dealId={deal.id} onSaved={reload} />
-          <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} onSaved={reload} />
-          <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн" editing={editing} field="buyer_remaining" dealId={deal.id} onSaved={reload} />
-          <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн" editing={editing} field="buyer_shipped_volume" dealId={deal.id} onSaved={reload} />
-          <Field label="Дата отгрузки" value={deal.buyer_ship_date} editing={editing} field="buyer_ship_date" dealId={deal.id} onSaved={reload} />
-          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={currencySymbol} editing={editing} field="buyer_shipped_amount" dealId={deal.id} onSaved={reload} />
-          <Field label="Оплата" value={deal.buyer_payment} suffix={currencySymbol} editing={editing} field="buyer_payment" dealId={deal.id} onSaved={reload} />
-          <Field label="Дата оплаты" value={deal.buyer_payment_date} editing={editing} field="buyer_payment_date" dealId={deal.id} onSaved={reload} />
-          <Field label="Долг / переплата" value={deal.buyer_debt} suffix={currencySymbol} editing={editing} field="buyer_debt" dealId={deal.id} onSaved={reload} />
+          <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
+          <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={currencySymbol} editing={editing} field="buyer_contracted_amount" dealId={deal.id} />
+          <Field label="Цена" value={deal.buyer_price} suffix={currencySymbol} editing={editing} field="buyer_price" dealId={deal.id} />
+          <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
+          <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн" editing={editing} field="buyer_remaining" dealId={deal.id} />
+          <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн" editing={editing} field="buyer_shipped_volume" dealId={deal.id} />
+          <Field label="Дата отгрузки" value={deal.buyer_ship_date} editing={editing} field="buyer_ship_date" dealId={deal.id} />
+          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={currencySymbol} editing={editing} field="buyer_shipped_amount" dealId={deal.id} />
+          <Field label="Оплата" value={deal.buyer_payment} suffix={currencySymbol} editing={editing} field="buyer_payment" dealId={deal.id} />
+          <Field label="Дата оплаты" value={deal.buyer_payment_date} editing={editing} field="buyer_payment_date" dealId={deal.id} />
+          <Field label="Долг / переплата" value={deal.buyer_debt} suffix={currencySymbol} editing={editing} field="buyer_debt" dealId={deal.id} />
         </CardContent>
       </Card>
 
@@ -242,13 +257,13 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <Field label="Экспедитор" value={deal.forwarder?.name} />
-          <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} onSaved={reload} />
-          <Field label="Тариф факт" value={deal.actual_tariff} suffix={currencySymbol} editing={editing} field="actual_tariff" dealId={deal.id} onSaved={reload} />
-          <Field label="Объем предварит." value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} onSaved={reload} />
-          <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={currencySymbol} editing={editing} field="preliminary_amount" dealId={deal.id} onSaved={reload} />
-          <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн" editing={editing} field="actual_shipped_volume" dealId={deal.id} onSaved={reload} />
-          <Field label="Объем по СФ" value={deal.invoice_volume} suffix="тонн" editing={editing} field="invoice_volume" dealId={deal.id} onSaved={reload} />
-          <Field label="Сумма по СФ" value={deal.invoice_amount} suffix={currencySymbol} editing={editing} field="invoice_amount" dealId={deal.id} onSaved={reload} />
+          <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
+          <Field label="Тариф факт" value={deal.actual_tariff} suffix={currencySymbol} editing={editing} field="actual_tariff" dealId={deal.id} />
+          <Field label="Объем предварит." value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
+          <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={currencySymbol} editing={editing} field="preliminary_amount" dealId={deal.id} />
+          <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн" editing={editing} field="actual_shipped_volume" dealId={deal.id} />
+          <Field label="Объем по СФ" value={deal.invoice_volume} suffix="тонн" editing={editing} field="invoice_volume" dealId={deal.id} />
+          <Field label="Сумма по СФ" value={deal.invoice_amount} suffix={currencySymbol} editing={editing} field="invoice_amount" dealId={deal.id} />
         </CardContent>
       </Card>
 

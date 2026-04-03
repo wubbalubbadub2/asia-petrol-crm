@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { type Deal, updateDeal } from "@/lib/hooks/use-deals";
 
@@ -17,7 +17,6 @@ function EditableNumCell({
   value,
   dealId,
   field,
-  onSaved,
 }: {
   value: number | null | undefined;
   dealId: string;
@@ -26,17 +25,21 @@ function EditableNumCell({
 }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
+  const [displayVal, setDisplayVal] = useState(value);
+
+  // Sync with prop only when not editing
+  useEffect(() => { if (!editing) setDisplayVal(value); }, [value, editing]);
 
   if (!editing) {
     return (
       <button
         onClick={() => {
-          setLocalVal(value?.toString() ?? "");
+          setLocalVal(displayVal?.toString() ?? "");
           setEditing(true);
         }}
         className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px]"
       >
-        {formatNum(value)}
+        {formatNum(displayVal)}
       </button>
     );
   }
@@ -48,19 +51,19 @@ function EditableNumCell({
       step="0.01"
       value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
-      onBlur={async () => {
+      onBlur={() => {
         setEditing(false);
         const num = localVal.trim() === "" ? null : parseFloat(localVal);
+        setDisplayVal(num); // Optimistic — instant update
         if (num !== value) {
-          await updateDeal(dealId, { [field]: num });
-          onSaved();
+          updateDeal(dealId, { [field]: num }).catch(() => setDisplayVal(value)); // Revert on error
         }
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        if (e.key === "Escape") setEditing(false);
+        if (e.key === "Escape") { setEditing(false); setDisplayVal(value); }
       }}
-      className="w-16 border border-amber-400 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50 focus:outline-none"
+      className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none focus:border-amber-500"
     />
   );
 }
@@ -69,7 +72,6 @@ function EditableTextCell({
   value,
   dealId,
   field,
-  onSaved,
 }: {
   value: string | null | undefined;
   dealId: string;
@@ -78,17 +80,20 @@ function EditableTextCell({
 }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
+  const [displayVal, setDisplayVal] = useState(value);
+
+  useEffect(() => { if (!editing) setDisplayVal(value); }, [value, editing]);
 
   if (!editing) {
     return (
       <button
         onClick={() => {
-          setLocalVal(value ?? "");
+          setLocalVal(displayVal ?? "");
           setEditing(true);
         }}
         className="w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] truncate max-w-[100px]"
       >
-        {value ?? ""}
+        {displayVal ?? ""}
       </button>
     );
   }
@@ -98,11 +103,12 @@ function EditableTextCell({
       autoFocus
       value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
-      onBlur={async () => {
+      onBlur={() => {
         setEditing(false);
-        if (localVal !== (value ?? "")) {
-          await updateDeal(dealId, { [field]: localVal || null });
-          onSaved();
+        const newVal = localVal || null;
+        setDisplayVal(newVal); // Optimistic
+        if (newVal !== (value ?? null)) {
+          updateDeal(dealId, { [field]: newVal }).catch(() => setDisplayVal(value));
         }
       }}
       onKeyDown={(e) => {

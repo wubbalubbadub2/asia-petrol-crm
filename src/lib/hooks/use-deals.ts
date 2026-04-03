@@ -183,8 +183,7 @@ export async function updateDeal(id: string, values: Record<string, unknown>) {
   const { error } = await supabase.from("deals").update(values).eq("id", id);
   if (error) {
     toast.error(`Ошибка сохранения: ${error.message}`);
-    return false;
+    throw error;
   }
-  toast.success("Сделка сохранена");
   return true;
 }
