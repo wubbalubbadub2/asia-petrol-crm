@@ -43,17 +43,20 @@ function Field({ label, value, suffix, editing, field, dealId }: {
   editing?: boolean; field?: string; dealId?: string; onSaved?: () => void;
 }) {
   const isNumeric = typeof value === "number";
-  const [displayVal, setDisplayVal] = useState(value);
   const [localVal, setLocalVal] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const pendingVal = useRef<string | number | null | undefined>(undefined);
 
-  // Sync with prop when not editing
-  useEffect(() => { if (!isEditing) setDisplayVal(value); }, [value, isEditing]);
+  // What to show: pending save value takes priority, then prop
+  const shown = pendingVal.current !== undefined ? pendingVal.current : value;
+  if (pendingVal.current !== undefined && value === pendingVal.current) {
+    pendingVal.current = undefined;
+  }
 
-  const formatted = displayVal != null && displayVal !== ""
-    ? (typeof displayVal === "number"
-      ? Number(displayVal).toLocaleString("ru-RU", { maximumFractionDigits: 2 })
-      : String(displayVal))
+  const formatted = shown != null && shown !== ""
+    ? (typeof shown === "number"
+      ? Number(shown).toLocaleString("ru-RU", { maximumFractionDigits: 2 })
+      : String(shown))
     : "—";
 
   const monoClass = isNumeric ? "font-mono tabular-nums" : "";
@@ -64,10 +67,10 @@ function Field({ label, value, suffix, editing, field, dealId }: {
         <div>
           <span className="text-[11px] text-stone-400 block">{label}</span>
           <button
-            onClick={() => { setLocalVal(displayVal?.toString() ?? ""); setIsEditing(true); }}
+            onClick={() => { setLocalVal(shown?.toString() ?? ""); setIsEditing(true); }}
             className={`text-[13px] text-stone-800 hover:bg-amber-50 rounded px-1 -ml-1 cursor-text min-w-[40px] text-left ${monoClass}`}
           >
-            {formatted}{suffix && displayVal != null ? ` ${suffix}` : ""}
+            {formatted}{suffix && shown != null ? ` ${suffix}` : ""}
           </button>
         </div>
       );
@@ -86,17 +89,14 @@ function Field({ label, value, suffix, editing, field, dealId }: {
             const newVal = isNumeric
               ? (localVal.trim() === "" ? null : parseFloat(localVal))
               : (localVal.trim() || null);
-            // Optimistic: update display immediately
-            setDisplayVal(newVal);
-            // Save in background silently — only show errors
             if (newVal !== value) {
+              pendingVal.current = newVal; // Show new value immediately via ref
               updateDeal(dealId, { [field]: newVal }).catch(() => {
-                // Revert on error
-                setDisplayVal(value);
+                pendingVal.current = undefined; // Revert on error
               });
             }
           }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setIsEditing(false); setDisplayVal(value); } }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setIsEditing(false); }}
           className={`w-full border border-amber-300 rounded px-1 py-0 text-[13px] bg-amber-50/50 focus:outline-none focus:border-amber-500 ${monoClass}`}
         />
       </div>
@@ -107,7 +107,7 @@ function Field({ label, value, suffix, editing, field, dealId }: {
     <div>
       <span className="text-[11px] text-stone-400 block">{label}</span>
       <span className={`text-[13px] text-stone-800 ${monoClass}`}>
-        {formatted}{suffix && displayVal != null ? ` ${suffix}` : ""}
+        {formatted}{suffix && shown != null ? ` ${suffix}` : ""}
       </span>
     </div>
   );
