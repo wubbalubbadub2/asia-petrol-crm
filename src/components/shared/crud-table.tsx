@@ -67,27 +67,22 @@ export function CrudTable<T extends { id?: string }>({
           {
             id: "actions",
             header: "",
-            size: 80,
+            size: 60,
             cell: ({ row }: { row: { original: T } }) => (
-              <div className="flex gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditItem(row.original);
-                    setDialogOpen(true);
-                  }}
+              <div className="flex gap-0.5">
+                <button
+                  onClick={() => { setEditItem(row.original); setDialogOpen(true); }}
+                  className="rounded p-1 text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
+                  <Pencil className="h-3 w-3" />
+                </button>
                 {onDelete && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
                     onClick={() => onDelete(row.original)}
+                    className="rounded p-1 text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
+                    <Trash2 className="h-3 w-3" />
+                  </button>
                 )}
               </div>
             ),
@@ -136,16 +131,16 @@ export function CrudTable<T extends { id?: string }>({
         placeholder={searchPlaceholder}
         value={globalFilter}
         onChange={(e) => setGlobalFilter(e.target.value)}
-        className="max-w-sm"
+        className="max-w-sm h-7 text-[12px]"
       />
 
-      <div className="rounded-md border">
+      <div className="rounded-md border border-stone-200 bg-white overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="bg-stone-50">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} className="text-[11px]">
                     {header.isPlaceholder ? null : (
                       <div
                         className={
@@ -160,7 +155,7 @@ export function CrudTable<T extends { id?: string }>({
                           header.getContext()
                         )}
                         {header.column.getCanSort() && (
-                          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                          <ArrowUpDown className="h-3 w-3 text-stone-400" />
                         )}
                       </div>
                     )}
@@ -172,9 +167,9 @@ export function CrudTable<T extends { id?: string }>({
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow key={row.id} className="hover:bg-amber-50/30">
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="text-[12px]">
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
