@@ -39,6 +39,7 @@ export default function NewDealPage() {
   const [factoryId, setFactoryId] = useState("");
   const [fuelTypeId, setFuelTypeId] = useState("");
   const [sulfurPercent, setSulfurPercent] = useState("");
+  const [currency, setCurrency] = useState("USD");
 
   // Supplier
   const [supplierId, setSupplierId] = useState("");
@@ -123,6 +124,7 @@ export default function NewDealPage() {
       factory_id: factoryId || null,
       fuel_type_id: fuelTypeId || null,
       sulfur_percent: sulfurPercent || null,
+      currency,
       supplier_id: supplierId || null,
       supplier_contract: supplierContract || null,
       supplier_contracted_volume: supplierVolume ? parseFloat(supplierVolume) : null,
@@ -255,6 +257,17 @@ export default function NewDealPage() {
               <Label className="text-[12px] text-stone-500">% серы</Label>
               <Input value={sulfurPercent} onChange={(e) => setSulfurPercent(e.target.value)} placeholder="0,5%" className="h-8 text-[13px]" />
             </div>
+            <SelectField
+              label="Валюта"
+              value={currency}
+              onChange={setCurrency}
+              options={[
+                { value: "USD", label: "USD ($)" },
+                { value: "KZT", label: "KZT (₸)" },
+                { value: "KGS", label: "KGS (сом)" },
+                { value: "RUB", label: "RUB (₽)" },
+              ]}
+            />
           </CardContent>
         </Card>
 

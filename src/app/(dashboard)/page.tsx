@@ -283,16 +283,18 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </Link>
-        <Card className="border-red-200/50">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">Дебиторка</span>
-              <DollarSign className="h-4 w-4 text-red-500" />
-            </div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-red-600">{loading ? "..." : formatNum(totalReceivable)}</div>
-            <p className="text-[10px] text-stone-400 mt-0.5">нам должны покупатели</p>
-          </CardContent>
-        </Card>
+        <Link href="/quotations">
+          <Card className="group transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-amber-200">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">Котировки</span>
+                <DollarSign className="h-4 w-4 text-amber-500" />
+              </div>
+              <div className="text-2xl font-bold font-mono tabular-nums">16</div>
+              <p className="text-[10px] text-stone-400 mt-0.5">типов продуктов</p>
+            </CardContent>
+          </Card>
+        </Link>
         <Link href="/applications">
           <Card className="group transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-amber-200">
             <CardContent className="pt-4 pb-3">

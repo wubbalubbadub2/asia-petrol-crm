@@ -58,7 +58,6 @@ export function Sidebar() {
           >
             Asia Petrol
           </span>
-          <p className="text-[10px] text-slate-500 -mt-0.5">CRM System</p>
         </div>
       </div>
 
