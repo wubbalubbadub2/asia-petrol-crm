@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { ExcelUpload } from "@/components/import/excel-upload";
 import { bulkInsertRegistry } from "@/lib/hooks/use-registry";
+import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
 const tabs = [
@@ -60,6 +61,45 @@ export default function ImportPage() {
     const result = await bulkInsertRegistry(records);
     setImporting(false);
     if (result) setImportDone(true);
+  }
+
+  async function handleImportSntEsf() {
+    if (parsedData.length === 0) return;
+    setImporting(true);
+
+    const supabase = createClient();
+    const table = activeTab === "snt" ? "snt_documents" : "esf_documents";
+
+    // Store documents
+    const docs = parsedData.map((row) => ({
+      raw_data: row,
+      supplier_name: row["Поставщик"] ?? row["supplier"] ?? null,
+      receiver_name: row["Получатель"] ?? row["receiver"] ?? null,
+      goods_description: row["Товар"] ?? row["Наименование товара"] ?? row["goods"] ?? null,
+      quantity: parseFloat(String(row["Количество"] ?? row["quantity"] ?? row["Кол-во"] ?? 0)) || null,
+      total_amount: parseFloat(String(row["Сумма"] ?? row["total"] ?? row["Итого"] ?? 0)) || null,
+    }));
+
+    const { error: docError } = await supabase.from(table).insert(docs);
+    if (docError) { toast.error(`Ошибка импорта документов: ${docError.message}`); setImporting(false); return; }
+
+    // Also create registry entries from the same data
+    const registryRecords = parsedData.map((row) => ({
+      registry_type: "KG" as const,
+      date: row["Дата"] ?? row["дата"] ?? row["date"] ?? null,
+      waybill_number: row["№ накладной"] ?? row["№ СНТ"] ?? row["waybill"] ?? null,
+      wagon_number: row["№ вагонов"] ?? row["№ ВЦ"] ?? row["wagon"] ?? null,
+      shipment_volume: parseFloat(String(row["Количество"] ?? row["объем отгрузки"] ?? row["quantity"] ?? 0)) || null,
+      comment: `Импорт из ${activeTab === "snt" ? "СНТ" : "ЭСФ"}`,
+    })).filter((r) => r.shipment_volume);
+
+    if (registryRecords.length > 0) {
+      await bulkInsertRegistry(registryRecords);
+    }
+
+    toast.success(`Импортировано ${docs.length} документов, ${registryRecords.length} записей в реестр`);
+    setImporting(false);
+    setImportDone(true);
   }
 
   const columns = parsedData.length > 0 ? Object.keys(parsedData[0]) : [];
@@ -116,9 +156,16 @@ export default function ImportPage() {
                     {importing ? "Импорт..." : `Импортировать ${parsedData.length} записей`}
                   </Button>
                 )}
-                {activeTab !== "registry" && (
-                  <Button size="sm" disabled>
-                    Импорт {tabs.find(t => t.key === activeTab)?.label} — скоро
+                {activeTab === "snt" && (
+                  <Button size="sm" onClick={handleImportSntEsf} disabled={importing}>
+                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+                    {importing ? "Импорт..." : `Импорт СНТ + создать записи в реестр`}
+                  </Button>
+                )}
+                {activeTab === "esf" && (
+                  <Button size="sm" onClick={handleImportSntEsf} disabled={importing}>
+                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+                    {importing ? "Импорт..." : `Импорт ЭСФ + создать записи в реестр`}
                   </Button>
                 )}
               </div>

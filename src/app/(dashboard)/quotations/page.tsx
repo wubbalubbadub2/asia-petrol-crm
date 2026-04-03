@@ -112,6 +112,22 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     return vals.reduce((a, b) => a + b, 0) / vals.length;
   }
 
+  // Auto-calculate Среднее = (CIF NWE + FOB Rotterdam) / 2
+  function handleCellSave(day: string, field: string, val: number | null) {
+    upsert(productType.id, day, field, val);
+
+    // If CIF or FOB Rotterdam changed, recalculate average
+    if (field === "price_cif_nwe" || field === "price_fob_rotterdam") {
+      const q = quotMap[day];
+      const cif = field === "price_cif_nwe" ? val : ((q as Record<string, unknown> | undefined)?.price_cif_nwe as number | null ?? null);
+      const fob = field === "price_fob_rotterdam" ? val : ((q as Record<string, unknown> | undefined)?.price_fob_rotterdam as number | null ?? null);
+      if (cif != null && fob != null) {
+        const avg = (cif + fob) / 2;
+        upsert(productType.id, day, "price", avg);
+      }
+    }
+  }
+
   function prevMonth() { if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1); }
   function nextMonth() { if (month === 12) { setMonth(1); setYear(year + 1); } else setMonth(month + 1); }
 
@@ -149,11 +165,11 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                     {formatDay(day)}
                   </td>
                   {PRICE_COLS.map((col) => (
-                    <td key={col.key} className="border-r px-1 py-0.5 text-right">
+                    <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.key === "price" ? "bg-amber-50/30" : ""}`}>
                       <EditableCell
                         value={(q as Record<string, unknown> | undefined)?.[col.key] as number | null ?? null}
-                        disabled={!isWritable}
-                        onSave={(val) => upsert(productType.id, day, col.key, val)}
+                        disabled={!isWritable || col.key === "price"}
+                        onSave={(val) => handleCellSave(day, col.key, val)}
                       />
                     </td>
                   ))}

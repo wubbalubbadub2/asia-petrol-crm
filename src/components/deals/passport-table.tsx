@@ -151,11 +151,11 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th colSpan={7} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">
               Поставщик
             </th>
+            <th colSpan={2} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">
+              Группы компании
+            </th>
             <th colSpan={8} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">
               Покупатель
-            </th>
-            <th colSpan={1} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">
-              Группы
             </th>
             <th colSpan={5} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">
               Логистика
@@ -176,6 +176,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Отгружено {currency}</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Оплата {currency}</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Баланс</th>
+            {/* Company groups — between supplier and buyer */}
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[120px] bg-purple-50/30">Компания</th>
+            <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-purple-50/30">Цена гр.</th>
             {/* Buyer */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[120px] bg-blue-50/30">Покупатель</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Договор</th>
@@ -185,9 +188,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Отгружено</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Оплата {currency}</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Долг</th>
-            {/* Logistics */}
-            {/* Company groups */}
-            <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[120px] bg-purple-50/30">Компании</th>
             {/* Logistics */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[100px]">Экспедитор</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[60px]">Тариф</th>
@@ -232,6 +232,18 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_balance)}</td>
 
+              {/* Company groups — between supplier and buyer */}
+              <td className="border-r px-2 py-1 text-[10px] text-stone-700 bg-purple-50/10 max-w-[120px]">
+                {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg) => (
+                  <div key={cg.id} className="truncate">{cg.company_group?.name ?? ""}</div>
+                )) ?? ""}
+              </td>
+              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono text-[10px] tabular-nums bg-purple-50/10">
+                {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg) => (
+                  <div key={cg.id}>{cg.price != null ? formatNum(cg.price) : ""}</div>
+                )) ?? ""}
+              </td>
+
               {/* Buyer (editable) */}
               <td className="border-r px-2 py-1 text-stone-700 bg-blue-50/10 truncate max-w-[120px]">{deal.buyer?.short_name ?? ""}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10">
@@ -252,13 +264,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_debt)}</td>
 
-              {/* Logistics (read-only mostly) */}
-              {/* Company groups */}
-              <td className="border-r border-stone-300 px-2 py-1 text-[10px] text-stone-600 bg-purple-50/10 max-w-[120px]">
-                {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg) => (
-                  <div key={cg.id} className="truncate">{cg.company_group?.name ?? ""}</div>
-                ))}
-              </td>
+              {/* Logistics */}
 
               {/* Logistics */}
               <td className="border-r px-2 py-1 text-stone-600 truncate max-w-[100px]">{deal.forwarder?.name ?? ""}</td>
