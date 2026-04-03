@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -39,33 +39,29 @@ export type MonthlyAverage = {
 export function useQuotationProductTypes() {
   const [data, setData] = useState<QuotationProductType[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await supabaseRef.current
       .from("quotation_product_types")
       .select("*")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
 
-    if (error) {
-      toast.error(`Ошибка загрузки типов котировок: ${error.message}`);
-    } else {
-      setData((data ?? []) as QuotationProductType[]);
-    }
+    if (error) toast.error(`Ошибка загрузки типов котировок: ${error.message}`);
+    else setData((data ?? []) as QuotationProductType[]);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
-
   return { data, loading, reload: load };
 }
 
 export function useQuotations(year: number, month: number) {
   const [data, setData] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,20 +70,17 @@ export function useQuotations(year: number, month: number) {
     const endYear = month === 12 ? year + 1 : year;
     const endDate = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseRef.current
       .from("quotations")
       .select("*")
       .gte("date", startDate)
       .lt("date", endDate)
       .order("date", { ascending: true });
 
-    if (error) {
-      toast.error(`Ошибка загрузки котировок: ${error.message}`);
-    } else {
-      setData((data ?? []) as Quotation[]);
-    }
+    if (error) toast.error(`Ошибка загрузки котировок: ${error.message}`);
+    else setData((data ?? []) as Quotation[]);
     setLoading(false);
-  }, [supabase, year, month]);
+  }, [year, month]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -102,24 +95,40 @@ export function useQuotations(year: number, month: number) {
     );
 
     if (existing) {
-      const { error } = await supabase
+      // Optimistic update — update local state immediately
+      setData((prev) =>
+        prev.map((q) =>
+          q.id === existing.id ? { ...q, [field]: value } : q
+        )
+      );
+      // Then persist to DB in background
+      const { error } = await supabaseRef.current
         .from("quotations")
         .update({ [field]: value })
         .eq("id", existing.id);
       if (error) {
         toast.error(`Ошибка сохранения: ${error.message}`);
-        return;
+        // Revert on error
+        setData((prev) =>
+          prev.map((q) =>
+            q.id === existing.id ? { ...q, [field]: (existing as Record<string, unknown>)[field] } : q
+          )
+        );
       }
     } else {
-      const { error } = await supabase
+      // Insert new — need to fetch after to get the ID
+      const { data: inserted, error } = await supabaseRef.current
         .from("quotations")
-        .insert({ product_type_id: productTypeId, date, [field]: value });
+        .insert({ product_type_id: productTypeId, date, [field]: value })
+        .select()
+        .single();
       if (error) {
         toast.error(`Ошибка добавления: ${error.message}`);
         return;
       }
+      // Add to local state
+      setData((prev) => [...prev, inserted as Quotation]);
     }
-    await load();
   }
 
   return { data, loading, reload: load, upsert };
@@ -128,25 +137,21 @@ export function useQuotations(year: number, month: number) {
 export function useMonthlyAverages(year: number) {
   const [data, setData] = useState<MonthlyAverage[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await supabaseRef.current
       .from("quotation_monthly_averages")
       .select("*")
       .eq("year", year)
       .order("month", { ascending: true });
 
-    if (error) {
-      toast.error(`Ошибка загрузки средних: ${error.message}`);
-    } else {
-      setData((data ?? []) as MonthlyAverage[]);
-    }
+    if (error) toast.error(`Ошибка загрузки средних: ${error.message}`);
+    else setData((data ?? []) as MonthlyAverage[]);
     setLoading(false);
-  }, [supabase, year]);
+  }, [year]);
 
   useEffect(() => { load(); }, [load]);
-
   return { data, loading, reload: load };
 }

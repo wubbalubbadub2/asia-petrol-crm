@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -93,11 +93,11 @@ export function useDeals(filters?: {
 }) {
   const [data, setData] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
 
   const load = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from("deals").select(DEAL_SELECT);
+    let query = supabaseRef.current.from("deals").select(DEAL_SELECT);
 
     if (filters?.dealType) query = query.eq("deal_type", filters.dealType);
     if (filters?.year) query = query.eq("year", filters.year);
@@ -113,7 +113,7 @@ export function useDeals(filters?: {
       setData((data ?? []) as Deal[]);
     }
     setLoading(false);
-  }, [supabase, filters?.dealType, filters?.year, filters?.month, filters?.isArchived]);
+  }, [filters?.dealType, filters?.year, filters?.month, filters?.isArchived]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -123,12 +123,12 @@ export function useDeals(filters?: {
 export function useDeal(id: string | null) {
   const [data, setData] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseRef2 = useRef(createClient());
 
   const load = useCallback(async () => {
     if (!id) { setLoading(false); return; }
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await supabaseRef2.current
       .from("deals")
       .select(DEAL_SELECT)
       .eq("id", id)
@@ -139,7 +139,7 @@ export function useDeal(id: string | null) {
       setData(data as Deal);
     }
     setLoading(false);
-  }, [supabase, id]);
+  }, [id]);
 
   useEffect(() => { load(); }, [load]);
 

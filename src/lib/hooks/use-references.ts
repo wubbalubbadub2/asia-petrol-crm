@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -10,11 +10,11 @@ export function useSupabaseTable<T extends { id?: string }>(
 ) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await supabaseRef.current
       .from(tableName)
       .select("*")
       .order(orderBy, { ascending: true });
@@ -25,7 +25,7 @@ export function useSupabaseTable<T extends { id?: string }>(
       setData((data ?? []) as T[]);
     }
     setLoading(false);
-  }, [tableName, orderBy, supabase]);
+  }, [tableName, orderBy]);
 
   useEffect(() => {
     load();
@@ -33,7 +33,7 @@ export function useSupabaseTable<T extends { id?: string }>(
 
   async function save(values: Partial<T>, isEdit: boolean) {
     if (isEdit && values.id) {
-      const { error } = await supabase
+      const { error } = await supabaseRef.current
         .from(tableName)
         .update(values)
         .eq("id", values.id);
@@ -45,7 +45,7 @@ export function useSupabaseTable<T extends { id?: string }>(
       toast.success("Сохранено");
     } else {
       const { id: _, ...insertValues } = values as Record<string, unknown>;
-      const { error } = await supabase.from(tableName).insert(insertValues);
+      const { error } = await supabaseRef.current.from(tableName).insert(insertValues);
 
       if (error) {
         toast.error(`Ошибка добавления: ${error.message}`);
@@ -58,7 +58,7 @@ export function useSupabaseTable<T extends { id?: string }>(
 
   async function remove(item: T) {
     if (!item.id) return;
-    const { error } = await supabase
+    const { error } = await supabaseRef.current
       .from(tableName)
       .delete()
       .eq("id", item.id);
