@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import NextTopLoader from "nextjs-toploader";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -32,6 +33,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
+        <NextTopLoader color="#D97706" height={2} showSpinner={false} />
         <TooltipProvider>
           {children}
         </TooltipProvider>

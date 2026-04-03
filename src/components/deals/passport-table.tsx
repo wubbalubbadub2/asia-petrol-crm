@@ -194,8 +194,8 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
           {deals.map((deal) => (
             <tr key={deal.id} className="border-b hover:bg-amber-50/20">
               {/* Identity (frozen, read-only) */}
-              <td className="sticky left-0 z-10 bg-white border-r px-2 py-1 font-mono font-medium text-amber-700">
-                <Link href={`/deals/${deal.id}`} className="hover:underline">{deal.deal_code}</Link>
+              <td className="sticky left-0 z-10 bg-white border-r px-2 py-1 font-mono font-medium">
+                <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">{deal.deal_code}</Link>
               </td>
               <td className="sticky left-[70px] z-10 bg-white border-r px-2 py-1 text-stone-600">{deal.month}</td>
               <td className="border-r px-2 py-1 text-stone-600">{deal.factory?.name ?? ""}</td>

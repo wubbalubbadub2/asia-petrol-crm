@@ -173,8 +173,8 @@ export default function DealsPage() {
             <TableBody>
               {filtered.map((deal) => (
                 <TableRow key={deal.id} className="hover:bg-amber-50/30">
-                  <TableCell className="font-mono text-[12px] font-medium text-amber-700">
-                    <Link href={`/deals/${deal.id}`} className="hover:underline">
+                  <TableCell className="font-mono text-[12px] font-medium">
+                    <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">
                       {deal.deal_code}
                     </Link>
                   </TableCell>
