@@ -54,7 +54,18 @@ function formatNum(val: number | null | undefined): string {
 }
 
 export default function DealsPage() {
-  const [activeTab, setActiveTab] = useState<"list" | "kg" | "kz">("list");
+  // Persist tab in URL hash so refresh keeps the tab
+  const [activeTab, setActiveTabState] = useState<"list" | "kg" | "kz">(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "");
+      if (hash === "kg" || hash === "kz") return hash;
+    }
+    return "list";
+  });
+  function setActiveTab(tab: "list" | "kg" | "kz") {
+    setActiveTabState(tab);
+    window.location.hash = tab === "list" ? "" : tab;
+  }
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
 
