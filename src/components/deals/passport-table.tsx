@@ -148,6 +148,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th colSpan={8} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">
               Покупатель
             </th>
+            <th colSpan={1} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">
+              Группы
+            </th>
             <th colSpan={5} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">
               Логистика
             </th>
@@ -176,6 +179,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Отгружено</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Оплата {currency}</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Долг</th>
+            {/* Logistics */}
+            {/* Company groups */}
+            <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[120px] bg-purple-50/30">Компании</th>
             {/* Logistics */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[100px]">Экспедитор</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[60px]">Тариф</th>
@@ -241,6 +247,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_debt)}</td>
 
               {/* Logistics (read-only mostly) */}
+              {/* Company groups */}
+              <td className="border-r border-stone-300 px-2 py-1 text-[10px] text-stone-600 bg-purple-50/10 max-w-[120px]">
+                {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg) => (
+                  <div key={cg.id} className="truncate">{cg.company_group?.name ?? ""}</div>
+                ))}
+              </td>
+
+              {/* Logistics */}
               <td className="border-r px-2 py-1 text-stone-600 truncate max-w-[100px]">{deal.forwarder?.name ?? ""}</td>
               <td className="border-r px-1 py-0.5">
                 <EditableNumCell value={deal.planned_tariff} dealId={deal.id} field="planned_tariff" onSaved={onDataChanged} />

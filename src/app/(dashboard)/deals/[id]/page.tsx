@@ -59,8 +59,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   if (loading) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
   if (!deal) return <p className="text-sm text-destructive py-8">Сделка не найдена</p>;
 
-  const currency = DEAL_TYPE_CURRENCY[deal.deal_type] ?? "USD";
-  const currencySymbol = currency === "KZT" ? "₸" : "$";
+  const currency = (deal as Record<string, unknown>).currency as string ?? DEAL_TYPE_CURRENCY[deal.deal_type] ?? "USD";
+  const currencySymbol = currency === "KZT" ? "₸" : currency === "KGS" ? "сом" : currency === "RUB" ? "₽" : "$";
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -139,6 +139,33 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Долг / переплата" value={deal.buyer_debt} suffix={currencySymbol} />
         </CardContent>
       </Card>
+
+      {/* Company Groups */}
+      {deal.deal_company_groups && deal.deal_company_groups.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[14px]">Группы компании</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {deal.deal_company_groups
+                .sort((a, b) => a.position - b.position)
+                .map((cg) => (
+                <div key={cg.id} className="flex items-center gap-4 rounded-md bg-stone-50 px-3 py-2 text-[12px]">
+                  <span className="font-mono text-[11px] text-stone-400 w-4">{cg.position}</span>
+                  <span className="font-medium text-stone-800">{cg.company_group?.name ?? "—"}</span>
+                  {cg.contract_ref && <span className="text-stone-500">Договор: {cg.contract_ref}</span>}
+                  {cg.price != null && (
+                    <span className="font-mono tabular-nums text-stone-700 ml-auto">
+                      {cg.price.toLocaleString("ru-RU")} {currencySymbol}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Logistics */}
       <Card>
