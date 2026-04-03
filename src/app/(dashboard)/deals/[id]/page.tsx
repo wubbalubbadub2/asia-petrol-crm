@@ -126,7 +126,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const currencySymbol = currency === "KZT" ? "₸" : currency === "KGS" ? "сом" : currency === "RUB" ? "₽" : "$";
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="flex gap-4">
+    <div className="space-y-4 flex-1 min-w-0">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/deals">
@@ -140,9 +141,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               variant={editing ? "default" : "outline"}
               onClick={async () => {
                 if (editing) {
-                  // Save mode — just toggle off and reload
+                  // Save mode — just toggle off (data already saved optimistically)
                   setEditing(false);
-                  reload();
                 } else {
                   setEditing(true);
                 }
@@ -280,18 +280,23 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </CardContent>
       </Card>
 
-      {/* Documents + Activity side by side */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DocumentsSection dealId={deal.id} />
-        <Card>
-          <CardHeader className="pb-2">
+      {/* Documents */}
+      <DocumentsSection dealId={deal.id} />
+    </div>
+
+    {/* Right sidebar: Activity feed */}
+    <div className="hidden lg:block w-[340px] shrink-0">
+      <div className="sticky top-0">
+        <Card className="h-[calc(100vh-7rem)]">
+          <CardHeader className="pb-2 border-b border-stone-200">
             <CardTitle className="text-[14px]">Активность</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-3 h-[calc(100%-3rem)]">
             <DealActivityFeed dealId={deal.id} />
           </CardContent>
         </Card>
       </div>
+    </div>
     </div>
   );
 }

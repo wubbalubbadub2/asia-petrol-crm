@@ -89,7 +89,7 @@ export function DealActivityFeed({ dealId }: { dealId: string }) {
   }
 
   return (
-    <div className="flex flex-col" style={{ height: "380px" }}>
+    <div className="flex flex-col h-full">
       {/* Messages area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-1 space-y-0.5">
         {loading ? (

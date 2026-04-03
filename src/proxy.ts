@@ -1,8 +1,9 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { type NextRequest, NextResponse } from "next/server";
 
+// Lightweight proxy — only refresh cookies, no auth check
+// Auth is handled client-side for instant navigation
 export async function proxy(request: NextRequest) {
-  return await updateSession(request);
+  return NextResponse.next();
 }
 
 export const config = {
