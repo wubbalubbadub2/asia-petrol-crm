@@ -14,7 +14,8 @@ import { useDeal, updateDeal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { DealActivityFeed } from "@/components/deals/deal-activity-feed";
+import { ActivityFeed } from "@/components/shared/activity-feed";
+import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
   { value: "contract", label: "Договор / Приложение" },
@@ -309,13 +310,18 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <CardTitle className="text-[14px]">Активность</CardTitle>
           </CardHeader>
           <CardContent className="p-3 h-[calc(100%-3rem)]">
-            <DealActivityFeed dealId={deal.id} />
+            <DealActivityWrapper dealId={deal.id} />
           </CardContent>
         </Card>
       </div>
     </div>
     </div>
   );
+}
+
+function DealActivityWrapper({ dealId }: { dealId: string }) {
+  const { messages, loading, sendMessage } = useDealActivity(dealId);
+  return <ActivityFeed messages={messages} loading={loading} sendMessage={sendMessage} />;
 }
 
 function DocumentsSection({ dealId }: { dealId: string }) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Check, X, FileText, Upload, Link2 } from "lucide-react";
+import { Plus, Check, X, FileText, Upload, Link2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,8 @@ import {
 } from "@/lib/hooks/use-applications";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { ActivityFeed } from "@/components/shared/activity-feed";
+import { useApplicationActivity } from "@/lib/hooks/use-deal-activity";
 
 type RefOption = { id: string; name: string };
 type ProfileOption = { id: string; full_name: string };
@@ -313,6 +315,8 @@ export default function ApplicationsPage() {
     if (ok) reload();
   }
 
+  const [chatAppId, setChatAppId] = useState<string | null>(null);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -395,13 +399,16 @@ export default function ApplicationsPage() {
                     </button>
                   </TableCell>
                   <TableCell>
-                    <button
-                      onClick={() => setLinkAppId(app.id)}
-                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-amber-600 hover:bg-amber-50 border border-amber-200"
-                    >
-                      <Link2 className="h-3 w-3" />
-                      Сделка
-                    </button>
+                    <div className="flex gap-1">
+                      <button onClick={() => setLinkAppId(app.id)}
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-amber-600 hover:bg-amber-50 border border-amber-200">
+                        <Link2 className="h-3 w-3" /> Сделка
+                      </button>
+                      <button onClick={() => setChatAppId(app.id)}
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-blue-600 hover:bg-blue-50 border border-blue-200">
+                        <MessageSquare className="h-3 w-3" /> Чат
+                      </button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -424,6 +431,24 @@ export default function ApplicationsPage() {
           onLinked={reload}
         />
       )}
+
+      {chatAppId && (
+        <Dialog open={!!chatAppId} onOpenChange={() => setChatAppId(null)}>
+          <DialogContent className="max-w-lg h-[500px] flex flex-col">
+            <DialogHeader className="pb-2">
+              <DialogTitle className="text-[14px]">Чат по заявке</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-hidden">
+              <AppChatWrapper applicationId={chatAppId} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
+}
+
+function AppChatWrapper({ applicationId }: { applicationId: string }) {
+  const { messages, loading, sendMessage } = useApplicationActivity(applicationId);
+  return <ActivityFeed messages={messages} loading={loading} sendMessage={sendMessage} />;
 }

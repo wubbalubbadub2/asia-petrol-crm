@@ -6,7 +6,8 @@ import { toast } from "sonner";
 
 export type ActivityMessage = {
   id: string;
-  deal_id: string;
+  deal_id: string | null;
+  application_id?: string | null;
   user_id: string | null;
   type: string;
   content: string;
@@ -124,4 +125,53 @@ export function useDealActivity(dealId: string) {
   }
 
   return { messages, loading, sendMessage, reload: load };
+}
+
+// Same hook but for applications
+export function useApplicationActivity(applicationId: string) {
+  const [messages, setMessages] = useState<ActivityMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const supabaseRef = useRef(createClient());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabaseRef.current
+      .from("deal_activity")
+      .select("*, user:profiles(full_name, role)")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: true });
+    if (error) toast.error(`Ошибка: ${error.message}`);
+    else setMessages((data ?? []) as ActivityMessage[]);
+    setLoading(false);
+  }, [applicationId]);
+
+  useEffect(() => {
+    load();
+    const channel = supabaseRef.current
+      .channel(`app-activity-${applicationId}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "deal_activity",
+        filter: `application_id=eq.${applicationId}`,
+      }, async (payload) => {
+        const { data } = await supabaseRef.current.from("deal_activity")
+          .select("*, user:profiles(full_name, role)").eq("id", payload.new.id).single();
+        if (data) setMessages((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data as ActivityMessage]);
+      }).subscribe();
+    return () => { supabaseRef.current.removeChannel(channel); };
+  }, [applicationId, load]);
+
+  async function sendMessage(content: string) {
+    if (!content.trim()) return;
+    const { data: { user } } = await supabaseRef.current.auth.getUser();
+    if (!user) return;
+    const tempId = crypto.randomUUID();
+    setMessages((prev) => [...prev, { id: tempId, deal_id: null, application_id: applicationId, user_id: user.id, type: "comment", content: content.trim(), metadata: null, created_at: new Date().toISOString(), user: null }]);
+    const { data, error } = await supabaseRef.current.from("deal_activity")
+      .insert({ application_id: applicationId, user_id: user.id, type: "comment", content: content.trim() })
+      .select("*, user:profiles(full_name, role)").single();
+    if (error) { toast.error(`Ошибка: ${error.message}`); setMessages((prev) => prev.filter((m) => m.id !== tempId)); }
+    else if (data) setMessages((prev) => prev.map((m) => m.id === tempId ? data as ActivityMessage : m));
+  }
+
+  return { messages, loading, sendMessage };
 }
