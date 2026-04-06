@@ -12,6 +12,7 @@ import {
   type QuotationProductType,
 } from "@/lib/hooks/use-quotations";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { getColumnsForProduct, type QuotationColumn } from "@/lib/constants/quotation-columns";
 import { useRole } from "@/lib/hooks/use-role";
 import { createClient } from "@/lib/supabase/client";
 import { PriceCalculator } from "@/components/quotations/price-calculator";
@@ -99,12 +100,8 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     return map;
   }, [quotations, productType.id]);
 
-  const PRICE_COLS = [
-    { key: "price_cif_nwe", label: "CIF NWE/Basis ARA" },
-    { key: "price_fob_med", label: "FOB MED" },
-    { key: "price_fob_rotterdam", label: "FOB Rotterdam" },
-    { key: "price", label: "Среднее" },
-  ] as const;
+  // Product-specific columns from Excel format
+  const PRICE_COLS = getColumnsForProduct(productType.name);
 
   function getAvg(field: string): number | null {
     const vals = Object.values(quotMap).map((q) => (q as Record<string, unknown>)[field] as number | null).filter((v): v is number => v != null);
@@ -112,18 +109,29 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     return vals.reduce((a, b) => a + b, 0) / vals.length;
   }
 
-  // Auto-calculate Среднее = (CIF NWE + FOB Rotterdam) / 2
+  // Auto-calculate formula columns (Среднее) when editable columns change
+  // Excel formula: =IF(((price1+price2)/2)=0,"",((price1+price2)/2))
   function handleCellSave(day: string, field: string, val: number | null) {
     upsert(productType.id, day, field, val);
 
-    // If CIF or FOB Rotterdam changed, recalculate average
-    if (field === "price_cif_nwe" || field === "price_fob_rotterdam") {
-      const q = quotMap[day];
-      const cif = field === "price_cif_nwe" ? val : ((q as Record<string, unknown> | undefined)?.price_cif_nwe as number | null ?? null);
-      const fob = field === "price_fob_rotterdam" ? val : ((q as Record<string, unknown> | undefined)?.price_fob_rotterdam as number | null ?? null);
-      if (cif != null && fob != null) {
-        const avg = (cif + fob) / 2;
-        upsert(productType.id, day, "price", avg);
+    // Check if any formula column needs recalculation
+    const formulaCols = PRICE_COLS.filter((c) => c.formula === "avg");
+    if (formulaCols.length === 0) return;
+
+    // Get all editable numeric columns (not formula columns)
+    const editableCols = PRICE_COLS.filter((c) => c.editable);
+    if (editableCols.length < 2) return; // Need at least 2 values to average
+
+    const q = quotMap[day];
+    const values = editableCols.map((c) => {
+      if (c.key === field) return val;
+      return (q as Record<string, unknown> | undefined)?.[c.key] as number | null ?? null;
+    }).filter((v): v is number => v != null);
+
+    if (values.length >= 2) {
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      for (const fc of formulaCols) {
+        upsert(productType.id, day, fc.key, avg);
       }
     }
   }
@@ -165,10 +173,10 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                     {formatDay(day)}
                   </td>
                   {PRICE_COLS.map((col) => (
-                    <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.key === "price" ? "bg-amber-50/30" : ""}`}>
+                    <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.formula ? "bg-amber-50/30" : ""}`}>
                       <EditableCell
                         value={(q as Record<string, unknown> | undefined)?.[col.key] as number | null ?? null}
-                        disabled={!isWritable || col.key === "price"}
+                        disabled={!isWritable || !col.editable}
                         onSave={(val) => handleCellSave(day, col.key, val)}
                       />
                     </td>
@@ -255,9 +263,11 @@ export default function QuotationsPage() {
                       <p className="text-[13px] font-medium text-stone-800 group-hover:text-amber-700">{pt.name}</p>
                       {pt.sub_name && <p className="text-[11px] text-stone-400 mt-0.5">{pt.sub_name}</p>}
                       {pt.basis && <p className="text-[10px] text-stone-400">{pt.basis}</p>}
-                      <div className="mt-2 flex gap-1">
-                        {["CIF", "FOB MED", "FOB Rot.", "Avg"].map((label) => (
-                          <span key={label} className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] text-stone-500">{label}</span>
+                      <div className="mt-2 flex gap-1 flex-wrap">
+                        {getColumnsForProduct(pt.name).map((col) => (
+                          <span key={col.key} className={`rounded px-1.5 py-0.5 text-[9px] ${col.formula ? "bg-amber-100 text-amber-600" : "bg-stone-100 text-stone-500"}`}>
+                            {col.label.length > 15 ? col.label.slice(0, 15) + "..." : col.label}
+                          </span>
                         ))}
                       </div>
                     </CardContent>
