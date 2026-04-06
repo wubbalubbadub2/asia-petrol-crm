@@ -234,16 +234,19 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_balance)}</td>
 
-              {/* Company groups — between supplier and buyer */}
-              <td className="border-r px-2 py-1 text-[10px] text-stone-700 bg-purple-50/10 max-w-[120px]">
-                {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg) => (
-                  <div key={cg.id} className="truncate">{cg.company_group?.name ?? ""}</div>
-                )) ?? ""}
-              </td>
-              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono text-[10px] tabular-nums bg-purple-50/10">
-                {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg) => (
-                  <div key={cg.id}>{cg.price != null ? formatNum(cg.price) : ""}</div>
-                )) ?? ""}
+              {/* Company groups — horizontal chain between supplier and buyer */}
+              <td className="border-r px-1 py-1 text-[10px] bg-purple-50/10 min-w-[140px]" colSpan={2}>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg, idx) => (
+                    <span key={cg.id} className="inline-flex items-center gap-0.5">
+                      {idx > 0 && <span className="text-stone-300 mx-0.5">→</span>}
+                      <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700 whitespace-nowrap">
+                        {cg.company_group?.name ?? ""}
+                        {cg.price != null && <span className="ml-1 font-mono text-purple-500">{formatNum(cg.price)}</span>}
+                      </span>
+                    </span>
+                  )) ?? ""}
+                </div>
               </td>
 
               {/* Buyer (editable) */}

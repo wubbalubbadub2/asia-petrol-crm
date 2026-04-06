@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,9 @@ import { useDeals, type Deal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
+import { useRole } from "@/lib/hooks/use-role";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 const tabs = [
   { key: "list", label: "Все сделки" },
@@ -68,6 +71,16 @@ export default function DealsPage() {
   }
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
+  const { isAdmin } = useRole();
+
+  async function handleDelete(deal: Deal) {
+    if (!confirm(`Удалить сделку ${deal.deal_code}?`)) return;
+    const supabase = createClient();
+    const { error } = await supabase.from("deals").delete().eq("id", deal.id);
+    if (error) { toast.error(`Ошибка удаления: ${error.message}`); return; }
+    toast.success(`Сделка ${deal.deal_code} удалена`);
+    reload();
+  }
 
   const dealTypeFilter = activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : undefined;
   const { data: deals, loading, reload } = useDeals({
@@ -179,6 +192,7 @@ export default function DealsPage() {
                 <TableHead className="text-right text-[11px]">Объем (К)</TableHead>
                 <TableHead className="text-right text-[11px]">Отгружено</TableHead>
                 <TableHead className="text-[11px]">Менеджер</TableHead>
+                {isAdmin && <TableHead className="text-[11px] w-[40px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -213,6 +227,13 @@ export default function DealsPage() {
                   <TableCell className="text-[12px] text-stone-500">
                     {deal.supplier_manager?.full_name ?? "—"}
                   </TableCell>
+                  {isAdmin && (
+                    <TableCell>
+                      <button onClick={() => handleDelete(deal)} className="rounded p-1 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

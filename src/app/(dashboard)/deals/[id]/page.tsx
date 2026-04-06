@@ -225,27 +225,44 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
 
       {/* Company Groups */}
+      {/* Company Groups — horizontal chain */}
       {deal.deal_company_groups && deal.deal_company_groups.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-[14px]">Группы компании</CardTitle>
+            <CardTitle className="text-[14px]">Цепочка компании</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Supplier */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center">
+                <p className="text-[10px] text-amber-600 uppercase font-medium">Поставщик</p>
+                <p className="text-[12px] font-medium text-stone-800">{deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"}</p>
+              </div>
+
               {deal.deal_company_groups
                 .sort((a, b) => a.position - b.position)
                 .map((cg) => (
-                <div key={cg.id} className="flex items-center gap-4 rounded-md bg-stone-50 px-3 py-2 text-[12px]">
-                  <span className="font-mono text-[11px] text-stone-400 w-4">{cg.position}</span>
-                  <span className="font-medium text-stone-800">{cg.company_group?.name ?? "—"}</span>
-                  {cg.contract_ref && <span className="text-stone-500">Договор: {cg.contract_ref}</span>}
-                  {cg.price != null && (
-                    <span className="font-mono tabular-nums text-stone-700 ml-auto">
-                      {cg.price.toLocaleString("ru-RU")} {currencySymbol}
-                    </span>
-                  )}
+                <div key={cg.id} className="flex items-center gap-2">
+                  <span className="text-stone-300 text-lg">→</span>
+                  <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-center">
+                    <p className="text-[10px] text-purple-600 uppercase font-medium">Группа {cg.position}</p>
+                    <p className="text-[12px] font-medium text-stone-800">{cg.company_group?.name ?? "—"}</p>
+                    {cg.price != null && (
+                      <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
+                        {cg.price.toLocaleString("ru-RU")} {currencySymbol}
+                      </p>
+                    )}
+                    {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
+                  </div>
                 </div>
               ))}
+
+              {/* Buyer */}
+              <span className="text-stone-300 text-lg">→</span>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center">
+                <p className="text-[10px] text-blue-600 uppercase font-medium">Покупатель</p>
+                <p className="text-[12px] font-medium text-stone-800">{deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
