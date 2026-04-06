@@ -38,6 +38,28 @@ function formatDate(d: string | null): string {
   return new Date(d).toLocaleDateString("ru-RU");
 }
 
+// Excel formulas replicated
+function getQuarter(month: string | null): string {
+  if (!month) return "";
+  const m = month.toLowerCase();
+  if (["январь", "февраль", "март"].includes(m)) return "I кв";
+  if (["апрель", "май", "июнь"].includes(m)) return "II кв";
+  if (["июль", "август", "сентябрь"].includes(m)) return "III кв";
+  if (["октябрь", "ноябрь", "декабрь"].includes(m)) return "IV кв";
+  return "";
+}
+
+function roundTonnage(vol: number | null): number | null {
+  if (vol == null) return null;
+  return Math.ceil(vol); // CEILING.MATH(value, 1, 0)
+}
+
+function calcShippedAmount(vol: number | null, tariff: number | null): number | null {
+  const rounded = roundTonnage(vol);
+  if (rounded == null || tariff == null) return null;
+  return rounded * tariff;
+}
+
 function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   open: boolean; onClose: () => void; registryType: "KG" | "KZ"; onCreated: () => void;
 }) {
@@ -176,7 +198,9 @@ export default function RegistryPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-stone-50">
-                <TableHead className="text-[11px] w-[50px]">№</TableHead>
+                <TableHead className="text-[11px] w-[40px]">№</TableHead>
+                <TableHead className="text-[11px] w-[45px]">Кварт.</TableHead>
+                <TableHead className="text-[11px]">Месяц</TableHead>
                 <TableHead className="text-[11px]">Дата</TableHead>
                 <TableHead className="text-[11px]">№ накладной</TableHead>
                 <TableHead className="text-[11px]">№ вагона</TableHead>
@@ -186,21 +210,29 @@ export default function RegistryPage() {
                 <TableHead className="text-[11px]">ГСМ</TableHead>
                 <TableHead className="text-[11px]">№ сделки</TableHead>
                 <TableHead className="text-[11px]">Завод</TableHead>
+                <TableHead className="text-[11px]">Поставщик</TableHead>
                 <TableHead className="text-[11px]">Экспедитор</TableHead>
+                <TableHead className="text-[11px]">Мес. отгр.</TableHead>
                 <TableHead className="text-right text-[11px]">Тариф</TableHead>
+                <TableHead className="text-[11px]">Покупатель</TableHead>
+                <TableHead className="text-right text-[11px]">Округл. тонн.</TableHead>
                 <TableHead className="text-right text-[11px]">Сумма {currency}</TableHead>
+                <TableHead className="text-[11px]">№ СФ</TableHead>
+                <TableHead className="text-[11px]">Коммент.</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((rec) => (
+              {records.map((rec, idx) => (
                 <TableRow key={rec.id} className="hover:bg-amber-50/20">
-                  <TableCell className="font-mono text-[11px] text-stone-400">{rec.row_number ?? ""}</TableCell>
+                  <TableCell className="font-mono text-[10px] text-stone-400">{idx + 1}</TableCell>
+                  <TableCell className="text-[10px] text-stone-500">{getQuarter(rec.month)}</TableCell>
+                  <TableCell className="text-[11px] text-stone-600">{rec.month ?? ""}</TableCell>
                   <TableCell className="text-[11px]">{formatDate(rec.date)}</TableCell>
-                  <TableCell className="font-mono text-[11px]">{rec.waybill_number ?? ""}</TableCell>
-                  <TableCell className="font-mono text-[11px] max-w-[100px] truncate">{rec.wagon_number ?? ""}</TableCell>
+                  <TableCell className="font-mono text-[10px]">{rec.waybill_number ?? ""}</TableCell>
+                  <TableCell className="font-mono text-[10px] max-w-[100px] truncate">{rec.wagon_number ?? ""}</TableCell>
                   <TableCell className="text-right font-mono text-[11px] tabular-nums">{formatNum(rec.shipment_volume)}</TableCell>
-                  <TableCell className="text-[11px] text-stone-600">{rec.destination_station?.name ?? ""}</TableCell>
-                  <TableCell className="text-[11px] text-stone-600">{rec.departure_station?.name ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{rec.destination_station?.name ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{rec.departure_station?.name ?? ""}</TableCell>
                   <TableCell className="text-[11px]">
                     {rec.fuel_type ? (
                       <span className="inline-flex items-center gap-1">
@@ -209,11 +241,17 @@ export default function RegistryPage() {
                       </span>
                     ) : ""}
                   </TableCell>
-                  <TableCell className="font-mono text-[11px] text-amber-700">{rec.deal?.deal_code ?? ""}</TableCell>
-                  <TableCell className="text-[11px] text-stone-600">{rec.factory?.name ?? ""}</TableCell>
-                  <TableCell className="text-[11px] text-stone-600">{rec.forwarder?.name ?? ""}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px] tabular-nums">{formatNum(rec.railway_tariff)}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px] tabular-nums">{formatNum(rec.shipped_tonnage_amount)}</TableCell>
+                  <TableCell className="font-mono text-[10px] text-amber-700">{rec.deal?.deal_code ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{rec.factory?.name ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{(rec as Record<string, unknown>).supplier_name as string ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{rec.forwarder?.name ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-500">{rec.shipment_month ?? ""}</TableCell>
+                  <TableCell className="text-right font-mono text-[10px] tabular-nums">{formatNum(rec.railway_tariff)}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{(rec as Record<string, unknown>).buyer_name as string ?? ""}</TableCell>
+                  <TableCell className="text-right font-mono text-[10px] tabular-nums">{formatNum(roundTonnage(rec.shipment_volume))}</TableCell>
+                  <TableCell className="text-right font-mono text-[10px] tabular-nums font-medium">{formatNum(calcShippedAmount(rec.shipment_volume, rec.railway_tariff))}</TableCell>
+                  <TableCell className="font-mono text-[10px] text-stone-500">{rec.invoice_number ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-400 max-w-[80px] truncate">{rec.comment ?? ""}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

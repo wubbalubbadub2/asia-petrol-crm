@@ -49,14 +49,14 @@ function formatMoney(val: number | null | undefined): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
+// Excel formula: =E+G-(I+J+K+L)-H
+// = opening + payment - (shipped_tonnage + fines + surcharge + ogem) - refund
 function computeSaldo(row: DtKtRecord): number {
   return (
-    n(row.opening_balance) -
+    n(row.opening_balance) +
     n(row.payment) -
-    n(row.refund) +
-    n(row.fines) +
-    n(row.surcharge_preliminary) +
-    n(row.ogem)
+    (n(row.fines) + n(row.surcharge_preliminary) + n(row.ogem)) -
+    n(row.refund)
   );
 }
 
