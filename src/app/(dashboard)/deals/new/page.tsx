@@ -40,6 +40,7 @@ export default function NewDealPage() {
   const [fuelTypeId, setFuelTypeId] = useState("");
   const [sulfurPercent, setSulfurPercent] = useState("");
   const [currency, setCurrency] = useState("USD");
+  const [railwayInPrice, setRailwayInPrice] = useState(false);
 
   // Quotation types for price linking
   const [quotationTypes, setQuotationTypes] = useState<RefOption[]>([]);
@@ -158,6 +159,7 @@ export default function NewDealPage() {
       supplier_price: supplierPrice ? parseFloat(supplierPrice) : null,
       supplier_price_condition: supplierPriceCondition || null,
       supplier_delivery_basis: supplierDeliveryBasis || null,
+      railway_in_price: railwayInPrice,
       buyer_id: buyerId || null,
       buyer_contract: buyerContract || null,
       buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,
@@ -339,6 +341,16 @@ export default function NewDealPage() {
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
               <Input value={supplierDeliveryBasis} onChange={(e) => setSupplierDeliveryBasis(e.target.value)} placeholder="FCA Текесу" className="h-8 text-[13px]" />
             </div>
+            <div className="flex items-center gap-2 pt-5">
+              <input
+                type="checkbox"
+                id="railway-in-price"
+                checked={railwayInPrice}
+                onChange={(e) => setRailwayInPrice(e.target.checked)}
+                className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+              />
+              <Label htmlFor="railway-in-price" className="text-[12px] text-stone-600 cursor-pointer">ЖД в цене</Label>
+            </div>
           </CardContent>
         </Card>
 
@@ -425,13 +437,9 @@ export default function NewDealPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="w-28">
+                    <div className="w-32">
                       <Label className="text-[11px] text-stone-500">Цена</Label>
                       <Input type="number" step="0.01" value={cg.price} onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)} className="h-8 text-[13px] font-mono" />
-                    </div>
-                    <div className="flex-1">
-                      <Label className="text-[11px] text-stone-500">№ договора</Label>
-                      <Input value={cg.contractRef} onChange={(e) => updateCompanyGroup(idx, "contractRef", e.target.value)} placeholder="35 от 02-01-25" className="h-8 text-[13px]" />
                     </div>
                     <Button type="button" size="sm" variant="outline" onClick={() => removeCompanyGroup(idx)} className="text-red-500 hover:text-red-700 shrink-0 h-8 w-8 p-0">
                       ×

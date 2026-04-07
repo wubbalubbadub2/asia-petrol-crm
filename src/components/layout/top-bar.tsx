@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, ChevronDown, Bell } from "lucide-react";
+import { LogOut, ChevronDown, Bell, Archive, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/use-role";
 import {
@@ -61,6 +61,18 @@ export function TopBar() {
               <ChevronDown className="h-3.5 w-3.5 text-stone-400" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {profile.role === "admin" && (
+                <>
+                  <DropdownMenuItem onClick={() => router.push("/archive")}>
+                    <Archive className="mr-2 h-3.5 w-3.5" />
+                    Архив
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/settings")}>
+                    <Settings className="mr-2 h-3.5 w-3.5" />
+                    Настройки
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-3.5 w-3.5" />
                 Выйти

@@ -74,21 +74,9 @@ export function Sidebar() {
         <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
           Операции
         </p>
-        {filteredItems.slice(4, 10).map((item) => (
+        {filteredItems.filter((i) => !i.adminOnly).slice(4).map((item) => (
           <NavLink key={item.href + item.label} item={item} pathname={pathname} />
         ))}
-
-        {filteredItems.length > 10 && (
-          <>
-            <div className="my-3 border-t border-slate-800/50" />
-            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-              Система
-            </p>
-            {filteredItems.slice(10).map((item) => (
-              <NavLink key={item.href + item.label} item={item} pathname={pathname} />
-            ))}
-          </>
-        )}
       </div>
 
       {/* Footer */}

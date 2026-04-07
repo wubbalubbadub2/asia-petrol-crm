@@ -206,11 +206,10 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
 const PAGE_TABS = [
   { key: "products", label: "Котировки" },
   { key: "summary", label: "Свод КОТ" },
-  { key: "calculator", label: "Формирование цены" },
 ] as const;
 
 export default function QuotationsPage() {
-  const [activeTab, setActiveTab] = useState<"products" | "summary" | "calculator">("products");
+  const [activeTab, setActiveTab] = useState<"products" | "summary">("products");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<QuotationProductType | null>(null);
   const { data: productTypes, loading: typesLoading, reload: reloadTypes } = useQuotationProductTypes();
@@ -246,7 +245,6 @@ export default function QuotationsPage() {
       </div>
 
       {activeTab === "summary" && <QuotationSummary />}
-      {activeTab === "calculator" && <PriceCalculator />}
 
       {activeTab === "products" && !selectedProduct && (
         <>
