@@ -609,7 +609,7 @@ export default function NewDealPage() {
             {saving ? "Создание..." : "Создать сделку"}
           </Button>
           <Button type="button" variant="outline" onClick={async () => {
-            if (hasChanges && !confirm("Отменить создание сделки? Все данные будут потеряны.")) return;
+            if (!confirm("Отменить создание сделки? Все данные и сообщения будут потеряны.")) return;
             // Delete draft deal
             if (draftDealId) await supabase.from("deals").delete().eq("id", draftDealId);
             router.push("/deals");
