@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -310,7 +310,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <DocumentsSection dealId={deal.id} />
     </div>
 
-    {/* Right sidebar: Activity feed */}
+    {/* Right sidebar: Activity feed — sidebar on large, floating button + modal on small */}
     <div className="hidden lg:block w-[340px] shrink-0">
       <div className="sticky top-0">
         <Card className="h-[calc(100vh-7rem)]">
@@ -323,6 +323,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </Card>
       </div>
     </div>
+
+    {/* Mobile: floating chat button */}
+    <MobileChatButton dealId={deal.id} />
     </div>
   );
 }
@@ -330,6 +333,36 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
 function DealActivityWrapper({ dealId }: { dealId: string }) {
   const { messages, loading, sendMessage } = useDealActivity(dealId);
   return <ActivityFeed messages={messages} loading={loading} sendMessage={sendMessage} />;
+}
+
+function MobileChatButton({ dealId }: { dealId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {/* Floating button — visible only on small screens */}
+      <button
+        onClick={() => setOpen(true)}
+        className="lg:hidden fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-lg shadow-amber-500/30 hover:shadow-xl hover:scale-105 transition-all"
+      >
+        <MessageSquare className="h-5 w-5" />
+      </button>
+
+      {/* Fullscreen modal */}
+      {open && (
+        <div className="lg:hidden fixed inset-0 z-50 bg-white flex flex-col">
+          <div className="flex items-center justify-between border-b border-stone-200 px-4 py-3">
+            <h3 className="text-[14px] font-bold">Активность</h3>
+            <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-stone-100">
+              <X className="h-5 w-5 text-stone-500" />
+            </button>
+          </div>
+          <div className="flex-1 p-3 overflow-hidden">
+            <DealActivityWrapper dealId={dealId} />
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function DocumentsSection({ dealId }: { dealId: string }) {
