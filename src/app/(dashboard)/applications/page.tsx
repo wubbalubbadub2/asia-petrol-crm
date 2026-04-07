@@ -203,6 +203,15 @@ function CreateApplicationDialog({
             <Label className="text-[12px] text-stone-500">Email источника</Label>
             <Input value={sourceEmail} onChange={(e) => setSourceEmail(e.target.value)} placeholder="buyer@company.com" className="h-8 text-[13px]" />
           </div>
+          <div className="col-span-2">
+            <Label className="text-[12px] text-stone-500">Файл заявки (PDF)</Label>
+            <input
+              type="file"
+              accept=".pdf,.xlsx,.xls,.doc,.docx"
+              className="w-full h-8 text-[12px] file:mr-2 file:rounded file:border-0 file:bg-amber-50 file:px-2 file:py-1 file:text-[11px] file:font-medium file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+            />
+            <p className="text-[10px] text-stone-400 mt-0.5">PDF, Excel или Word файл от покупателя</p>
+          </div>
         </div>
         <div className="flex gap-2 mt-2">
           <Button onClick={handleSave} disabled={saving} className="flex-1">

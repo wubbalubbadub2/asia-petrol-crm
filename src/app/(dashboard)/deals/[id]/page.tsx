@@ -15,6 +15,7 @@ import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
+import { DealPayments } from "@/components/deals/deal-payments";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
@@ -297,6 +298,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Трейдер" value={deal.trader_id ? "—" : "—"} />
         </CardContent>
       </Card>
+
+      {/* Payments */}
+      <DealPayments dealId={deal.id} currencySymbol={currencySymbol} />
 
       {/* Documents */}
       <DocumentsSection dealId={deal.id} />
