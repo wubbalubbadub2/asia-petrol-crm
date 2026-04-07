@@ -60,24 +60,44 @@ function calcShippedAmount(vol: number | null, tariff: number | null): number | 
   return rounded * tariff;
 }
 
+type RefOption = { id: string; name: string };
+
 function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   open: boolean; onClose: () => void; registryType: "KG" | "KZ"; onCreated: () => void;
 }) {
   const supabaseRef = useRef(createClient());
   const [deals, setDeals] = useState<{ id: string; deal_code: string }[]>([]);
+  const [stations, setStations] = useState<RefOption[]>([]);
+  const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
+  const [forwarders, setForwarders] = useState<RefOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [month, setMonth] = useState("");
   const [waybill, setWaybill] = useState("");
   const [wagon, setWagon] = useState("");
   const [volume, setVolume] = useState("");
   const [dealId, setDealId] = useState("");
+  const [destStationId, setDestStationId] = useState("");
+  const [depStationId, setDepStationId] = useState("");
+  const [fuelTypeId, setFuelTypeId] = useState("");
+  const [forwarderId, setForwarderId] = useState("");
   const [tariff, setTariff] = useState("");
+  const [invoiceNum, setInvoiceNum] = useState("");
   const [comment, setComment] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    supabaseRef.current.from("deals").select("id, deal_code").eq("deal_type", registryType).eq("is_archived", false).order("deal_code")
-      .then(({ data }) => setDeals((data ?? []) as { id: string; deal_code: string }[]));
+    Promise.all([
+      supabaseRef.current.from("deals").select("id, deal_code").eq("deal_type", registryType).eq("is_archived", false).order("deal_code"),
+      supabaseRef.current.from("stations").select("id, name").eq("is_active", true).order("name"),
+      supabaseRef.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
+      supabaseRef.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([d, s, ft, fw]) => {
+      setDeals((d.data ?? []) as { id: string; deal_code: string }[]);
+      setStations((s.data ?? []) as RefOption[]);
+      setFuelTypes((ft.data ?? []) as RefOption[]);
+      setForwarders((fw.data ?? []) as RefOption[]);
+    });
   }, [open, registryType]);
 
   async function handleSave() {
@@ -85,22 +105,28 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
     const result = await createRegistryEntry({
       registry_type: registryType,
       date: date || null,
+      month: month || null,
       waybill_number: waybill || null,
       wagon_number: wagon || null,
       shipment_volume: volume ? parseFloat(volume) : null,
       deal_id: dealId || null,
+      destination_station_id: destStationId || null,
+      departure_station_id: depStationId || null,
+      fuel_type_id: fuelTypeId || null,
+      forwarder_id: forwarderId || null,
       railway_tariff: tariff ? parseFloat(tariff) : null,
+      invoice_number: invoiceNum || null,
       comment: comment || null,
     });
     setSaving(false);
-    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); }
+    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); setInvoiceNum(""); }
   }
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>Добавить запись в реестр {registryType}</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
           <div>
             <Label className="text-[12px] text-stone-500">Дата</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[13px]" />
@@ -114,20 +140,56 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
             </select>
           </div>
           <div>
+            <Label className="text-[12px] text-stone-500">Месяц</Label>
+            <Input value={month} onChange={(e) => setMonth(e.target.value)} placeholder="январь" className="h-8 text-[13px]" />
+          </div>
+          <div>
             <Label className="text-[12px] text-stone-500">№ накладной</Label>
             <Input value={waybill} onChange={(e) => setWaybill(e.target.value)} className="h-8 text-[13px]" />
           </div>
           <div>
-            <Label className="text-[12px] text-stone-500">№ вагона</Label>
-            <Input value={wagon} onChange={(e) => setWagon(e.target.value)} className="h-8 text-[13px]" />
+            <Label className="text-[12px] text-stone-500">№ вагона / ТС</Label>
+            <Input value={wagon} onChange={(e) => setWagon(e.target.value)} placeholder="35261683" className="h-8 text-[13px] font-mono" />
           </div>
           <div>
-            <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
+            <Label className="text-[12px] text-stone-500">Объем отгрузки (тонн)</Label>
             <Input type="number" step="0.001" value={volume} onChange={(e) => setVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Ст. назначения</Label>
+            <select value={destStationId} onChange={(e) => setDestStationId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">—</option>
+              {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Ст. отправления</Label>
+            <select value={depStationId} onChange={(e) => setDepStationId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">—</option>
+              {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Вид ГСМ</Label>
+            <select value={fuelTypeId} onChange={(e) => setFuelTypeId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">—</option>
+              {fuelTypes.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Экспедитор</Label>
+            <select value={forwarderId} onChange={(e) => setForwarderId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">—</option>
+              {forwarders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
           </div>
           <div>
             <Label className="text-[12px] text-stone-500">Ж/Д тариф</Label>
             <Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">№ СФ</Label>
+            <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-8 text-[13px]" />
           </div>
           <div className="col-span-2">
             <Label className="text-[12px] text-stone-500">Комментарий</Label>

@@ -17,6 +17,7 @@ export const PRICE_CONDITIONS = [
   { value: "average_month", label: "Средний месяц" },
   { value: "fixed", label: "Фикс цена на дату" },
   { value: "trigger", label: "Триггер (35-40 дней)" },
+  { value: "manual", label: "Вручную" },
 ] as const;
 
 export const USER_ROLES = [

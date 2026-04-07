@@ -278,7 +278,11 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <Field label="Экспедитор" value={deal.forwarder?.name} />
           <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
-          <Field label="Тариф факт" value={deal.actual_tariff} suffix={currencySymbol} editing={editing} field="actual_tariff" dealId={deal.id} />
+          <Field label="Тариф факт" value={
+            deal.invoice_amount && deal.actual_shipped_volume && deal.actual_shipped_volume > 0
+              ? Math.round((deal.invoice_amount / deal.actual_shipped_volume) * 100) / 100
+              : deal.actual_tariff
+          } suffix={`${currencySymbol} ${deal.invoice_amount && deal.actual_shipped_volume ? "(авто)" : ""}`} />
           <Field label="Объем предварит." value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
           <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={currencySymbol} editing={editing} field="preliminary_amount" dealId={deal.id} />
           <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн" editing={editing} field="actual_shipped_volume" dealId={deal.id} />

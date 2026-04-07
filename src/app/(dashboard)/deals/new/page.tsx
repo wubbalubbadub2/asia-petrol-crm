@@ -110,6 +110,41 @@ export default function NewDealPage() {
       });
   }, [forwarderId, buyerStationId, month, fuelTypeId, year]);
 
+  // Auto-fetch price from quotation when condition + quotation type are set
+  useEffect(() => {
+    if (supplierPriceCondition === "manual" || !supplierQuotTypeId || !month) return;
+    if (supplierPriceCondition === "average_month") {
+      const monthIdx = MONTHS_RU.indexOf(month as (typeof MONTHS_RU)[number]) + 1;
+      if (monthIdx <= 0) return;
+      supabase.from("quotation_monthly_averages")
+        .select("avg_price")
+        .eq("product_type_id", supplierQuotTypeId)
+        .eq("year", year)
+        .eq("month", monthIdx)
+        .single()
+        .then(({ data }) => {
+          if (data?.avg_price && !supplierPrice) setSupplierPrice(String(data.avg_price));
+        });
+    }
+  }, [supplierPriceCondition, supplierQuotTypeId, month, year]);
+
+  useEffect(() => {
+    if (buyerPriceCondition === "manual" || !buyerQuotTypeId || !month) return;
+    if (buyerPriceCondition === "average_month") {
+      const monthIdx = MONTHS_RU.indexOf(month as (typeof MONTHS_RU)[number]) + 1;
+      if (monthIdx <= 0) return;
+      supabase.from("quotation_monthly_averages")
+        .select("avg_price")
+        .eq("product_type_id", buyerQuotTypeId)
+        .eq("year", year)
+        .eq("month", monthIdx)
+        .single()
+        .then(({ data }) => {
+          if (data?.avg_price && !buyerPrice) setBuyerPrice(String(data.avg_price));
+        });
+    }
+  }, [buyerPriceCondition, buyerQuotTypeId, month, year]);
+
   // Managers
   const [supplierManagerId, setSupplierManagerId] = useState("");
   const [buyerManagerId, setBuyerManagerId] = useState("");
@@ -320,23 +355,27 @@ export default function NewDealPage() {
               <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
               <Input type="number" step="0.01" value={supplierVolume} onChange={(e) => setSupplierVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
             </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">Цена</Label>
-              <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => setSupplierPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
-            </div>
             <SelectField
               label="Условие фиксации"
               value={supplierPriceCondition}
               onChange={setSupplierPriceCondition}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
-            <SelectField
-              label="Котировка"
-              value={supplierQuotTypeId}
-              onChange={setSupplierQuotTypeId}
-              options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
-              placeholder="Выбрать котировку..."
-            />
+            {supplierPriceCondition !== "manual" && (
+              <SelectField
+                label="Котировка"
+                value={supplierQuotTypeId}
+                onChange={setSupplierQuotTypeId}
+                options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
+                placeholder="Выбрать котировку..."
+              />
+            )}
+            <div>
+              <Label className="text-[12px] text-stone-500">
+                Цена {supplierPriceCondition !== "manual" && supplierPrice ? <span className="text-amber-600">(из котировки)</span> : ""}
+              </Label>
+              <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => setSupplierPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
               <Input value={supplierDeliveryBasis} onChange={(e) => setSupplierDeliveryBasis(e.target.value)} placeholder="FCA Текесу" className="h-8 text-[13px]" />
@@ -374,23 +413,27 @@ export default function NewDealPage() {
               <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
               <Input type="number" step="0.01" value={buyerVolume} onChange={(e) => setBuyerVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
             </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">Цена</Label>
-              <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => setBuyerPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
-            </div>
             <SelectField
               label="Условие фиксации"
               value={buyerPriceCondition}
               onChange={setBuyerPriceCondition}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
-            <SelectField
-              label="Котировка"
-              value={buyerQuotTypeId}
-              onChange={setBuyerQuotTypeId}
-              options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
-              placeholder="Выбрать котировку..."
-            />
+            {buyerPriceCondition !== "manual" && (
+              <SelectField
+                label="Котировка"
+                value={buyerQuotTypeId}
+                onChange={setBuyerQuotTypeId}
+                options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
+                placeholder="Выбрать котировку..."
+              />
+            )}
+            <div>
+              <Label className="text-[12px] text-stone-500">
+                Цена {buyerPriceCondition !== "manual" && buyerPrice ? <span className="text-amber-600">(из котировки)</span> : ""}
+              </Label>
+              <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => setBuyerPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
+            </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис / ст. назначения</Label>
               <Input value={buyerDeliveryBasis} onChange={(e) => setBuyerDeliveryBasis(e.target.value)} placeholder="СРТ Турксиб эксп" className="h-8 text-[13px]" />
