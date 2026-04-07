@@ -99,6 +99,8 @@ export function useDeals(filters?: {
     setLoading(true);
     let query = supabaseRef.current.from("deals").select(DEAL_SELECT);
 
+    // Always filter out drafts
+    query = query.or("is_draft.is.null,is_draft.eq.false");
     if (filters?.dealType) query = query.eq("deal_type", filters.dealType);
     if (filters?.year) query = query.eq("year", filters.year);
     if (filters?.month) query = query.eq("month", filters.month);

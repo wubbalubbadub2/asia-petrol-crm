@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageSquare, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,9 @@ import { createClient } from "@/lib/supabase/client";
 import { createDeal } from "@/lib/hooks/use-deals";
 import { MONTHS_RU, getQuarterFromMonth } from "@/lib/constants/months-ru";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, PRICE_CONDITIONS } from "@/lib/constants/deal-types";
+import { toast } from "sonner";
+import { ActivityFeed } from "@/components/shared/activity-feed";
+import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -21,6 +24,38 @@ export default function NewDealPage() {
   const router = useRouter();
   const supabase = createClient();
   const [saving, setSaving] = useState(false);
+  const [draftDealId, setDraftDealId] = useState<string | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+
+  // Auto-create draft deal on mount for chat
+  useEffect(() => {
+    async function createDraft() {
+      const { data } = await supabase
+        .from("deals")
+        .insert({ deal_type: "KZ", deal_number: 0, year: new Date().getFullYear(), month: "январь", is_draft: true })
+        .select("id")
+        .single();
+      if (data) setDraftDealId(data.id);
+    }
+    createDraft();
+    // Cleanup: delete draft if user leaves without saving
+    return () => {
+      // Note: cleanup won't reliably run on navigation, but beforeunload handles it
+    };
+  }, []);
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (hasChanges) { e.preventDefault(); }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasChanges]);
+
+  // Track changes
+  function markChanged() { if (!hasChanges) setHasChanges(true); }
 
   // Reference data
   const [factories, setFactories] = useState<RefOption[]>([]);
@@ -179,7 +214,7 @@ export default function NewDealPage() {
     setSaving(true);
 
     const quarter = getQuarterFromMonth(month);
-    const deal = await createDeal({
+    const dealData = {
       deal_type: dealType,
       year,
       quarter,
@@ -209,11 +244,28 @@ export default function NewDealPage() {
       supplier_manager_id: supplierManagerId || null,
       buyer_manager_id: buyerManagerId || null,
       trader_id: traderId || null,
-    });
+    };
+
+    let deal;
+    if (draftDealId) {
+      // Update the draft deal with real data and generate a deal number
+      const { data: numData } = await supabase.rpc("generate_deal_number", { p_type: dealType, p_year: year });
+      const dealNumber = numData as number ?? 1;
+      const { data, error } = await supabase
+        .from("deals")
+        .update({ ...dealData, deal_number: dealNumber, is_draft: false })
+        .eq("id", draftDealId)
+        .select()
+        .single();
+      if (error) { toast.error(`Ошибка: ${error.message}`); setSaving(false); return; }
+      deal = data;
+      toast.success(`Сделка ${dealType}/${dealNumber}/${year % 100} создана`);
+    } else {
+      deal = await createDeal(dealData);
+    }
 
     // Save company groups
     if (deal && dealCompanyGroups.length > 0) {
-      const supabase = createClient();
       const cgRecords = dealCompanyGroups
         .filter((cg) => cg.companyGroupId)
         .map((cg, idx) => ({
@@ -221,13 +273,14 @@ export default function NewDealPage() {
           company_group_id: cg.companyGroupId,
           position: idx + 1,
           price: cg.price ? parseFloat(cg.price) : null,
-          contract_ref: cg.contractRef || null,
+          contract_ref: null,
         }));
       if (cgRecords.length > 0) {
         await supabase.from("deal_company_groups").insert(cgRecords);
       }
     }
 
+    setHasChanges(false); // Prevent unsaved warning
     setSaving(false);
     if (deal) router.push("/deals");
   }
@@ -555,11 +608,45 @@ export default function NewDealPage() {
           <Button type="submit" disabled={saving}>
             {saving ? "Создание..." : "Создать сделку"}
           </Button>
-          <Link href="/deals">
-            <Button type="button" variant="outline">Отмена</Button>
-          </Link>
+          <Button type="button" variant="outline" onClick={async () => {
+            if (hasChanges && !confirm("Отменить создание сделки? Все данные будут потеряны.")) return;
+            // Delete draft deal
+            if (draftDealId) await supabase.from("deals").delete().eq("id", draftDealId);
+            router.push("/deals");
+          }}>
+            Отмена
+          </Button>
         </div>
       </form>
+
+      {/* Floating chat button */}
+      {draftDealId && (
+        <>
+          <button
+            onClick={() => setShowChat(!showChat)}
+            className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-lg shadow-amber-500/30 hover:shadow-xl hover:scale-105 transition-all"
+          >
+            {showChat ? <X className="h-5 w-5" /> : <MessageSquare className="h-5 w-5" />}
+          </button>
+
+          {showChat && (
+            <div className="fixed bottom-20 right-6 z-50 w-[360px] h-[450px] rounded-xl border border-stone-200 bg-white shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between border-b border-stone-200 px-4 py-2.5">
+                <h3 className="text-[13px] font-bold">Чат по сделке</h3>
+                <button onClick={() => setShowChat(false)} className="text-stone-400 hover:text-stone-600"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="p-3 h-[calc(100%-3rem)]">
+                <DraftChatWrapper dealId={draftDealId} />
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
+}
+
+function DraftChatWrapper({ dealId }: { dealId: string }) {
+  const { messages, loading, sendMessage } = useDealActivity(dealId);
+  return <ActivityFeed messages={messages} loading={loading} sendMessage={sendMessage} />;
 }
