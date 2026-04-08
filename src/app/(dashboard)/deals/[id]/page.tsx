@@ -183,8 +183,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Наименование" value={deal.supplier?.short_name ?? deal.supplier?.full_name} />
           <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
           <Field label="Базис поставки" value={deal.supplier_delivery_basis} editing={editing} field="supplier_delivery_basis" dealId={deal.id} />
-          <Field label="Условие фиксации" value={deal.supplier_price_condition} editing={editing} field="supplier_price_condition" dealId={deal.id} />
-          <Field label="Котировка (коммент)" value={deal.supplier_quotation_comment} editing={editing} field="supplier_quotation_comment" dealId={deal.id} />
+          <Field label="Условие фиксации" value={
+            deal.supplier_price_condition === "average_month" ? "Средний месяц" :
+            deal.supplier_price_condition === "fixed" ? "Фикс цена на дату" :
+            deal.supplier_price_condition === "trigger" ? "Триггер" :
+            deal.supplier_price_condition === "manual" ? "Вручную" : "—"
+          } />
           <Field label="Котировка" value={deal.supplier_quotation} suffix={currencySymbol} editing={editing} field="supplier_quotation" dealId={deal.id} />
           <Field label="Скидка" value={deal.supplier_discount} suffix={currencySymbol} editing={editing} field="supplier_discount" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
@@ -206,8 +210,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Наименование" value={deal.buyer?.short_name ?? deal.buyer?.full_name} />
           <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
           <Field label="Базис / ст. назначения" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
-          <Field label="Условие фиксации" value={deal.buyer_price_condition} editing={editing} field="buyer_price_condition" dealId={deal.id} />
-          <Field label="Котировка (коммент)" value={deal.buyer_quotation_comment} editing={editing} field="buyer_quotation_comment" dealId={deal.id} />
+          <Field label="Условие фиксации" value={
+            deal.buyer_price_condition === "average_month" ? "Средний месяц" :
+            deal.buyer_price_condition === "fixed" ? "Фикс цена на дату" :
+            deal.buyer_price_condition === "trigger" ? "Триггер" :
+            deal.buyer_price_condition === "manual" ? "Вручную" : "—"
+          } />
           <Field label="Котировка" value={deal.buyer_quotation} suffix={currencySymbol} editing={editing} field="buyer_quotation" dealId={deal.id} />
           <Field label="Скидка" value={deal.buyer_discount} suffix={currencySymbol} editing={editing} field="buyer_discount" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
