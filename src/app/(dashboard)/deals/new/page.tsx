@@ -191,10 +191,11 @@ export default function NewDealPage() {
       endDate.setDate(endDate.getDate() + parseInt(triggerDays));
       const endStr = endDate.toISOString().split("T")[0];
       const { data } = await supabase.from("quotations")
-        .select("price").eq("product_type_id", quotTypeId)
-        .gte("date", triggerStart).lte("date", endStr).not("price", "is", null);
+        .select("price, price_cif_nwe, price_fob_med, price_fob_rotterdam")
+        .eq("product_type_id", quotTypeId)
+        .gte("date", triggerStart).lte("date", endStr);
       if (!data || data.length === 0) return null;
-      const prices = data.map((d) => d.price).filter((p): p is number => p != null);
+      const prices = data.map((d) => d.price ?? d.price_cif_nwe ?? d.price_fob_rotterdam ?? d.price_fob_med).filter((p): p is number => p != null);
       return prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
     }
 
