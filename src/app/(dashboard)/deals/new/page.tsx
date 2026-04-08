@@ -161,15 +161,28 @@ export default function NewDealPage() {
     if (condition === "average_month") {
       const monthIdx = MONTHS_RU.indexOf(monthName as (typeof MONTHS_RU)[number]) + 1;
       if (monthIdx <= 0) return null;
-      const { data } = await supabase.from("quotation_monthly_averages")
-        .select("avg_price").eq("product_type_id", quotTypeId).eq("year", yr).eq("month", monthIdx).single();
-      return data?.avg_price ?? null;
+      // Compute average directly from daily quotations (not from pre-computed cache)
+      const startDate = `${yr}-${String(monthIdx).padStart(2, "0")}-01`;
+      const endMonth = monthIdx === 12 ? 1 : monthIdx + 1;
+      const endYear = monthIdx === 12 ? yr + 1 : yr;
+      const endDate = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
+      const { data } = await supabase.from("quotations")
+        .select("price, price_cif_nwe, price_fob_med, price_fob_rotterdam")
+        .eq("product_type_id", quotTypeId)
+        .gte("date", startDate)
+        .lt("date", endDate);
+      if (!data || data.length === 0) return null;
+      // Use first available price column: price (average), then cif, then fob_rotterdam, then fob_med
+      const prices = data.map((d) => d.price ?? d.price_cif_nwe ?? d.price_fob_rotterdam ?? d.price_fob_med).filter((p): p is number => p != null);
+      return prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
     }
 
     if (condition === "fixed" && fixDate) {
       const { data } = await supabase.from("quotations")
-        .select("price").eq("product_type_id", quotTypeId).eq("date", fixDate).single();
-      return data?.price ?? null;
+        .select("price, price_cif_nwe, price_fob_med, price_fob_rotterdam")
+        .eq("product_type_id", quotTypeId).eq("date", fixDate).single();
+      if (!data) return null;
+      return data.price ?? data.price_cif_nwe ?? data.price_fob_rotterdam ?? data.price_fob_med ?? null;
     }
 
     if (condition === "trigger" && triggerStart && triggerDays) {
