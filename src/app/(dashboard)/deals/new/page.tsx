@@ -89,6 +89,9 @@ export default function NewDealPage() {
   const [supplierPrice, setSupplierPrice] = useState("");
   const [supplierPriceCondition, setSupplierPriceCondition] = useState("average_month");
   const [supplierDeliveryBasis, setSupplierDeliveryBasis] = useState("");
+  const [supplierFixDate, setSupplierFixDate] = useState("");
+  const [supplierTriggerStart, setSupplierTriggerStart] = useState("");
+  const [supplierTriggerDays, setSupplierTriggerDays] = useState("35");
 
   // Buyer
   const [buyerId, setBuyerId] = useState("");
@@ -98,6 +101,9 @@ export default function NewDealPage() {
   const [buyerPriceCondition, setBuyerPriceCondition] = useState("average_month");
   const [buyerDeliveryBasis, setBuyerDeliveryBasis] = useState("");
   const [buyerStationId, setBuyerStationId] = useState("");
+  const [buyerFixDate, setBuyerFixDate] = useState("");
+  const [buyerTriggerStart, setBuyerTriggerStart] = useState("");
+  const [buyerTriggerDays, setBuyerTriggerDays] = useState("35");
 
   // Company groups (up to 6)
   const [dealCompanyGroups, setDealCompanyGroups] = useState<
@@ -145,40 +151,57 @@ export default function NewDealPage() {
       });
   }, [forwarderId, buyerStationId, month, fuelTypeId, year]);
 
-  // Auto-fetch price from quotation when condition + quotation type are set
-  useEffect(() => {
-    if (supplierPriceCondition === "manual" || !supplierQuotTypeId || !month) return;
-    if (supplierPriceCondition === "average_month") {
-      const monthIdx = MONTHS_RU.indexOf(month as (typeof MONTHS_RU)[number]) + 1;
-      if (monthIdx <= 0) return;
-      supabase.from("quotation_monthly_averages")
-        .select("avg_price")
-        .eq("product_type_id", supplierQuotTypeId)
-        .eq("year", year)
-        .eq("month", monthIdx)
-        .single()
-        .then(({ data }) => {
-          if (data?.avg_price && !supplierPrice) setSupplierPrice(String(data.avg_price));
-        });
-    }
-  }, [supplierPriceCondition, supplierQuotTypeId, month, year]);
+  // Fetch price from quotations based on condition
+  async function fetchQuotationPrice(
+    condition: string, quotTypeId: string, monthName: string, yr: number,
+    fixDate: string, triggerStart: string, triggerDays: string
+  ): Promise<number | null> {
+    if (!quotTypeId) return null;
 
-  useEffect(() => {
-    if (buyerPriceCondition === "manual" || !buyerQuotTypeId || !month) return;
-    if (buyerPriceCondition === "average_month") {
-      const monthIdx = MONTHS_RU.indexOf(month as (typeof MONTHS_RU)[number]) + 1;
-      if (monthIdx <= 0) return;
-      supabase.from("quotation_monthly_averages")
-        .select("avg_price")
-        .eq("product_type_id", buyerQuotTypeId)
-        .eq("year", year)
-        .eq("month", monthIdx)
-        .single()
-        .then(({ data }) => {
-          if (data?.avg_price && !buyerPrice) setBuyerPrice(String(data.avg_price));
-        });
+    if (condition === "average_month") {
+      const monthIdx = MONTHS_RU.indexOf(monthName as (typeof MONTHS_RU)[number]) + 1;
+      if (monthIdx <= 0) return null;
+      const { data } = await supabase.from("quotation_monthly_averages")
+        .select("avg_price").eq("product_type_id", quotTypeId).eq("year", yr).eq("month", monthIdx).single();
+      return data?.avg_price ?? null;
     }
-  }, [buyerPriceCondition, buyerQuotTypeId, month, year]);
+
+    if (condition === "fixed" && fixDate) {
+      const { data } = await supabase.from("quotations")
+        .select("price").eq("product_type_id", quotTypeId).eq("date", fixDate).single();
+      return data?.price ?? null;
+    }
+
+    if (condition === "trigger" && triggerStart && triggerDays) {
+      const startDate = new Date(triggerStart);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + parseInt(triggerDays));
+      const endStr = endDate.toISOString().split("T")[0];
+      const { data } = await supabase.from("quotations")
+        .select("price").eq("product_type_id", quotTypeId)
+        .gte("date", triggerStart).lte("date", endStr).not("price", "is", null);
+      if (!data || data.length === 0) return null;
+      const prices = data.map((d) => d.price).filter((p): p is number => p != null);
+      return prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
+    }
+
+    return null;
+  }
+
+  // Auto-fetch supplier price
+  useEffect(() => {
+    if (supplierPriceCondition === "manual" || !supplierQuotTypeId) return;
+    fetchQuotationPrice(supplierPriceCondition, supplierQuotTypeId, month, year, supplierFixDate, supplierTriggerStart, supplierTriggerDays)
+      .then((price) => { if (price != null) setSupplierPrice(String(Math.round(price * 100) / 100)); });
+  }, [supplierPriceCondition, supplierQuotTypeId, month, year, supplierFixDate, supplierTriggerStart, supplierTriggerDays]);
+
+  // Auto-fetch buyer price
+  useEffect(() => {
+    if (buyerPriceCondition === "manual" || !buyerQuotTypeId) return;
+    fetchQuotationPrice(buyerPriceCondition, buyerQuotTypeId, month, year, buyerFixDate, buyerTriggerStart, buyerTriggerDays)
+      .then((price) => { if (price != null) setBuyerPrice(String(Math.round(price * 100) / 100)); });
+  }, [buyerPriceCondition, buyerQuotTypeId, month, year, buyerFixDate, buyerTriggerStart, buyerTriggerDays]);
+
 
   // Managers
   const [supplierManagerId, setSupplierManagerId] = useState("");
@@ -411,23 +434,41 @@ export default function NewDealPage() {
             <SelectField
               label="Условие фиксации"
               value={supplierPriceCondition}
-              onChange={setSupplierPriceCondition}
+              onChange={(v) => { setSupplierPriceCondition(v); setSupplierPrice(""); markChanged(); }}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
             {supplierPriceCondition !== "manual" && (
               <SelectField
                 label="Котировка"
                 value={supplierQuotTypeId}
-                onChange={setSupplierQuotTypeId}
+                onChange={(v) => { setSupplierQuotTypeId(v); setSupplierPrice(""); markChanged(); }}
                 options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
                 placeholder="Выбрать котировку..."
               />
             )}
+            {supplierPriceCondition === "fixed" && (
+              <div>
+                <Label className="text-[12px] text-stone-500">Дата фиксации</Label>
+                <Input type="date" value={supplierFixDate} onChange={(e) => { setSupplierFixDate(e.target.value); markChanged(); }} className="h-8 text-[13px]" />
+              </div>
+            )}
+            {supplierPriceCondition === "trigger" && (
+              <>
+                <div>
+                  <Label className="text-[12px] text-stone-500">Дата начала</Label>
+                  <Input type="date" value={supplierTriggerStart} onChange={(e) => { setSupplierTriggerStart(e.target.value); markChanged(); }} className="h-8 text-[13px]" />
+                </div>
+                <div>
+                  <Label className="text-[12px] text-stone-500">Кол-во дней</Label>
+                  <Input type="number" value={supplierTriggerDays} onChange={(e) => { setSupplierTriggerDays(e.target.value); markChanged(); }} className="h-8 text-[13px]" min="1" max="90" />
+                </div>
+              </>
+            )}
             <div>
               <Label className="text-[12px] text-stone-500">
-                Цена {supplierPriceCondition !== "manual" && supplierPrice ? <span className="text-amber-600">(из котировки)</span> : ""}
+                Цена {supplierPriceCondition !== "manual" && supplierPrice ? <span className="text-[10px] text-amber-600">(из котировки)</span> : ""}
               </Label>
-              <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => setSupplierPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
+              <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => { setSupplierPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
@@ -469,23 +510,41 @@ export default function NewDealPage() {
             <SelectField
               label="Условие фиксации"
               value={buyerPriceCondition}
-              onChange={setBuyerPriceCondition}
+              onChange={(v) => { setBuyerPriceCondition(v); setBuyerPrice(""); markChanged(); }}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
             {buyerPriceCondition !== "manual" && (
               <SelectField
                 label="Котировка"
                 value={buyerQuotTypeId}
-                onChange={setBuyerQuotTypeId}
+                onChange={(v) => { setBuyerQuotTypeId(v); setBuyerPrice(""); markChanged(); }}
                 options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
                 placeholder="Выбрать котировку..."
               />
             )}
+            {buyerPriceCondition === "fixed" && (
+              <div>
+                <Label className="text-[12px] text-stone-500">Дата фиксации</Label>
+                <Input type="date" value={buyerFixDate} onChange={(e) => { setBuyerFixDate(e.target.value); markChanged(); }} className="h-8 text-[13px]" />
+              </div>
+            )}
+            {buyerPriceCondition === "trigger" && (
+              <>
+                <div>
+                  <Label className="text-[12px] text-stone-500">Дата начала</Label>
+                  <Input type="date" value={buyerTriggerStart} onChange={(e) => { setBuyerTriggerStart(e.target.value); markChanged(); }} className="h-8 text-[13px]" />
+                </div>
+                <div>
+                  <Label className="text-[12px] text-stone-500">Кол-во дней</Label>
+                  <Input type="number" value={buyerTriggerDays} onChange={(e) => { setBuyerTriggerDays(e.target.value); markChanged(); }} className="h-8 text-[13px]" min="1" max="90" />
+                </div>
+              </>
+            )}
             <div>
               <Label className="text-[12px] text-stone-500">
-                Цена {buyerPriceCondition !== "manual" && buyerPrice ? <span className="text-amber-600">(из котировки)</span> : ""}
+                Цена {buyerPriceCondition !== "manual" && buyerPrice ? <span className="text-[10px] text-amber-600">(из котировки)</span> : ""}
               </Label>
-              <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => setBuyerPrice(e.target.value)} className="h-8 text-[13px] font-mono" />
+              <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => { setBuyerPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис / ст. назначения</Label>
