@@ -57,6 +57,11 @@ export type Deal = {
   actual_shipped_volume: number | null;
   invoice_volume: number | null;
   invoice_amount: number | null;
+  logistics_notes: string | null;
+  surcharge_amount: number | null;
+  surcharge_reinvoiced_to: string | null;
+  buyer_multi_deal_payments: string | null;
+  buyer_snt_written: string | null;
   supplier_manager_id: string | null;
   buyer_manager_id: string | null;
   trader_id: string | null;
