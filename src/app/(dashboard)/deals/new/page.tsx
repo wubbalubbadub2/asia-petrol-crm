@@ -466,9 +466,15 @@ export default function NewDealPage() {
             )}
             <div>
               <Label className="text-[12px] text-stone-500">
-                Цена {supplierPriceCondition !== "manual" && supplierPrice ? <span className="text-[10px] text-amber-600">(из котировки)</span> : ""}
+                Цена {supplierPriceCondition !== "manual" ? (supplierPrice ? <span className="text-[10px] text-green-600">(из котировки)</span> : <span className="text-[10px] text-red-500">(нет данных)</span>) : ""}
               </Label>
-              <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => { setSupplierPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
+              {supplierPriceCondition === "manual" ? (
+                <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => { setSupplierPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
+              ) : (
+                <div className={`h-8 flex items-center rounded-md border px-2 text-[13px] font-mono ${supplierPrice ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-50 border-stone-200 text-stone-400"}`}>
+                  {supplierPrice || "ожидание данных..."}
+                </div>
+              )}
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
@@ -542,9 +548,15 @@ export default function NewDealPage() {
             )}
             <div>
               <Label className="text-[12px] text-stone-500">
-                Цена {buyerPriceCondition !== "manual" && buyerPrice ? <span className="text-[10px] text-amber-600">(из котировки)</span> : ""}
+                Цена {buyerPriceCondition !== "manual" ? (buyerPrice ? <span className="text-[10px] text-green-600">(из котировки)</span> : <span className="text-[10px] text-red-500">(нет данных)</span>) : ""}
               </Label>
-              <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => { setBuyerPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
+              {buyerPriceCondition === "manual" ? (
+                <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => { setBuyerPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
+              ) : (
+                <div className={`h-8 flex items-center rounded-md border px-2 text-[13px] font-mono ${buyerPrice ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-50 border-stone-200 text-stone-400"}`}>
+                  {buyerPrice || "ожидание данных..."}
+                </div>
+              )}
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис / ст. назначения</Label>
