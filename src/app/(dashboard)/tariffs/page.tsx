@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ type Tariff = {
   departure_station_id: string | null;
   forwarder_id: string | null;
   fuel_type_id: string | null;
-  month: number | null;
+  month: string | null;
   year: number | null;
   planned_tariff: number | null;
   factory_id: string | null;
@@ -45,9 +45,14 @@ type Tariff = {
   factory?: { name: string } | null;
 };
 
-const MONTHS_RU = [
+const MONTHS_RU_SHORT = [
   "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
   "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
+];
+
+const MONTHS_RU_FULL = [
+  "январь", "февраль", "март", "апрель", "май", "июнь",
+  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
 ];
 
 function formatNum(val: number | null | undefined): string {
@@ -105,7 +110,7 @@ function AddTariffDialog({
   const [depStationId, setDepStationId] = useState("");
   const [forwarderId, setForwarderId] = useState("");
   const [fuelTypeId, setFuelTypeId] = useState("");
-  const [month, setMonth] = useState(String(new Date().getMonth() + 1));
+  const [month, setMonth] = useState(MONTHS_RU_FULL[new Date().getMonth()]);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [tariffAmount, setTariffAmount] = useState("");
   const [factoryId, setFactoryId] = useState("");
@@ -115,17 +120,26 @@ function AddTariffDialog({
     if (!open) return;
     const sb = createClient();
     Promise.all([
-      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
+      sb.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
       sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
       sb.from("factories").select("id, name").order("name"),
     ]).then(([st, fw, ft, fa]) => {
-      setStations((st.data ?? []) as Station[]);
+      setStations((st.data ?? []) as (Station & { default_factory_id?: string | null })[]);
       setForwarders((fw.data ?? []) as Forwarder[]);
       setFuelTypes((ft.data ?? []) as FuelType[]);
       setFactories((fa.data ?? []) as Factory[]);
     });
   }, [open]);
+
+  // Auto-fill factory from departure station
+  useEffect(() => {
+    if (!depStationId) return;
+    const station = stations.find((s) => s.id === depStationId) as (Station & { default_factory_id?: string | null }) | undefined;
+    if (station?.default_factory_id && !factoryId) {
+      setFactoryId(station.default_factory_id);
+    }
+  }, [depStationId, stations, factoryId]);
 
   async function handleSave() {
     if (!tariffAmount) {
@@ -139,7 +153,7 @@ function AddTariffDialog({
       departure_station_id: depStationId || null,
       forwarder_id: forwarderId || null,
       fuel_type_id: fuelTypeId || null,
-      month: month ? parseInt(month) : null,
+      month: month || null,
       year: year ? parseInt(year) : null,
       planned_tariff: tariffAmount ? parseFloat(tariffAmount) : null,
       factory_id: factoryId || null,
@@ -193,8 +207,8 @@ function AddTariffDialog({
               onChange={(e) => setMonth(e.target.value)}
               className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
             >
-              {MONTHS_RU.map((m, i) => (
-                <option key={i + 1} value={String(i + 1)}>
+              {MONTHS_RU_FULL.map((m) => (
+                <option key={m} value={m}>
                   {m}
                 </option>
               ))}
@@ -388,7 +402,7 @@ export default function TariffsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-[12px] text-stone-600">
-                    {t.month ? MONTHS_RU[t.month - 1] : "—"}
+                    {t.month ?? "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono text-[11px] tabular-nums text-stone-800">
                     {formatNum(t.planned_tariff)}
