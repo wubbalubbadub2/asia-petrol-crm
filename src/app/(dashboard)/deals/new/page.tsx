@@ -310,7 +310,7 @@ export default function NewDealPage() {
           company_group_id: cg.companyGroupId,
           position: idx + 1,
           price: cg.price ? parseFloat(cg.price) : null,
-          contract_ref: null,
+          contract_ref: cg.contractRef || null,
         }));
       if (cgRecords.length > 0) {
         await supabase.from("deal_company_groups").insert(cgRecords);
@@ -621,6 +621,10 @@ export default function NewDealPage() {
                     <div className="w-32">
                       <Label className="text-[11px] text-stone-500">Цена</Label>
                       <Input type="number" step="0.01" value={cg.price} onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)} className="h-8 text-[13px] font-mono" />
+                    </div>
+                    <div className="w-40">
+                      <Label className="text-[11px] text-stone-500">№ прил / договор</Label>
+                      <Input value={cg.contractRef} onChange={(e) => updateCompanyGroup(idx, "contractRef", e.target.value)} placeholder="№ и дата" className="h-8 text-[13px]" />
                     </div>
                     <Button type="button" size="sm" variant="outline" onClick={() => removeCompanyGroup(idx)} className="text-red-500 hover:text-red-700 shrink-0 h-8 w-8 p-0">
                       ×

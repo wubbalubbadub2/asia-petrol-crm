@@ -24,6 +24,9 @@ BEGIN
   -- Buyer debt = shipped - payment
   NEW.buyer_debt := COALESCE(NEW.buyer_shipped_amount, 0) - COALESCE(NEW.buyer_payment, 0);
 
+  -- Buyer remaining = contracted - ordered
+  NEW.buyer_remaining := COALESCE(NEW.buyer_contracted_volume, 0) - COALESCE(NEW.buyer_ordered_volume, 0);
+
   -- Preliminary logistics amount
   IF NEW.planned_tariff IS NOT NULL AND NEW.preliminary_tonnage IS NOT NULL THEN
     NEW.preliminary_amount := NEW.planned_tariff * NEW.preliminary_tonnage;
