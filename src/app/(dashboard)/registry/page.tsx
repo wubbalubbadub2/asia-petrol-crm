@@ -307,11 +307,153 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   );
 }
 
+// Inline form for adding a shipment within an expanded group
+function InlineShipmentForm({ context, registryType, onCreated }: {
+  context: ShipmentRecord;
+  registryType: "KG" | "KZ";
+  onCreated: () => void;
+}) {
+  const [wagon, setWagon] = useState("");
+  const [volume, setVolume] = useState("");
+  const [loadVol, setLoadVol] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [waybill, setWaybill] = useState("");
+  const [invoiceNum, setInvoiceNum] = useState("");
+  const [commentText, setCommentText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleAdd() {
+    if (!volume || !wagon) { toast.error("Укажите № вагона и объем"); return; }
+    setSaving(true);
+    const result = await createRegistryEntry({
+      registry_type: registryType,
+      deal_id: context.deal_id,
+      month: context.month,
+      shipment_month: context.shipment_month,
+      fuel_type_id: context.fuel_type_id,
+      factory_id: context.factory_id,
+      forwarder_id: context.forwarder_id,
+      supplier_id: context.supplier_id,
+      buyer_id: context.buyer_id,
+      destination_station_id: context.destination_station_id,
+      departure_station_id: context.departure_station_id,
+      railway_tariff: context.railway_tariff,
+      company_group_id: context.company_group_id,
+      wagon_number: wagon,
+      shipment_volume: parseFloat(volume),
+      loading_volume: loadVol ? parseFloat(loadVol) : null,
+      date: date || null,
+      waybill_number: waybill || null,
+      invoice_number: invoiceNum || null,
+      comment: commentText || null,
+    });
+    setSaving(false);
+    if (result) {
+      setWagon(""); setVolume(""); setLoadVol(""); setWaybill(""); setInvoiceNum(""); setCommentText("");
+      onCreated();
+    }
+  }
+
+  return (
+    <div className="flex gap-2 items-end flex-wrap py-1.5 px-2 bg-amber-50/30 rounded">
+      <div className="w-24">
+        <Label className="text-[10px] text-stone-400">№ вагона *</Label>
+        <Input value={wagon} onChange={(e) => setWagon(e.target.value)} placeholder="51742534" className="h-7 text-[11px] font-mono" />
+      </div>
+      <div className="w-20">
+        <Label className="text-[10px] text-stone-400">Тонн *</Label>
+        <Input type="number" step="0.001" value={volume} onChange={(e) => setVolume(e.target.value)} className="h-7 text-[11px] font-mono" />
+      </div>
+      <div className="w-20">
+        <Label className="text-[10px] text-stone-400">Налив</Label>
+        <Input type="number" step="0.001" value={loadVol} onChange={(e) => setLoadVol(e.target.value)} className="h-7 text-[11px] font-mono" />
+      </div>
+      <div className="w-28">
+        <Label className="text-[10px] text-stone-400">Дата отгрузки</Label>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-7 text-[11px]" />
+      </div>
+      <div className="w-24">
+        <Label className="text-[10px] text-stone-400">№ накладной</Label>
+        <Input value={waybill} onChange={(e) => setWaybill(e.target.value)} className="h-7 text-[11px]" />
+      </div>
+      <div className="w-28">
+        <Label className="text-[10px] text-stone-400">№ СФ</Label>
+        <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-7 text-[11px]" />
+      </div>
+      <div className="flex-1 min-w-[80px]">
+        <Label className="text-[10px] text-stone-400">Коммент.</Label>
+        <Input value={commentText} onChange={(e) => setCommentText(e.target.value)} className="h-7 text-[11px]" />
+      </div>
+      <Button size="sm" onClick={handleAdd} disabled={saving} className="h-7 text-[10px] px-3">{saving ? "..." : "Добавить"}</Button>
+    </div>
+  );
+}
+
+// Group records by deal_id + shipment_month
+type RecordGroup = {
+  key: string;
+  dealCode: string;
+  month: string;
+  shipmentMonth: string;
+  fuelType: string;
+  fuelColor: string;
+  factory: string;
+  supplier: string;
+  buyer: string;
+  forwarder: string;
+  companyGroup: string;
+  destStation: string;
+  depStation: string;
+  tariff: number | null;
+  records: ShipmentRecord[];
+  totalVolume: number;
+  totalAmount: number;
+  count: number;
+};
+
+function groupRecords(records: ShipmentRecord[]): RecordGroup[] {
+  const groups = new Map<string, RecordGroup>();
+  for (const rec of records) {
+    const key = `${rec.deal_id ?? "none"}_${rec.shipment_month ?? rec.month ?? ""}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        dealCode: rec.deal?.deal_code ?? "",
+        month: rec.month ?? "",
+        shipmentMonth: rec.shipment_month ?? rec.month ?? "",
+        fuelType: rec.fuel_type?.name ?? "",
+        fuelColor: rec.fuel_type?.color ?? "#6B7280",
+        factory: rec.factory?.name ?? "",
+        supplier: (rec as Record<string, unknown>).supplier_name as string ?? "",
+        buyer: (rec as Record<string, unknown>).buyer_name as string ?? "",
+        forwarder: rec.forwarder?.name ?? "",
+        companyGroup: rec.company_group?.name ?? "",
+        destStation: rec.destination_station?.name ?? "",
+        depStation: rec.departure_station?.name ?? "",
+        tariff: rec.railway_tariff,
+        records: [],
+        totalVolume: 0,
+        totalAmount: 0,
+        count: 0,
+      });
+    }
+    const g = groups.get(key)!;
+    g.records.push(rec);
+    g.totalVolume += rec.shipment_volume ?? 0;
+    g.totalAmount += calcShippedAmount(rec.shipment_volume, rec.railway_tariff) ?? 0;
+    g.count++;
+  }
+  return Array.from(groups.values());
+}
+
 export default function RegistryPage() {
   const [activeTab, setActiveTab] = useState<"kg" | "kz">("kg");
   const { data: records, loading, reload } = useRegistry(activeTab === "kg" ? "KG" : "KZ");
   const currency = activeTab === "kg" ? "$" : "₸";
   const [showAdd, setShowAdd] = useState(false);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+
+  const groups = groupRecords(records);
 
   return (
     <div className="space-y-4">
@@ -357,78 +499,94 @@ export default function RegistryPage() {
             Реестр {activeTab.toUpperCase()} пуст
           </p>
           <p className="text-[12px] text-stone-400 mt-1">
-            Импортируйте данные из Excel через раздел Импорт
+            Добавьте запись или импортируйте данные из Excel
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-stone-50">
-                <TableHead className="text-[11px] w-[40px]">№</TableHead>
-                <TableHead className="text-[11px] w-[45px]">Кварт.</TableHead>
-                <TableHead className="text-[11px]">Месяц</TableHead>
-                <TableHead className="text-[11px]">Дата</TableHead>
-                <TableHead className="text-[11px]">№ накладной</TableHead>
-                <TableHead className="text-[11px]">№ вагона</TableHead>
-                <TableHead className="text-right text-[11px]">Объем</TableHead>
-                <TableHead className="text-right text-[11px]">Налив</TableHead>
-                <TableHead className="text-[11px]">Ст. назнач.</TableHead>
-                <TableHead className="text-[11px]">Ст. отправ.</TableHead>
-                <TableHead className="text-[11px]">ГСМ</TableHead>
-                <TableHead className="text-[11px]">№ сделки</TableHead>
-                <TableHead className="text-[11px]">Завод</TableHead>
-                <TableHead className="text-[11px]">Поставщик</TableHead>
-                <TableHead className="text-[11px]">Группа комп.</TableHead>
-                <TableHead className="text-[11px]">Экспедитор</TableHead>
-                <TableHead className="text-[11px]">Мес. отгр.</TableHead>
-                <TableHead className="text-[11px]">Мес. доп.</TableHead>
-                <TableHead className="text-right text-[11px]">Тариф</TableHead>
-                <TableHead className="text-[11px]">Покупатель</TableHead>
-                <TableHead className="text-right text-[11px]">Округл. тонн.</TableHead>
-                <TableHead className="text-right text-[11px]">Сумма {currency}</TableHead>
-                <TableHead className="text-[11px]">№ СФ</TableHead>
-                <TableHead className="text-[11px]">Коммент.</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {records.map((rec, idx) => (
-                <TableRow key={rec.id} className="hover:bg-amber-50/20">
-                  <TableCell className="font-mono text-[10px] text-stone-400">{idx + 1}</TableCell>
-                  <TableCell className="text-[10px] text-stone-500">{getQuarter(rec.month)}</TableCell>
-                  <TableCell className="text-[11px] text-stone-600">{rec.month ?? ""}</TableCell>
-                  <TableCell className="text-[11px]">{formatDate(rec.date)}</TableCell>
-                  <TableCell className="font-mono text-[10px]">{rec.waybill_number ?? ""}</TableCell>
-                  <TableCell className="font-mono text-[10px] max-w-[100px] truncate">{rec.wagon_number ?? ""}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px] tabular-nums">{formatNum(rec.shipment_volume)}</TableCell>
-                  <TableCell className="text-right font-mono text-[10px] tabular-nums text-stone-500">{formatNum(rec.loading_volume)}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{rec.destination_station?.name ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{rec.departure_station?.name ?? ""}</TableCell>
-                  <TableCell className="text-[11px]">
-                    {rec.fuel_type ? (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: rec.fuel_type.color }} />
-                        {rec.fuel_type.name}
-                      </span>
-                    ) : ""}
-                  </TableCell>
-                  <TableCell className="font-mono text-[10px] text-amber-700">{rec.deal?.deal_code ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{rec.factory?.name ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{(rec as Record<string, unknown>).supplier_name as string ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{rec.company_group?.name ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{rec.forwarder?.name ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-500">{rec.shipment_month ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-500">{rec.additional_month ?? ""}</TableCell>
-                  <TableCell className="text-right font-mono text-[10px] tabular-nums">{formatNum(rec.railway_tariff)}</TableCell>
-                  <TableCell className="text-[10px] text-stone-600">{(rec as Record<string, unknown>).buyer_name as string ?? ""}</TableCell>
-                  <TableCell className="text-right font-mono text-[10px] tabular-nums">{formatNum(roundTonnage(rec.shipment_volume))}</TableCell>
-                  <TableCell className="text-right font-mono text-[10px] tabular-nums font-medium">{formatNum(calcShippedAmount(rec.shipment_volume, rec.railway_tariff))}</TableCell>
-                  <TableCell className="font-mono text-[10px] text-stone-500">{rec.invoice_number ?? ""}</TableCell>
-                  <TableCell className="text-[10px] text-stone-400 max-w-[80px] truncate">{rec.comment ?? ""}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="space-y-2">
+          {groups.map((g) => {
+            const isExpanded = expandedGroup === g.key;
+            return (
+              <div key={g.key} className="rounded-md border border-stone-200 bg-white overflow-hidden">
+                {/* Group header row — click to expand */}
+                <button
+                  onClick={() => setExpandedGroup(isExpanded ? null : g.key)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-stone-50 transition-colors text-left"
+                >
+                  <span className={`text-[10px] transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                  <span className="font-mono text-[12px] font-bold text-amber-700">{g.dealCode || "—"}</span>
+                  <span className="text-[11px] text-stone-500">{g.month}</span>
+                  <span className="text-[11px] text-stone-500">→ отгр: {g.shipmentMonth}</span>
+                  <span className="inline-flex items-center gap-1 text-[11px]">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: g.fuelColor }} />
+                    {g.fuelType}
+                  </span>
+                  <span className="text-[10px] text-stone-400">{g.factory}</span>
+                  <span className="text-[10px] text-stone-500 truncate max-w-[100px]">{g.supplier}</span>
+                  <span className="text-stone-300">→</span>
+                  <span className="text-[10px] text-stone-500 truncate max-w-[100px]">{g.buyer}</span>
+                  <span className="text-[10px] text-stone-400">{g.forwarder}</span>
+                  <span className="text-[10px] text-stone-400">{g.destStation}</span>
+                  <span className="ml-auto flex items-center gap-3">
+                    <span className="text-[10px] text-stone-400">тариф: {formatNum(g.tariff)}</span>
+                    <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                      {g.count} вагон{g.count === 1 ? "" : g.count < 5 ? "а" : "ов"}
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums font-medium text-stone-700">{formatNum(g.totalVolume)} т</span>
+                    <span className="font-mono text-[11px] tabular-nums text-stone-500">{formatNum(g.totalAmount)} {currency}</span>
+                  </span>
+                </button>
+
+                {/* Expanded: individual shipment rows */}
+                {isExpanded && (
+                  <div className="border-t border-stone-200 bg-stone-50/50">
+                    <div className="overflow-x-auto">
+                      <table className="w-full" style={{ fontSize: "11px" }}>
+                        <thead>
+                          <tr className="bg-stone-100/50 text-stone-500">
+                            <th className="px-2 py-1 text-left font-medium w-[30px]">№</th>
+                            <th className="px-2 py-1 text-left font-medium">№ вагона</th>
+                            <th className="px-2 py-1 text-right font-medium">Тонн</th>
+                            <th className="px-2 py-1 text-right font-medium">Налив</th>
+                            <th className="px-2 py-1 text-left font-medium">Дата отгрузки</th>
+                            <th className="px-2 py-1 text-right font-medium">Округл.</th>
+                            <th className="px-2 py-1 text-right font-medium">Сумма {currency}</th>
+                            <th className="px-2 py-1 text-left font-medium">№ накладной</th>
+                            <th className="px-2 py-1 text-left font-medium">№ СФ</th>
+                            <th className="px-2 py-1 text-left font-medium">Коммент.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {g.records.map((rec, idx) => (
+                            <tr key={rec.id} className="border-b border-stone-100 hover:bg-amber-50/20">
+                              <td className="px-2 py-1 font-mono text-[10px] text-stone-400">{idx + 1}</td>
+                              <td className="px-2 py-1 font-mono text-[11px]">{rec.wagon_number ?? ""}</td>
+                              <td className="px-2 py-1 text-right font-mono tabular-nums">{formatNum(rec.shipment_volume)}</td>
+                              <td className="px-2 py-1 text-right font-mono tabular-nums text-stone-500">{formatNum(rec.loading_volume)}</td>
+                              <td className="px-2 py-1">{formatDate(rec.date)}</td>
+                              <td className="px-2 py-1 text-right font-mono tabular-nums">{formatNum(roundTonnage(rec.shipment_volume))}</td>
+                              <td className="px-2 py-1 text-right font-mono tabular-nums font-medium">{formatNum(calcShippedAmount(rec.shipment_volume, rec.railway_tariff))}</td>
+                              <td className="px-2 py-1 font-mono text-[10px]">{rec.waybill_number ?? ""}</td>
+                              <td className="px-2 py-1 font-mono text-[10px] text-stone-500">{rec.invoice_number ?? ""}</td>
+                              <td className="px-2 py-1 text-[10px] text-stone-400 truncate max-w-[100px]">{rec.comment ?? ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Inline add shipment form */}
+                    <div className="border-t border-stone-200 p-2">
+                      <InlineShipmentForm
+                        context={g.records[0]}
+                        registryType={activeTab === "kg" ? "KG" : "KZ"}
+                        onCreated={reload}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

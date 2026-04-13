@@ -33,7 +33,7 @@ export default function NewDealPage() {
     async function createDraft() {
       const { data } = await supabase
         .from("deals")
-        .insert({ deal_type: "KZ", deal_number: 0, year: new Date().getFullYear(), month: "январь", is_draft: true })
+        .insert({ deal_type: "KZ", deal_number: -Math.floor(Math.random() * 999999), year: new Date().getFullYear(), month: "январь", is_draft: true })
         .select("id")
         .single();
       if (data) setDraftDealId(data.id);
