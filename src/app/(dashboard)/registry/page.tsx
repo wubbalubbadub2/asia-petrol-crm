@@ -70,49 +70,89 @@ function groupRecs(records: ShipmentRecord[]): RGroup[] {
   return Array.from(m.values());
 }
 
-// --- Inline add row ---
-function InlineAdd({ ctx, regType, onDone }: { ctx: ShipmentRecord; regType: "KG" | "KZ"; onDone: () => void }) {
+// --- Inline add: full pre-filled row below table ---
+function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
+  dealId: string | null; group: RGroup; regType: "KG" | "KZ"; onDone: () => void; onCancel: () => void;
+}) {
+  const sb = useRef(createClient());
+  const [deal, setDeal] = useState<DRef | null>(null);
   const [w, setW] = useState(""); const [v, setV] = useState(""); const [lv, setLv] = useState("");
   const [dt, setDt] = useState(""); const [sm, setSm] = useState(""); const [sf, setSf] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Fetch deal data to get all fields
+  useEffect(() => {
+    if (!dealId) return;
+    sb.current.from("deals")
+      .select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
+      .eq("id", dealId).single()
+      .then(({ data }) => { if (data) setDeal(data as unknown as DRef); });
+  }, [dealId]);
+
+  // Also get tariff from first record if available, or from the group
+  const tariff = group.tariff;
+  const firstRec = group.records[0];
 
   async function add() {
     if (!w || !v) return;
     setSaving(true);
     await createRegistryEntry({
-      registry_type: regType, deal_id: ctx.deal_id, month: ctx.month,
-      shipment_month: sm || ctx.shipment_month, fuel_type_id: ctx.fuel_type_id,
-      factory_id: ctx.factory_id, supplier_id: ctx.supplier_id, buyer_id: ctx.buyer_id,
-      forwarder_id: ctx.forwarder_id, destination_station_id: ctx.destination_station_id,
-      departure_station_id: ctx.departure_station_id, railway_tariff: ctx.railway_tariff,
-      company_group_id: ctx.company_group_id,
+      registry_type: regType, deal_id: dealId,
+      month: deal?.month || group.month || null,
+      shipment_month: sm || firstRec?.shipment_month || null,
+      fuel_type_id: deal?.fuel_type_id || firstRec?.fuel_type_id || null,
+      factory_id: deal?.factory_id || firstRec?.factory_id || null,
+      supplier_id: deal?.supplier_id || firstRec?.supplier_id || null,
+      buyer_id: deal?.buyer_id || firstRec?.buyer_id || null,
+      forwarder_id: deal?.forwarder_id || firstRec?.forwarder_id || null,
+      destination_station_id: deal?.buyer_destination_station_id || firstRec?.destination_station_id || null,
+      departure_station_id: firstRec?.departure_station_id || null,
+      railway_tariff: tariff, company_group_id: deal?.logistics_company_group_id || firstRec?.company_group_id || null,
       wagon_number: w, shipment_volume: parseFloat(v),
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
     });
-    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); onDone();
+    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); onDone();
   }
 
+  // Show deal info in the row (from fetched deal or group)
+  const dealInfo = deal as Record<string, unknown> | null;
+  const suppName = (dealInfo?.supplier as Record<string, string>)?.short_name ?? (dealInfo?.supplier as Record<string, string>)?.full_name ?? group.supplier;
+  const fuelName = (dealInfo?.fuel_type as Record<string, string>)?.name ?? group.fuelType;
+  const facName = (dealInfo?.factory as Record<string, string>)?.name ?? group.factory;
+
   return (
-    <tr className="bg-amber-50/40 border-t border-amber-200">
-      <td className="border-r px-1 py-1" colSpan={2}></td>
+    <tr className="bg-green-50/50 border-t-2 border-green-300">
+      <td className="border-r px-2 py-1 font-mono text-amber-700 text-[10px]">{group.dealCode}</td>
+      <td className="border-r px-1 py-1"><MonthSelect value="" onChange={() => {}} className="w-full opacity-30" /></td>
       <td className="border-r px-1 py-1"><MonthSelect value={sm} onChange={setSm} className="w-full" /></td>
-      <td className="border-r px-1 py-1" colSpan={4}></td>
-      <td className="border-r px-1 py-1"><input value={w} onChange={(e) => setW(e.target.value)} placeholder="№ вагона" className="w-full h-6 text-[10px] font-mono border border-stone-200 rounded px-1" /></td>
-      <td className="border-r px-1 py-1"><input type="number" step="0.001" value={v} onChange={(e) => setV(e.target.value)} placeholder="тонн" className="w-full h-6 text-[10px] font-mono border border-stone-200 rounded px-1 text-right" /></td>
-      <td className="border-r px-1 py-1"><input type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} placeholder="налив" className="w-full h-6 text-[10px] font-mono border border-stone-200 rounded px-1 text-right" /></td>
-      <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-stone-200 rounded px-1" /></td>
-      <td className="border-r px-1 py-1" colSpan={2}></td>
-      <td className="border-r px-1 py-1" colSpan={2}></td>
-      <td className="border-r px-1 py-1"><input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-full h-6 text-[10px] font-mono border border-stone-200 rounded px-1" /></td>
-      <td className="px-1 py-1"><Button size="sm" onClick={add} disabled={saving || !w || !v} className="h-6 text-[9px] px-2 whitespace-nowrap">{saving ? "..." : "+ строка"}</Button></td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-600">{fuelName}</td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{facName}</td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{suppName}</td>
+      <td className="border-r px-1 py-1"><input type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} placeholder="налив" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
+      <td className="border-r px-1 py-1"><input value={w} onChange={(e) => setW(e.target.value)} placeholder="№ вагона *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" /></td>
+      <td className="border-r px-1 py-1"><input type="number" step="0.001" value={v} onChange={(e) => setV(e.target.value)} placeholder="тонн *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
+      <td className="border-r px-1 py-1"></td>
+      <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" /></td>
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{fmtNum(tariff)}</td>
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{v ? fmtNum(ceil(parseFloat(v))) : ""}</td>
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff ? fmtNum(calcAmt(parseFloat(v), tariff)) : ""}</td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.destStation}</td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.depStation}</td>
+      <td className="px-1 py-1">
+        <div className="flex gap-1">
+          <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-20 h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
+          <Button size="sm" onClick={add} disabled={saving || !w || !v} className="h-6 text-[9px] px-2 bg-green-600 hover:bg-green-700">{saving ? "..." : "✓"}</Button>
+          <Button size="sm" variant="outline" onClick={onCancel} className="h-6 text-[9px] px-1.5">✕</Button>
+        </div>
+      </td>
     </tr>
   );
 }
 
-// --- Add Entry Dialog ---
+// --- Types ---
 type Ref = { id: string; name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
-type DRef = { id: string; deal_code: string; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null };
+type DRef = { id: string; deal_code: string; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
   const sb = useRef(createClient());
@@ -252,6 +292,7 @@ export default function RegistryPage() {
   const cur = tab === "kg" ? "$" : "₸";
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [addingIn, setAddingIn] = useState<string | null>(null); // which group is adding
   const groups = groupRecs(records);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
 
@@ -337,10 +378,20 @@ export default function RegistryPage() {
                               <td className="px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
                             </tr>
                           ))}
-                          <InlineAdd ctx={g.records[0]} regType={tab === "kg" ? "KG" : "KZ"} onDone={reload} />
+                          {addingIn === g.key && (
+                            <InlineAdd dealId={g.dealId} group={g} regType={tab === "kg" ? "KG" : "KZ"} onDone={() => { reload(); setAddingIn(null); }} onCancel={() => setAddingIn(null)} />
+                          )}
                         </tbody>
                       </table>
                     </div>
+                    {/* Add row button below table */}
+                    {addingIn !== g.key && (
+                      <div className="border-t border-stone-100 px-3 py-1.5">
+                        <Button size="sm" variant="outline" onClick={() => setAddingIn(g.key)} className="h-6 text-[10px] text-stone-500">
+                          <Plus className="h-3 w-3 mr-1" />Добавить отгрузку
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
