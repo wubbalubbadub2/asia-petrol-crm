@@ -21,20 +21,25 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setError("Неверный email или пароль");
+      if (error) {
+        setError("Неверный email или пароль");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/");
+      router.refresh();
+    } catch {
+      setError("Ошибка подключения к серверу. Попробуйте позже.");
       setLoading(false);
-      return;
     }
-
-    router.push("/");
-    router.refresh();
   }
 
   return (
