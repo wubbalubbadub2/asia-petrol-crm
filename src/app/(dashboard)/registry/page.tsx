@@ -78,6 +78,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   const [deal, setDeal] = useState<DRef | null>(null);
   const [w, setW] = useState(""); const [v, setV] = useState(""); const [lv, setLv] = useState("");
   const [dt, setDt] = useState(""); const [sm, setSm] = useState(""); const [sf, setSf] = useState("");
+  const [tariffVal, setTariffVal] = useState<number | null>(group.tariff);
   const [saving, setSaving] = useState(false);
 
   // Fetch deal data to get all fields
@@ -89,8 +90,24 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       .then(({ data }) => { if (data) setDeal(data as unknown as DRef); });
   }, [dealId]);
 
-  // Also get tariff from first record if available, or from the group
-  const tariff = group.tariff;
+  // Auto-lookup tariff from tariffs table using deal fields
+  useEffect(() => {
+    if (!deal || tariffVal) return;
+    const firstRec = group.records[0];
+    const depId = firstRec?.departure_station_id;
+    const destId = deal.buyer_destination_station_id || firstRec?.destination_station_id;
+    const ftId = deal.fuel_type_id;
+    const fwId = deal.forwarder_id;
+    const month = sm || firstRec?.shipment_month || deal.month;
+    if (!depId || !destId || !ftId || !fwId || !month) return;
+    sb.current.from("tariffs").select("planned_tariff")
+      .eq("departure_station_id", depId).eq("destination_station_id", destId)
+      .eq("fuel_type_id", ftId).eq("forwarder_id", fwId).eq("month", month)
+      .limit(1).single()
+      .then(({ data }) => { if (data?.planned_tariff) setTariffVal(data.planned_tariff); });
+  }, [deal, sm, group.records, tariffVal]);
+
+  const tariff = tariffVal;
   const firstRec = group.records[0];
 
   async function add() {
@@ -115,23 +132,27 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   }
 
   // Show deal info in the row (from fetched deal or group)
-  const dealInfo = deal as Record<string, unknown> | null;
-  const suppName = (dealInfo?.supplier as Record<string, string>)?.short_name ?? (dealInfo?.supplier as Record<string, string>)?.full_name ?? group.supplier;
-  const fuelName = (dealInfo?.fuel_type as Record<string, string>)?.name ?? group.fuelType;
-  const facName = (dealInfo?.factory as Record<string, string>)?.name ?? group.factory;
+  const di = deal as Record<string, unknown> | null;
+  const suppName = (di?.supplier as Record<string, string>)?.short_name ?? (di?.supplier as Record<string, string>)?.full_name ?? group.supplier;
+  const buyerName = (di?.buyer as Record<string, string>)?.short_name ?? (di?.buyer as Record<string, string>)?.full_name ?? group.buyer;
+  const fuelName = (di?.fuel_type as Record<string, string>)?.name ?? group.fuelType;
+  const facName = (di?.factory as Record<string, string>)?.name ?? group.factory;
+  const fwName = (di?.forwarder as Record<string, string>)?.name ?? group.forwarder;
 
   return (
     <tr className="bg-green-50/50 border-t-2 border-green-300">
       <td className="border-r px-2 py-1 font-mono text-amber-700 text-[10px]">{group.dealCode}</td>
-      <td className="border-r px-1 py-1"><MonthSelect value="" onChange={() => {}} className="w-full opacity-30" /></td>
+      <td className="border-r px-1 py-1"></td>
       <td className="border-r px-1 py-1"><MonthSelect value={sm} onChange={setSm} className="w-full" /></td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-600">{fuelName}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{facName}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{suppName}</td>
       <td className="border-r px-1 py-1"><input type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} placeholder="налив" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{group.companyGroup}</td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{buyerName}</td>
+      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{fwName}</td>
       <td className="border-r px-1 py-1"><input value={w} onChange={(e) => setW(e.target.value)} placeholder="№ вагона *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-1 py-1"><input type="number" step="0.001" value={v} onChange={(e) => setV(e.target.value)} placeholder="тонн *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
-      <td className="border-r px-1 py-1"></td>
       <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{fmtNum(tariff)}</td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{v ? fmtNum(ceil(parseFloat(v))) : ""}</td>
@@ -203,12 +224,15 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (st?.default_factory_id && !facId) setFacId(st.default_factory_id);
   }, [depId, stations, facId]);
 
-  // Tariff lookup
+  // Tariff lookup: месяц + ГСМ + ст. Отправления + ст. Назначения + Экспедитор
   useEffect(() => {
-    if (!depId || !destId || !ftId || !shipMonth || tariff) return;
-    sb.current.from("tariffs").select("planned_tariff").eq("departure_station_id", depId).eq("destination_station_id", destId).eq("fuel_type_id", ftId).eq("month", shipMonth).limit(1).single()
+    if (!depId || !destId || !ftId || !shipMonth || !fwId || tariff) return;
+    sb.current.from("tariffs").select("planned_tariff")
+      .eq("departure_station_id", depId).eq("destination_station_id", destId)
+      .eq("fuel_type_id", ftId).eq("month", shipMonth).eq("forwarder_id", fwId)
+      .limit(1).single()
       .then(({ data }) => { if (data?.planned_tariff) setTariff(String(data.planned_tariff)); });
-  }, [depId, destId, ftId, shipMonth, tariff]);
+  }, [depId, destId, ftId, shipMonth, fwId, tariff]);
 
   async function save() {
     if (!wagon || !vol) { toast.error("Укажите № вагона и объем"); return; }
@@ -345,9 +369,11 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[50px]">завод</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">поставщик</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Налив</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">группа комп.</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">покупатель</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">экспедитор</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Тонн</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Налив т.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[45px]">округл</th>
@@ -366,9 +392,11 @@ export default function RegistryPage() {
                               <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.factory?.name ?? ""}</td>
                               <td className="border-r px-2 py-0.5 text-[10px] text-stone-500 truncate max-w-[100px]">{r.supplier?.short_name ?? r.supplier?.full_name ?? ""}</td>
                               <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
+                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.company_group?.name ?? ""}</td>
+                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500 truncate max-w-[100px]">{r.buyer?.short_name ?? r.buyer?.full_name ?? ""}</td>
+                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.forwarder?.name ?? ""}</td>
                               <td className="border-r px-1 py-0.5"><EC value={r.wagon_number} recId={r.id} field="wagon_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
-                              <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
                               <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums text-stone-400">{fmtNum(ceil(r.shipment_volume))}</td>
