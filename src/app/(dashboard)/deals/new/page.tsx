@@ -365,7 +365,7 @@ export default function NewDealPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-[14px]">Основные данные</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-[12px] text-stone-500">Тип сделки</Label>
               <div className="flex gap-1 mt-1">
@@ -430,7 +430,7 @@ export default function NewDealPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-[14px]">Поставщик</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <SelectField
               label="Поставщик"
               value={supplierId}
@@ -512,7 +512,7 @@ export default function NewDealPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-[14px]">Покупатель</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <SelectField
               label="Покупатель"
               value={buyerId}
@@ -641,7 +641,7 @@ export default function NewDealPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-[14px]">Логистика</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <SelectField
               label="Экспедитор"
               value={forwarderId}
@@ -670,7 +670,7 @@ export default function NewDealPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-[14px]">Ответственные</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-3 gap-3">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <SelectField
               label="Менеджер поставщика"
               value={supplierManagerId}

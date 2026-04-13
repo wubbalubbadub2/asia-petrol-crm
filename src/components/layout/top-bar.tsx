@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, ChevronDown, Bell, Archive, Settings } from "lucide-react";
+import { LogOut, ChevronDown, Bell, Archive, Settings, Menu } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/use-role";
 import {
@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function TopBar() {
+export function TopBar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { profile } = useRole();
   const router = useRouter();
 
@@ -38,8 +38,11 @@ export function TopBar() {
   };
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-stone-200/80 bg-white/80 backdrop-blur-sm px-6">
-      <div />
+    <header className="flex h-14 items-center justify-between border-b border-stone-200/80 bg-white/80 backdrop-blur-sm px-3 sm:px-6">
+      <button onClick={onMenuClick} className="lg:hidden p-2 -ml-1 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition-colors">
+        <Menu className="h-5 w-5" />
+      </button>
+      <div className="hidden lg:block" />
       <div className="flex items-center gap-4">
         {/* Notification bell placeholder */}
         <button className="relative p-2 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors">

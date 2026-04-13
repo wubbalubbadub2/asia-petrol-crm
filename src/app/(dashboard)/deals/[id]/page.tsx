@@ -250,7 +250,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardHeader className="pb-2">
           <CardTitle className="text-[14px]">Поставщик</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Поставщик" value={deal.supplier_id} displayValue={deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"} editing={editing} field="supplier_id" dealId={deal.id} options={refs.suppliers} />
           <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
           <Field label="Базис поставки" value={deal.supplier_delivery_basis} editing={editing} field="supplier_delivery_basis" dealId={deal.id} />
@@ -277,7 +277,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardHeader className="pb-2">
           <CardTitle className="text-[14px]">Покупатель</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Покупатель" value={deal.buyer_id} displayValue={deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"} editing={editing} field="buyer_id" dealId={deal.id} options={refs.buyers} />
           <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
           <Field label="Базис / ст. назначения" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
@@ -354,7 +354,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardHeader className="pb-2">
           <CardTitle className="text-[14px]">Логистика</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Экспедитор" value={deal.forwarder_id} displayValue={deal.forwarder?.name ?? "—"} editing={editing} field="forwarder_id" dealId={deal.id} options={refs.forwarders} />
           <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
           <Field label="Тариф факт" value={
@@ -378,7 +378,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardHeader className="pb-2">
           <CardTitle className="text-[14px]">Ответственные</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-x-6 gap-y-2">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
           <EditableSelect label="Менеджер поставщика" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           <EditableSelect label="Менеджер покупателя" value={deal.buyer_manager_id} displayValue={deal.buyer_manager?.full_name ?? "—"} editing={editing} field="buyer_manager_id" dealId={deal.id} options={refs.managers} />
           <EditableSelect label="Трейдер" value={deal.trader_id} displayValue={deal.trader?.full_name ?? "—"} editing={editing} field="trader_id" dealId={deal.id} options={refs.managers} />

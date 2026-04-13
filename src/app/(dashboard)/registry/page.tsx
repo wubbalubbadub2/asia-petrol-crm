@@ -148,9 +148,9 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl">
         <DialogHeader><DialogTitle>Добавить запись в реестр {registryType}</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
           <div>
             <Label className="text-[12px] text-stone-500">Дата</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[13px]" />
@@ -237,7 +237,7 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
             <Label className="text-[12px] text-stone-500">№ СФ</Label>
             <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-8 text-[13px]" />
           </div>
-          <div className="col-span-3">
+          <div className="sm:col-span-2 md:col-span-3">
             <Label className="text-[12px] text-stone-500">Комментарий</Label>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} className="h-8 text-[13px]" />
           </div>

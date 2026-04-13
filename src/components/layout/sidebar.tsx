@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { navItems, type NavItem } from "@/lib/constants/nav-items";
 import { useRole } from "@/lib/hooks/use-role";
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({ item, pathname, onNavigate }: { item: NavItem; pathname: string; onNavigate?: () => void }) {
   const isActive =
     pathname === item.href ||
     (item.href !== "/" && pathname.startsWith(item.href));
@@ -17,6 +17,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   return (
     <Link
       href={item.href}
+      onClick={onNavigate}
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200",
         isActive
@@ -36,7 +37,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
   const { isAdmin } = useRole();
 
@@ -67,7 +68,7 @@ export function Sidebar() {
           Навигация
         </p>
         {filteredItems.slice(0, 4).map((item) => (
-          <NavLink key={item.href + item.label} item={item} pathname={pathname} />
+          <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} />
         ))}
 
         <div className="my-3 border-t border-slate-800/50" />
@@ -75,7 +76,7 @@ export function Sidebar() {
           Операции
         </p>
         {filteredItems.filter((i) => !i.adminOnly).slice(4).map((item) => (
-          <NavLink key={item.href + item.label} item={item} pathname={pathname} />
+          <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} />
         ))}
       </div>
 
