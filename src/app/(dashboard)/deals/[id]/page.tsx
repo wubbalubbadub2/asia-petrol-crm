@@ -364,7 +364,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           } suffix={`${currencySymbol} ${deal.invoice_amount && deal.actual_shipped_volume ? "(авто)" : ""}`} />
           <Field label="Объем предварит." value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
           <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={`${currencySymbol} (авто)`} />
-          <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн" editing={editing} field="actual_shipped_volume" dealId={deal.id} />
+          <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
           <Field label="Объем по СФ" value={deal.invoice_volume} suffix="тонн (авто)" />
           <Field label="Сумма по СФ" value={deal.invoice_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Заметки логистики" value={deal.logistics_notes} editing={editing} field="logistics_notes" dealId={deal.id} />
