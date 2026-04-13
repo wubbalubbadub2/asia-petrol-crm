@@ -40,6 +40,8 @@ export type ShipmentRecord = {
   factory?: { name: string } | null;
   forwarder?: { name: string } | null;
   company_group?: { name: string } | null;
+  supplier?: { short_name: string | null; full_name: string } | null;
+  buyer?: { short_name: string | null; full_name: string } | null;
 };
 
 const REG_SELECT = `
@@ -50,7 +52,9 @@ const REG_SELECT = `
   deal:deals(deal_code),
   factory:factories(name),
   forwarder:forwarders(name),
-  company_group:company_groups(name)
+  company_group:company_groups(name),
+  supplier:counterparties!supplier_id(short_name, full_name),
+  buyer:counterparties!buyer_id(short_name, full_name)
 `;
 
 export function useRegistry(type: "KG" | "KZ") {
