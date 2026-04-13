@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { DealPayments } from "@/components/deals/deal-payments";
 import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
+import { DealShipments } from "@/components/deals/deal-shipments";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
@@ -370,6 +371,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Перевыст. на" value={deal.surcharge_reinvoiced_to} editing={editing} field="surcharge_reinvoiced_to" dealId={deal.id} />
         </CardContent>
       </Card>
+
+      {/* Shipments by date (Table 5 from doc) */}
+      <DealShipments dealId={deal.id} currencySymbol={currencySymbol} />
 
       {/* Managers */}
       <Card>
