@@ -120,6 +120,25 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
     }
   }, [depStationId, stations, factoryId]);
 
+  // Auto-lookup tariff by: departure + destination + fuel type + month
+  useEffect(() => {
+    if (!depStationId || !destStationId || !fuelTypeId || !month) return;
+    if (tariff) return; // Don't override manual entry
+    supabaseRef.current.from("tariffs")
+      .select("planned_tariff")
+      .eq("departure_station_id", depStationId)
+      .eq("destination_station_id", destStationId)
+      .eq("fuel_type_id", fuelTypeId)
+      .eq("month", month)
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data?.planned_tariff && !tariff) {
+          setTariff(String(data.planned_tariff));
+        }
+      });
+  }, [depStationId, destStationId, fuelTypeId, month, tariff]);
+
   async function handleSave() {
     setSaving(true);
     const result = await createRegistryEntry({
