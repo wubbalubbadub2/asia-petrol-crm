@@ -63,11 +63,26 @@ function calcShippedAmount(vol: number | null, tariff: number | null): number | 
 type RefOption = { id: string; name: string };
 type StationOption = { id: string; name: string; default_factory_id: string | null };
 
+type DealRef = {
+  id: string;
+  deal_code: string;
+  month: string | null;
+  factory_id: string | null;
+  fuel_type_id: string | null;
+  supplier_id: string | null;
+  buyer_id: string | null;
+  forwarder_id: string | null;
+  buyer_destination_station_id: string | null;
+  logistics_company_group_id: string | null;
+  supplier?: { short_name: string | null; full_name: string } | null;
+  buyer?: { short_name: string | null; full_name: string } | null;
+};
+
 function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   open: boolean; onClose: () => void; registryType: "KG" | "KZ"; onCreated: () => void;
 }) {
   const supabaseRef = useRef(createClient());
-  const [deals, setDeals] = useState<{ id: string; deal_code: string }[]>([]);
+  const [deals, setDeals] = useState<DealRef[]>([]);
   const [stations, setStations] = useState<StationOption[]>([]);
   const [factories, setFactories] = useState<RefOption[]>([]);
   const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
@@ -84,6 +99,8 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   const [fuelTypeId, setFuelTypeId] = useState("");
   const [forwarderId, setForwarderId] = useState("");
   const [factoryId, setFactoryId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [buyerId, setBuyerId] = useState("");
   const [tariff, setTariff] = useState("");
   const [invoiceNum, setInvoiceNum] = useState("");
   const [comment, setComment] = useState("");
@@ -95,14 +112,16 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      supabaseRef.current.from("deals").select("id, deal_code").eq("deal_type", registryType).eq("is_archived", false).order("deal_code"),
+      supabaseRef.current.from("deals")
+        .select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)")
+        .eq("deal_type", registryType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
       supabaseRef.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       supabaseRef.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       supabaseRef.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
       supabaseRef.current.from("factories").select("id, name").eq("is_active", true).order("name"),
       supabaseRef.current.from("company_groups").select("id, name").eq("is_active", true).order("name"),
     ]).then(([d, s, ft, fw, fac, cg]) => {
-      setDeals((d.data ?? []) as { id: string; deal_code: string }[]);
+      setDeals((d.data ?? []) as unknown as DealRef[]);
       setStations((s.data ?? []) as StationOption[]);
       setFuelTypes((ft.data ?? []) as RefOption[]);
       setForwarders((fw.data ?? []) as RefOption[]);
@@ -110,6 +129,21 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
       setCompanyGroups((cg.data ?? []) as RefOption[]);
     });
   }, [open, registryType]);
+
+  // Auto-fill fields from selected deal
+  useEffect(() => {
+    if (!dealId) return;
+    const deal = deals.find((d) => d.id === dealId);
+    if (!deal) return;
+    if (deal.month && !month) setMonth(deal.month);
+    if (deal.fuel_type_id && !fuelTypeId) setFuelTypeId(deal.fuel_type_id);
+    if (deal.factory_id && !factoryId) setFactoryId(deal.factory_id);
+    if (deal.forwarder_id && !forwarderId) setForwarderId(deal.forwarder_id);
+    if (deal.supplier_id) setSupplierId(deal.supplier_id);
+    if (deal.buyer_id) setBuyerId(deal.buyer_id);
+    if (deal.buyer_destination_station_id && !destStationId) setDestStationId(deal.buyer_destination_station_id);
+    if (deal.logistics_company_group_id && !companyGroupId) setCompanyGroupId(deal.logistics_company_group_id);
+  }, [dealId, deals]);
 
   // Auto-fill factory from departure station
   useEffect(() => {
@@ -153,6 +187,8 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
       departure_station_id: depStationId || null,
       fuel_type_id: fuelTypeId || null,
       forwarder_id: forwarderId || null,
+      supplier_id: supplierId || null,
+      buyer_id: buyerId || null,
       factory_id: factoryId || null,
       railway_tariff: tariff ? parseFloat(tariff) : null,
       invoice_number: invoiceNum || null,
@@ -162,7 +198,7 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
       additional_month: additionalMonth || null,
     });
     setSaving(false);
-    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); setInvoiceNum(""); setFactoryId(""); setLoadingVolume(""); setCompanyGroupId(""); setAdditionalMonth(""); }
+    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); setInvoiceNum(""); setFactoryId(""); setLoadingVolume(""); setCompanyGroupId(""); setAdditionalMonth(""); setSupplierId(""); setBuyerId(""); setMonth(""); setFuelTypeId(""); setForwarderId(""); setDestStationId(""); setDepStationId(""); }
   }
 
   return (
@@ -176,10 +212,14 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
           </div>
           <div>
             <Label className="text-[12px] text-stone-500">Сделка</Label>
-            <select value={dealId} onChange={(e) => setDealId(e.target.value)}
+            <select value={dealId} onChange={(e) => { setDealId(e.target.value); setTariff(""); }}
               className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
               <option value="">Выберите...</option>
-              {deals.map((d) => <option key={d.id} value={d.id}>{d.deal_code}</option>)}
+              {deals.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.deal_code} — {d.supplier?.short_name ?? d.supplier?.full_name ?? ""} → {d.buyer?.short_name ?? d.buyer?.full_name ?? ""}
+                </option>
+              ))}
             </select>
           </div>
           <div>
