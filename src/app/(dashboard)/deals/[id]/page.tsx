@@ -267,7 +267,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Цена" value={deal.supplier_price} suffix={currencySymbol} editing={editing} field="supplier_price" dealId={deal.id} />
           <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={`${currencySymbol} (реестр)`} />
           <Field label="Оплата" value={deal.supplier_payment} suffix={`${currencySymbol} (оплаты)`} />
-          <Field label="Дата оплаты" value={deal.supplier_payment_date} editing={editing} field="supplier_payment_date" dealId={deal.id} />
           <Field label="Баланс" value={deal.supplier_balance} suffix={`${currencySymbol} (авто)`} />
         </CardContent>
       </Card>
@@ -298,7 +297,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Дата отгрузки" value={deal.buyer_ship_date} editing={editing} field="buyer_ship_date" dealId={deal.id} />
           <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={`${currencySymbol} (реестр)`} />
           <Field label="Оплата" value={deal.buyer_payment} suffix={`${currencySymbol} (оплаты)`} />
-          <Field label="Дата оплаты" value={deal.buyer_payment_date} editing={editing} field="buyer_payment_date" dealId={deal.id} />
           <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${currencySymbol} (авто)`} />
           <Field label="Платежи по сделкам" value={deal.buyer_multi_deal_payments} editing={editing} field="buyer_multi_deal_payments" dealId={deal.id} />
           <Field label="Отписанные СНН" value={deal.buyer_snt_written} editing={editing} field="buyer_snt_written" dealId={deal.id} />

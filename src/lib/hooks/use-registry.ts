@@ -96,6 +96,19 @@ export async function createRegistryEntry(values: Record<string, unknown>) {
   return data;
 }
 
+export async function updateRegistryEntry(id: string, values: Record<string, unknown>) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("shipment_registry")
+    .update(values)
+    .eq("id", id);
+  if (error) {
+    toast.error(`Ошибка: ${error.message}`);
+    throw error;
+  }
+  return true;
+}
+
 export async function bulkInsertRegistry(records: Record<string, unknown>[]) {
   const supabase = createClient();
   const { data, error } = await supabase
