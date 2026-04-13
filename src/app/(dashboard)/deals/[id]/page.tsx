@@ -165,7 +165,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     buyers: { value: string; label: string }[];
     forwarders: { value: string; label: string }[];
     managers: { value: string; label: string }[];
-  }>({ suppliers: [], buyers: [], forwarders: [], managers: [] });
+    stations: { value: string; label: string }[];
+  }>({ suppliers: [], buyers: [], forwarders: [], managers: [], stations: [] });
 
   // Load reference data when entering edit mode
   useEffect(() => {
@@ -176,12 +177,14 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true),
       sb.from("forwarders").select("id, name").eq("is_active", true),
       sb.from("profiles").select("id, full_name").eq("is_active", true),
-    ]).then(([s, b, f, m]) => {
+      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([s, b, f, m, st]) => {
       setRefs({
         suppliers: (s.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.short_name || r.full_name })),
         buyers: (b.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.short_name || r.full_name })),
         forwarders: (f.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
         managers: (m.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.full_name })),
+        stations: (st.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
       });
     });
   }, [editing]);
@@ -357,7 +360,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-2">
             <EditableSelect label="Экспедитор" value={deal.forwarder_id} displayValue={deal.forwarder?.name ?? "—"} editing={editing} field="forwarder_id" dealId={deal.id} options={refs.forwarders} />
             <Field label="Ст. отправления" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
-            <Field label="Ст. назначения" value={deal.buyer_destination_station?.name ?? "—"} />
+            <EditableSelect label="Ст. назначения" value={deal.buyer_destination_station_id} displayValue={deal.buyer_destination_station?.name ?? "—"} editing={editing} field="buyer_destination_station_id" dealId={deal.id} options={refs.stations} />
             <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
             <Field label="Объем план" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
           </div>
