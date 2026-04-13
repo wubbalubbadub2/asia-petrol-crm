@@ -28,6 +28,9 @@ export type ShipmentRecord = {
   shipped_tonnage_amount: number | null;
   invoice_number: string | null;
   comment: string | null;
+  loading_volume: number | null;
+  company_group_id: string | null;
+  additional_month: string | null;
   created_at: string;
   // Joined
   destination_station?: { name: string } | null;
@@ -36,6 +39,7 @@ export type ShipmentRecord = {
   deal?: { deal_code: string } | null;
   factory?: { name: string } | null;
   forwarder?: { name: string } | null;
+  company_group?: { name: string } | null;
 };
 
 const REG_SELECT = `
@@ -45,7 +49,8 @@ const REG_SELECT = `
   fuel_type:fuel_types(name, color),
   deal:deals(deal_code),
   factory:factories(name),
-  forwarder:forwarders(name)
+  forwarder:forwarders(name),
+  company_group:company_groups(name)
 `;
 
 export function useRegistry(type: "KG" | "KZ") {

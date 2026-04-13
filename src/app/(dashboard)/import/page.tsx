@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FileSpreadsheet, Receipt, Truck, CheckCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -28,6 +29,16 @@ export default function ImportPage() {
   const [parsedData, setParsedData] = useState<Record<string, unknown>[]>([]);
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState(false);
+  const [esfDealId, setEsfDealId] = useState("");
+  const [dealOptions, setDealOptions] = useState<{ id: string; deal_code: string }[]>([]);
+  const sbRef = useRef(createClient());
+
+  // Load deal options for ESF assignment
+  useEffect(() => {
+    if (activeTab !== "esf") return;
+    sbRef.current.from("deals").select("id, deal_code").eq("is_archived", false).order("deal_code")
+      .then(({ data }) => setDealOptions((data ?? []) as { id: string; deal_code: string }[]));
+  }, [activeTab]);
 
   function handleDataParsed(rows: Record<string, unknown>[]) {
     setParsedData(rows);
@@ -56,6 +67,8 @@ export default function ImportPage() {
       railway_tariff: parseFloat(String(row["Ж/Д тариф"] ?? row["тариф"] ?? 0)) || null,
       invoice_number: row["№ СФ"] ?? null,
       comment: row["коментарий"] ?? row["комент"] ?? null,
+      loading_volume: parseFloat(String(row["Налив тонн"] ?? row["налив"] ?? 0)) || null,
+      additional_month: row["месяц доп"] ?? row["доп месяц"] ?? null,
     }));
 
     const result = await bulkInsertRegistry(records);
@@ -78,6 +91,7 @@ export default function ImportPage() {
       goods_description: row["Товар"] ?? row["Наименование товара"] ?? row["goods"] ?? null,
       quantity: parseFloat(String(row["Количество"] ?? row["quantity"] ?? row["Кол-во"] ?? 0)) || null,
       total_amount: parseFloat(String(row["Сумма"] ?? row["total"] ?? row["Итого"] ?? 0)) || null,
+      ...(activeTab === "esf" && esfDealId ? { deal_id: esfDealId } : {}),
     }));
 
     const { error: docError } = await supabase.from(table).insert(docs);
@@ -163,10 +177,20 @@ export default function ImportPage() {
                   </Button>
                 )}
                 {activeTab === "esf" && (
-                  <Button size="sm" onClick={handleImportSntEsf} disabled={importing}>
-                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-                    {importing ? "Импорт..." : `Импорт ЭСФ + создать записи в реестр`}
-                  </Button>
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-[11px] text-stone-500 whitespace-nowrap">Привязать к сделке:</Label>
+                      <select value={esfDealId} onChange={(e) => setEsfDealId(e.target.value)}
+                        className="h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer min-w-[120px]">
+                        <option value="">— без привязки —</option>
+                        {dealOptions.map((d) => <option key={d.id} value={d.id}>{d.deal_code}</option>)}
+                      </select>
+                    </div>
+                    <Button size="sm" onClick={handleImportSntEsf} disabled={importing}>
+                      <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+                      {importing ? "Импорт..." : `Импорт ЭСФ + создать записи в реестр`}
+                    </Button>
+                  </>
                 )}
               </div>
             </CardTitle>

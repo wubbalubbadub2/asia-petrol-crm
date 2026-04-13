@@ -61,13 +61,15 @@ function calcShippedAmount(vol: number | null, tariff: number | null): number | 
 }
 
 type RefOption = { id: string; name: string };
+type StationOption = { id: string; name: string; default_factory_id: string | null };
 
 function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   open: boolean; onClose: () => void; registryType: "KG" | "KZ"; onCreated: () => void;
 }) {
   const supabaseRef = useRef(createClient());
   const [deals, setDeals] = useState<{ id: string; deal_code: string }[]>([]);
-  const [stations, setStations] = useState<RefOption[]>([]);
+  const [stations, setStations] = useState<StationOption[]>([]);
+  const [factories, setFactories] = useState<RefOption[]>([]);
   const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
   const [forwarders, setForwarders] = useState<RefOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -81,24 +83,42 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
   const [depStationId, setDepStationId] = useState("");
   const [fuelTypeId, setFuelTypeId] = useState("");
   const [forwarderId, setForwarderId] = useState("");
+  const [factoryId, setFactoryId] = useState("");
   const [tariff, setTariff] = useState("");
   const [invoiceNum, setInvoiceNum] = useState("");
   const [comment, setComment] = useState("");
+  const [loadingVolume, setLoadingVolume] = useState("");
+  const [companyGroupId, setCompanyGroupId] = useState("");
+  const [additionalMonth, setAdditionalMonth] = useState("");
+  const [companyGroups, setCompanyGroups] = useState<RefOption[]>([]);
 
   useEffect(() => {
     if (!open) return;
     Promise.all([
       supabaseRef.current.from("deals").select("id, deal_code").eq("deal_type", registryType).eq("is_archived", false).order("deal_code"),
-      supabaseRef.current.from("stations").select("id, name").eq("is_active", true).order("name"),
+      supabaseRef.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       supabaseRef.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       supabaseRef.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-    ]).then(([d, s, ft, fw]) => {
+      supabaseRef.current.from("factories").select("id, name").eq("is_active", true).order("name"),
+      supabaseRef.current.from("company_groups").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([d, s, ft, fw, fac, cg]) => {
       setDeals((d.data ?? []) as { id: string; deal_code: string }[]);
-      setStations((s.data ?? []) as RefOption[]);
+      setStations((s.data ?? []) as StationOption[]);
       setFuelTypes((ft.data ?? []) as RefOption[]);
       setForwarders((fw.data ?? []) as RefOption[]);
+      setFactories((fac.data ?? []) as RefOption[]);
+      setCompanyGroups((cg.data ?? []) as RefOption[]);
     });
   }, [open, registryType]);
+
+  // Auto-fill factory from departure station
+  useEffect(() => {
+    if (!depStationId) return;
+    const station = stations.find((s) => s.id === depStationId);
+    if (station?.default_factory_id && !factoryId) {
+      setFactoryId(station.default_factory_id);
+    }
+  }, [depStationId, stations, factoryId]);
 
   async function handleSave() {
     setSaving(true);
@@ -114,12 +134,16 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
       departure_station_id: depStationId || null,
       fuel_type_id: fuelTypeId || null,
       forwarder_id: forwarderId || null,
+      factory_id: factoryId || null,
       railway_tariff: tariff ? parseFloat(tariff) : null,
       invoice_number: invoiceNum || null,
       comment: comment || null,
+      loading_volume: loadingVolume ? parseFloat(loadingVolume) : null,
+      company_group_id: companyGroupId || null,
+      additional_month: additionalMonth || null,
     });
     setSaving(false);
-    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); setInvoiceNum(""); }
+    if (result) { onCreated(); onClose(); setWaybill(""); setWagon(""); setVolume(""); setDealId(""); setTariff(""); setComment(""); setInvoiceNum(""); setFactoryId(""); setLoadingVolume(""); setCompanyGroupId(""); setAdditionalMonth(""); }
   }
 
   return (
@@ -156,6 +180,10 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
             <Input type="number" step="0.001" value={volume} onChange={(e) => setVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
           </div>
           <div>
+            <Label className="text-[12px] text-stone-500">Налив тонн</Label>
+            <Input type="number" step="0.001" value={loadingVolume} onChange={(e) => setLoadingVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <div>
             <Label className="text-[12px] text-stone-500">Ст. назначения</Label>
             <select value={destStationId} onChange={(e) => setDestStationId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
               <option value="">—</option>
@@ -184,14 +212,32 @@ function AddEntryDialog({ open, onClose, registryType, onCreated }: {
             </select>
           </div>
           <div>
+            <Label className="text-[12px] text-stone-500">Завод</Label>
+            <select value={factoryId} onChange={(e) => setFactoryId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">—</option>
+              {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          <div>
             <Label className="text-[12px] text-stone-500">Ж/Д тариф</Label>
             <Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Группа компании</Label>
+            <select value={companyGroupId} onChange={(e) => setCompanyGroupId(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+              <option value="">—</option>
+              {companyGroups.map((cg) => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Месяц доп.</Label>
+            <Input value={additionalMonth} onChange={(e) => setAdditionalMonth(e.target.value)} placeholder="январь" className="h-8 text-[13px]" />
           </div>
           <div>
             <Label className="text-[12px] text-stone-500">№ СФ</Label>
             <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-8 text-[13px]" />
           </div>
-          <div className="col-span-2">
+          <div className="col-span-3">
             <Label className="text-[12px] text-stone-500">Комментарий</Label>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} className="h-8 text-[13px]" />
           </div>
@@ -267,14 +313,17 @@ export default function RegistryPage() {
                 <TableHead className="text-[11px]">№ накладной</TableHead>
                 <TableHead className="text-[11px]">№ вагона</TableHead>
                 <TableHead className="text-right text-[11px]">Объем</TableHead>
+                <TableHead className="text-right text-[11px]">Налив</TableHead>
                 <TableHead className="text-[11px]">Ст. назнач.</TableHead>
                 <TableHead className="text-[11px]">Ст. отправ.</TableHead>
                 <TableHead className="text-[11px]">ГСМ</TableHead>
                 <TableHead className="text-[11px]">№ сделки</TableHead>
                 <TableHead className="text-[11px]">Завод</TableHead>
                 <TableHead className="text-[11px]">Поставщик</TableHead>
+                <TableHead className="text-[11px]">Группа комп.</TableHead>
                 <TableHead className="text-[11px]">Экспедитор</TableHead>
                 <TableHead className="text-[11px]">Мес. отгр.</TableHead>
+                <TableHead className="text-[11px]">Мес. доп.</TableHead>
                 <TableHead className="text-right text-[11px]">Тариф</TableHead>
                 <TableHead className="text-[11px]">Покупатель</TableHead>
                 <TableHead className="text-right text-[11px]">Округл. тонн.</TableHead>
@@ -293,6 +342,7 @@ export default function RegistryPage() {
                   <TableCell className="font-mono text-[10px]">{rec.waybill_number ?? ""}</TableCell>
                   <TableCell className="font-mono text-[10px] max-w-[100px] truncate">{rec.wagon_number ?? ""}</TableCell>
                   <TableCell className="text-right font-mono text-[11px] tabular-nums">{formatNum(rec.shipment_volume)}</TableCell>
+                  <TableCell className="text-right font-mono text-[10px] tabular-nums text-stone-500">{formatNum(rec.loading_volume)}</TableCell>
                   <TableCell className="text-[10px] text-stone-600">{rec.destination_station?.name ?? ""}</TableCell>
                   <TableCell className="text-[10px] text-stone-600">{rec.departure_station?.name ?? ""}</TableCell>
                   <TableCell className="text-[11px]">
@@ -306,8 +356,10 @@ export default function RegistryPage() {
                   <TableCell className="font-mono text-[10px] text-amber-700">{rec.deal?.deal_code ?? ""}</TableCell>
                   <TableCell className="text-[10px] text-stone-600">{rec.factory?.name ?? ""}</TableCell>
                   <TableCell className="text-[10px] text-stone-600">{(rec as Record<string, unknown>).supplier_name as string ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-600">{rec.company_group?.name ?? ""}</TableCell>
                   <TableCell className="text-[10px] text-stone-600">{rec.forwarder?.name ?? ""}</TableCell>
                   <TableCell className="text-[10px] text-stone-500">{rec.shipment_month ?? ""}</TableCell>
+                  <TableCell className="text-[10px] text-stone-500">{rec.additional_month ?? ""}</TableCell>
                   <TableCell className="text-right font-mono text-[10px] tabular-nums">{formatNum(rec.railway_tariff)}</TableCell>
                   <TableCell className="text-[10px] text-stone-600">{(rec as Record<string, unknown>).buyer_name as string ?? ""}</TableCell>
                   <TableCell className="text-right font-mono text-[10px] tabular-nums">{formatNum(roundTonnage(rec.shipment_volume))}</TableCell>

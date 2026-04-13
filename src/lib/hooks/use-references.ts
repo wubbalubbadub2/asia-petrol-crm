@@ -6,7 +6,8 @@ import { toast } from "sonner";
 
 export function useSupabaseTable<T extends { id?: string }>(
   tableName: string,
-  orderBy: string = "created_at"
+  orderBy: string = "created_at",
+  selectQuery: string = "*"
 ) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,13 +17,13 @@ export function useSupabaseTable<T extends { id?: string }>(
     setLoading(true);
     const { data, error } = await supabaseRef.current
       .from(tableName)
-      .select("*")
+      .select(selectQuery)
       .order(orderBy, { ascending: true });
 
     if (error) {
       toast.error(`Ошибка загрузки: ${error.message}`);
     } else {
-      setData((data ?? []) as T[]);
+      setData((data ?? []) as unknown as T[]);
     }
     setLoading(false);
   }, [tableName, orderBy]);

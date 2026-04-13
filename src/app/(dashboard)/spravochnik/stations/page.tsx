@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { CrudTable } from "@/components/shared/crud-table";
 import { useSupabaseTable } from "@/lib/hooks/use-references";
+import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ type Station = {
   code?: string;
   type?: StationType;
   is_active?: boolean;
+  default_factory_id?: string | null;
+  factory?: { name: string } | null;
 };
 
 const STATION_TYPE_LABELS: Record<StationType, string> = {
@@ -52,6 +55,11 @@ const columns: ColumnDef<Station, unknown>[] = [
     },
   },
   {
+    accessorKey: "factory",
+    header: "Завод по умолч.",
+    cell: ({ row }) => row.original.factory?.name ?? "—",
+  },
+  {
     accessorKey: "is_active",
     header: "Активна",
     cell: ({ row }) =>
@@ -75,8 +83,16 @@ function StationForm({ item, onSave, onClose }: FormProps) {
     code: item?.code ?? "",
     type: item?.type ?? "departure",
     is_active: item?.is_active ?? true,
+    default_factory_id: item?.default_factory_id ?? null,
   });
   const [saving, setSaving] = useState(false);
+  const [factoryOptions, setFactoryOptions] = useState<{ id: string; name: string }[]>([]);
+  const sbRef = useRef(createClient());
+
+  useEffect(() => {
+    sbRef.current.from("factories").select("id, name").eq("is_active", true).order("name")
+      .then(({ data }) => setFactoryOptions((data ?? []) as { id: string; name: string }[]));
+  }, []);
 
   function set<K extends keyof Station>(key: K, value: Station[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -137,6 +153,18 @@ function StationForm({ item, onSave, onClose }: FormProps) {
         </Select>
       </div>
 
+      <div className="space-y-1.5">
+        <Label>Завод по умолчанию</Label>
+        <select
+          value={form.default_factory_id ?? ""}
+          onChange={(e) => setForm((prev) => ({ ...prev, default_factory_id: e.target.value || null }))}
+          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:border-amber-400 focus:outline-none cursor-pointer"
+        >
+          <option value="">—</option>
+          {factoryOptions.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+      </div>
+
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -163,7 +191,8 @@ function StationForm({ item, onSave, onClose }: FormProps) {
 export default function StationsPage() {
   const { data, loading, save, remove } = useSupabaseTable<Station>(
     "stations",
-    "name"
+    "name",
+    "*, factory:factories!default_factory_id(name)"
   );
   const [typeFilter, setTypeFilter] = useState<"all" | "departure" | "destination" | "both">("all");
 

@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { DealPayments } from "@/components/deals/deal-payments";
+import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
@@ -262,12 +263,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Котировка" value={deal.supplier_quotation} suffix={currencySymbol} editing={editing} field="supplier_quotation" dealId={deal.id} />
           <Field label="Скидка" value={deal.supplier_discount} suffix={currencySymbol} editing={editing} field="supplier_discount" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
-          <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={currencySymbol} editing={editing} field="supplier_contracted_amount" dealId={deal.id} />
+          <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Цена" value={deal.supplier_price} suffix={currencySymbol} editing={editing} field="supplier_price" dealId={deal.id} />
           <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={currencySymbol} editing={editing} field="supplier_shipped_amount" dealId={deal.id} />
           <Field label="Оплата" value={deal.supplier_payment} suffix={currencySymbol} editing={editing} field="supplier_payment" dealId={deal.id} />
           <Field label="Дата оплаты" value={deal.supplier_payment_date} editing={editing} field="supplier_payment_date" dealId={deal.id} />
-          <Field label="Баланс" value={deal.supplier_balance} suffix={currencySymbol} editing={editing} field="supplier_balance" dealId={deal.id} />
+          <Field label="Баланс" value={deal.supplier_balance} suffix={`${currencySymbol} (авто)`} />
         </CardContent>
       </Card>
 
@@ -289,7 +290,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Котировка" value={deal.buyer_quotation} suffix={currencySymbol} editing={editing} field="buyer_quotation" dealId={deal.id} />
           <Field label="Скидка" value={deal.buyer_discount} suffix={currencySymbol} editing={editing} field="buyer_discount" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
-          <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={currencySymbol} editing={editing} field="buyer_contracted_amount" dealId={deal.id} />
+          <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Цена" value={deal.buyer_price} suffix={currencySymbol} editing={editing} field="buyer_price" dealId={deal.id} />
           <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
           <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн" editing={editing} field="buyer_remaining" dealId={deal.id} />
@@ -298,7 +299,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={currencySymbol} editing={editing} field="buyer_shipped_amount" dealId={deal.id} />
           <Field label="Оплата" value={deal.buyer_payment} suffix={currencySymbol} editing={editing} field="buyer_payment" dealId={deal.id} />
           <Field label="Дата оплаты" value={deal.buyer_payment_date} editing={editing} field="buyer_payment_date" dealId={deal.id} />
-          <Field label="Долг / переплата" value={deal.buyer_debt} suffix={currencySymbol} editing={editing} field="buyer_debt" dealId={deal.id} />
+          <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${currencySymbol} (авто)`} />
           <Field label="Платежи по сделкам" value={deal.buyer_multi_deal_payments} editing={editing} field="buyer_multi_deal_payments" dealId={deal.id} />
           <Field label="Отписанные СНН" value={deal.buyer_snt_written} editing={editing} field="buyer_snt_written" dealId={deal.id} />
         </CardContent>
@@ -362,10 +363,10 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               : deal.actual_tariff
           } suffix={`${currencySymbol} ${deal.invoice_amount && deal.actual_shipped_volume ? "(авто)" : ""}`} />
           <Field label="Объем предварит." value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
-          <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={currencySymbol} editing={editing} field="preliminary_amount" dealId={deal.id} />
+          <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн" editing={editing} field="actual_shipped_volume" dealId={deal.id} />
-          <Field label="Объем по СФ" value={deal.invoice_volume} suffix="тонн" editing={editing} field="invoice_volume" dealId={deal.id} />
-          <Field label="Сумма по СФ" value={deal.invoice_amount} suffix={currencySymbol} editing={editing} field="invoice_amount" dealId={deal.id} />
+          <Field label="Объем по СФ" value={deal.invoice_volume} suffix="тонн (авто)" />
+          <Field label="Сумма по СФ" value={deal.invoice_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Заметки логистики" value={deal.logistics_notes} editing={editing} field="logistics_notes" dealId={deal.id} />
           <Field label="Сумма сверхнорм." value={deal.surcharge_amount} suffix={currencySymbol} editing={editing} field="surcharge_amount" dealId={deal.id} />
           <Field label="Перевыст. на" value={deal.surcharge_reinvoiced_to} editing={editing} field="surcharge_reinvoiced_to" dealId={deal.id} />
@@ -386,6 +387,26 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* Payments */}
       <DealPayments dealId={deal.id} currencySymbol={currencySymbol} />
+
+      {/* Per-shipment trigger pricing */}
+      {deal.supplier_price_condition === "trigger" && (
+        <DealTriggerPrices
+          dealId={deal.id}
+          side="supplier"
+          currencySymbol={currencySymbol}
+          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
+          defaultDiscount={deal.supplier_discount ?? 0}
+        />
+      )}
+      {deal.buyer_price_condition === "trigger" && (
+        <DealTriggerPrices
+          dealId={deal.id}
+          side="buyer"
+          currencySymbol={currencySymbol}
+          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
+          defaultDiscount={deal.buyer_discount ?? 0}
+        />
+      )}
 
       {/* Documents */}
       <DocumentsSection dealId={deal.id} />
