@@ -348,32 +348,23 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </Card>
       )}
 
-      {/* Logistics */}
+      {/* Logistics — per doc Table 4: 5 fields + shipments by date */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-[14px]">Логистика</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
-          <EditableSelect label="Экспедитор" value={deal.forwarder_id} displayValue={deal.forwarder?.name ?? "—"} editing={editing} field="forwarder_id" dealId={deal.id} options={refs.forwarders} />
-          <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
-          <Field label="Тариф факт" value={
-            deal.invoice_amount && deal.actual_shipped_volume && deal.actual_shipped_volume > 0
-              ? Math.round((deal.invoice_amount / deal.actual_shipped_volume) * 100) / 100
-              : deal.actual_tariff
-          } suffix={`${currencySymbol} ${deal.invoice_amount && deal.actual_shipped_volume ? "(авто)" : ""}`} />
-          <Field label="Объем предварит." value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
-          <Field label="Сумма предварит." value={deal.preliminary_amount} suffix={`${currencySymbol} (авто)`} />
-          <Field label="Факт. объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
-          <Field label="Объем по СФ" value={deal.invoice_volume} suffix="тонн (авто)" />
-          <Field label="Сумма по СФ" value={deal.invoice_amount} suffix={`${currencySymbol} (авто)`} />
-          <Field label="Заметки логистики" value={deal.logistics_notes} editing={editing} field="logistics_notes" dealId={deal.id} />
-          <Field label="Сумма сверхнорм." value={deal.surcharge_amount} suffix={currencySymbol} editing={editing} field="surcharge_amount" dealId={deal.id} />
-          <Field label="Перевыст. на" value={deal.surcharge_reinvoiced_to} editing={editing} field="surcharge_reinvoiced_to" dealId={deal.id} />
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-2">
+            <EditableSelect label="Экспедитор" value={deal.forwarder_id} displayValue={deal.forwarder?.name ?? "—"} editing={editing} field="forwarder_id" dealId={deal.id} options={refs.forwarders} />
+            <Field label="Ст. отправления" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
+            <Field label="Ст. назначения" value={deal.buyer_destination_station?.name ?? "—"} />
+            <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
+            <Field label="Объем план" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
+          </div>
+          {/* Shipments by date (doc Tables 5+6) */}
+          <DealShipments dealId={deal.id} currencySymbol={currencySymbol} />
         </CardContent>
       </Card>
-
-      {/* Shipments by date (Table 5 from doc) */}
-      <DealShipments dealId={deal.id} currencySymbol={currencySymbol} />
 
       {/* Managers */}
       <Card>
