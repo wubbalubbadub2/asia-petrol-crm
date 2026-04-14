@@ -105,7 +105,7 @@ export function QuotationSummary() {
 
   function fmtNum(val: number | null): string {
     if (val == null) return "";
-    return val.toFixed(2);
+    return val.toFixed(3);
   }
 
   if (loading) return <p className="text-sm text-muted-foreground">Загрузка...</p>;

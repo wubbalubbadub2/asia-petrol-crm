@@ -244,19 +244,19 @@ export function PriceCalculator() {
             <div className="flex justify-between text-[12px] text-stone-600">
               <span>Котировка</span>
               <span className="font-mono tabular-nums font-medium">
-                {quotation != null ? `$${quotation.toFixed(2)}` : "нет данных"}
+                {quotation != null ? `$${quotation.toFixed(3)}` : "нет данных"}
               </span>
             </div>
             <div className="flex justify-between text-[12px] text-stone-600">
               <span>Скидка</span>
               <span className="font-mono tabular-nums">
-                − ${discount.toFixed(2)}
+                − ${discount.toFixed(3)}
               </span>
             </div>
             <div className="border-t border-amber-300 pt-1 flex justify-between text-[13px] font-medium text-amber-900">
               <span>Цена за тонну</span>
               <span className="font-mono tabular-nums">
-                {price != null ? `$${price.toFixed(2)}` : "—"}
+                {price != null ? `$${price.toFixed(3)}` : "—"}
               </span>
             </div>
           </div>

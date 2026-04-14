@@ -42,11 +42,11 @@ function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00
 function EditableCell({ value, onSave, disabled }: { value: number | null; onSave: (val: number | null) => void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
-  if (disabled) return <span className="font-mono text-[11px] tabular-nums text-stone-400">{value != null ? value.toFixed(2) : ""}</span>;
+  if (disabled) return <span className="font-mono text-[11px] tabular-nums text-stone-400">{value != null ? value.toFixed(3) : ""}</span>;
   if (!editing) return (
     <button onClick={() => { setLocalVal(value?.toString() ?? ""); setEditing(true); }}
       className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px]">
-      {value != null ? value.toFixed(2) : ""}
+      {value != null ? value.toFixed(3) : ""}
     </button>
   );
   return (
@@ -190,7 +190,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                 const avg = getAvg(col.key);
                 return (
                   <td key={col.key} className="border-r px-1 py-1 text-right font-mono tabular-nums text-amber-800">
-                    {avg != null ? avg.toFixed(2) : "—"}
+                    {avg != null ? avg.toFixed(3) : "—"}
                   </td>
                 );
               })}

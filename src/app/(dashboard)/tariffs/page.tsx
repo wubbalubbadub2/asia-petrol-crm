@@ -57,7 +57,7 @@ const MONTHS_RU_FULL = [
 
 function formatNum(val: number | null | undefined): string {
   if (val == null) return "—";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
 }
 
 function SelectField({

@@ -13,7 +13,7 @@ import { toast } from "sonner";
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const tabs = [{ key: "kg" as const, label: "KG (Экспорт)" }, { key: "kz" as const, label: "KZ (Внутренний)" }];
 
-function fmtNum(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: 4 }); }
+function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("ru-RU") : ""; }
 function ceil(v: number | null) { return v == null ? null : Math.ceil(v); }
 function calcAmt(v: number | null, t: number | null) { const r = ceil(v); return r == null || t == null ? null : r * t; }
@@ -156,7 +156,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{fmtNum(tariff)}</td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{v ? fmtNum(ceil(parseFloat(v))) : ""}</td>
-      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff ? fmtNum(calcAmt(parseFloat(v), tariff)) : ""}</td>
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff ? fmtNum(calcAmt(parseFloat(v), tariff), 2) : ""}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.destStation}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.depStation}</td>
       <td className="px-1 py-1">
@@ -400,7 +400,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
                               <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums text-stone-400">{fmtNum(ceil(r.shipment_volume))}</td>
-                              <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums font-medium">{fmtNum(calcAmt(r.shipment_volume, r.railway_tariff))}</td>
+                              <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums font-medium">{fmtNum(calcAmt(r.shipment_volume, r.railway_tariff), 2)}</td>
                               <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.destination_station?.name ?? ""}</td>
                               <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.departure_station?.name ?? ""}</td>
                               <td className="px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>

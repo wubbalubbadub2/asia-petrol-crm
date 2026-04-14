@@ -53,7 +53,7 @@ function FuelBadge({ name, color }: { name?: string; color?: string }) {
 
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
 }
 
 export default function DealsPage() {

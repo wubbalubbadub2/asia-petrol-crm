@@ -6,7 +6,7 @@ import { type Deal, updateDeal } from "@/lib/hooks/use-deals";
 
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
 }
 
 function FuelDot({ color }: { color?: string }) {

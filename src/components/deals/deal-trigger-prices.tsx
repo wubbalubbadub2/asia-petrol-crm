@@ -16,7 +16,7 @@ import {
 
 function formatNum(val: number | null | undefined): string {
   if (val == null) return "—";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
 }
 
 function formatDate(d: string | null): string {
@@ -215,7 +215,7 @@ export function DealTriggerPrices({
               </Button>
               <div className="w-24">
                 <Label className="text-[10px]">Котировка</Label>
-                <Input value={quotationAvg != null ? quotationAvg.toFixed(2) : ""} readOnly
+                <Input value={quotationAvg != null ? quotationAvg.toFixed(3) : ""} readOnly
                   className="h-7 text-[11px] font-mono bg-stone-50" />
               </div>
               <div className="w-20">
@@ -224,7 +224,7 @@ export function DealTriggerPrices({
               </div>
               <div className="w-24">
                 <Label className="text-[10px]">Цена</Label>
-                <Input value={calculatedPrice != null ? calculatedPrice.toFixed(2) : ""} readOnly
+                <Input value={calculatedPrice != null ? calculatedPrice.toFixed(3) : ""} readOnly
                   className="h-7 text-[11px] font-mono bg-stone-50 font-medium" />
               </div>
             </div>

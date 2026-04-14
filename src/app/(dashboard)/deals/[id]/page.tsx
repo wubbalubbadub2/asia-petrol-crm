@@ -59,7 +59,7 @@ function Field({ label, value, suffix, editing, field, dealId }: {
 
   const formatted = shown != null && shown !== ""
     ? (typeof shown === "number"
-      ? Number(shown).toLocaleString("ru-RU", { maximumFractionDigits: 2 })
+      ? Number(shown).toLocaleString("ru-RU", { maximumFractionDigits: 3 })
       : String(shown))
     : "—";
 
