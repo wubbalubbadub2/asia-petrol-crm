@@ -61,12 +61,23 @@ export function QuotationSummary() {
     load();
   }, [year]);
 
-  // Monthly average from pre-computed table
+  // Monthly average computed from daily quotations (not pre-computed cache)
   const getAvg = useCallback((ptId: string, month: number): number | null => {
-    return averages.find(
-      (a) => a.product_type_id === ptId && a.month === month
-    )?.avg_price ?? null;
-  }, [averages]);
+    // First try pre-computed cache
+    const cached = averages.find((a) => a.product_type_id === ptId && a.month === month)?.avg_price;
+    if (cached != null) return cached;
+    // Fallback: compute from daily quotations
+    const startStr = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endMonth = month === 12 ? 1 : month + 1;
+    const endYear = month === 12 ? year + 1 : year;
+    const endStr = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
+    const prices = dailyQuotes
+      .filter((d) => d.product_type_id === ptId && d.date >= startStr && d.date < endStr)
+      .map((d) => d.price ?? d.price_cif_nwe ?? d.price_fob_rotterdam ?? d.price_fob_med)
+      .filter((p): p is number => p != null);
+    if (prices.length === 0) return null;
+    return prices.reduce((a, b) => a + b, 0) / prices.length;
+  }, [averages, dailyQuotes, year]);
 
   // Fixed date price: quotation on the fixedDay of the month
   const getFixed = useCallback((ptId: string, month: number): number | null => {
@@ -96,11 +107,13 @@ export function QuotationSummary() {
   }, [dailyQuotes, year, triggerDays]);
 
   function getYearAvg(ptId: string): number | null {
-    const vals = averages
-      .filter((a) => a.product_type_id === ptId && a.avg_price != null)
-      .map((a) => a.avg_price!);
-    if (vals.length === 0) return null;
-    return vals.reduce((a, b) => a + b, 0) / vals.length;
+    const monthAvgs: number[] = [];
+    for (let m = 1; m <= 12; m++) {
+      const avg = getAvg(ptId, m);
+      if (avg != null) monthAvgs.push(avg);
+    }
+    if (monthAvgs.length === 0) return null;
+    return monthAvgs.reduce((a, b) => a + b, 0) / monthAvgs.length;
   }
 
   function fmtNum(val: number | null): string {
