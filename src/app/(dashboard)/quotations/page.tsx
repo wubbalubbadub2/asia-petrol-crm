@@ -104,6 +104,17 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
   const PRICE_COLS = getColumnsForProduct(productType.name);
 
   function getAvg(field: string): number | null {
+    // For formula columns, recompute per-day then average
+    const formulaCol = PRICE_COLS.find((c) => c.key === field && c.formula === "avg");
+    if (formulaCol) {
+      const srcKeys = formulaCol.avgOf ?? PRICE_COLS.filter((c) => c.editable).map((c) => c.key);
+      const dayAvgs: number[] = [];
+      for (const q of Object.values(quotMap)) {
+        const vals = srcKeys.map((k) => (q as Record<string, unknown>)[k] as number | null).filter((v): v is number => v != null);
+        if (vals.length >= 2) dayAvgs.push(vals.reduce((a, b) => a + b, 0) / vals.length);
+      }
+      return dayAvgs.length > 0 ? dayAvgs.reduce((a, b) => a + b, 0) / dayAvgs.length : null;
+    }
     const vals = Object.values(quotMap).map((q) => (q as Record<string, unknown>)[field] as number | null).filter((v): v is number => v != null);
     if (vals.length === 0) return null;
     return vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -171,15 +182,24 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                   <td className={`sticky left-0 z-10 border-r px-2 py-0.5 font-mono tabular-nums ${isWeekend(day) ? "bg-stone-50/50 text-stone-400" : "bg-white text-stone-700"}`}>
                     {formatDay(day)}
                   </td>
-                  {PRICE_COLS.map((col) => (
-                    <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.formula ? "bg-amber-50/30" : ""}`}>
-                      <EditableCell
-                        value={(q as Record<string, unknown> | undefined)?.[col.key] as number | null ?? null}
-                        disabled={!isWritable || !col.editable}
-                        onSave={(val) => handleCellSave(day, col.key, val)}
-                      />
-                    </td>
-                  ))}
+                  {PRICE_COLS.map((col) => {
+                    let cellVal = (q as Record<string, unknown> | undefined)?.[col.key] as number | null ?? null;
+                    // Recompute formula columns client-side to avoid stale DB values
+                    if (col.formula === "avg" && q) {
+                      const srcKeys = col.avgOf ?? PRICE_COLS.filter((c) => c.editable).map((c) => c.key);
+                      const vals = srcKeys.map((k) => (q as Record<string, unknown>)[k] as number | null).filter((v): v is number => v != null);
+                      cellVal = vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+                    }
+                    return (
+                      <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.formula ? "bg-amber-50/30" : ""}`}>
+                        <EditableCell
+                          value={cellVal}
+                          disabled={!isWritable || !col.editable}
+                          onSave={(val) => handleCellSave(day, col.key, val)}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
