@@ -21,6 +21,8 @@ export const FULL_PRICE_COLS: QuotationColumn[] = [
   { key: "price_fob_med", label: "FOB MED", editable: true },
   { key: "price_fob_rotterdam", label: "FOB Rotterdam", editable: true },
   { key: "price", label: "Среднее CIF NWE и FOB Rotterdam", editable: false, formula: "avg", avgOf: ["price_cif_nwe", "price_fob_rotterdam"] },
+  { key: "price_cif_nwe_standalone", label: "CIF NWE", editable: true },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 // Products with CIF NWE Cargo + FOB Rotterdam barge
@@ -28,25 +30,30 @@ export const CARGO_BARGE_COLS: QuotationColumn[] = [
   { key: "price_cif_nwe", label: "CIF NWE Cargo", editable: true },
   { key: "price_fob_rotterdam", label: "FOB Rotterdam barge", editable: true },
   { key: "price", label: "Среднее", editable: false, formula: "avg", avgOf: ["price_cif_nwe", "price_fob_rotterdam"] },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 // Products with single FOB basis
 export const SINGLE_FOB_COLS: QuotationColumn[] = [
   { key: "price_fob_rotterdam", label: "FOB Rotterdam", editable: true },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 export const SINGLE_FOB_NWE_COLS: QuotationColumn[] = [
   { key: "price_cif_nwe", label: "FOB NWE", editable: true },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 export const SINGLE_FOB_MED_COLS: QuotationColumn[] = [
   { key: "price_fob_med", label: "FOB MED Italy", editable: true },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 // CIF + FOB MED (2 cols + avg)
 export const CIF_FOB_MED_COLS: QuotationColumn[] = [
   { key: "price_cif_nwe", label: "CIF NWE/Basis ARA", editable: true },
   { key: "price_fob_med", label: "FOB MED Italy", editable: true },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 // BRENT: min, max, avg
@@ -54,6 +61,7 @@ export const BRENT_COLS: QuotationColumn[] = [
   { key: "price_fob_med", label: "мин", editable: true },
   { key: "price_fob_rotterdam", label: "макс", editable: true },
   { key: "price", label: "сред", editable: false, formula: "avg" },
+  { key: "comment", label: "Комментарии", editable: true },
 ];
 
 /**

@@ -38,6 +38,25 @@ function getDaysInMonth(year: number, month: number): string[] {
 function formatDay(dateStr: string): string { return String(new Date(dateStr + "T00:00:00").getDate()); }
 function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00:00:00").getDay(); return d === 0 || d === 6; }
 
+// --- Editable Text Cell (for comments) ---
+function EditableTextQCell({ value, onSave, disabled }: { value: string | null; onSave: (val: string | null) => void; disabled: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [localVal, setLocalVal] = useState("");
+  if (disabled) return <span className="text-[10px] text-stone-400 truncate max-w-[80px]">{value ?? ""}</span>;
+  if (!editing) return (
+    <button onClick={() => { setLocalVal(value ?? ""); setEditing(true); }}
+      className="w-full text-left text-[10px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] truncate max-w-[100px] text-stone-500">
+      {value ?? ""}
+    </button>
+  );
+  return (
+    <input autoFocus value={localVal} onChange={(e) => setLocalVal(e.target.value)}
+      onBlur={() => { setEditing(false); const v = localVal.trim() || null; if (v !== value) onSave(v as unknown as string | null); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
+      className="w-24 border border-amber-400 rounded px-1 py-0 text-[10px] bg-amber-50 focus:outline-none" />
+  );
+}
+
 // --- Editable Cell ---
 function EditableCell({ value, onSave, disabled }: { value: number | null; onSave: (val: number | null) => void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
@@ -104,10 +123,11 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
   const PRICE_COLS = getColumnsForProduct(productType.name);
 
   function getAvg(field: string): number | null {
+    if (field === "comment") return null;
     // For formula columns, recompute per-day then average
     const formulaCol = PRICE_COLS.find((c) => c.key === field && c.formula === "avg");
     if (formulaCol) {
-      const srcKeys = formulaCol.avgOf ?? PRICE_COLS.filter((c) => c.editable).map((c) => c.key);
+      const srcKeys = formulaCol.avgOf ?? PRICE_COLS.filter((c) => c.editable && c.key !== "comment").map((c) => c.key);
       const dayAvgs: number[] = [];
       for (const q of Object.values(quotMap)) {
         const vals = srcKeys.map((k) => (q as Record<string, unknown>)[k] as number | null).filter((v): v is number => v != null);
@@ -134,7 +154,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
       // Use specific avgOf fields if defined, otherwise average all editable
       const sourceCols = fc.avgOf
         ? PRICE_COLS.filter((c) => fc.avgOf!.includes(c.key))
-        : PRICE_COLS.filter((c) => c.editable);
+        : PRICE_COLS.filter((c) => c.editable && c.key !== "comment");
       const values = sourceCols.map((c) => {
         if (c.key === field) return val;
         return (q as Record<string, unknown> | undefined)?.[c.key] as number | null ?? null;
@@ -183,20 +203,25 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                     {formatDay(day)}
                   </td>
                   {PRICE_COLS.map((col) => {
+                    if (col.key === "comment") {
+                      const textVal = (q as Record<string, unknown> | undefined)?.[col.key] as string | null ?? null;
+                      return (
+                        <td key={col.key} className="border-r px-1 py-0.5">
+                          <EditableTextQCell value={textVal} disabled={!isWritable || !col.editable}
+                            onSave={(val) => upsert(productType.id, day, "comment", val as unknown as number | null)} />
+                        </td>
+                      );
+                    }
                     let cellVal = (q as Record<string, unknown> | undefined)?.[col.key] as number | null ?? null;
-                    // Recompute formula columns client-side to avoid stale DB values
                     if (col.formula === "avg" && q) {
-                      const srcKeys = col.avgOf ?? PRICE_COLS.filter((c) => c.editable).map((c) => c.key);
+                      const srcKeys = col.avgOf ?? PRICE_COLS.filter((c) => c.editable && c.key !== "comment").map((c) => c.key);
                       const vals = srcKeys.map((k) => (q as Record<string, unknown>)[k] as number | null).filter((v): v is number => v != null);
                       cellVal = vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
                     }
                     return (
                       <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.formula ? "bg-amber-50/30" : ""}`}>
-                        <EditableCell
-                          value={cellVal}
-                          disabled={!isWritable || !col.editable}
-                          onSave={(val) => handleCellSave(day, col.key, val)}
-                        />
+                        <EditableCell value={cellVal} disabled={!isWritable || !col.editable}
+                          onSave={(val) => handleCellSave(day, col.key, val)} />
                       </td>
                     );
                   })}
@@ -206,6 +231,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
             <tr className="bg-amber-50/50 border-t-2 border-amber-200 font-medium">
               <td className="sticky left-0 z-10 bg-amber-50/50 border-r px-2 py-1 text-amber-800">Среднее</td>
               {PRICE_COLS.map((col) => {
+                if (col.key === "comment") return <td key={col.key} className="border-r px-1 py-1"></td>;
                 const avg = getAvg(col.key);
                 return (
                   <td key={col.key} className="border-r px-1 py-1 text-right font-mono tabular-nums text-amber-800">
