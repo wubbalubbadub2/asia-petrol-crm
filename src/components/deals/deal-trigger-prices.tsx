@@ -33,6 +33,7 @@ export function DealTriggerPrices({
   defaultBasis = "shipment_date",
   defaultProductTypeId,
   defaultDiscount = 0,
+  priceCondition = "trigger",
 }: {
   dealId: string;
   side: "supplier" | "buyer";
@@ -40,6 +41,7 @@ export function DealTriggerPrices({
   defaultBasis?: TriggerBasis;
   defaultProductTypeId?: string | null;
   defaultDiscount?: number;
+  priceCondition?: string;
 }) {
   const { data, loading, insert, remove } = useDealTriggerPrices(dealId, side);
   const [adding, setAdding] = useState(false);
@@ -107,12 +109,13 @@ export function DealTriggerPrices({
   const totalAmount = data.reduce((s, r) => s + (r.amount ?? 0), 0);
 
   const sideLabel = side === "supplier" ? "Поставщик" : "Покупатель";
+  const modeLabel = priceCondition === "trigger" ? "Тригер" : priceCondition === "fixed" ? "Фикс цена" : priceCondition === "average_month" ? "Средний месяц" : "Цены";
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-[14px]">Тригер — {sideLabel}</CardTitle>
+          <CardTitle className="text-[14px]">{modeLabel} — {sideLabel}</CardTitle>
           <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="h-7 text-[11px]">
             <Plus className="h-3 w-3 mr-1" /> Добавить отгрузку
           </Button>
@@ -122,7 +125,7 @@ export function DealTriggerPrices({
         {loading ? (
           <p className="text-[11px] text-stone-400">Загрузка...</p>
         ) : data.length === 0 && !adding ? (
-          <p className="text-[11px] text-stone-400">Нет записей. Добавьте отгрузки для расчета тригерной цены.</p>
+          <p className="text-[11px] text-stone-400">Нет записей. Добавьте отгрузки с ценами по месяцам/датам.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[11px]">

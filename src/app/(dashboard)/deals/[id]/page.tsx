@@ -384,23 +384,25 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {/* Payments */}
       <DealPayments dealId={deal.id} currencySymbol={currencySymbol} />
 
-      {/* Per-shipment trigger pricing */}
-      {deal.supplier_price_condition === "trigger" && (
+      {/* Per-month/shipment pricing — for all formula modes (trigger, fixed, average_month) */}
+      {deal.supplier_price_condition && deal.supplier_price_condition !== "manual" && (
         <DealTriggerPrices
           dealId={deal.id}
           side="supplier"
           currencySymbol={currencySymbol}
           defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
           defaultDiscount={deal.supplier_discount ?? 0}
+          priceCondition={deal.supplier_price_condition}
         />
       )}
-      {deal.buyer_price_condition === "trigger" && (
+      {deal.buyer_price_condition && deal.buyer_price_condition !== "manual" && (
         <DealTriggerPrices
           dealId={deal.id}
           side="buyer"
           currencySymbol={currencySymbol}
           defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
           defaultDiscount={deal.buyer_discount ?? 0}
+          priceCondition={deal.buyer_price_condition}
         />
       )}
 
