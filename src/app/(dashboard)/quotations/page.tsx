@@ -190,7 +190,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
             <tr className="bg-stone-50 border-b">
               <th className="sticky left-0 z-10 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[36px]">День</th>
               {PRICE_COLS.map((col) => (
-                <th key={col.key} className="border-r px-2 py-1.5 text-center font-medium text-stone-600 min-w-[120px]">{col.label}</th>
+                <th key={col.key} className="border-r px-2 py-1.5 text-center font-medium text-stone-600 min-w-[90px]">{col.label}</th>
               ))}
             </tr>
           </thead>
