@@ -150,13 +150,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th colSpan={5} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">
               Сделка
             </th>
-            <th colSpan={9} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">
+            <th colSpan={8} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">
               Поставщик
             </th>
             <th colSpan={2} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">
               Группы компании
             </th>
-            <th colSpan={11} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">
+            <th colSpan={10} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">
               Покупатель
             </th>
             <th colSpan={9} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">
@@ -175,7 +175,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Договор</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Объем</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Сумма дог.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Цена</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Отгруж. {currency}</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Отгружено</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Оплата {currency}</th>
@@ -189,7 +188,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Ст. назнач.</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Объем</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Сумма дог.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Цена</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Заявлено</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Отгружено</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Отгруж. {currency}</th>
@@ -235,9 +233,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 <EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" onSaved={onDataChanged} />
               </td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_contracted_amount)}</td>
-              <td className="border-r px-1 py-0.5 bg-amber-50/10">
-                <EditableNumCell value={deal.supplier_price} dealId={deal.id} field="supplier_price" onSaved={onDataChanged} />
-              </td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_shipped_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.buyer_shipped_volume)}</td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10">
@@ -270,9 +265,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 <EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" onSaved={onDataChanged} />
               </td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_contracted_amount)}</td>
-              <td className="border-r px-1 py-0.5 bg-blue-50/10">
-                <EditableNumCell value={deal.buyer_price} dealId={deal.id} field="buyer_price" onSaved={onDataChanged} />
-              </td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10">
                 <EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" onSaved={onDataChanged} />
               </td>
