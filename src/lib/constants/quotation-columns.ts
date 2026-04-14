@@ -12,6 +12,7 @@ export type QuotationColumn = {
   label: string;     // Column header
   editable: boolean; // Can user edit this?
   formula?: "avg";   // If set, auto-calculated
+  avgOf?: string[];  // Specific fields to average (if not set, averages all editable)
 };
 
 // Full layout: products with multiple bases
@@ -19,14 +20,14 @@ export const FULL_PRICE_COLS: QuotationColumn[] = [
   { key: "price_cif_nwe", label: "CIF NWE/Basis ARA", editable: true },
   { key: "price_fob_med", label: "FOB MED", editable: true },
   { key: "price_fob_rotterdam", label: "FOB Rotterdam", editable: true },
-  { key: "price", label: "Среднее CIF NWE и FOB Rotterdam", editable: false, formula: "avg" },
+  { key: "price", label: "Среднее CIF NWE и FOB Rotterdam", editable: false, formula: "avg", avgOf: ["price_cif_nwe", "price_fob_rotterdam"] },
 ];
 
 // Products with CIF NWE Cargo + FOB Rotterdam barge
 export const CARGO_BARGE_COLS: QuotationColumn[] = [
   { key: "price_cif_nwe", label: "CIF NWE Cargo", editable: true },
   { key: "price_fob_rotterdam", label: "FOB Rotterdam barge", editable: true },
-  { key: "price", label: "Среднее", editable: false, formula: "avg" },
+  { key: "price", label: "Среднее", editable: false, formula: "avg", avgOf: ["price_cif_nwe", "price_fob_rotterdam"] },
 ];
 
 // Products with single FOB basis

@@ -125,12 +125,15 @@ function EditableTextCell({
 type PassportTableProps = {
   deals: Deal[];
   loading: boolean;
-  dealType: "KG" | "KZ";
+  dealType: "KG" | "KZ" | "ALL";
   onDataChanged: () => void;
 };
 
+function getCurrency(dealType: string) { return dealType === "KZ" ? "₸" : "$"; }
+
 export function PassportTable({ deals, loading, dealType, onDataChanged }: PassportTableProps) {
-  const currency = dealType === "KZ" ? "₸" : "$";
+  const isAll = dealType === "ALL";
+  const currency = isAll ? "" : getCurrency(dealType);
 
   if (loading) return <p className="text-sm text-muted-foreground py-4">Загрузка паспорта...</p>;
 
@@ -175,9 +178,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Договор</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Объем</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Сумма дог.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Отгруж. {currency}</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Отгруж.</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Отгружено</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Оплата {currency}</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-amber-50/30">Оплата</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Баланс</th>
             {/* Company groups */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[120px] bg-purple-50/30">Компания</th>
@@ -190,8 +193,8 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Сумма дог.</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Заявлено</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Отгружено</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Отгруж. {currency}</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Оплата {currency}</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Отгруж.</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[90px] bg-blue-50/30">Оплата</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Долг</th>
             {/* Logistics — per doc Table 1 columns 1-9 */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[100px]">Экспедитор</th>

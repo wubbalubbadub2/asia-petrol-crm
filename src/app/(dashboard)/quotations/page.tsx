@@ -118,19 +118,18 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     const formulaCols = PRICE_COLS.filter((c) => c.formula === "avg");
     if (formulaCols.length === 0) return;
 
-    // Get all editable numeric columns (not formula columns)
-    const editableCols = PRICE_COLS.filter((c) => c.editable);
-    if (editableCols.length < 2) return; // Need at least 2 values to average
-
     const q = quotMap[day];
-    const values = editableCols.map((c) => {
-      if (c.key === field) return val;
-      return (q as Record<string, unknown> | undefined)?.[c.key] as number | null ?? null;
-    }).filter((v): v is number => v != null);
-
-    if (values.length >= 2) {
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      for (const fc of formulaCols) {
+    for (const fc of formulaCols) {
+      // Use specific avgOf fields if defined, otherwise average all editable
+      const sourceCols = fc.avgOf
+        ? PRICE_COLS.filter((c) => fc.avgOf!.includes(c.key))
+        : PRICE_COLS.filter((c) => c.editable);
+      const values = sourceCols.map((c) => {
+        if (c.key === field) return val;
+        return (q as Record<string, unknown> | undefined)?.[c.key] as number | null ?? null;
+      }).filter((v): v is number => v != null);
+      if (values.length >= 2) {
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
         upsert(productType.id, day, fc.key, avg);
       }
     }
