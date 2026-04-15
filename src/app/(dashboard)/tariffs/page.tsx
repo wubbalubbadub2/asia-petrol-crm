@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -374,6 +374,7 @@ export default function TariffsPage() {
                 <TableHead className="text-right text-[11px]">Тариф</TableHead>
                 <TableHead className="text-[11px]">Завод</TableHead>
                 <TableHead className="text-right text-[11px]">Норм. суток</TableHead>
+                <TableHead className="w-[30px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -412,6 +413,16 @@ export default function TariffsPage() {
                   </TableCell>
                   <TableCell className="text-right font-mono text-[11px] tabular-nums text-stone-600">
                     {t.norm_days != null ? formatNum(t.norm_days) : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <button onClick={async () => {
+                      if (!confirm("Удалить тариф?")) return;
+                      const s = createClient();
+                      const { error } = await s.from("tariffs").delete().eq("id", t.id);
+                      if (error) toast.error(error.message); else { toast.success("Удалено"); loadTariffs(); }
+                    }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </TableCell>
                 </TableRow>
               ))}

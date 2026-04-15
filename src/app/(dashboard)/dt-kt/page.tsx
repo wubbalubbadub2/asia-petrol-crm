@@ -231,6 +231,7 @@ export default function DtKtPage() {
                 <TableHead className="text-right text-[11px]">Сверхнорм.</TableHead>
                 <TableHead className="text-right text-[11px]">ОГЭМ</TableHead>
                 <TableHead className="text-right text-[11px] font-semibold">Сальдо</TableHead>
+                <TableHead className="w-[30px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -258,6 +259,17 @@ export default function DtKtPage() {
                       <TableCell className="text-right font-mono text-[11px] tabular-nums text-orange-600">{fmt(rec.surcharge_preliminary)}</TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums">{fmt(rec.ogem)}</TableCell>
                       <TableCell className={`text-right font-mono text-[11px] tabular-nums font-semibold ${saldo < 0 ? "text-red-600" : "text-green-700"}`}>{fmt(saldo)}</TableCell>
+                      <TableCell>
+                        <button onClick={async () => {
+                          if (!confirm("Удалить запись ДТ-КТ?")) return;
+                          const s = createClient();
+                          await s.from("dt_kt_payments").delete().eq("dt_kt_id", rec.id);
+                          const { error } = await s.from("dt_kt_logistics").delete().eq("id", rec.id);
+                          if (error) toast.error(error.message); else { toast.success("Удалено"); load(); }
+                        }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </TableCell>
                     </TableRow>
                     {/* Expanded payments */}
                     {expandedPayments === rec.id && pays.length > 0 && (
