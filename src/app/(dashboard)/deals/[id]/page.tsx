@@ -353,7 +353,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
             <EditableSelect label="Экспедитор" value={deal.forwarder_id} displayValue={deal.forwarder?.name ?? "—"} editing={editing} field="forwarder_id" dealId={deal.id} options={refs.forwarders} />
-            <Field label="Группа компании" value={(deal as Record<string, unknown>).logistics_company_group_id ? "—" : "—"} />
+            <Field label="Группа компании" value={deal.logistics_company_group?.name ?? "—"} />
             <Field label="Объем плановый" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${currencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />

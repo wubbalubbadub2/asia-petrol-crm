@@ -77,6 +77,7 @@ export type Deal = {
   buyer_manager?: { full_name: string } | null;
   trader?: { full_name: string } | null;
   buyer_destination_station?: { name: string } | null;
+  logistics_company_group?: { name: string } | null;
   deal_company_groups?: { id: string; position: number; price: number | null; contract_ref: string | null; company_group: { name: string } | null }[];
 };
 
@@ -91,6 +92,7 @@ const DEAL_SELECT = `
   buyer_manager:profiles!buyer_manager_id(full_name),
   trader:profiles!trader_id(full_name),
   buyer_destination_station:stations!buyer_destination_station_id(name),
+  logistics_company_group:company_groups!logistics_company_group_id(name),
   deal_company_groups(id, position, price, contract_ref, company_group:company_groups(name))
 `;
 
