@@ -249,11 +249,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Supplier */}
+      {/* ===== SUPPLIER SECTION (fields + pricing + payments) ===== */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-[14px]">Поставщик</CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-[14px]">Поставщик</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Поставщик" value={deal.supplier_id} displayValue={deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"} editing={editing} field="supplier_id" dealId={deal.id} options={refs.suppliers} />
           <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
@@ -269,17 +267,23 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
           <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Цена" value={deal.supplier_price} suffix={currencySymbol} editing={editing} field="supplier_price" dealId={deal.id} />
-          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={`${currencySymbol} (реестр)`} />
+          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={`${currencySymbol} (из цен)`} />
           <Field label="Оплата" value={deal.supplier_payment} suffix={`${currencySymbol} (оплаты)`} />
           <Field label="Баланс" value={deal.supplier_balance} suffix={`${currencySymbol} (авто)`} />
         </CardContent>
       </Card>
+      {/* Supplier pricing by month */}
+      {deal.supplier_price_condition && deal.supplier_price_condition !== "manual" && (
+        <DealTriggerPrices dealId={deal.id} side="supplier" currencySymbol={currencySymbol}
+          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
+          defaultDiscount={deal.supplier_discount ?? 0} priceCondition={deal.supplier_price_condition} />
+      )}
+      {/* Supplier payments */}
+      <DealPayments dealId={deal.id} currencySymbol={currencySymbol} side="supplier" />
 
-      {/* Buyer */}
+      {/* ===== BUYER SECTION (fields + pricing + payments) ===== */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-[14px]">Покупатель</CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-[14px]">Покупатель</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Покупатель" value={deal.buyer_id} displayValue={deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"} editing={editing} field="buyer_id" dealId={deal.id} options={refs.buyers} />
           <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
@@ -298,49 +302,41 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
           <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн (авто)" />
           <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн (реестр)" />
-          <Field label="Дата отгрузки" value={deal.buyer_ship_date} editing={editing} field="buyer_ship_date" dealId={deal.id} />
-          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={`${currencySymbol} (реестр)`} />
+          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={`${currencySymbol} (из цен)`} />
           <Field label="Оплата" value={deal.buyer_payment} suffix={`${currencySymbol} (оплаты)`} />
           <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${currencySymbol} (авто)`} />
-          <Field label="Платежи по сделкам" value={deal.buyer_multi_deal_payments} editing={editing} field="buyer_multi_deal_payments" dealId={deal.id} />
-          <Field label="Отписанные СНН" value={deal.buyer_snt_written} editing={editing} field="buyer_snt_written" dealId={deal.id} />
         </CardContent>
       </Card>
+      {/* Buyer pricing by month */}
+      {deal.buyer_price_condition && deal.buyer_price_condition !== "manual" && (
+        <DealTriggerPrices dealId={deal.id} side="buyer" currencySymbol={currencySymbol}
+          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
+          defaultDiscount={deal.buyer_discount ?? 0} priceCondition={deal.buyer_price_condition} />
+      )}
+      {/* Buyer payments */}
+      <DealPayments dealId={deal.id} currencySymbol={currencySymbol} side="buyer" />
 
-      {/* Company Groups */}
-      {/* Company Groups — horizontal chain */}
+      {/* ===== COMPANY GROUPS ===== */}
       {deal.deal_company_groups && deal.deal_company_groups.length > 0 && (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[14px]">Цепочка компании</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-[14px]">Цепочка компании</CardTitle></CardHeader>
           <CardContent>
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Supplier */}
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center">
                 <p className="text-[10px] text-amber-600 uppercase font-medium">Поставщик</p>
                 <p className="text-[12px] font-medium text-stone-800">{deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"}</p>
               </div>
-
-              {deal.deal_company_groups
-                .sort((a, b) => a.position - b.position)
-                .map((cg) => (
+              {deal.deal_company_groups.sort((a, b) => a.position - b.position).map((cg) => (
                 <div key={cg.id} className="flex items-center gap-2">
                   <span className="text-stone-300 text-lg">→</span>
                   <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-center">
                     <p className="text-[10px] text-purple-600 uppercase font-medium">Группа {cg.position}</p>
                     <p className="text-[12px] font-medium text-stone-800">{cg.company_group?.name ?? "—"}</p>
-                    {cg.price != null && (
-                      <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
-                        {cg.price.toLocaleString("ru-RU")} {currencySymbol}
-                      </p>
-                    )}
+                    {cg.price != null && <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">{cg.price.toLocaleString("ru-RU")} {currencySymbol}</p>}
                     {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
                   </div>
                 </div>
               ))}
-
-              {/* Buyer */}
               <span className="text-stone-300 text-lg">→</span>
               <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center">
                 <p className="text-[10px] text-blue-600 uppercase font-medium">Покупатель</p>
@@ -351,60 +347,32 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </Card>
       )}
 
-      {/* Logistics — per doc Table 4: 5 fields + shipments by date */}
+      {/* ===== LOGISTICS ===== */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-[14px]">Логистика</CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-[14px]">Логистика</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
             <EditableSelect label="Экспедитор" value={deal.forwarder_id} displayValue={deal.forwarder?.name ?? "—"} editing={editing} field="forwarder_id" dealId={deal.id} options={refs.forwarders} />
-            <Field label="Ст. отправления" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
-            <EditableSelect label="Ст. назначения" value={deal.buyer_destination_station_id} displayValue={deal.buyer_destination_station?.name ?? "—"} editing={editing} field="buyer_destination_station_id" dealId={deal.id} options={refs.stations} />
-            <Field label="Тариф план" value={deal.planned_tariff} suffix={currencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
-            <Field label="Объем план" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
+            <Field label="Группа компании" value={(deal as Record<string, unknown>).logistics_company_group_id ? "—" : "—"} />
+            <Field label="Объем плановый" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
+            <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${currencySymbol} (авто)`} />
+            <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
+            <Field label="Сумма" value={deal.buyer_shipped_amount} suffix={`${currencySymbol} (реестр)`} />
+            <EditableSelect label="Менеджер" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
-          {/* Shipments by date (doc Tables 5+6) */}
           <DealShipments dealId={deal.id} currencySymbol={currencySymbol} />
         </CardContent>
       </Card>
 
-      {/* Managers */}
+      {/* ===== MANAGERS ===== */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-[14px]">Ответственные</CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-[14px]">Ответственные</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
           <EditableSelect label="Менеджер поставщика" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           <EditableSelect label="Менеджер покупателя" value={deal.buyer_manager_id} displayValue={deal.buyer_manager?.full_name ?? "—"} editing={editing} field="buyer_manager_id" dealId={deal.id} options={refs.managers} />
           <EditableSelect label="Трейдер" value={deal.trader_id} displayValue={deal.trader?.full_name ?? "—"} editing={editing} field="trader_id" dealId={deal.id} options={refs.managers} />
         </CardContent>
       </Card>
-
-      {/* Payments */}
-      <DealPayments dealId={deal.id} currencySymbol={currencySymbol} />
-
-      {/* Per-month/shipment pricing — for all formula modes (trigger, fixed, average_month) */}
-      {deal.supplier_price_condition && deal.supplier_price_condition !== "manual" && (
-        <DealTriggerPrices
-          dealId={deal.id}
-          side="supplier"
-          currencySymbol={currencySymbol}
-          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
-          defaultDiscount={deal.supplier_discount ?? 0}
-          priceCondition={deal.supplier_price_condition}
-        />
-      )}
-      {deal.buyer_price_condition && deal.buyer_price_condition !== "manual" && (
-        <DealTriggerPrices
-          dealId={deal.id}
-          side="buyer"
-          currencySymbol={currencySymbol}
-          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
-          defaultDiscount={deal.buyer_discount ?? 0}
-          priceCondition={deal.buyer_price_condition}
-        />
-      )}
 
       {/* Documents */}
       <DocumentsSection dealId={deal.id} />

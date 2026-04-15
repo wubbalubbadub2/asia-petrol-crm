@@ -21,7 +21,7 @@ function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
-export function DealPayments({ dealId, currencySymbol }: { dealId: string; currencySymbol: string }) {
+export function DealPayments({ dealId, currencySymbol, side }: { dealId: string; currencySymbol: string; side?: "supplier" | "buyer" }) {
   const supabaseRef = useRef(createClient());
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,10 +64,9 @@ export function DealPayments({ dealId, currencySymbol }: { dealId: string; curre
     await loadPayments();
   }
 
+  const filteredPayments = side ? payments.filter((p) => p.side === side) : payments;
   const supplierPayments = payments.filter((p) => p.side === "supplier");
   const buyerPayments = payments.filter((p) => p.side === "buyer");
-  const supplierTotal = supplierPayments.reduce((s, p) => s + p.amount, 0);
-  const buyerTotal = buyerPayments.reduce((s, p) => s + p.amount, 0);
 
   function PaymentList({ items, side, label }: { items: Payment[]; side: "supplier" | "buyer"; label: string }) {
     const total = items.reduce((s, p) => s + p.amount, 0);
@@ -103,16 +102,20 @@ export function DealPayments({ dealId, currencySymbol }: { dealId: string; curre
     );
   }
 
+  const sideLabel = side === "supplier" ? "Оплаты поставщику" : side === "buyer" ? "Оплаты от покупателя" : "Оплаты";
+
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-[14px]">Оплаты</CardTitle>
+        <CardTitle className="text-[14px]">{sideLabel}</CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
           <p className="text-[11px] text-stone-400">Загрузка...</p>
+        ) : side ? (
+          <PaymentList items={filteredPayments} side={side} label={sideLabel} />
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" />
             <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" />
           </div>

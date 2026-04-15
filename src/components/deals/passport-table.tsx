@@ -2,8 +2,10 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { type Deal, updateDeal } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
@@ -112,7 +114,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th colSpan={9} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">Поставщик</th>
             <th colSpan={2} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">Группы компании</th>
             <th colSpan={10} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">Покупатель</th>
-            <th colSpan={9} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Логистика</th>
+            <th colSpan={10} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Логистика</th>
           </tr>
           <tr className="bg-stone-50 border-b">
             <th className="sticky left-0 z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
@@ -154,6 +156,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Объем ЭСФ</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Сумма ЭСФ</th>
             <th className="px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">Менеджер</th>
+            <th className="px-1 py-1.5 w-[30px]"></th>
           </tr>
         </thead>
         <tbody>
@@ -221,6 +224,16 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.invoice_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.invoice_amount)}</td>
               <td className="px-2 py-1 text-stone-500">{deal.supplier_manager?.full_name ?? ""}</td>
+              <td className="px-1 py-1">
+                <button onClick={async () => {
+                  if (!confirm("Удалить сделку?")) return;
+                  const sb = createClient();
+                  const { error } = await sb.from("deals").delete().eq("id", deal.id);
+                  if (error) toast.error(error.message); else { toast.success("Удалено"); onDataChanged(); }
+                }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
