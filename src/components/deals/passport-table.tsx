@@ -215,7 +215,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.preliminary_tonnage)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.preliminary_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.actual_shipped_volume)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.buyer_shipped_amount)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.invoice_amount)}</td>
               <td className="px-2 py-1 text-stone-500">{deal.supplier_manager?.full_name ?? ""}</td>
               <td className="px-1 py-1">
                 <button onClick={async () => {

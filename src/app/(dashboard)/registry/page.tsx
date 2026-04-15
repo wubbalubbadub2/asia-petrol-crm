@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Upload, Truck, ChevronDown } from "lucide-react";
+import { Plus, Upload, Truck, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -381,6 +381,7 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">ст. назн.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">ст. отпр.</th>
                           <th className="px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
+                          <th className="px-1 py-1 w-[25px]"></th>
                         </tr></thead>
                         <tbody>
                           {g.records.map((r) => (
@@ -404,6 +405,14 @@ export default function RegistryPage() {
                               <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.destination_station?.name ?? ""}</td>
                               <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.departure_station?.name ?? ""}</td>
                               <td className="px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
+                              <td className="px-1 py-0.5">
+                                <button onClick={async () => {
+                                  if (!confirm("Удалить запись?")) return;
+                                  const s = createClient();
+                                  const { error } = await s.from("shipment_registry").delete().eq("id", r.id);
+                                  if (error) toast.error(error.message); else reload();
+                                }} className="rounded p-0.5 text-stone-300 hover:text-red-500 transition-colors"><Trash2 className="h-3 w-3" /></button>
+                              </td>
                             </tr>
                           ))}
                           {addingIn === g.key && (

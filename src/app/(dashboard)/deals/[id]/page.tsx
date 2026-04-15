@@ -357,7 +357,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Объем плановый" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${currencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
-            <Field label="Сумма" value={deal.buyer_shipped_amount} suffix={`${currencySymbol} (реестр)`} />
+            <Field label="Сумма" value={deal.invoice_amount} suffix={`${currencySymbol} (реестр)`} />
             <EditableSelect label="Менеджер" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={currencySymbol} />

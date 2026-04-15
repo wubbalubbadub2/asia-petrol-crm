@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Check, X, FileText, Upload, Link2, MessageSquare } from "lucide-react";
+import { Plus, Check, X, FileText, Upload, Link2, MessageSquare, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -418,6 +418,16 @@ export default function ApplicationsPage() {
                         <MessageSquare className="h-3 w-3" /> Чат
                       </button>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <button onClick={async () => {
+                      if (!confirm("Удалить заявку?")) return;
+                      const sb = createClient();
+                      const { error } = await sb.from("applications").delete().eq("id", app.id);
+                      if (error) toast.error(error.message); else { toast.success("Удалено"); reload(); }
+                    }} className="rounded p-1 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </TableCell>
                 </TableRow>
               ))}
