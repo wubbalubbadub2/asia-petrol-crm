@@ -114,7 +114,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th colSpan={9} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">Поставщик</th>
             <th colSpan={2} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">Группы компании</th>
             <th colSpan={10} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">Покупатель</th>
-            <th colSpan={10} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Логистика</th>
+            <th colSpan={8} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Логистика</th>
           </tr>
           <tr className="bg-stone-50 border-b">
             <th className="sticky left-0 z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
@@ -148,13 +148,11 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-blue-50/30">Долг</th>
             {/* Logistics: 9 cols */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">Экспедитор</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[50px]">Тариф пл.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[50px]">Объем пл.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Предв. сум.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[50px]">Тариф ф.</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">Группа комп.</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Объем план</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Предв. сумма</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Факт объем</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Объем ЭСФ</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Сумма ЭСФ</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Сумма</th>
             <th className="px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">Менеджер</th>
             <th className="px-1 py-1.5 w-[30px]"></th>
           </tr>
@@ -211,18 +209,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" onSaved={onDataChanged} /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_debt)}</td>
 
-              {/* Logistics: 9 cols */}
+              {/* Logistics */}
               <td className="border-r px-2 py-1 text-stone-600 truncate max-w-[80px]">{deal.forwarder?.name ?? ""}</td>
-              <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.planned_tariff} dealId={deal.id} field="planned_tariff" onSaved={onDataChanged} /></td>
+              <td className="border-r px-2 py-1 text-stone-500 text-[10px] truncate max-w-[80px]">{""}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.preliminary_tonnage)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.preliminary_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-400">
-                {deal.invoice_amount && deal.actual_shipped_volume && deal.actual_shipped_volume > 0
-                  ? formatNum(Math.round((deal.invoice_amount / deal.actual_shipped_volume) * 100) / 100) : ""}
-              </td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.actual_shipped_volume)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.invoice_volume)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.invoice_amount)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.buyer_shipped_amount)}</td>
               <td className="px-2 py-1 text-stone-500">{deal.supplier_manager?.full_name ?? ""}</td>
               <td className="px-1 py-1">
                 <button onClick={async () => {

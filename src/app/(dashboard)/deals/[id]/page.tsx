@@ -267,7 +267,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
           <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${currencySymbol} (авто)`} />
           <Field label="Цена" value={deal.supplier_price} suffix={currencySymbol} editing={editing} field="supplier_price" dealId={deal.id} />
-          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={`${currencySymbol} (из цен)`} />
+          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={currencySymbol} />
           <Field label="Оплата" value={deal.supplier_payment} suffix={`${currencySymbol} (оплаты)`} />
           <Field label="Баланс" value={deal.supplier_balance} suffix={`${currencySymbol} (авто)`} />
         </CardContent>
@@ -302,7 +302,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
           <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн (авто)" />
           <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн (реестр)" />
-          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={`${currencySymbol} (из цен)`} />
+          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={currencySymbol} />
           <Field label="Оплата" value={deal.buyer_payment} suffix={`${currencySymbol} (оплаты)`} />
           <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${currencySymbol} (авто)`} />
         </CardContent>
