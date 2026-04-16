@@ -12,20 +12,35 @@ import { Button } from "@/components/ui/button";
 type CompanyGroup = {
   id?: string;
   name: string;
+  full_name?: string;
+  short_name?: string;
   bin_iin?: string;
+  legal_address?: string;
   is_active?: boolean;
 };
 
 const columns: ColumnDef<CompanyGroup, unknown>[] = [
   {
-    accessorKey: "name",
-    header: "Наименование",
-    cell: ({ row }) => row.original.name ?? "—",
+    accessorKey: "full_name",
+    header: "Полное наименование",
+    cell: ({ row }) => row.original.full_name ?? row.original.name ?? "—",
+  },
+  {
+    accessorKey: "short_name",
+    header: "Краткое наименование",
+    cell: ({ row }) => row.original.short_name ?? "—",
   },
   {
     accessorKey: "bin_iin",
     header: "БИН / ИИН",
     cell: ({ row }) => row.original.bin_iin ?? "—",
+  },
+  {
+    accessorKey: "legal_address",
+    header: "Юр. адрес",
+    cell: ({ row }) => (
+      <span className="truncate max-w-[200px] block">{row.original.legal_address ?? "—"}</span>
+    ),
   },
   {
     accessorKey: "is_active",
@@ -48,7 +63,10 @@ type FormProps = {
 function CompanyGroupForm({ item, onSave, onClose }: FormProps) {
   const [form, setForm] = useState<Partial<CompanyGroup>>({
     name: item?.name ?? "",
+    full_name: item?.full_name ?? "",
+    short_name: item?.short_name ?? "",
     bin_iin: item?.bin_iin ?? "",
+    legal_address: item?.legal_address ?? "",
     is_active: item?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
@@ -65,7 +83,11 @@ function CompanyGroupForm({ item, onSave, onClose }: FormProps) {
     }
     setSaving(true);
     try {
-      await onSave({ ...form, ...(item?.id ? { id: item.id } : {}) });
+      await onSave({
+        ...form,
+        full_name: form.full_name || form.name,
+        ...(item?.id ? { id: item.id } : {}),
+      });
     } finally {
       setSaving(false);
     }
@@ -75,13 +97,33 @@ function CompanyGroupForm({ item, onSave, onClose }: FormProps) {
     <form onSubmit={handleSubmit} className="space-y-4 pt-2">
       <div className="space-y-1.5">
         <Label htmlFor="name">
-          Наименование <span className="text-destructive">*</span>
+          Наименование (системное) <span className="text-destructive">*</span>
         </Label>
         <Input
           id="name"
           value={form.name ?? ""}
           onChange={(e) => set("name", e.target.value)}
-          placeholder="Название группы компании"
+          placeholder="Fuel Supply Company"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="full_name">Полное наименование</Label>
+        <Input
+          id="full_name"
+          value={form.full_name ?? ""}
+          onChange={(e) => set("full_name", e.target.value)}
+          placeholder='ТОО "Fuel Supply Company"'
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="short_name">Краткое наименование</Label>
+        <Input
+          id="short_name"
+          value={form.short_name ?? ""}
+          onChange={(e) => set("short_name", e.target.value)}
+          placeholder="FSC"
         />
       </div>
 
@@ -93,6 +135,16 @@ function CompanyGroupForm({ item, onSave, onClose }: FormProps) {
           onChange={(e) => set("bin_iin", e.target.value)}
           placeholder="000000000000"
           maxLength={12}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="legal_address">Юридический адрес</Label>
+        <Input
+          id="legal_address"
+          value={form.legal_address ?? ""}
+          onChange={(e) => set("legal_address", e.target.value)}
+          placeholder="г. Алматы, ул. ..."
         />
       </div>
 
