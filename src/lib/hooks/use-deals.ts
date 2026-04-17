@@ -78,7 +78,7 @@ export type Deal = {
   trader?: { full_name: string } | null;
   buyer_destination_station?: { name: string } | null;
   logistics_company_group?: { name: string } | null;
-  deal_company_groups?: { id: string; position: number; price: number | null; contract_ref: string | null; company_group: { name: string } | null }[];
+  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; contract_ref: string | null; company_group: { name: string } | null }[];
 };
 
 const DEAL_SELECT = `
@@ -93,7 +93,7 @@ const DEAL_SELECT = `
   trader:profiles!trader_id(full_name),
   buyer_destination_station:stations!buyer_destination_station_id(name),
   logistics_company_group:company_groups!logistics_company_group_id(name),
-  deal_company_groups(id, position, price, contract_ref, company_group:company_groups(name))
+  deal_company_groups(id, position, company_group_id, price, contract_ref, company_group:company_groups(name))
 `;
 
 export function useDeals(filters?: {
