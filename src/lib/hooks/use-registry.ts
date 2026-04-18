@@ -31,12 +31,13 @@ export type ShipmentRecord = {
   loading_volume: number | null;
   company_group_id: string | null;
   additional_month: string | null;
+  currency: string | null;
   created_at: string;
   // Joined
   destination_station?: { name: string } | null;
   departure_station?: { name: string } | null;
   fuel_type?: { name: string; color: string } | null;
-  deal?: { deal_code: string } | null;
+  deal?: { deal_code: string; currency: string | null } | null;
   factory?: { name: string } | null;
   forwarder?: { name: string } | null;
   company_group?: { name: string } | null;
@@ -49,7 +50,7 @@ const REG_SELECT = `
   destination_station:stations!destination_station_id(name),
   departure_station:stations!departure_station_id(name),
   fuel_type:fuel_types(name, color),
-  deal:deals(deal_code),
+  deal:deals(deal_code, currency),
   factory:factories(name),
   forwarder:forwarders(name),
   company_group:company_groups(name),

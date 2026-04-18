@@ -1,22 +1,34 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Plus, Upload, Truck, ChevronDown, Trash2 } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useRegistry, createRegistryEntry, updateRegistryEntry, type ShipmentRecord } from "@/lib/hooks/use-registry";
+import { useRegistry, createRegistryEntry, updateRegistryEntry, bulkInsertRegistry, type ShipmentRecord } from "@/lib/hooks/use-registry";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+const CURRENCIES: { value: string; label: string }[] = [
+  { value: "USD", label: "USD $" },
+  { value: "KZT", label: "KZT ₸" },
+  { value: "KGS", label: "KGS сом" },
+  { value: "RUB", label: "RUB ₽" },
+];
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", KZT: "₸", KGS: "сом", RUB: "₽" };
 const tabs = [{ key: "kg" as const, label: "KG (Экспорт)" }, { key: "kz" as const, label: "KZ (Внутренний)" }];
 
 function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("ru-RU") : ""; }
 function ceil(v: number | null) { return v == null ? null : Math.ceil(v); }
 function calcAmt(v: number | null, t: number | null) { const r = ceil(v); return r == null || t == null ? null : r * t; }
+function currencyFor(r: ShipmentRecord, tab: "kg" | "kz"): string {
+  const cur = r.currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT");
+  return CURRENCY_SYMBOLS[cur] ?? cur;
+}
 
 function MonthSelect({ value, onChange, className = "" }: { value: string; onChange: (v: string) => void; className?: string }) {
   return (
@@ -56,15 +68,102 @@ function EM({ value, recId, field, onSaved }: { value: string | null | undefined
     </select>
   );
 }
+// Editable reference-select cell: shows label text by default, turns into <select> on click.
+function ES({ value, displayLabel, recId, field, options, onSaved, className = "" }: {
+  value: string | null | undefined; displayLabel: string; recId: string; field: string;
+  options: { value: string; label: string }[]; onSaved: () => void; className?: string;
+}) {
+  const [ed, setEd] = useState(false);
+  if (!ed) return (
+    <button
+      onClick={() => setEd(true)}
+      className={`w-full text-left text-[10px] hover:bg-amber-50 rounded px-1 py-0.5 cursor-pointer min-h-[20px] truncate ${className}`}
+    >
+      {displayLabel || "—"}
+    </button>
+  );
+  return (
+    <select
+      autoFocus
+      defaultValue={value ?? ""}
+      onBlur={() => setEd(false)}
+      onChange={(e) => {
+        const nv = e.target.value || null;
+        setEd(false);
+        updateRegistryEntry(recId, { [field]: nv }).then(onSaved).catch(() => {});
+      }}
+      className="w-full h-6 text-[10px] rounded border border-amber-300 bg-amber-50/50 px-0.5 cursor-pointer focus:outline-none"
+    >
+      <option value="">—</option>
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
 
 // --- Group by deal ---
-type RGroup = { key: string; dealId: string | null; dealCode: string; month: string; fuelType: string; fuelColor: string; factory: string; supplier: string; buyer: string; forwarder: string; companyGroup: string; destStation: string; depStation: string; tariff: number | null; records: ShipmentRecord[]; totalVol: number; totalAmt: number };
+type RGroup = {
+  key: string;
+  dealId: string | null;
+  dealCode: string;
+  month: string;
+  fuelType: string;
+  fuelColor: string;
+  factory: string;
+  supplier: string;
+  buyer: string;
+  forwarder: string;
+  companyGroup: string;
+  destStation: string;
+  depStation: string;
+  tariff: number | null;
+  records: ShipmentRecord[];
+  totalVol: number;
+  totalAmt: number;
+  // Raw IDs kept for bulk-add pre-fill
+  ids: {
+    shipmentMonth: string | null;
+    fuelTypeId: string | null;
+    factoryId: string | null;
+    supplierId: string | null;
+    buyerId: string | null;
+    forwarderId: string | null;
+    companyGroupId: string | null;
+    destinationStationId: string | null;
+    departureStationId: string | null;
+    currency: string | null;
+  };
+};
 
 function groupRecs(records: ShipmentRecord[]): RGroup[] {
   const m = new Map<string, RGroup>();
   for (const r of records) {
     const k = r.deal_id ?? `o-${r.id}`;
-    if (!m.has(k)) m.set(k, { key: k, dealId: r.deal_id, dealCode: r.deal?.deal_code ?? "—", month: r.month ?? "", fuelType: r.fuel_type?.name ?? "", fuelColor: r.fuel_type?.color ?? "#6B7280", factory: r.factory?.name ?? "", supplier: r.supplier?.short_name ?? r.supplier?.full_name ?? "", buyer: r.buyer?.short_name ?? r.buyer?.full_name ?? "", forwarder: r.forwarder?.name ?? "", companyGroup: r.company_group?.name ?? "", destStation: r.destination_station?.name ?? "", depStation: r.departure_station?.name ?? "", tariff: r.railway_tariff, records: [], totalVol: 0, totalAmt: 0 });
+    if (!m.has(k)) m.set(k, {
+      key: k, dealId: r.deal_id, dealCode: r.deal?.deal_code ?? "—",
+      month: r.month ?? "",
+      fuelType: r.fuel_type?.name ?? "", fuelColor: r.fuel_type?.color ?? "#6B7280",
+      factory: r.factory?.name ?? "",
+      supplier: r.supplier?.short_name ?? r.supplier?.full_name ?? "",
+      buyer: r.buyer?.short_name ?? r.buyer?.full_name ?? "",
+      forwarder: r.forwarder?.name ?? "",
+      companyGroup: r.company_group?.name ?? "",
+      destStation: r.destination_station?.name ?? "",
+      depStation: r.departure_station?.name ?? "",
+      tariff: r.railway_tariff,
+      records: [], totalVol: 0, totalAmt: 0,
+      ids: {
+        shipmentMonth: r.shipment_month,
+        fuelTypeId: r.fuel_type_id,
+        factoryId: r.factory_id,
+        supplierId: r.supplier_id,
+        buyerId: r.buyer_id,
+        forwarderId: r.forwarder_id,
+        companyGroupId: r.company_group_id,
+        destinationStationId: r.destination_station_id,
+        departureStationId: r.departure_station_id,
+        currency: r.currency ?? r.deal?.currency ?? null,
+      },
+    });
     const g = m.get(k)!; g.records.push(r); g.totalVol += r.shipment_volume ?? 0; g.totalAmt += calcAmt(r.shipment_volume, r.railway_tariff) ?? 0;
   }
   return Array.from(m.values());
@@ -79,6 +178,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   const [w, setW] = useState(""); const [v, setV] = useState(""); const [lv, setLv] = useState("");
   const [dt, setDt] = useState(""); const [sm, setSm] = useState(""); const [sf, setSf] = useState("");
   const [tariffVal, setTariffVal] = useState<number | null>(group.tariff);
+  const [curOverride, setCurOverride] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
   // Fetch deal data to get all fields
@@ -127,8 +227,9 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       railway_tariff: tariff, company_group_id: deal?.logistics_company_group_id || firstRec?.company_group_id || null,
       wagon_number: w, shipment_volume: parseFloat(v),
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
+      currency: curOverride || null,
     });
-    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); onDone();
+    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); onDone();
   }
 
   // Show deal info in the row (from fetched deal or group)
@@ -157,6 +258,12 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{fmtNum(tariff)}</td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{v ? fmtNum(ceil(parseFloat(v))) : ""}</td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff ? fmtNum(calcAmt(parseFloat(v), tariff), 2) : ""}</td>
+      <td className="border-r px-1 py-1">
+        <select value={curOverride} onChange={(e) => setCurOverride(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-0.5 bg-green-50 cursor-pointer focus:outline-none">
+          <option value="">сделка</option>
+          {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+      </td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.destStation}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.depStation}</td>
       <td className="px-1 py-1">
@@ -172,6 +279,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 
 // --- Types ---
 type Ref = { id: string; name: string };
+type DRef2 = { id: string; short_name: string | null; full_name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
 type DRef = { id: string; deal_code: string; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
 
@@ -313,12 +421,49 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
 export default function RegistryPage() {
   const [tab, setTab] = useState<"kg" | "kz">("kg");
   const { data: records, loading, reload } = useRegistry(tab === "kg" ? "KG" : "KZ");
-  const cur = tab === "kg" ? "$" : "₸";
   const [showAdd, setShowAdd] = useState(false);
+  const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addingIn, setAddingIn] = useState<string | null>(null); // which group is adding
   const groups = groupRecs(records);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
+
+  // Page-level reference data (loaded once, shared with inline ES cells)
+  const [refs, setRefs] = useState<{
+    factories: Ref[]; suppliers: DRef2[]; buyers: DRef2[]; companyGroups: Ref[];
+    forwarders: Ref[]; fuelTypes: Ref[]; stations: Ref[];
+  }>({ factories: [], suppliers: [], buyers: [], companyGroups: [], forwarders: [], fuelTypes: [], stations: [] });
+
+  useEffect(() => {
+    const sb = createClient();
+    Promise.all([
+      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
+      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
+      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
+      sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
+      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
+      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
+      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([fac, sup, buy, cg, fw, ft, st]) => {
+      setRefs({
+        factories: (fac.data ?? []) as Ref[],
+        suppliers: (sup.data ?? []) as DRef2[],
+        buyers: (buy.data ?? []) as DRef2[],
+        companyGroups: (cg.data ?? []) as Ref[],
+        forwarders: (fw.data ?? []) as Ref[],
+        fuelTypes: (ft.data ?? []) as Ref[],
+        stations: (st.data ?? []) as Ref[],
+      });
+    });
+  }, []);
+
+  const factoryOpts = useMemo(() => refs.factories.map((f) => ({ value: f.id, label: f.name })), [refs.factories]);
+  const supplierOpts = useMemo(() => refs.suppliers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name })), [refs.suppliers]);
+  const buyerOpts = useMemo(() => refs.buyers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name })), [refs.buyers]);
+  const cgOpts = useMemo(() => refs.companyGroups.map((c) => ({ value: c.id, label: c.name })), [refs.companyGroups]);
+  const fwOpts = useMemo(() => refs.forwarders.map((c) => ({ value: c.id, label: c.name })), [refs.forwarders]);
+  const ftOpts = useMemo(() => refs.fuelTypes.map((c) => ({ value: c.id, label: c.name })), [refs.fuelTypes]);
+  const stOpts = useMemo(() => refs.stations.map((c) => ({ value: c.id, label: c.name })), [refs.stations]);
 
   return (
     <div className="space-y-4">
@@ -354,7 +499,11 @@ export default function RegistryPage() {
                   <span className="ml-auto flex items-center gap-3 shrink-0">
                     <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">{g.records.length} шт</span>
                     <span className="font-mono text-[11px] tabular-nums font-medium">{fmtNum(g.totalVol)} т</span>
-                    <span className="font-mono text-[11px] tabular-nums text-stone-500">{fmtNum(g.totalAmt)} {cur}</span>
+                    {(() => {
+                      const cs = new Set(g.records.map((r) => r.currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT")));
+                      const gcur = cs.size === 1 ? CURRENCY_SYMBOLS[[...cs][0]] ?? [...cs][0] : "смеш.";
+                      return <span className="font-mono text-[11px] tabular-nums text-stone-500">{fmtNum(g.totalAmt)} {gcur}</span>;
+                    })()}
                   </span>
                 </button>
                 {open && (
@@ -365,21 +514,22 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[60px]">№ сделки</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">мес. доп</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[75px]">мес. отгр.</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[60px]">ГСМ</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[50px]">завод</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">поставщик</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">ГСМ</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">завод</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">поставщик</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Налив</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">группа комп.</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">покупатель</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">экспедитор</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">группа комп.</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">покупатель</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">экспедитор</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Тонн</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[45px]">округл</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма {cur}</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">ст. назн.</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">ст. отпр.</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">валюта</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. назн.</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. отпр.</th>
                           <th className="px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
                           <th className="px-1 py-1 w-[25px]"></th>
                         </tr></thead>
@@ -389,21 +539,31 @@ export default function RegistryPage() {
                               <td className="border-r px-2 py-0.5 font-mono text-amber-700 text-[10px]">{r.deal?.deal_code ?? ""}</td>
                               <td className="border-r px-1 py-0.5"><EM value={r.additional_month} recId={r.id} field="additional_month" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EM value={r.shipment_month} recId={r.id} field="shipment_month" onSaved={reload} /></td>
-                              <td className="border-r px-2 py-0.5 text-[10px]">{r.fuel_type?.name ?? ""}</td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.factory?.name ?? ""}</td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500 truncate max-w-[100px]">{r.supplier?.short_name ?? r.supplier?.full_name ?? ""}</td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.fuel_type_id} displayLabel={r.fuel_type?.name ?? ""} recId={r.id} field="fuel_type_id" options={ftOpts} onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={r.factory?.name ?? ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.supplier_id} displayLabel={r.supplier?.short_name ?? r.supplier?.full_name ?? ""} recId={r.id} field="supplier_id" options={supplierOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.company_group?.name ?? ""}</td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500 truncate max-w-[100px]">{r.buyer?.short_name ?? r.buyer?.full_name ?? ""}</td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.forwarder?.name ?? ""}</td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={r.company_group?.name ?? ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={r.buyer?.short_name ?? r.buyer?.full_name ?? ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.forwarder_id} displayLabel={r.forwarder?.name ?? ""} recId={r.id} field="forwarder_id" options={fwOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.wagon_number} recId={r.id} field="wagon_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
                               <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums text-stone-400">{fmtNum(ceil(r.shipment_volume))}</td>
-                              <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums font-medium">{fmtNum(calcAmt(r.shipment_volume, r.railway_tariff), 2)}</td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.destination_station?.name ?? ""}</td>
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{r.departure_station?.name ?? ""}</td>
+                              <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums font-medium">{fmtNum(calcAmt(r.shipment_volume, r.railway_tariff), 2)} {currencyFor(r, tab)}</td>
+                              <td className="border-r px-1 py-0.5">
+                                <ES
+                                  value={r.currency}
+                                  displayLabel={r.currency ?? `${r.deal?.currency ?? ""} (сделка)`}
+                                  recId={r.id}
+                                  field="currency"
+                                  options={CURRENCIES}
+                                  onSaved={reload}
+                                />
+                              </td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.destination_station_id} displayLabel={r.destination_station?.name ?? ""} recId={r.id} field="destination_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.departure_station_id} displayLabel={r.departure_station?.name ?? ""} recId={r.id} field="departure_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="px-1 py-0.5">
                                 <button onClick={async () => {
@@ -421,11 +581,14 @@ export default function RegistryPage() {
                         </tbody>
                       </table>
                     </div>
-                    {/* Add row button below table */}
+                    {/* Add row buttons below table */}
                     {addingIn !== g.key && (
-                      <div className="border-t border-stone-100 px-3 py-1.5">
+                      <div className="border-t border-stone-100 px-3 py-1.5 flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => setAddingIn(g.key)} className="h-6 text-[10px] text-stone-500">
                           <Plus className="h-3 w-3 mr-1" />Добавить отгрузку
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setBulkIn(g)} className="h-6 text-[10px] text-stone-500">
+                          <ClipboardPaste className="h-3 w-3 mr-1" />Массово
                         </Button>
                       </div>
                     )}
@@ -437,6 +600,29 @@ export default function RegistryPage() {
         </div>
       }
       <AddDialog open={showAdd} onClose={() => setShowAdd(false)} regType={tab === "kg" ? "KG" : "KZ"} onDone={reload} />
+
+      <BulkAddDialog
+        open={bulkIn != null}
+        onClose={() => setBulkIn(null)}
+        regType={tab === "kg" ? "KG" : "KZ"}
+        context={bulkIn ? {
+          dealId: bulkIn.dealId,
+          dealCode: bulkIn.dealCode,
+          month: bulkIn.month || null,
+          shipmentMonth: bulkIn.ids.shipmentMonth,
+          fuelTypeId: bulkIn.ids.fuelTypeId,
+          factoryId: bulkIn.ids.factoryId,
+          supplierId: bulkIn.ids.supplierId,
+          buyerId: bulkIn.ids.buyerId,
+          forwarderId: bulkIn.ids.forwarderId,
+          companyGroupId: bulkIn.ids.companyGroupId,
+          destinationStationId: bulkIn.ids.destinationStationId,
+          departureStationId: bulkIn.ids.departureStationId,
+          railwayTariff: bulkIn.tariff,
+          currency: bulkIn.ids.currency,
+        } : null}
+        onDone={reload}
+      />
     </div>
   );
 }

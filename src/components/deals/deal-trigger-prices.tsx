@@ -33,6 +33,7 @@ export function DealTriggerPrices({
   defaultBasis = "shipment_date",
   defaultProductTypeId,
   defaultDiscount = 0,
+  defaultQuotation = null,
   priceCondition = "trigger",
 }: {
   dealId: string;
@@ -41,8 +42,10 @@ export function DealTriggerPrices({
   defaultBasis?: TriggerBasis;
   defaultProductTypeId?: string | null;
   defaultDiscount?: number;
+  defaultQuotation?: number | null;
   priceCondition?: string;
 }) {
+  const isTrigger = priceCondition === "trigger";
   const { data, loading, insert, remove } = useDealTriggerPrices(dealId, side);
   const [adding, setAdding] = useState(false);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
@@ -64,6 +67,16 @@ export function DealTriggerPrices({
     sbRef.current.from("quotation_product_types").select("id, name").order("name")
       .then(({ data }) => setProductTypes((data ?? []) as ProductType[]));
   }, []);
+
+  // Pre-fill the quotation from the deal when opening the form in non-trigger mode.
+  // In trigger mode the value is fetched via the "Получить" button.
+  useEffect(() => {
+    if (adding && !isTrigger && quotationAvg == null && defaultQuotation != null) {
+      setQuotationAvg(defaultQuotation);
+    }
+    // Intentional: only react when `adding` flips open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adding]);
 
   // Auto-fetch quotation when date + product type are set
   async function fetchQuotation() {
@@ -204,22 +217,39 @@ export function DealTriggerPrices({
             </div>
 
             <div className="flex gap-2 items-end flex-wrap">
-              <div className="w-48">
-                <Label className="text-[10px]">Продукт котировки</Label>
-                <select value={productTypeId} onChange={(e) => setProductTypeId(e.target.value)}
-                  className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[11px] focus:border-amber-400 focus:outline-none">
-                  <option value="">Выберите...</option>
-                  {productTypes.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
-                </select>
-              </div>
-              <Button size="sm" variant="outline" onClick={fetchQuotation} disabled={fetching} className="h-7 text-[10px]">
-                <RefreshCw className={`h-3 w-3 mr-1 ${fetching ? "animate-spin" : ""}`} />
-                Получить
-              </Button>
-              <div className="w-24">
-                <Label className="text-[10px]">Котировка</Label>
-                <Input value={quotationAvg != null ? quotationAvg.toFixed(3) : ""} readOnly
-                  className="h-7 text-[11px] font-mono bg-stone-50" />
+              {isTrigger && (
+                <>
+                  <div className="w-48">
+                    <Label className="text-[10px]">Продукт котировки</Label>
+                    <select value={productTypeId} onChange={(e) => setProductTypeId(e.target.value)}
+                      className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[11px] focus:border-amber-400 focus:outline-none">
+                      <option value="">Выберите...</option>
+                      {productTypes.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+                    </select>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={fetchQuotation} disabled={fetching} className="h-7 text-[10px]">
+                    <RefreshCw className={`h-3 w-3 mr-1 ${fetching ? "animate-spin" : ""}`} />
+                    Получить
+                  </Button>
+                </>
+              )}
+              <div className="w-28">
+                <Label className="text-[10px]">
+                  {isTrigger ? "Котировка (средняя)" : priceCondition === "fixed" ? "Цена фикс" : "Средний месяц"}
+                </Label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={quotationAvg != null ? String(quotationAvg) : ""}
+                  readOnly={isTrigger}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    if (v === "") { setQuotationAvg(null); return; }
+                    const n = parseFloat(v.replace(",", "."));
+                    setQuotationAvg(Number.isFinite(n) ? n : null);
+                  }}
+                  className={`h-7 text-[11px] font-mono ${isTrigger ? "bg-stone-50" : ""}`}
+                />
               </div>
               <div className="w-20">
                 <Label className="text-[10px]">Скидка</Label>

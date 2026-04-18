@@ -308,7 +308,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {deal.supplier_price_condition && deal.supplier_price_condition !== "manual" && (
         <DealTriggerPrices dealId={deal.id} side="supplier" currencySymbol={currencySymbol}
           defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
-          defaultDiscount={deal.supplier_discount ?? 0} priceCondition={deal.supplier_price_condition} />
+          defaultDiscount={deal.supplier_discount ?? 0}
+          defaultQuotation={deal.supplier_quotation ?? null}
+          priceCondition={deal.supplier_price_condition} />
       )}
       {/* Supplier payments */}
       <DealPayments dealId={deal.id} currencySymbol={currencySymbol} side="supplier" />
@@ -346,7 +348,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {deal.buyer_price_condition && deal.buyer_price_condition !== "manual" && (
         <DealTriggerPrices dealId={deal.id} side="buyer" currencySymbol={currencySymbol}
           defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
-          defaultDiscount={deal.buyer_discount ?? 0} priceCondition={deal.buyer_price_condition} />
+          defaultDiscount={deal.buyer_discount ?? 0}
+          defaultQuotation={deal.buyer_quotation ?? null}
+          priceCondition={deal.buyer_price_condition} />
       )}
       {/* Buyer payments */}
       <DealPayments dealId={deal.id} currencySymbol={currencySymbol} side="buyer" />
