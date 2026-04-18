@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# supabase CLI build artefacts
+supabase/.temp/
+supabase/.branches/
