@@ -12,6 +12,10 @@ import { createClient } from "@/lib/supabase/client";
 import { createDeal } from "@/lib/hooks/use-deals";
 import { MONTHS_RU, getQuarterFromMonth } from "@/lib/constants/months-ru";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, PRICE_CONDITIONS } from "@/lib/constants/deal-types";
+import type { Enums, TablesInsert } from "@/lib/types/database";
+
+type PriceCondition = Enums<"price_condition">;
+type DealType = Enums<"deal_type">;
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
@@ -87,7 +91,7 @@ export default function NewDealPage() {
   const [supplierContract, setSupplierContract] = useState("");
   const [supplierVolume, setSupplierVolume] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
-  const [supplierPriceCondition, setSupplierPriceCondition] = useState("average_month");
+  const [supplierPriceCondition, setSupplierPriceCondition] = useState<PriceCondition>("average_month");
   const [supplierDeliveryBasis, setSupplierDeliveryBasis] = useState("");
   const [supplierFixDate, setSupplierFixDate] = useState("");
   const [supplierTriggerStart, setSupplierTriggerStart] = useState("");
@@ -98,7 +102,7 @@ export default function NewDealPage() {
   const [buyerContract, setBuyerContract] = useState("");
   const [buyerVolume, setBuyerVolume] = useState("");
   const [buyerPrice, setBuyerPrice] = useState("");
-  const [buyerPriceCondition, setBuyerPriceCondition] = useState("average_month");
+  const [buyerPriceCondition, setBuyerPriceCondition] = useState<PriceCondition>("average_month");
   const [buyerDeliveryBasis, setBuyerDeliveryBasis] = useState("");
   const [buyerStationId, setBuyerStationId] = useState("");
   const [buyerFixDate, setBuyerFixDate] = useState("");
@@ -448,7 +452,7 @@ export default function NewDealPage() {
             <SelectField
               label="Условие фиксации"
               value={supplierPriceCondition}
-              onChange={(v) => { setSupplierPriceCondition(v); setSupplierPrice(""); markChanged(); }}
+              onChange={(v) => { setSupplierPriceCondition(v as PriceCondition); setSupplierPrice(""); markChanged(); }}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
             {supplierPriceCondition !== "manual" && (
@@ -530,7 +534,7 @@ export default function NewDealPage() {
             <SelectField
               label="Условие фиксации"
               value={buyerPriceCondition}
-              onChange={(v) => { setBuyerPriceCondition(v); setBuyerPrice(""); markChanged(); }}
+              onChange={(v) => { setBuyerPriceCondition(v as PriceCondition); setBuyerPrice(""); markChanged(); }}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
             {buyerPriceCondition !== "manual" && (

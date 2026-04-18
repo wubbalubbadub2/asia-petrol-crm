@@ -85,7 +85,12 @@ export function useRegistry(type: "KG" | "KZ") {
   return { data, loading, reload: load };
 }
 
-export async function createRegistryEntry(values: Record<string, unknown>) {
+import type { TablesInsert, TablesUpdate } from "@/lib/types/database";
+
+type RegistryInsert = TablesInsert<"shipment_registry">;
+type RegistryUpdate = TablesUpdate<"shipment_registry">;
+
+export async function createRegistryEntry(values: RegistryInsert) {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("shipment_registry")
@@ -101,7 +106,7 @@ export async function createRegistryEntry(values: Record<string, unknown>) {
   return data;
 }
 
-export async function updateRegistryEntry(id: string, values: Record<string, unknown>) {
+export async function updateRegistryEntry(id: string, values: RegistryUpdate) {
   const supabase = createClient();
   const { error } = await supabase
     .from("shipment_registry")
@@ -114,7 +119,7 @@ export async function updateRegistryEntry(id: string, values: Record<string, unk
   return true;
 }
 
-export async function bulkInsertRegistry(records: Record<string, unknown>[]) {
+export async function bulkInsertRegistry(records: RegistryInsert[]) {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("shipment_registry")

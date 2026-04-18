@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import type { TablesInsert, TablesUpdate } from "@/lib/types/database";
 import { toast } from "sonner";
 
 export type Application = {
@@ -60,7 +61,7 @@ export function useApplications() {
   return { data, loading, reload: load };
 }
 
-export async function createApplication(values: Record<string, unknown>) {
+export async function createApplication(values: TablesInsert<"applications">) {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("applications")
@@ -76,7 +77,7 @@ export async function createApplication(values: Record<string, unknown>) {
   return data;
 }
 
-export async function updateApplication(id: string, values: Record<string, unknown>) {
+export async function updateApplication(id: string, values: TablesUpdate<"applications">) {
   const supabase = createClient();
   const { error } = await supabase.from("applications").update(values).eq("id", id);
   if (error) {

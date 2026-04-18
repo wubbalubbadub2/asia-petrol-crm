@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import type { TablesUpdate } from "@/lib/types/database";
 
 type Station = { id: string; name: string };
 type Forwarder = { id: string; name: string };
@@ -146,6 +147,14 @@ function AddTariffDialog({
       toast.error("Укажите тариф");
       return;
     }
+    if (!month) {
+      toast.error("Укажите месяц");
+      return;
+    }
+    if (!year) {
+      toast.error("Укажите год");
+      return;
+    }
     setSaving(true);
     const sb = createClient();
     const { error } = await sb.from("tariffs").insert({
@@ -153,8 +162,8 @@ function AddTariffDialog({
       departure_station_id: depStationId || null,
       forwarder_id: forwarderId || null,
       fuel_type_id: fuelTypeId || null,
-      month: month || null,
-      year: year ? parseInt(year) : null,
+      month,
+      year: parseInt(year),
       planned_tariff: tariffAmount ? parseFloat(tariffAmount) : null,
       factory_id: factoryId || null,
       norm_days: normDays ? parseFloat(normDays) : null,
@@ -337,7 +346,7 @@ export default function TariffsPage() {
     });
   }, []);
 
-  async function updateTariff(id: string, patch: Partial<Tariff>) {
+  async function updateTariff(id: string, patch: TablesUpdate<"tariffs">) {
     const sb = createClient();
     const { error } = await sb.from("tariffs").update(patch).eq("id", id);
     if (error) { toast.error(`Ошибка: ${error.message}`); return; }
@@ -471,7 +480,7 @@ export default function TariffsPage() {
                     </TableCell>
                     <TableCell className="text-[12px] text-stone-600">
                       <InlineSelect value={t.month} displayLabel={t.month ?? ""} options={monthOpts}
-                        onSave={(v) => updateTariff(t.id, { month: v })} />
+                        onSave={(v) => updateTariff(t.id, { month: v ?? undefined })} />
                     </TableCell>
                     <TableCell className="text-right">
                       <InlineNum value={t.planned_tariff} onSave={(v) => updateTariff(t.id, { planned_tariff: v })} />

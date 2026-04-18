@@ -89,7 +89,7 @@ function AddSurchargeDialog({
     const sb = createClient();
     const { error } = await sb.from("surcharges").insert({
       deal_passport_number: dealPassportNumber || null,
-      reason: reason || null,
+      reason,
       amount: amount ? parseFloat(amount) : null,
       period: period || null,
       issued_by_name: issuedByName || null,

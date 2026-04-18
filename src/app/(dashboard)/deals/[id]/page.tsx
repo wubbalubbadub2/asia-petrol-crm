@@ -190,14 +190,14 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
     ]).then(([s, b, f, m, st, cg, fac, ft]) => {
       setRefs({
-        suppliers: (s.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.short_name || r.full_name })),
-        buyers: (b.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.short_name || r.full_name })),
-        forwarders: (f.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
-        managers: (m.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.full_name })),
-        stations: (st.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
-        companyGroups: (cg.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
-        factories: (fac.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
-        fuelTypes: (ft.data ?? []).map((r: Record<string, string>) => ({ value: r.id, label: r.name })),
+        suppliers: (s.data ?? []).map((r) => ({ value: r.id, label: r.short_name || r.full_name })),
+        buyers: (b.data ?? []).map((r) => ({ value: r.id, label: r.short_name || r.full_name })),
+        forwarders: (f.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        managers: (m.data ?? []).map((r) => ({ value: r.id, label: r.full_name })),
+        stations: (st.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        companyGroups: (cg.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        factories: (fac.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        fuelTypes: (ft.data ?? []).map((r) => ({ value: r.id, label: r.name })),
       });
     });
   }, [editing]);

@@ -10,12 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import type { TablesUpdate } from "@/lib/types/database";
 
 type DtKtRecord = {
   id: string;
-  forwarder_id: string | null;
-  company_group_id: string | null;
-  year: number | null;
+  forwarder_id: string;
+  company_group_id: string;
+  year: number;
   opening_balance: number | null;
   payment: number | null;
   refund: number | null;
@@ -119,10 +120,11 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
 
   async function save() {
     if (!fwId) { toast.error("Выберите экспедитора"); return; }
+    if (!cgId) { toast.error("Выберите группу компании"); return; }
     setSaving(true);
     const totalPayment = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
     const { data, error } = await sb.current.from("dt_kt_logistics").insert({
-      forwarder_id: fwId, company_group_id: cgId || null, year: parseInt(year),
+      forwarder_id: fwId, company_group_id: cgId, year: parseInt(year),
       opening_balance: balance ? parseFloat(balance) : null,
       payment: totalPayment || null,
       refund: refund ? parseFloat(refund) : null, fines: fines ? parseFloat(fines) : null,
@@ -132,7 +134,7 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
     // Insert individual payments
     if (payments.length > 0) {
       const paymentRows = payments.filter((p) => p.amount).map((p) => ({
-        dt_kt_id: data.id, forwarder_id: fwId, company_group_id: cgId || fwId,
+        dt_kt_id: data.id, forwarder_id: fwId, company_group_id: cgId,
         payment_date: p.date, amount: parseFloat(p.amount),
         currency: p.currency || null,
       }));
@@ -250,12 +252,12 @@ export default function DtKtPage() {
 
   useEffect(() => { load(); }, [yearFilter]);
 
-  async function updateDtKt(id: string, patch: Partial<DtKtRecord>) {
+  async function updateDtKt(id: string, patch: TablesUpdate<"dt_kt_logistics">) {
     const { error } = await sb.current.from("dt_kt_logistics").update(patch).eq("id", id);
     if (error) { toast.error(error.message); return; }
     await load();
   }
-  async function updatePayment(id: string, patch: Partial<DtKtPayment>) {
+  async function updatePayment(id: string, patch: TablesUpdate<"dt_kt_payments">) {
     const { error } = await sb.current.from("dt_kt_payments").update(patch).eq("id", id);
     if (error) { toast.error(error.message); return; }
     await load();

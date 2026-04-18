@@ -292,7 +292,7 @@ function EditApplicationDialog({
     setSaving(true);
     const ok = await updateApplication(application.id, {
       application_number: appNumber || null,
-      date: date || null,
+      date: date || undefined,
       fuel_type_id: fuelTypeId || null,
       product_name: productName || null,
       tonnage: tonnage ? parseFloat(tonnage) : null,

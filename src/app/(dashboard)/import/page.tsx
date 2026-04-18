@@ -16,6 +16,7 @@ import {
 import { ExcelUpload } from "@/components/import/excel-upload";
 import { bulkInsertRegistry } from "@/lib/hooks/use-registry";
 import { createClient } from "@/lib/supabase/client";
+import type { Json } from "@/lib/types/database";
 import { toast } from "sonner";
 
 const tabs = [
@@ -50,25 +51,31 @@ export default function ImportPage() {
     setImportDone(false);
   }
 
+  // Coerce an Excel cell (unknown) into a nullable string for DB insert.
+  function asString(v: unknown): string | null {
+    if (v == null || v === "") return null;
+    return String(v);
+  }
+
   async function handleImportRegistry() {
     if (parsedData.length === 0) return;
     setImporting(true);
 
     // Map Excel columns to DB columns (best effort)
     const records = parsedData.map((row) => ({
-      registry_type: activeTab === "registry" ? "KG" : "KG",
-      quarter: row["квартал"] ?? row["quarter"] ?? null,
-      month: row["месяц"] ?? row["month"] ?? null,
-      date: row["дата"] ?? row["date"] ?? null,
-      waybill_number: row["№ накладной"] ?? row["waybill"] ?? null,
-      wagon_number: row["№ вагонов"] ?? row["wagon"] ?? null,
+      registry_type: "KG" as const,
+      quarter: asString(row["квартал"] ?? row["quarter"]),
+      month: asString(row["месяц"] ?? row["month"]),
+      date: asString(row["дата"] ?? row["date"]),
+      waybill_number: asString(row["№ накладной"] ?? row["waybill"]),
+      wagon_number: asString(row["№ вагонов"] ?? row["wagon"]),
       shipment_volume: parseFloat(String(row["объем отгрузки"] ?? row["Объем отгрузки"] ?? row["volume"] ?? 0)) || null,
-      shipment_month: row["месяц отгрузки"] ?? null,
+      shipment_month: asString(row["месяц отгрузки"]),
       railway_tariff: parseFloat(String(row["Ж/Д тариф"] ?? row["тариф"] ?? 0)) || null,
-      invoice_number: row["№ СФ"] ?? null,
-      comment: row["коментарий"] ?? row["комент"] ?? null,
+      invoice_number: asString(row["№ СФ"]),
+      comment: asString(row["коментарий"] ?? row["комент"]),
       loading_volume: parseFloat(String(row["Налив тонн"] ?? row["налив"] ?? 0)) || null,
-      additional_month: row["месяц доп"] ?? row["доп месяц"] ?? null,
+      additional_month: asString(row["месяц доп"] ?? row["доп месяц"]),
     }));
 
     const result = await bulkInsertRegistry(records);
@@ -81,28 +88,29 @@ export default function ImportPage() {
     setImporting(true);
 
     const supabase = createClient();
-    const table = activeTab === "snt" ? "snt_documents" : "esf_documents";
 
-    // Store documents
+    // Store documents — dispatch by tab so each insert gets its correct type.
     const docs = parsedData.map((row) => ({
-      raw_data: row,
-      supplier_name: row["Поставщик"] ?? row["supplier"] ?? null,
-      receiver_name: row["Получатель"] ?? row["receiver"] ?? null,
-      goods_description: row["Товар"] ?? row["Наименование товара"] ?? row["goods"] ?? null,
+      raw_data: row as Json,
+      supplier_name: asString(row["Поставщик"] ?? row["supplier"]),
+      receiver_name: asString(row["Получатель"] ?? row["receiver"]),
+      goods_description: asString(row["Товар"] ?? row["Наименование товара"] ?? row["goods"]),
       quantity: parseFloat(String(row["Количество"] ?? row["quantity"] ?? row["Кол-во"] ?? 0)) || null,
       total_amount: parseFloat(String(row["Сумма"] ?? row["total"] ?? row["Итого"] ?? 0)) || null,
       ...(activeTab === "esf" && esfDealId ? { deal_id: esfDealId } : {}),
     }));
 
-    const { error: docError } = await supabase.from(table).insert(docs);
+    const { error: docError } = activeTab === "snt"
+      ? await supabase.from("snt_documents").insert(docs)
+      : await supabase.from("esf_documents").insert(docs);
     if (docError) { toast.error(`Ошибка импорта документов: ${docError.message}`); setImporting(false); return; }
 
     // Also create registry entries from the same data
     const registryRecords = parsedData.map((row) => ({
       registry_type: "KG" as const,
-      date: row["Дата"] ?? row["дата"] ?? row["date"] ?? null,
-      waybill_number: row["№ накладной"] ?? row["№ СНТ"] ?? row["waybill"] ?? null,
-      wagon_number: row["№ вагонов"] ?? row["№ ВЦ"] ?? row["wagon"] ?? null,
+      date: asString(row["Дата"] ?? row["дата"] ?? row["date"]),
+      waybill_number: asString(row["№ накладной"] ?? row["№ СНТ"] ?? row["waybill"]),
+      wagon_number: asString(row["№ вагонов"] ?? row["№ ВЦ"] ?? row["wagon"]),
       shipment_volume: parseFloat(String(row["Количество"] ?? row["объем отгрузки"] ?? row["quantity"] ?? 0)) || null,
       comment: `Импорт из ${activeTab === "snt" ? "СНТ" : "ЭСФ"}`,
     })).filter((r) => r.shipment_volume);

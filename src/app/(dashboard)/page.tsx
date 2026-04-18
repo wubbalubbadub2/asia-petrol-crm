@@ -99,8 +99,8 @@ export default function DashboardPage() {
 
       setDeals((dealsRes.data ?? []) as Deal[]);
       setFuelTypes(Object.fromEntries((ftRes.data ?? []).map((r: { id: string; name: string }) => [r.id, r.name])));
-      setSuppliers(Object.fromEntries((supRes.data ?? []).map((r: { id: string; short_name: string }) => [r.id, r.short_name])));
-      setBuyers(Object.fromEntries((buyRes.data ?? []).map((r: { id: string; short_name: string }) => [r.id, r.short_name])));
+      setSuppliers(Object.fromEntries((supRes.data ?? []).map((r) => [r.id, r.short_name ?? ""])));
+      setBuyers(Object.fromEntries((buyRes.data ?? []).map((r) => [r.id, r.short_name ?? ""])));
       setForwarders(Object.fromEntries((fwRes.data ?? []).map((r: { id: string; name: string }) => [r.id, r.name])));
       setPendingApps(appsRes.count ?? 0);
       setLoading(false);

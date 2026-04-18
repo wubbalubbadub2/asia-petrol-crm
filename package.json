@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "types:db": "supabase gen types typescript --project-id oteysqqohcgnwpsxmyjg --schema public > src/lib/types/database.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

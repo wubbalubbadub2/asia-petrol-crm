@@ -187,8 +187,13 @@ export default function BuyersPage() {
       }
       toast.success("Сохранено");
     } else {
-      const { id: _, ...insertValues } = payload as Record<string, unknown>;
-      const { error } = await supabase.from("counterparties").insert(insertValues);
+      const { id: _id, type: _type, ...insertValues } = payload;
+      void _id; void _type;
+      const { error } = await supabase.from("counterparties").insert({
+        ...insertValues,
+        type: "buyer",
+        full_name: insertValues.full_name ?? "",
+      });
       if (error) {
         toast.error(`Ошибка добавления: ${error.message}`);
         throw error;

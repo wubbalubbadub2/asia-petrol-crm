@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { Database } from "@/lib/types/database";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -10,7 +11,7 @@ export async function updateSession(request: NextRequest) {
     throw new Error("Missing Supabase env vars in middleware");
   }
 
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY,
+  const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {

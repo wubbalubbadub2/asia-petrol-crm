@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import type { TablesInsert } from "@/lib/types/database";
 import { toast } from "sonner";
 
 export type Deal = {
@@ -159,12 +160,12 @@ export function useDeal(id: string | null) {
   return { data, loading, reload: load };
 }
 
-export async function createDeal(values: Record<string, unknown>) {
+export async function createDeal(values: Omit<TablesInsert<"deals">, "deal_number">) {
   const supabase = createClient();
 
   // Generate deal number
-  const dealType = values.deal_type as string;
-  const year = values.year as number;
+  const dealType = values.deal_type;
+  const year = values.year;
 
   const { data: numData, error: numError } = await supabase
     .rpc("generate_deal_number", { p_type: dealType, p_year: year });

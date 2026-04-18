@@ -61,7 +61,7 @@ export default function ArchivePage() {
       if (d.is_archived) yearMap[d.year].archived++;
     }
 
-    const archivedYears = new Set((archiveData ?? []).map((a: ArchiveYear) => a.year));
+    const archivedYears = new Set((archiveData ?? []).map((a) => a.year));
     const stats = Object.entries(yearMap)
       .map(([y, s]) => ({ year: Number(y), dealCount: s.total, isArchived: archivedYears.has(Number(y)) }))
       .sort((a, b) => b.year - a.year);
