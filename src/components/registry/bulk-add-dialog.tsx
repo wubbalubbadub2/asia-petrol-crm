@@ -68,6 +68,7 @@ export function BulkAddDialog({
   const [currency, setCurrency] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceNum, setInvoiceNum] = useState("");
+  const [bulkComment, setBulkComment] = useState("");
 
   // Paste + preview
   const [pasted, setPasted] = useState("");
@@ -122,6 +123,7 @@ export function BulkAddDialog({
     setCurrency(""); // empty = inherit from deal
     setPasted("");
     setInvoiceNum("");
+    setBulkComment("");
   }, [open, context]);
 
   const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
@@ -153,6 +155,7 @@ export function BulkAddDialog({
       shipment_volume: p.volume,
       date: p.date ?? date ?? null,
       invoice_number: invoiceNum || null,
+      comment: bulkComment || null,
     }));
 
     const result = await bulkInsertRegistry(rows);
@@ -222,9 +225,13 @@ export function BulkAddDialog({
                 <Label className="text-[10px] text-stone-500">Ж/Д тариф</Label>
                 <Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" />
               </div>
-              <div className="md:col-span-2">
+              <div>
                 <Label className="text-[10px] text-stone-500">№ СФ (если общий)</Label>
                 <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-8 text-[12px]" placeholder="Необязательно" />
+              </div>
+              <div className="md:col-span-3">
+                <Label className="text-[10px] text-stone-500">Коммент.</Label>
+                <Input value={bulkComment} onChange={(e) => setBulkComment(e.target.value)} className="h-8 text-[12px]" />
               </div>
             </div>
           </div>

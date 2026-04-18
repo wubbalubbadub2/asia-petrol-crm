@@ -177,6 +177,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   const [deal, setDeal] = useState<DRef | null>(null);
   const [w, setW] = useState(""); const [v, setV] = useState(""); const [lv, setLv] = useState("");
   const [dt, setDt] = useState(""); const [sm, setSm] = useState(""); const [sf, setSf] = useState("");
+  const [cm, setCm] = useState("");
   const [tariffVal, setTariffVal] = useState<number | null>(group.tariff);
   const [curOverride, setCurOverride] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -227,9 +228,9 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       railway_tariff: tariff, company_group_id: deal?.logistics_company_group_id || firstRec?.company_group_id || null,
       wagon_number: w, shipment_volume: parseFloat(v),
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
-      currency: curOverride || null,
+      currency: curOverride || null, comment: cm || null,
     });
-    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); onDone();
+    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); setCm(""); onDone();
   }
 
   // Show deal info in the row (from fetched deal or group)
@@ -266,9 +267,12 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       </td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.destStation}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.depStation}</td>
+      <td className="border-r px-1 py-1">
+        <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
+      </td>
       <td className="px-1 py-1">
         <div className="flex gap-1">
-          <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-20 h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
+          <input value={cm} onChange={(e) => setCm(e.target.value)} placeholder="коммент." className="flex-1 h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" />
           <Button size="sm" onClick={add} disabled={saving || !w || !v} className="h-6 text-[9px] px-2 bg-green-600 hover:bg-green-700">{saving ? "..." : "✓"}</Button>
           <Button size="sm" variant="outline" onClick={onCancel} className="h-6 text-[9px] px-1.5">✕</Button>
         </div>
@@ -295,6 +299,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   const [tariff, setTariff] = useState("");
   const [wagon, setWagon] = useState(""); const [vol, setVol] = useState(""); const [loadVol, setLoadVol] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]); const [sfNum, setSfNum] = useState("");
+  const [addComment, setAddComment] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -355,9 +360,10 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
       company_group_id: cgId || null, railway_tariff: tariff ? parseFloat(tariff) : null,
       wagon_number: wagon, shipment_volume: parseFloat(vol),
       loading_volume: loadVol ? parseFloat(loadVol) : null, date: date || null, invoice_number: sfNum || null,
+      comment: addComment || null,
     });
     setSaving(false); onDone(); onClose();
-    setWagon(""); setVol(""); setLoadVol(""); setSfNum(""); setDealId(""); setMonth(""); setShipMonth("");
+    setWagon(""); setVol(""); setLoadVol(""); setSfNum(""); setAddComment(""); setDealId(""); setMonth(""); setShipMonth("");
     setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
   }
 
@@ -408,6 +414,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
               <div><Label className="text-[10px] text-stone-500">Налив тонн</Label><Input type="number" step="0.001" value={loadVol} onChange={(e) => setLoadVol(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
               <div><Label className="text-[10px] text-stone-500">Дата отгрузки</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[12px]" /></div>
               <div><Label className="text-[10px] text-stone-500">№ СФ</Label><Input value={sfNum} onChange={(e) => setSfNum(e.target.value)} className="h-8 text-[12px]" /></div>
+              <div className="sm:col-span-2 md:col-span-3"><Label className="text-[10px] text-stone-500">Коммент.</Label><Input value={addComment} onChange={(e) => setAddComment(e.target.value)} className="h-8 text-[12px]" /></div>
             </div>
           </div>
         </div>
@@ -530,7 +537,8 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">валюта</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. назн.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. отпр.</th>
-                          <th className="px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
+                          <th className="px-2 py-1 text-left font-medium min-w-[130px]">коммент.</th>
                           <th className="px-1 py-1 w-[25px]"></th>
                         </tr></thead>
                         <tbody>
@@ -564,7 +572,8 @@ export default function RegistryPage() {
                               </td>
                               <td className="border-r px-1 py-0.5"><ES value={r.destination_station_id} displayLabel={r.destination_station?.name ?? ""} recId={r.id} field="destination_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.departure_station_id} displayLabel={r.departure_station?.name ?? ""} recId={r.id} field="departure_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
-                              <td className="px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
+                              <td className="border-r px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
+                              <td className="px-1 py-0.5"><EC value={r.comment} recId={r.id} field="comment" onSaved={reload} /></td>
                               <td className="px-1 py-0.5">
                                 <button onClick={async () => {
                                   if (!confirm("Удалить запись?")) return;

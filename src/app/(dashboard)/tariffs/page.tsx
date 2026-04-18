@@ -271,11 +271,78 @@ function AddTariffDialog({
   );
 }
 
+// Inline editable cells for tariff table
+function InlineSelect({ value, displayLabel, options, onSave }: {
+  value: string | null | undefined; displayLabel: string;
+  options: { value: string; label: string }[];
+  onSave: (v: string | null) => Promise<void>;
+}) {
+  const [ed, setEd] = useState(false);
+  if (!ed) return (
+    <button onClick={() => setEd(true)} className="w-full text-left text-[12px] hover:bg-amber-50 rounded px-1 py-0.5 cursor-pointer truncate">
+      {displayLabel || "—"}
+    </button>
+  );
+  return (
+    <select
+      autoFocus defaultValue={value ?? ""} onBlur={() => setEd(false)}
+      onChange={(e) => { const nv = e.target.value || null; setEd(false); onSave(nv); }}
+      className="w-full h-7 text-[12px] border border-amber-300 rounded px-1 bg-amber-50/50 focus:outline-none cursor-pointer"
+    >
+      <option value="">—</option>
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+function InlineNum({ value, onSave, d = 3 }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; d?: number }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
+      className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 rounded px-1 py-0.5 cursor-text">
+      {value == null ? "—" : value.toLocaleString("ru-RU", { maximumFractionDigits: d })}
+    </button>
+  );
+  return (
+    <input autoFocus type="number" step="0.001" value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); const n = lv.trim() === "" ? null : parseFloat(lv.replace(",", ".")); if (n !== value) onSave(Number.isFinite(n as number) ? n : null); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="w-full text-right font-mono text-[11px] border border-amber-300 rounded px-1 bg-amber-50/50 focus:outline-none" />
+  );
+}
+
 export default function TariffsPage() {
   const [tariffs, setTariffs] = useState<Tariff[]>([]);
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [showAdd, setShowAdd] = useState(false);
+
+  // References for inline edit dropdowns
+  const [refs, setRefs] = useState<{ stations: Station[]; forwarders: Forwarder[]; fuelTypes: FuelType[]; factories: Factory[] }>({ stations: [], forwarders: [], fuelTypes: [], factories: [] });
+  useEffect(() => {
+    const sb = createClient();
+    Promise.all([
+      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
+      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
+      sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
+      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([st, fw, ft, fa]) => {
+      setRefs({
+        stations: (st.data ?? []) as Station[],
+        forwarders: (fw.data ?? []) as Forwarder[],
+        fuelTypes: (ft.data ?? []) as FuelType[],
+        factories: (fa.data ?? []) as Factory[],
+      });
+    });
+  }, []);
+
+  async function updateTariff(id: string, patch: Partial<Tariff>) {
+    const sb = createClient();
+    const { error } = await sb.from("tariffs").update(patch).eq("id", id);
+    if (error) { toast.error(`Ошибка: ${error.message}`); return; }
+    await loadTariffs();
+  }
 
   async function loadTariffs() {
     setLoading(true);
@@ -378,54 +445,57 @@ export default function TariffsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tariffs.map((t) => (
-                <TableRow key={t.id} className="hover:bg-amber-50/30">
-                  <TableCell className="text-[12px] text-stone-700">
-                    {(t.destination_station as any)?.name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-[12px] text-stone-700">
-                    {(t.departure_station as any)?.name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-[12px] text-stone-600">
-                    {(t.forwarder as any)?.name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-[12px]">
-                    {(t.fuel_type as any) ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span
-                          className="h-1.5 w-1.5 rounded-full shrink-0"
-                          style={{ backgroundColor: (t.fuel_type as any).color ?? "#6B7280" }}
-                        />
-                        {(t.fuel_type as any).name}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-[12px] text-stone-600">
-                    {t.month ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-[11px] tabular-nums text-stone-800">
-                    {formatNum(t.planned_tariff)}
-                  </TableCell>
-                  <TableCell className="text-[12px] text-stone-600">
-                    {(t.factory as any)?.name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-[11px] tabular-nums text-stone-600">
-                    {t.norm_days != null ? formatNum(t.norm_days) : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <button onClick={async () => {
-                      if (!confirm("Удалить тариф?")) return;
-                      const s = createClient();
-                      const { error } = await s.from("tariffs").delete().eq("id", t.id);
-                      if (error) toast.error(error.message); else { toast.success("Удалено"); loadTariffs(); }
-                    }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {tariffs.map((t) => {
+                const stationOpts = refs.stations.map((s) => ({ value: s.id, label: s.name }));
+                const forwarderOpts = refs.forwarders.map((f) => ({ value: f.id, label: f.name }));
+                const fuelOpts = refs.fuelTypes.map((f) => ({ value: f.id, label: f.name }));
+                const factoryOpts = refs.factories.map((f) => ({ value: f.id, label: f.name }));
+                const monthOpts = MONTHS_RU_FULL.map((m) => ({ value: m, label: m }));
+                return (
+                  <TableRow key={t.id} className="hover:bg-amber-50/30">
+                    <TableCell className="text-[12px] text-stone-700">
+                      <InlineSelect value={t.destination_station_id} displayLabel={t.destination_station?.name ?? ""} options={stationOpts}
+                        onSave={(v) => updateTariff(t.id, { destination_station_id: v })} />
+                    </TableCell>
+                    <TableCell className="text-[12px] text-stone-700">
+                      <InlineSelect value={t.departure_station_id} displayLabel={t.departure_station?.name ?? ""} options={stationOpts}
+                        onSave={(v) => updateTariff(t.id, { departure_station_id: v })} />
+                    </TableCell>
+                    <TableCell className="text-[12px] text-stone-600">
+                      <InlineSelect value={t.forwarder_id} displayLabel={t.forwarder?.name ?? ""} options={forwarderOpts}
+                        onSave={(v) => updateTariff(t.id, { forwarder_id: v })} />
+                    </TableCell>
+                    <TableCell className="text-[12px]">
+                      <InlineSelect value={t.fuel_type_id} displayLabel={t.fuel_type?.name ?? ""} options={fuelOpts}
+                        onSave={(v) => updateTariff(t.id, { fuel_type_id: v })} />
+                    </TableCell>
+                    <TableCell className="text-[12px] text-stone-600">
+                      <InlineSelect value={t.month} displayLabel={t.month ?? ""} options={monthOpts}
+                        onSave={(v) => updateTariff(t.id, { month: v })} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <InlineNum value={t.planned_tariff} onSave={(v) => updateTariff(t.id, { planned_tariff: v })} />
+                    </TableCell>
+                    <TableCell className="text-[12px] text-stone-600">
+                      <InlineSelect value={t.factory_id} displayLabel={t.factory?.name ?? ""} options={factoryOpts}
+                        onSave={(v) => updateTariff(t.id, { factory_id: v })} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <InlineNum value={t.norm_days} onSave={(v) => updateTariff(t.id, { norm_days: v })} d={0} />
+                    </TableCell>
+                    <TableCell>
+                      <button onClick={async () => {
+                        if (!confirm("Удалить тариф?")) return;
+                        const s = createClient();
+                        const { error } = await s.from("tariffs").delete().eq("id", t.id);
+                        if (error) toast.error(error.message); else { toast.success("Удалено"); loadTariffs(); }
+                      }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

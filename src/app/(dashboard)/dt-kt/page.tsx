@@ -31,6 +31,60 @@ type RegistrySums = { forwarder_id: string; total_volume: number; total_amount: 
 function fmt(v: number | null | undefined) { return v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }); }
 function n(v: number | null | undefined) { return v ?? 0; }
 
+// Inline editable cells for DT-KT (number / date / text)
+function InlineDtNum({ value, onSave, className = "" }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; className?: string }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
+      className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 rounded px-1 py-0.5 cursor-text ${className}`}>
+      {fmt(value)}
+    </button>
+  );
+  return (
+    <input autoFocus type="number" step="0.01" value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); const x = lv.trim() === "" ? null : parseFloat(lv.replace(",", ".")); if (x !== value) onSave(Number.isFinite(x as number) ? x : null); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="w-full text-right font-mono text-[11px] border border-amber-300 rounded px-1 bg-amber-50/50 focus:outline-none" />
+  );
+}
+function InlineDtDate({ value, onSave }: { value: string | null; onSave: (v: string | null) => Promise<void> }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value ? value.split("T")[0] : ""); setEd(true); }}
+      className="text-[11px] hover:bg-amber-50 rounded px-1 py-0.5 cursor-text">
+      {value ? new Date(value).toLocaleDateString("ru-RU") : "—"}
+    </button>
+  );
+  return (
+    <input autoFocus type="date" value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); if (lv && lv !== (value?.split("T")[0] ?? "")) onSave(lv); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />
+  );
+}
+function InlineDtText({ value, onSave, placeholder = "" }: { value: string | null; onSave: (v: string | null) => Promise<void>; placeholder?: string }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value ?? ""); setEd(true); }}
+      className="text-[11px] text-stone-500 hover:bg-amber-50 rounded px-1 py-0.5 cursor-text">
+      {value || <span className="text-stone-300">{placeholder || "—"}</span>}
+    </button>
+  );
+  return (
+    <input autoFocus value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); const nv = lv.trim() || null; if (nv !== value) onSave(nv); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      placeholder={placeholder}
+      className="border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />
+  );
+}
+
 function computeSaldo(row: DtKtRecord, shipped: number) {
   return n(row.opening_balance) + n(row.payment) - shipped - n(row.fines) - n(row.surcharge_preliminary) - n(row.ogem) - n(row.refund);
 }
@@ -188,6 +242,38 @@ export default function DtKtPage() {
 
   useEffect(() => { load(); }, [yearFilter]);
 
+  async function updateDtKt(id: string, patch: Partial<DtKtRecord>) {
+    const { error } = await sb.current.from("dt_kt_logistics").update(patch).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    await load();
+  }
+  async function updatePayment(id: string, patch: Partial<DtKtPayment>) {
+    const { error } = await sb.current.from("dt_kt_payments").update(patch).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    await load();
+  }
+  async function addPayment(dtKtId: string, forwarderId: string | null, companyGroupId: string | null) {
+    if (!forwarderId || !companyGroupId) {
+      toast.error("Не удалось определить экспедитора или группу компании для оплаты");
+      return;
+    }
+    const { error } = await sb.current.from("dt_kt_payments").insert({
+      dt_kt_id: dtKtId,
+      forwarder_id: forwarderId,
+      company_group_id: companyGroupId,
+      payment_date: new Date().toISOString().split("T")[0],
+      amount: 0,
+    });
+    if (error) { toast.error(error.message); return; }
+    setExpandedPayments(dtKtId);
+    await load();
+  }
+  async function deletePayment(id: string) {
+    const { error } = await sb.current.from("dt_kt_payments").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    await load();
+  }
+
   function getRegistryForForwarder(fwId: string | null) {
     if (!fwId) return { vol: 0, amt: 0 };
     const s = registrySums.find((r) => r.forwarder_id === fwId);
@@ -245,7 +331,9 @@ export default function DtKtPage() {
                       <TableCell className="text-[12px] text-stone-700">{(rec.forwarder as any)?.name ?? "—"}</TableCell>
                       <TableCell className="text-[12px] text-stone-600">{(rec.company_group as any)?.name ?? "—"}</TableCell>
                       <TableCell className="font-mono text-[12px]">{rec.year ?? "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] tabular-nums">{fmt(rec.opening_balance)}</TableCell>
+                      <TableCell className="text-right">
+                        <InlineDtNum value={rec.opening_balance} onSave={(v) => updateDtKt(rec.id, { opening_balance: v })} />
+                      </TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums">
                         <button onClick={() => setExpandedPayments(expandedPayments === rec.id ? null : rec.id)}
                           className="hover:bg-amber-50 rounded px-1 underline decoration-dotted decoration-stone-300">
@@ -254,10 +342,18 @@ export default function DtKtPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums text-blue-600">{reg.vol > 0 ? fmt(reg.vol) : "—"}</TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums text-blue-600">{reg.amt > 0 ? fmt(reg.amt) : "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] tabular-nums">{fmt(rec.refund)}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] tabular-nums text-red-600">{fmt(rec.fines)}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] tabular-nums text-orange-600">{fmt(rec.surcharge_preliminary)}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] tabular-nums">{fmt(rec.ogem)}</TableCell>
+                      <TableCell className="text-right">
+                        <InlineDtNum value={rec.refund} onSave={(v) => updateDtKt(rec.id, { refund: v })} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <InlineDtNum value={rec.fines} onSave={(v) => updateDtKt(rec.id, { fines: v })} className="text-red-600" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <InlineDtNum value={rec.surcharge_preliminary} onSave={(v) => updateDtKt(rec.id, { surcharge_preliminary: v })} className="text-orange-600" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <InlineDtNum value={rec.ogem} onSave={(v) => updateDtKt(rec.id, { ogem: v })} />
+                      </TableCell>
                       <TableCell className={`text-right font-mono text-[11px] tabular-nums font-semibold ${saldo < 0 ? "text-red-600" : "text-green-700"}`}>{fmt(saldo)}</TableCell>
                       <TableCell>
                         <button onClick={async () => {
@@ -271,20 +367,32 @@ export default function DtKtPage() {
                         </button>
                       </TableCell>
                     </TableRow>
-                    {/* Expanded payments */}
-                    {expandedPayments === rec.id && pays.length > 0 && (
+                    {/* Expanded editable payments */}
+                    {expandedPayments === rec.id && (
                       <TableRow key={`${rec.id}-pays`}>
-                        <TableCell colSpan={12} className="bg-stone-50/50 px-4 py-2">
-                          <p className="text-[10px] font-medium text-stone-500 mb-1">Оплаты:</p>
-                          <div className="space-y-0.5">
-                            {pays.map((p) => (
-                              <div key={p.id} className="flex gap-3 text-[11px]">
-                                <span className="text-stone-500 w-20">{new Date(p.payment_date).toLocaleDateString("ru-RU")}</span>
-                                <span className="font-mono tabular-nums font-medium">{fmt(p.amount)}</span>
-                                {p.description && <span className="text-stone-400">{p.description}</span>}
-                              </div>
-                            ))}
+                        <TableCell colSpan={13} className="bg-stone-50/50 px-4 py-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[10px] font-medium text-stone-500">Оплаты ({pays.length}):</p>
+                            <Button size="sm" variant="outline" onClick={() => addPayment(rec.id, rec.forwarder_id, rec.company_group_id)} className="h-6 text-[10px]">
+                              <Plus className="h-3 w-3 mr-1" />Добавить оплату
+                            </Button>
                           </div>
+                          {pays.length === 0 ? (
+                            <p className="text-[11px] text-stone-400">Нет оплат</p>
+                          ) : (
+                            <div className="space-y-0.5">
+                              {pays.map((p) => (
+                                <div key={p.id} className="flex items-center gap-3 text-[11px]">
+                                  <span className="w-28"><InlineDtDate value={p.payment_date} onSave={(v) => v ? updatePayment(p.id, { payment_date: v }) : Promise.resolve()} /></span>
+                                  <span className="w-28"><InlineDtNum value={p.amount} onSave={(v) => v != null ? updatePayment(p.id, { amount: v }) : Promise.resolve()} /></span>
+                                  <span className="flex-1"><InlineDtText value={p.description} onSave={(v) => updatePayment(p.id, { description: v })} placeholder="описание" /></span>
+                                  <button onClick={() => { if (confirm("Удалить оплату?")) deletePayment(p.id); }} className="text-stone-300 hover:text-red-500 transition-colors">
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     )}

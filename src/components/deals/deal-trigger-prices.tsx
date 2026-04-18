@@ -26,6 +26,60 @@ function formatDate(d: string | null): string {
 
 type ProductType = { id: string; name: string };
 
+// --- Inline editable cells for existing rows ---
+function EdNum({ value, onSave, right = true, bold = false }: { value: number | null; onSave: (v: number | null) => void; right?: boolean; bold?: boolean }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
+      className={`w-full font-mono tabular-nums hover:bg-amber-50 rounded px-1 py-0.5 cursor-text min-h-[20px] ${right ? "text-right" : "text-left"} ${bold ? "font-medium" : ""}`}>
+      {formatNum(value)}
+    </button>
+  );
+  return (
+    <input autoFocus type="number" step="0.001" value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); const n = lv.trim() === "" ? null : parseFloat(lv.replace(",", ".")); if (n !== value) onSave(Number.isFinite(n as number) ? n : null); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />
+  );
+}
+function EdDate({ value, onSave }: { value: string | null; onSave: (v: string | null) => void }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value ?? ""); setEd(true); }}
+      className="w-full text-left hover:bg-amber-50 rounded px-1 py-0.5 cursor-text min-h-[20px]">
+      {formatDate(value)}
+    </button>
+  );
+  return (
+    <input autoFocus type="date" value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); const nv = lv || null; if (nv !== value) onSave(nv); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />
+  );
+}
+function EdText({ value, onSave, placeholder = "" }: { value: string | null; onSave: (v: string | null) => void; placeholder?: string }) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button onClick={() => { setLv(value ?? ""); setEd(true); }}
+      className="w-full text-left text-stone-500 hover:bg-amber-50 rounded px-1 py-0.5 cursor-text min-h-[20px] truncate">
+      {value || <span className="text-stone-300">—</span>}
+    </button>
+  );
+  return (
+    <input autoFocus value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => { setEd(false); const nv = lv.trim() || null; if (nv !== value) onSave(nv); }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      placeholder={placeholder}
+      className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />
+  );
+}
+
 export function DealTriggerPrices({
   dealId,
   side,
@@ -46,7 +100,19 @@ export function DealTriggerPrices({
   priceCondition?: string;
 }) {
   const isTrigger = priceCondition === "trigger";
-  const { data, loading, insert, remove } = useDealTriggerPrices(dealId, side);
+  const { data, loading, insert, update, remove } = useDealTriggerPrices(dealId, side);
+
+  // Apply a partial patch to a row and recompute derived fields (calculated_price, amount).
+  function applyRowPatch(row: ShipmentPrice, patch: Partial<ShipmentPrice>) {
+    const next: Partial<ShipmentPrice> = { ...patch };
+    const q = patch.quotation_avg !== undefined ? patch.quotation_avg : row.quotation_avg;
+    const d = patch.discount !== undefined ? patch.discount : row.discount;
+    const v = patch.volume !== undefined ? patch.volume : row.volume;
+    const price = q != null ? q - (d ?? 0) : null;
+    next.calculated_price = price;
+    next.amount = price != null && v != null ? v * price : null;
+    return update(row.id, next);
+  }
   const [adding, setAdding] = useState(false);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const sbRef = useRef(createClient());
@@ -159,15 +225,15 @@ export function DealTriggerPrices({
               <tbody>
                 {data.map((row) => (
                   <tr key={row.id} className="border-b border-stone-100 hover:bg-stone-50">
-                    <td className="py-1 pr-2">{formatDate(row.shipment_date)}</td>
-                    <td className="py-1 pr-2">{formatDate(row.border_crossing_date)}</td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums">{row.trigger_days}</td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums">{formatNum(row.quotation_avg)}</td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums">{formatNum(row.discount)}</td>
+                    <td className="py-1 pr-2"><EdDate value={row.shipment_date} onSave={(v) => update(row.id, { shipment_date: v })} /></td>
+                    <td className="py-1 pr-2"><EdDate value={row.border_crossing_date} onSave={(v) => update(row.id, { border_crossing_date: v })} /></td>
+                    <td className="py-1 pr-2"><EdNum value={row.trigger_days} onSave={(v) => update(row.id, { trigger_days: v ?? 35 })} /></td>
+                    <td className="py-1 pr-2"><EdNum value={row.quotation_avg} onSave={(v) => applyRowPatch(row, { quotation_avg: v })} /></td>
+                    <td className="py-1 pr-2"><EdNum value={row.discount} onSave={(v) => applyRowPatch(row, { discount: v })} /></td>
                     <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatNum(row.calculated_price)}</td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums">{formatNum(row.volume)}</td>
+                    <td className="py-1 pr-2"><EdNum value={row.volume} onSave={(v) => applyRowPatch(row, { volume: v })} /></td>
                     <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatNum(row.amount)}</td>
-                    <td className="py-1 pr-2 text-stone-400 truncate max-w-[80px]">{row.notes ?? ""}</td>
+                    <td className="py-1 pr-2 max-w-[120px]"><EdText value={row.notes} onSave={(v) => update(row.id, { notes: v })} /></td>
                     <td className="py-1">
                       <button onClick={() => remove(row.id)} className="text-stone-300 hover:text-red-500 transition-colors">
                         <Trash2 className="h-3 w-3" />

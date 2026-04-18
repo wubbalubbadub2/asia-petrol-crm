@@ -21,6 +21,93 @@ function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
+// Single payment row with inline editable date/amount/description
+function PaymentRow({
+  p, currencySymbol, onUpdate, onDelete,
+}: {
+  p: Payment;
+  currencySymbol: string;
+  onUpdate: (id: string, patch: Partial<Payment>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [editDate, setEditDate] = useState(false);
+  const [dateLv, setDateLv] = useState("");
+  const [editAmount, setEditAmount] = useState(false);
+  const [amountLv, setAmountLv] = useState("");
+  const [editDesc, setEditDesc] = useState(false);
+  const [descLv, setDescLv] = useState("");
+
+  return (
+    <div className="flex items-center gap-2 rounded bg-stone-50 px-2 py-1 text-[11px]">
+      {/* Date */}
+      {!editDate ? (
+        <button
+          onClick={() => { setDateLv(p.payment_date.split("T")[0]); setEditDate(true); }}
+          className="text-stone-500 w-20 text-left hover:bg-amber-50 rounded px-1 cursor-text"
+        >
+          {new Date(p.payment_date).toLocaleDateString("ru-RU")}
+        </button>
+      ) : (
+        <input
+          autoFocus type="date" value={dateLv}
+          onChange={(e) => setDateLv(e.target.value)}
+          onBlur={() => {
+            setEditDate(false);
+            if (dateLv && dateLv !== p.payment_date.split("T")[0]) onUpdate(p.id, { payment_date: dateLv });
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditDate(false); }}
+          className="w-28 border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none"
+        />
+      )}
+      {/* Amount */}
+      {!editAmount ? (
+        <button
+          onClick={() => { setAmountLv(String(p.amount)); setEditAmount(true); }}
+          className="font-mono tabular-nums font-medium text-stone-800 flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text"
+        >
+          {formatMoney(p.amount)} {currencySymbol}
+        </button>
+      ) : (
+        <input
+          autoFocus type="number" step="0.01" value={amountLv}
+          onChange={(e) => setAmountLv(e.target.value)}
+          onBlur={() => {
+            setEditAmount(false);
+            const n = amountLv.trim() === "" ? null : parseFloat(amountLv.replace(",", "."));
+            if (n != null && n !== p.amount) onUpdate(p.id, { amount: n });
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditAmount(false); }}
+          className="flex-1 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono bg-amber-50/50 focus:outline-none"
+        />
+      )}
+      {/* Description */}
+      {!editDesc ? (
+        <button
+          onClick={() => { setDescLv(p.description ?? ""); setEditDesc(true); }}
+          className="text-stone-400 truncate max-w-[140px] text-left hover:bg-amber-50 rounded px-1 cursor-text"
+        >
+          {p.description || <span className="text-stone-300">комментарий…</span>}
+        </button>
+      ) : (
+        <input
+          autoFocus value={descLv}
+          onChange={(e) => setDescLv(e.target.value)}
+          onBlur={() => {
+            setEditDesc(false);
+            const nv = descLv.trim() || null;
+            if (nv !== p.description) onUpdate(p.id, { description: nv });
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditDesc(false); }}
+          className="w-36 border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none"
+        />
+      )}
+      <button onClick={() => onDelete(p.id)} className="text-stone-300 hover:text-red-500 transition-colors">
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 export function DealPayments({ dealId, currencySymbol, side }: { dealId: string; currencySymbol: string; side?: "supplier" | "buyer" }) {
   const supabaseRef = useRef(createClient());
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -64,6 +151,12 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
     await loadPayments();
   }
 
+  async function updatePayment(id: string, patch: Partial<Payment>) {
+    const { error } = await supabaseRef.current.from("deal_payments").update(patch).eq("id", id);
+    if (error) { toast.error(`Ошибка: ${error.message}`); return; }
+    await loadPayments();
+  }
+
   const filteredPayments = side ? payments.filter((p) => p.side === side) : payments;
   const supplierPayments = payments.filter((p) => p.side === "supplier");
   const buyerPayments = payments.filter((p) => p.side === "buyer");
@@ -83,14 +176,7 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
         ) : (
           <div className="space-y-1">
             {items.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 rounded bg-stone-50 px-2 py-1 text-[11px]">
-                <span className="text-stone-500 w-20">{new Date(p.payment_date).toLocaleDateString("ru-RU")}</span>
-                <span className="font-mono tabular-nums font-medium text-stone-800 flex-1">{formatMoney(p.amount)} {currencySymbol}</span>
-                {p.description && <span className="text-stone-400 truncate max-w-[100px]">{p.description}</span>}
-                <button onClick={() => deletePayment(p.id)} className="text-stone-300 hover:text-red-500 transition-colors">
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
+              <PaymentRow key={p.id} p={p} currencySymbol={currencySymbol} onUpdate={updatePayment} onDelete={deletePayment} />
             ))}
             <div className="flex items-center gap-2 px-2 py-1 text-[11px] border-t border-stone-200">
               <span className="text-stone-500 w-20 font-medium">Итого:</span>
