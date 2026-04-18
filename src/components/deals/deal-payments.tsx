@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 
 type Payment = {
   id: string;
@@ -15,21 +16,24 @@ type Payment = {
   amount: number;
   payment_date: string;
   description: string | null;
+  currency: string | null;
 };
 
 function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
-// Single payment row with inline editable date/amount/description
+// Single payment row with inline editable date/amount/description/currency
 function PaymentRow({
-  p, currencySymbol, onUpdate, onDelete,
+  p, dealCurrency, onUpdate, onDelete,
 }: {
   p: Payment;
-  currencySymbol: string;
+  dealCurrency: string;
   onUpdate: (id: string, patch: Partial<Payment>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const effectiveCur = p.currency ?? dealCurrency;
+  const sym = currencySymbol(effectiveCur);
   const [editDate, setEditDate] = useState(false);
   const [dateLv, setDateLv] = useState("");
   const [editAmount, setEditAmount] = useState(false);
@@ -65,7 +69,7 @@ function PaymentRow({
           onClick={() => { setAmountLv(String(p.amount)); setEditAmount(true); }}
           className="font-mono tabular-nums font-medium text-stone-800 flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text"
         >
-          {formatMoney(p.amount)} {currencySymbol}
+          {formatMoney(p.amount)} {sym}
         </button>
       ) : (
         <input
@@ -101,6 +105,19 @@ function PaymentRow({
           className="w-36 border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none"
         />
       )}
+      {/* Currency override */}
+      <select
+        value={p.currency ?? ""}
+        onChange={(e) => {
+          const nv = e.target.value || null;
+          if (nv !== (p.currency ?? null)) onUpdate(p.id, { currency: nv });
+        }}
+        className="h-5 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300"
+        title="Валюта оплаты (пусто — как в сделке)"
+      >
+        <option value="">{dealCurrency} (сделка)</option>
+        {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+      </select>
       <button onClick={() => onDelete(p.id)} className="text-stone-300 hover:text-red-500 transition-colors">
         <Trash2 className="h-3 w-3" />
       </button>
@@ -108,7 +125,10 @@ function PaymentRow({
   );
 }
 
-export function DealPayments({ dealId, currencySymbol, side }: { dealId: string; currencySymbol: string; side?: "supplier" | "buyer" }) {
+export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side }: { dealId: string; currencySymbol: string; side?: "supplier" | "buyer" }) {
+  // The deal-level currency code (USD / KZT / ...) is derived from the symbol we were given.
+  // Find the code whose symbol matches; fall back to USD.
+  const dealCurrency = CURRENCIES.find((c) => c.symbol === dealCurrencySymbol)?.value ?? "USD";
   const supabaseRef = useRef(createClient());
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +136,7 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
   const [newAmount, setNewAmount] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
   const [newDesc, setNewDesc] = useState("");
+  const [newCurrency, setNewCurrency] = useState("");  // empty = inherit deal currency
 
   useEffect(() => { loadPayments(); }, [dealId]);
 
@@ -138,11 +159,13 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
       amount: parseFloat(newAmount),
       payment_date: newDate,
       description: newDesc || null,
+      currency: newCurrency || null,
     });
     if (error) { toast.error(`Ошибка: ${error.message}`); return; }
     setAddingSide(null);
     setNewAmount("");
     setNewDesc("");
+    setNewCurrency("");
     await loadPayments();
   }
 
@@ -162,7 +185,12 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
   const buyerPayments = payments.filter((p) => p.side === "buyer");
 
   function PaymentList({ items, side, label }: { items: Payment[]; side: "supplier" | "buyer"; label: string }) {
-    const total = items.reduce((s, p) => s + p.amount, 0);
+    // Sum per-currency so mixed-currency lists make sense.
+    const totals = new Map<string, number>();
+    for (const p of items) {
+      const code = p.currency ?? dealCurrency;
+      totals.set(code, (totals.get(code) ?? 0) + p.amount);
+    }
     return (
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -176,11 +204,15 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
         ) : (
           <div className="space-y-1">
             {items.map((p) => (
-              <PaymentRow key={p.id} p={p} currencySymbol={currencySymbol} onUpdate={updatePayment} onDelete={deletePayment} />
+              <PaymentRow key={p.id} p={p} dealCurrency={dealCurrency} onUpdate={updatePayment} onDelete={deletePayment} />
             ))}
             <div className="flex items-center gap-2 px-2 py-1 text-[11px] border-t border-stone-200">
               <span className="text-stone-500 w-20 font-medium">Итого:</span>
-              <span className="font-mono tabular-nums font-bold text-stone-900">{formatMoney(total)} {currencySymbol}</span>
+              <span className="flex flex-wrap gap-x-3 font-mono tabular-nums font-bold text-stone-900">
+                {[...totals.entries()].map(([code, v]) => (
+                  <span key={code}>{formatMoney(v)} {currencySymbol(code)}</span>
+                ))}
+              </span>
             </div>
           </div>
         )}
@@ -214,15 +246,22 @@ export function DealPayments({ dealId, currencySymbol, side }: { dealId: string;
               Новая оплата ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
             </p>
             <div className="flex gap-2 items-end">
-              <div className="w-32">
+              <div className="w-28">
                 <Label className="text-[10px]">Сумма</Label>
                 <Input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="h-7 text-[12px] font-mono" />
+              </div>
+              <div className="w-24">
+                <Label className="text-[10px]">Валюта</Label>
+                <select value={newCurrency} onChange={(e) => setNewCurrency(e.target.value)} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
+                  <option value="">{dealCurrency} (сделка)</option>
+                  {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
               </div>
               <div className="w-28">
                 <Label className="text-[10px]">Дата</Label>
                 <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="h-7 text-[12px]" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-[140px]">
                 <Label className="text-[10px]">Описание</Label>
                 <Input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="комментарий" className="h-7 text-[12px]" />
               </div>

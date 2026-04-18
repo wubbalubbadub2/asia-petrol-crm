@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Filter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +26,7 @@ type DtKtRecord = {
   company_group?: { name: string } | null;
 };
 
-type DtKtPayment = { id: string; payment_date: string; amount: number; description: string | null };
+type DtKtPayment = { id: string; payment_date: string; amount: number; description: string | null; currency: string | null };
 type RegistrySums = { forwarder_id: string; total_volume: number; total_amount: number };
 
 function fmt(v: number | null | undefined) { return v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }); }
@@ -99,8 +100,8 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [balance, setBalance] = useState(""); const [refund, setRefund] = useState("");
   const [fines, setFines] = useState(""); const [surcharge, setSurcharge] = useState(""); const [ogem, setOgem] = useState("");
-  // Multiple payments
-  const [payments, setPayments] = useState<{ amount: string; date: string }[]>([]);
+  // Multiple payments (each can have its own currency override)
+  const [payments, setPayments] = useState<{ amount: string; date: string; currency: string }[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -113,7 +114,7 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
     });
   }, [open]);
 
-  function addPaymentRow() { setPayments([...payments, { amount: "", date: new Date().toISOString().split("T")[0] }]); }
+  function addPaymentRow() { setPayments([...payments, { amount: "", date: new Date().toISOString().split("T")[0], currency: "" }]); }
   function removePaymentRow(i: number) { setPayments(payments.filter((_, idx) => idx !== i)); }
 
   async function save() {
@@ -133,6 +134,7 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
       const paymentRows = payments.filter((p) => p.amount).map((p) => ({
         dt_kt_id: data.id, forwarder_id: fwId, company_group_id: cgId || fwId,
         payment_date: p.date, amount: parseFloat(p.amount),
+        currency: p.currency || null,
       }));
       if (paymentRows.length > 0) await sb.current.from("dt_kt_payments").insert(paymentRows);
     }
@@ -172,7 +174,13 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
             <div className="space-y-1.5">
               {payments.map((p, i) => (
                 <div key={i} className="flex gap-2 items-end">
-                  <div className="w-32"><Label className="text-[10px]">Сумма</Label><Input type="number" step="0.01" value={p.amount} onChange={(e) => { const u = [...payments]; u[i].amount = e.target.value; setPayments(u); }} className="h-7 text-[12px] font-mono" /></div>
+                  <div className="w-28"><Label className="text-[10px]">Сумма</Label><Input type="number" step="0.01" value={p.amount} onChange={(e) => { const u = [...payments]; u[i].amount = e.target.value; setPayments(u); }} className="h-7 text-[12px] font-mono" /></div>
+                  <div className="w-24"><Label className="text-[10px]">Валюта</Label>
+                    <select value={p.currency} onChange={(e) => { const u = [...payments]; u[i].currency = e.target.value; setPayments(u); }} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
+                      <option value="">авто</option>
+                      {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </div>
                   <div className="w-32"><Label className="text-[10px]">Дата</Label><Input type="date" value={p.date} onChange={(e) => { const u = [...payments]; u[i].date = e.target.value; setPayments(u); }} className="h-7 text-[12px]" /></div>
                   <button onClick={() => removePaymentRow(i)} className="text-stone-300 hover:text-red-500 pb-1"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
@@ -206,7 +214,7 @@ export default function DtKtPage() {
       // Placeholder — registry sums computed below
       Promise.resolve({ data: null }),
       // Load all payments for these records
-      sb.current.from("dt_kt_payments").select("id, dt_kt_id, payment_date, amount, description").order("payment_date"),
+      sb.current.from("dt_kt_payments").select("id, dt_kt_id, payment_date, amount, description, currency").order("payment_date"),
     ]);
     setRecords((recs ?? []) as unknown as DtKtRecord[]);
     // Registry sums by forwarder — fallback to manual query if RPC doesn't exist
@@ -384,7 +392,18 @@ export default function DtKtPage() {
                               {pays.map((p) => (
                                 <div key={p.id} className="flex items-center gap-3 text-[11px]">
                                   <span className="w-28"><InlineDtDate value={p.payment_date} onSave={(v) => v ? updatePayment(p.id, { payment_date: v }) : Promise.resolve()} /></span>
-                                  <span className="w-28"><InlineDtNum value={p.amount} onSave={(v) => v != null ? updatePayment(p.id, { amount: v }) : Promise.resolve()} /></span>
+                                  <span className="w-28 text-right">
+                                    <InlineDtNum value={p.amount} onSave={(v) => v != null ? updatePayment(p.id, { amount: v }) : Promise.resolve()} />
+                                  </span>
+                                  <span className="text-[10px] text-stone-500 w-10">{currencySymbol(p.currency ?? "KZT")}</span>
+                                  <select
+                                    value={p.currency ?? ""}
+                                    onChange={(e) => updatePayment(p.id, { currency: e.target.value || null })}
+                                    className="h-6 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300"
+                                  >
+                                    <option value="">авто</option>
+                                    {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                  </select>
                                   <span className="flex-1"><InlineDtText value={p.description} onSave={(v) => updatePayment(p.id, { description: v })} placeholder="описание" /></span>
                                   <button onClick={() => { if (confirm("Удалить оплату?")) deletePayment(p.id); }} className="text-stone-300 hover:text-red-500 transition-colors">
                                     <Trash2 className="h-3 w-3" />
