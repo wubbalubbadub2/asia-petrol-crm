@@ -1,13 +1,17 @@
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
-// Lightweight proxy — only refresh cookies, no auth check
-// Auth is handled client-side for instant navigation
+// Server-side optimistic auth check (Next.js 16 "proxy" = middleware).
+// Refreshes the Supabase session cookie and redirects unauthenticated users
+// to /login before any HTML is served. RLS remains the authoritative
+// authorization layer; this is defense in depth.
 export async function proxy(request: NextRequest) {
-  return NextResponse.next();
+  return await updateSession(request);
 }
 
 export const config = {
   matcher: [
+    // Skip static assets and image optimisation.
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

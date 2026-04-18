@@ -1,7 +1,18 @@
 import { createBrowserClient } from "@supabase/ssr";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://oteysqqohcgnwpsxmyjg.supabase.co";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZXlzcXFvaGNnbndwc3hteWpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NTQyNjgsImV4cCI6MjA4ODEzMDI2OH0.sjodhktQUHiozb5Rcq37GlGK-7TlnWbhkhA-PZXWeCo";
+function requiredEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) {
+    throw new Error(
+      `Missing env var ${name}. Copy .env.example to .env.local and fill in ` +
+      `NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.`,
+    );
+  }
+  return v;
+}
+
+const SUPABASE_URL = requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
+const SUPABASE_ANON_KEY = requiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
 export function createClient() {
   return createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
