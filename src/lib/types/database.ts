@@ -334,6 +334,42 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          changed_at: string
+          changed_fields: string[] | null
+          id: string
+          new_row: Json | null
+          old_row: Json | null
+          op: string
+          row_id: string
+          table_name: string
+          user_id: string | null
+        }
+        Insert: {
+          changed_at?: string
+          changed_fields?: string[] | null
+          id?: string
+          new_row?: Json | null
+          old_row?: Json | null
+          op: string
+          row_id: string
+          table_name: string
+          user_id?: string | null
+        }
+        Update: {
+          changed_at?: string
+          changed_fields?: string[] | null
+          id?: string
+          new_row?: Json | null
+          old_row?: Json | null
+          op?: string
+          row_id?: string
+          table_name?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       company_groups: {
         Row: {
           bin_iin: string | null

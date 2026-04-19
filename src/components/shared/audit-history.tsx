@@ -80,12 +80,7 @@ export function AuditHistory({
 
     async function load() {
       setLoading(true);
-      // `audit_log` exists only after migration 00036 is applied. Until the
-      // user runs it and regenerates types, the strict Database type doesn't
-      // know about this table — cast at the boundary so the rest of the app
-      // stays type-safe.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sb = sbRef.current as any;
+      const sb = sbRef.current;
 
       // Parallel: direct deal rows + child rows that carry deal_id in their payload.
       const [dealRows, childRows] = await Promise.all([
