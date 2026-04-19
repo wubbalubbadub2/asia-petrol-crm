@@ -25,9 +25,9 @@ CREATE INDEX idx_audit_log_user ON audit_log (user_id, changed_at DESC);
 CREATE OR REPLACE FUNCTION audit_trigger()
 RETURNS TRIGGER AS $$
 DECLARE
-  changed TEXT[] := NULL;
-  v_old   JSONB  := NULL;
-  v_new   JSONB  := NULL;
+  v_changed TEXT[] := NULL;
+  v_old     JSONB  := NULL;
+  v_new     JSONB  := NULL;
 BEGIN
   IF TG_OP <> 'INSERT' THEN
     v_old := to_jsonb(OLD);
@@ -37,14 +37,17 @@ BEGIN
   END IF;
 
   IF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(n.key ORDER BY n.key)
-      INTO changed
+    -- Direct assignment avoids SELECT…INTO ambiguity with SQL CREATE TABLE AS.
+    v_changed := ARRAY(
+      SELECT n.key
       FROM jsonb_each(v_new) n
-     WHERE n.value IS DISTINCT FROM (v_old -> n.key)
-       -- ignore cosmetic updated_at bumps — they'd flood the log
-       AND n.key <> 'updated_at';
+      WHERE n.value IS DISTINCT FROM (v_old -> n.key)
+        -- ignore cosmetic updated_at bumps — they'd flood the log
+        AND n.key <> 'updated_at'
+      ORDER BY n.key
+    );
     -- If nothing meaningful changed, skip logging entirely.
-    IF changed IS NULL OR array_length(changed, 1) IS NULL THEN
+    IF v_changed IS NULL OR array_length(v_changed, 1) IS NULL THEN
       RETURN NEW;
     END IF;
   END IF;
@@ -57,7 +60,7 @@ BEGIN
     auth.uid(),
     v_old,
     v_new,
-    changed
+    v_changed
   );
   RETURN COALESCE(NEW, OLD);
 END;
