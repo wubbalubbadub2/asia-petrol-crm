@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ import { DealPayments } from "@/components/deals/deal-payments";
 import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
 import { DealShipments } from "@/components/deals/deal-shipments";
 import { DealCompanyChain } from "@/components/deals/deal-company-chain";
+import { AuditHistory } from "@/components/shared/audit-history";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
@@ -164,6 +165,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const { data: deal, loading, reload } = useDeal(id);
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [refs, setRefs] = useState<{
     suppliers: { value: string; label: string }[];
     buyers: { value: string; label: string }[];
@@ -233,22 +235,32 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold font-mono">{deal.deal_code}</h1>
-            <Button
-              size="sm"
-              variant={editing ? "default" : "outline"}
-              onClick={async () => {
-                if (editing) {
-                  // Save mode — just toggle off (data already saved optimistically)
-                  setEditing(false);
-                } else {
-                  setEditing(true);
-                }
-              }}
-              className="ml-auto"
-            >
-              <Save className="mr-1 h-3.5 w-3.5" />
-              {editing ? "Сохранить" : "Редактировать"}
-            </Button>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setHistoryOpen(true)}
+                title="История изменений"
+              >
+                <History className="mr-1 h-3.5 w-3.5" />
+                История
+              </Button>
+              <Button
+                size="sm"
+                variant={editing ? "default" : "outline"}
+                onClick={async () => {
+                  if (editing) {
+                    // Save mode — just toggle off (data already saved optimistically)
+                    setEditing(false);
+                  } else {
+                    setEditing(true);
+                  }
+                }}
+              >
+                <Save className="mr-1 h-3.5 w-3.5" />
+                {editing ? "Сохранить" : "Редактировать"}
+              </Button>
+            </div>
             <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium border ${
               deal.deal_type === "KG" ? "bg-blue-50 text-blue-700 border-blue-200" :
               deal.deal_type === "KZ" ? "bg-green-50 text-green-700 border-green-200" :
@@ -403,6 +415,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {/* Documents */}
       <DocumentsSection dealId={deal.id} />
     </div>
+
+    {/* History drawer */}
+    <AuditHistory open={historyOpen} onClose={() => setHistoryOpen(false)} dealId={deal.id} />
 
     {/* Right sidebar: Activity feed — sidebar on large, floating button + modal on small */}
     <div className="hidden lg:block w-[340px] shrink-0">
