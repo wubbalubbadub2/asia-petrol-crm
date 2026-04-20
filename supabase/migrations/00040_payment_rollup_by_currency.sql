@@ -15,28 +15,31 @@
 -- Knock-on effect: supplier_balance and buyer_debt are derived from
 -- these rollups by the BEFORE trigger in migration 00021, so they
 -- self-correct as soon as the rollup runs.
+--
+-- Note on SELECT INTO: PL/pgSQL's `SELECT col INTO var` form collides
+-- with SQL's `CREATE TABLE AS SELECT … INTO` grammar on this Supabase
+-- Postgres build and sporadically raises "relation does not exist"
+-- against the variable name. Inlining the lookup as a join inside the
+-- UPDATE's subquery avoids the parser ambiguity entirely.
 
 CREATE OR REPLACE FUNCTION refresh_deal_payment_totals(p_deal_id UUID)
 RETURNS VOID AS $$
-DECLARE
-  v_currency TEXT;
 BEGIN
-  SELECT currency INTO v_currency FROM deals WHERE id = p_deal_id;
-
-  UPDATE deals SET
+  UPDATE deals d SET
     supplier_payment = COALESCE(sub.supplier_total, 0),
     buyer_payment = COALESCE(sub.buyer_total, 0)
   FROM (
     SELECT
-      deal_id,
-      SUM(CASE WHEN side = 'supplier' THEN amount ELSE 0 END) AS supplier_total,
-      SUM(CASE WHEN side = 'buyer' THEN amount ELSE 0 END) AS buyer_total
-    FROM deal_payments
-    WHERE deal_id = p_deal_id
-      AND (currency IS NULL OR currency = v_currency)
-    GROUP BY deal_id
+      p.deal_id,
+      SUM(CASE WHEN p.side = 'supplier' THEN p.amount ELSE 0 END) AS supplier_total,
+      SUM(CASE WHEN p.side = 'buyer'    THEN p.amount ELSE 0 END) AS buyer_total
+    FROM deal_payments p
+    JOIN deals d2 ON d2.id = p.deal_id
+    WHERE p.deal_id = p_deal_id
+      AND (p.currency IS NULL OR p.currency = d2.currency)
+    GROUP BY p.deal_id
   ) sub
-  WHERE deals.id = sub.deal_id;
+  WHERE d.id = sub.deal_id;
 
   -- If no rows matched (all payments were in other currencies, or none
   -- exist at all) zero the rollup so the balance doesn't carry stale
