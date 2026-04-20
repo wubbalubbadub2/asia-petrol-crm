@@ -81,6 +81,14 @@ jobs:
               CREATE ROLE authenticated;
             END IF;
           END $DO$;
+          -- Real Supabase ships with a `supabase_realtime` publication
+          -- that migrations ALTER to opt tables into realtime streaming.
+          -- Create an empty stand-in so those ALTERs don't blow up here.
+          DO $DO$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+              CREATE PUBLICATION supabase_realtime;
+            END IF;
+          END $DO$;
           SQL
 
       - name: Apply all migrations in order

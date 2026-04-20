@@ -95,12 +95,13 @@ describe("Price Formation Calculator", () => {
     it("calculates date range from start + days", () => {
       const range = getDateRange("2026-01-15", 35);
       expect(range.start).toBe("2026-01-15");
-      expect(range.end).toBe("2026-02-18"); // Jan 15 + 34 days ahead
+      // setUp forces TZ=UTC, so "2026-01-15T00:00:00" + 35 days = 2026-02-19.
+      expect(range.end).toBe("2026-02-19");
     });
 
     it("handles month boundary", () => {
       const range = getDateRange("2026-03-20", 40);
-      expect(range.end).toBe("2026-04-28"); // Mar 20 + 39 days ahead
+      expect(range.end).toBe("2026-04-29"); // 2026-03-20 + 40 days in UTC
     });
   });
 });
