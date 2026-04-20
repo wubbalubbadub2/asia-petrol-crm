@@ -131,12 +131,13 @@ export function BulkAddDialog({
   const errorCount = parsed.filter((p) => p.error).length;
 
   async function save() {
-    if (parsed.length === 0) { toast.error("Нет строк для добавления"); return; }
-    if (errorCount > 0) { toast.error(`В строках есть ошибки (${errorCount}) — исправьте или удалите их`); return; }
+    const validRows = parsed.filter((p) => !p.error);
+    if (validRows.length === 0) { toast.error("Нет валидных строк для добавления"); return; }
+    if (errorCount > 0 && !confirm(`${errorCount} строк с ошибками будут пропущены. Добавить ${validRows.length} валидных?`)) return;
     setSaving(true);
 
     const tariffNum = tariff ? parseFloat(tariff) : null;
-    const rows = parsed.map((p) => ({
+    const rows = validRows.map((p) => ({
       registry_type: regType,
       deal_id: dealId,
       month: month || null,
@@ -294,10 +295,10 @@ export function BulkAddDialog({
           <Button variant="outline" onClick={onClose} disabled={saving} className="flex-1">Отмена</Button>
           <Button
             onClick={save}
-            disabled={saving || validCount === 0 || errorCount > 0}
+            disabled={saving || validCount === 0}
             className="flex-1"
           >
-            {saving ? "Сохранение..." : `+ Добавить ${validCount} отгрузок`}
+            {saving ? "Сохранение..." : `+ Добавить ${validCount} отгрузок${errorCount > 0 ? ` (${errorCount} с ошибками пропустим)` : ""}`}
           </Button>
         </div>
       </DialogContent>

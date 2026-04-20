@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Plus, Filter, Trash2 } from "lucide-react";
+import { Plus, Filter, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -71,7 +71,41 @@ export default function DealsPage() {
   }
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [buyerFilter, setBuyerFilter] = useState("");
+  const [factoryFilter, setFactoryFilter] = useState("");
+  const [fuelTypeFilter, setFuelTypeFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [forwarderFilter, setForwarderFilter] = useState("");
+  const [refs, setRefs] = useState<{
+    suppliers: { id: string; label: string }[];
+    buyers: { id: string; label: string }[];
+    factories: { id: string; label: string }[];
+    fuelTypes: { id: string; label: string }[];
+    forwarders: { id: string; label: string }[];
+  }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [] });
+  const sbRef = useRef(createClient());
   const { isAdmin } = useRole();
+
+  // Load reference lists once for filter dropdowns
+  useEffect(() => {
+    const sb = sbRef.current;
+    Promise.all([
+      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
+      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
+      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
+      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
+      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([s, b, f, ft, fw]) => {
+      setRefs({
+        suppliers: (s.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
+        buyers: (b.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
+        factories: (f.data ?? []).map((r) => ({ id: r.id, label: r.name })),
+        fuelTypes: (ft.data ?? []).map((r) => ({ id: r.id, label: r.name })),
+        forwarders: (fw.data ?? []).map((r) => ({ id: r.id, label: r.name })),
+      });
+    });
+  }, []);
 
   async function handleDelete(deal: Deal) {
     if (!confirm(`Удалить сделку ${deal.deal_code}?`)) return;
@@ -90,17 +124,37 @@ export default function DealsPage() {
   });
 
   const filtered = useMemo(() => {
-    if (!search) return deals;
-    const q = search.toLowerCase();
-    return deals.filter((d) =>
-      d.deal_code?.toLowerCase().includes(q) ||
-      d.supplier?.short_name?.toLowerCase().includes(q) ||
-      d.supplier?.full_name?.toLowerCase().includes(q) ||
-      d.buyer?.short_name?.toLowerCase().includes(q) ||
-      d.buyer?.full_name?.toLowerCase().includes(q) ||
-      d.fuel_type?.name?.toLowerCase().includes(q)
-    );
-  }, [deals, search]);
+    const q = search.trim().toLowerCase();
+    return deals.filter((d) => {
+      if (supplierFilter && d.supplier_id !== supplierFilter) return false;
+      if (buyerFilter && d.buyer_id !== buyerFilter) return false;
+      if (factoryFilter && d.factory_id !== factoryFilter) return false;
+      if (fuelTypeFilter && d.fuel_type_id !== fuelTypeFilter) return false;
+      if (monthFilter && d.month !== monthFilter) return false;
+      if (forwarderFilter && d.forwarder_id !== forwarderFilter) return false;
+      if (!q) return true;
+      return (
+        d.deal_code?.toLowerCase().includes(q) ||
+        d.supplier?.short_name?.toLowerCase().includes(q) ||
+        d.supplier?.full_name?.toLowerCase().includes(q) ||
+        d.buyer?.short_name?.toLowerCase().includes(q) ||
+        d.buyer?.full_name?.toLowerCase().includes(q) ||
+        d.fuel_type?.name?.toLowerCase().includes(q) ||
+        d.forwarder?.name?.toLowerCase().includes(q) ||
+        false
+      );
+    });
+  }, [deals, search, supplierFilter, buyerFilter, factoryFilter, fuelTypeFilter, monthFilter, forwarderFilter]);
+
+  const activeFilterCount =
+    (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
+    (fuelTypeFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (forwarderFilter ? 1 : 0);
+
+  function clearAllFilters() {
+    setSupplierFilter(""); setBuyerFilter(""); setFactoryFilter("");
+    setFuelTypeFilter(""); setMonthFilter(""); setForwarderFilter("");
+    setSearch("");
+  }
 
   return (
     <div className="space-y-4">
@@ -130,27 +184,67 @@ export default function DealsPage() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5 text-stone-400" />
-          <span className="text-[12px] text-stone-500">Год:</span>
+      {/* Filters — year + search on first row, dropdown filters on second */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-stone-400" />
+            <span className="text-[12px] text-stone-500">Год:</span>
+            <Input
+              type="number"
+              value={yearFilter}
+              onChange={(e) => setYearFilter(Number(e.target.value))}
+              className="w-20 h-7 text-[12px]"
+            />
+          </div>
           <Input
-            type="number"
-            value={yearFilter}
-            onChange={(e) => setYearFilter(Number(e.target.value))}
-            className="w-20 h-7 text-[12px]"
+            placeholder="Поиск по коду, контрагенту, экспедитору..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs h-7 text-[12px]"
           />
+          {activeFilterCount > 0 && (
+            <Button size="sm" variant="ghost" onClick={clearAllFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600">
+              <X className="h-3 w-3 mr-0.5" />
+              Сбросить фильтры ({activeFilterCount})
+            </Button>
+          )}
+          <span className="text-[11px] text-stone-400 ml-auto">
+            {filtered.length} {filtered.length === 1 ? "сделка" : "сделок"}
+          </span>
         </div>
-        <Input
-          placeholder="Поиск по коду, поставщику, покупателю..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs h-7 text-[12px]"
-        />
-        <span className="text-[11px] text-stone-400 ml-auto">
-          {filtered.length} сделок
-        </span>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+          <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все поставщики</option>
+            {refs.suppliers.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          <select value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все покупатели</option>
+            {refs.buyers.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          <select value={factoryFilter} onChange={(e) => setFactoryFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все заводы</option>
+            {refs.factories.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          <select value={fuelTypeFilter} onChange={(e) => setFuelTypeFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все ГСМ</option>
+            {refs.fuelTypes.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все месяцы</option>
+            {MONTHS_RU.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={forwarderFilter} onChange={(e) => setForwarderFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все экспедиторы</option>
+            {refs.forwarders.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Passport views — all tabs use PassportTable */}

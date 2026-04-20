@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  FileText, Truck, DollarSign, ClipboardList, ArrowRight,
+  FileText, Truck, ClipboardList, ArrowRight,
   BarChart3, PieChart as PieChartIcon, TrendingUp, Filter,
+  Package, Wallet,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -25,6 +26,7 @@ type Deal = {
   supplier_id: string | null;
   buyer_id: string | null;
   forwarder_id: string | null;
+  currency: string | null;
   supplier_contracted_volume: number | null;
   buyer_contracted_volume: number | null;
   supplier_shipped_amount: number | null;
@@ -35,6 +37,14 @@ type Deal = {
   buyer_debt: number | null;
   buyer_shipped_volume: number | null;
 };
+
+const CURRENCY_SYMBOL: Record<string, string> = {
+  USD: "$", KZT: "₸", KGS: "сом", RUB: "₽",
+};
+
+function symbolFor(code: string | null | undefined): string {
+  return CURRENCY_SYMBOL[code ?? "USD"] ?? "$";
+}
 
 type RefMap = Record<string, string>;
 
@@ -89,7 +99,7 @@ export default function DashboardPage() {
     async function load() {
       const supabase = createClient();
       const [dealsRes, ftRes, supRes, buyRes, fwRes, appsRes] = await Promise.all([
-        supabase.from("deals").select("deal_type, month, fuel_type_id, supplier_id, buyer_id, forwarder_id, supplier_contracted_volume, buyer_contracted_volume, supplier_shipped_amount, buyer_shipped_amount, supplier_payment, buyer_payment, supplier_balance, buyer_debt, buyer_shipped_volume").eq("year", yearFilter).eq("is_archived", false),
+        supabase.from("deals").select("deal_type, month, fuel_type_id, supplier_id, buyer_id, forwarder_id, currency, supplier_contracted_volume, buyer_contracted_volume, supplier_shipped_amount, buyer_shipped_amount, supplier_payment, buyer_payment, supplier_balance, buyer_debt, buyer_shipped_volume").eq("year", yearFilter).eq("is_archived", false),
         supabase.from("fuel_types").select("id, name"),
         supabase.from("counterparties").select("id, short_name").eq("type", "supplier"),
         supabase.from("counterparties").select("id, short_name").eq("type", "buyer"),
@@ -113,13 +123,41 @@ export default function DashboardPage() {
     return deals.filter((d) => d.deal_type === dealTypeFilter);
   }, [deals, dealTypeFilter]);
 
-  // KPI cards
+  // KPI cards — volumes (currency-neutral)
   const totalDeals = filtered.length;
   const kgCount = filtered.filter((d) => d.deal_type === "KG").length;
   const kzCount = filtered.filter((d) => d.deal_type === "KZ").length;
+  const totalContractedVol = filtered.reduce((s, d) => s + (d.buyer_contracted_volume ?? 0), 0);
   const totalShipped = filtered.reduce((s, d) => s + (d.buyer_shipped_volume ?? 0), 0);
-  const totalReceivable = filtered.reduce((s, d) => s + Math.abs(Math.min(d.buyer_debt ?? 0, 0)), 0);
-  const totalPayable = filtered.reduce((s, d) => s + Math.abs(Math.min(d.supplier_balance ?? 0, 0)), 0);
+  const totalRemaining = Math.max(0, totalContractedVol - totalShipped);
+
+  // Per-currency financial summary: payments, shipped amount, balances
+  const byCurrency = useMemo(() => {
+    const map: Record<string, {
+      shippedAmt: number;
+      supplierPaid: number;
+      buyerPaid: number;
+      supplierOwes: number;   // -supplier_balance when negative
+      buyerOwes: number;      // -buyer_debt when negative
+      dealCount: number;
+    }> = {};
+    filtered.forEach((d) => {
+      const cur = d.currency || "USD";
+      const entry = map[cur] ?? (map[cur] = {
+        shippedAmt: 0, supplierPaid: 0, buyerPaid: 0,
+        supplierOwes: 0, buyerOwes: 0, dealCount: 0,
+      });
+      entry.dealCount += 1;
+      entry.shippedAmt += d.buyer_shipped_amount ?? 0;
+      entry.supplierPaid += d.supplier_payment ?? 0;
+      entry.buyerPaid += d.buyer_payment ?? 0;
+      if ((d.supplier_balance ?? 0) < 0) entry.supplierOwes += Math.abs(d.supplier_balance ?? 0);
+      if ((d.buyer_debt ?? 0) < 0) entry.buyerOwes += Math.abs(d.buyer_debt ?? 0);
+    });
+    return map;
+  }, [filtered]);
+
+  const currencyRows = Object.entries(byCurrency).sort((a, b) => b[1].dealCount - a[1].dealCount);
 
   // Monthly data
   const monthlyData = useMemo(() => {
@@ -257,20 +295,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — volumes and counts */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <Link href="/deals">
-          <Card className="group transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-amber-200">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">Сделки</span>
-                <FileText className="h-4 w-4 text-amber-500" />
-              </div>
-              <div className="text-2xl font-bold font-mono tabular-nums">{loading ? "..." : totalDeals}</div>
-              <p className="text-[10px] text-stone-400 mt-0.5">KG: {kgCount} | KZ: {kzCount}</p>
-            </CardContent>
-          </Card>
-        </Link>
         <Link href="/registry">
           <Card className="group transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-amber-200">
             <CardContent className="pt-4 pb-3">
@@ -283,15 +309,27 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/quotations">
+        <Link href="/deals">
           <Card className="group transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-amber-200">
             <CardContent className="pt-4 pb-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">Котировки</span>
-                <DollarSign className="h-4 w-4 text-amber-500" />
+                <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">Остаток к отгрузке</span>
+                <Package className="h-4 w-4 text-amber-500" />
               </div>
-              <div className="text-2xl font-bold font-mono tabular-nums">16</div>
-              <p className="text-[10px] text-stone-400 mt-0.5">типов продуктов</p>
+              <div className="text-2xl font-bold font-mono tabular-nums">{loading ? "..." : formatNum(totalRemaining)}</div>
+              <p className="text-[10px] text-stone-400 mt-0.5">тонн ({formatNum(totalContractedVol)} законтрактовано)</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/deals">
+          <Card className="group transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-amber-200">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-medium text-stone-500 uppercase tracking-wide">Сделок</span>
+                <FileText className="h-4 w-4 text-amber-500" />
+              </div>
+              <div className="text-2xl font-bold font-mono tabular-nums">{loading ? "..." : totalDeals}</div>
+              <p className="text-[10px] text-stone-400 mt-0.5">KG: {kgCount} | KZ: {kzCount}</p>
             </CardContent>
           </Card>
         </Link>
@@ -310,6 +348,68 @@ export default function DashboardPage() {
           </Card>
         </Link>
       </div>
+
+      {/* Per-currency financial summary — the "общая картина" the client asked for.
+          Each row breaks payments, shipped amounts, and saldo by deal currency
+          so mixed-currency books aren't silently collapsed into one wrong number. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[14px] flex items-center gap-2">
+              <Wallet className="h-3.5 w-3.5 text-amber-500" />
+              Финансы по валютам
+            </CardTitle>
+            <span className="text-[10px] text-stone-400">
+              {loading ? "" : currencyRows.length > 0 ? `${currencyRows.length} валют` : ""}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {loading ? (
+            <div className="py-4 text-center text-[12px] text-stone-400">Загрузка...</div>
+          ) : currencyRows.length === 0 ? (
+            <div className="py-4 text-center text-[12px] text-stone-400">Нет данных за {yearFilter}</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wide text-stone-400 border-b border-stone-200">
+                    <th className="text-left px-2 py-1.5 font-medium">Валюта</th>
+                    <th className="text-right px-2 py-1.5 font-medium">Сделок</th>
+                    <th className="text-right px-2 py-1.5 font-medium">Отгружено (сумма)</th>
+                    <th className="text-right px-2 py-1.5 font-medium">Оплата покупателей</th>
+                    <th className="text-right px-2 py-1.5 font-medium">Оплата поставщикам</th>
+                    <th className="text-right px-2 py-1.5 font-medium">Покупатели должны</th>
+                    <th className="text-right px-2 py-1.5 font-medium">Мы должны поставщ.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currencyRows.map(([cur, e]) => (
+                    <tr key={cur} className="border-b border-stone-100 hover:bg-stone-50">
+                      <td className="px-2 py-1.5 font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="font-mono text-stone-700">{cur}</span>
+                          <span className="text-stone-400">{symbolFor(cur)}</span>
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono tabular-nums text-stone-500">{e.dealCount}</td>
+                      <td className="px-2 py-1.5 text-right font-mono tabular-nums">{formatNum(e.shippedAmt)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono tabular-nums text-green-700">{formatNum(e.buyerPaid)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono tabular-nums text-amber-700">{formatNum(e.supplierPaid)}</td>
+                      <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${e.buyerOwes > 0 ? "text-red-600 font-semibold" : "text-stone-400"}`}>
+                        {e.buyerOwes > 0 ? formatNum(e.buyerOwes) : "—"}
+                      </td>
+                      <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${e.supplierOwes > 0 ? "text-red-600 font-semibold" : "text-stone-400"}`}>
+                        {e.supplierOwes > 0 ? formatNum(e.supplierOwes) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Charts Row 1: Monthly Volumes + Product Mix */}
       <div className="grid gap-4 lg:grid-cols-3">

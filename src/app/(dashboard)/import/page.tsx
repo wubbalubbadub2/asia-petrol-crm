@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { FileSpreadsheet, Receipt, Truck, CheckCircle, AlertCircle } from "lucide-react";
+import { FileSpreadsheet, Receipt, Truck, CheckCircle, AlertCircle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -55,6 +55,63 @@ export default function ImportPage() {
   function asString(v: unknown): string | null {
     if (v == null || v === "") return null;
     return String(v);
+  }
+
+  // Build + download an Excel template whose headers exactly match what the
+  // importer expects. Same file the client fills in — no separate template
+  // drift (client's ask: "один шаблон — чтобы и клиенту отправлять, и в
+  // паспорт сделки загружать").
+  async function downloadTemplate() {
+    const XLSX = await import("xlsx");
+    const templates: Record<typeof activeTab, { headers: string[]; sample: Record<string, unknown> }> = {
+      registry: {
+        headers: [
+          "квартал", "месяц", "дата", "№ накладной", "№ вагонов",
+          "объем отгрузки", "месяц отгрузки", "Ж/Д тариф", "№ СФ",
+          "коментарий", "Налив тонн", "месяц доп",
+        ],
+        sample: {
+          "квартал": "Q1", "месяц": "январь", "дата": "15.01.2026",
+          "№ накладной": "АО123456", "№ вагонов": "51742534",
+          "объем отгрузки": 54.719, "месяц отгрузки": "январь",
+          "Ж/Д тариф": 18500, "№ СФ": "СФ-0001", "коментарий": "",
+          "Налив тонн": 54.719, "месяц доп": "",
+        },
+      },
+      snt: {
+        headers: [
+          "№ СНТ", "Дата", "Поставщик", "Получатель",
+          "Товар", "Количество", "Сумма", "№ вагонов", "№ накладной",
+        ],
+        sample: {
+          "№ СНТ": "SNT-2026-0001", "Дата": "15.01.2026",
+          "Поставщик": "ООО Пример", "Получатель": "АО Клиент",
+          "Товар": "Дизель ТС Л-0,05-62 зимнее",
+          "Количество": 54.719, "Сумма": 18_500_000,
+          "№ вагонов": "51742534", "№ накладной": "АО123456",
+        },
+      },
+      esf: {
+        headers: [
+          "№ ЭСФ", "Дата", "Поставщик", "Получатель",
+          "Наименование товара", "Количество", "Сумма", "НДС", "Итого",
+        ],
+        sample: {
+          "№ ЭСФ": "ESF-2026-0001", "Дата": "15.01.2026",
+          "Поставщик": "ООО Пример", "Получатель": "АО Клиент",
+          "Наименование товара": "Дизель ТС Л-0,05-62",
+          "Количество": 54.719, "Сумма": 16_516_071,
+          "НДС": 1_983_929, "Итого": 18_500_000,
+        },
+      },
+    };
+    const t = templates[activeTab];
+    const ws = XLSX.utils.json_to_sheet([t.sample], { header: t.headers });
+    const wb = XLSX.utils.book_new();
+    const sheetName = activeTab === "registry" ? "Реестр отгрузки" : activeTab.toUpperCase();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, `шаблон_${sheetName.replace(/\s+/g, "_").toLowerCase()}.xlsx`);
+    toast.success("Шаблон скачан");
   }
 
   async function handleImportRegistry() {
@@ -151,13 +208,20 @@ export default function ImportPage() {
       {/* Step 1: Upload */}
       {!importDone && (
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-[14px]">
               1. Загрузите файл ({tabs.find(t => t.key === activeTab)?.label})
             </CardTitle>
+            <Button size="sm" variant="outline" onClick={downloadTemplate} className="h-7 text-[11px]">
+              <Download className="mr-1 h-3 w-3" />
+              Скачать шаблон
+            </Button>
           </CardHeader>
           <CardContent>
             <ExcelUpload onDataParsed={handleDataParsed} />
+            <p className="text-[10px] text-stone-400 mt-2">
+              Шаблон можно отправить клиенту — столбцы совпадают с тем, что ожидает загрузчик, поэтому заполненный файл можно сразу импортировать обратно.
+            </p>
           </CardContent>
         </Card>
       )}
