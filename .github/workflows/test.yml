@@ -102,13 +102,14 @@ jobs:
         run: ./supabase/tests/run.sh
 
   # End-to-end smoke test. Runs against a real Supabase project using
-  # credentials stored as GitHub repo secrets. Skipped (as a pass) if the
-  # secrets aren't configured — see e2e/smoke.spec.ts for the skip logic.
+  # credentials stored as GitHub repo secrets. Intentionally limited to
+  # main-branch pushes: other branches don't have the Supabase URL in
+  # secrets and the Next.js middleware now hard-fails on missing env
+  # (Phase 0 fix). PRs run unit+db only, which is enough to catch most
+  # regressions.
   e2e:
     runs-on: ubuntu-latest
-    # Only run on main branch pushes; pull-requests from forks don't get
-    # access to secrets so the spec would skip anyway.
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
