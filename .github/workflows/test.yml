@@ -98,6 +98,19 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f" > /dev/null
           done
 
+      # Grant the authenticated role the same privileges Supabase grants
+      # in production so RLS-enabled operations inside 07_rls_matrix
+      # don't fail at the plain Postgres permission layer. Runs after
+      # migrations so every table created along the way is covered.
+      - name: Grant table privileges to authenticated
+        run: |
+          psql "$DATABASE_URL" <<'SQL'
+          GRANT USAGE ON SCHEMA public, auth TO authenticated;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+          GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated;
+          SQL
+
       - name: Run DB test suite
         run: ./supabase/tests/run.sh
 
