@@ -186,7 +186,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   useEffect(() => {
     if (!dealId) return;
     sb.current.from("deals")
-      .select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
+      .select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
       .eq("id", dealId).single()
       .then(({ data }) => { if (data) setDeal(data as unknown as DRef); });
   }, [dealId]);
@@ -195,7 +195,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   useEffect(() => {
     if (!deal || tariffVal) return;
     const firstRec = group.records[0];
-    const depId = firstRec?.departure_station_id;
+    const depId = deal.supplier_departure_station_id || firstRec?.departure_station_id;
     const destId = deal.buyer_destination_station_id || firstRec?.destination_station_id;
     const ftId = deal.fuel_type_id;
     const fwId = deal.forwarder_id;
@@ -224,7 +224,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       buyer_id: deal?.buyer_id || firstRec?.buyer_id || null,
       forwarder_id: deal?.forwarder_id || firstRec?.forwarder_id || null,
       destination_station_id: deal?.buyer_destination_station_id || firstRec?.destination_station_id || null,
-      departure_station_id: firstRec?.departure_station_id || null,
+      departure_station_id: deal?.supplier_departure_station_id || firstRec?.departure_station_id || null,
       railway_tariff: tariff, company_group_id: deal?.logistics_company_group_id || firstRec?.company_group_id || null,
       wagon_number: w, shipment_volume: parseFloat(v),
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
@@ -285,7 +285,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 type Ref = { id: string; name: string };
 type DRef2 = { id: string; short_name: string | null; full_name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
-type DRef = { id: string; deal_code: string; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
+type DRef = { id: string; deal_code: string; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
   const sb = useRef(createClient());
@@ -304,7 +304,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      sb.current.from("deals").select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
+      sb.current.from("deals").select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
       sb.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
@@ -327,6 +327,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (d.factory_id) setFacId(d.factory_id);
     if (d.forwarder_id) setFwId(d.forwarder_id);
     if (d.buyer_destination_station_id) setDestId(d.buyer_destination_station_id);
+    if (d.supplier_departure_station_id) setDepId(d.supplier_departure_station_id);
     if (d.logistics_company_group_id) setCgId(d.logistics_company_group_id);
   }, [dealId, deals]);
 

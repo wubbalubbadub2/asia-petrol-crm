@@ -105,6 +105,7 @@ export default function NewDealPage() {
   const [buyerPriceCondition, setBuyerPriceCondition] = useState<PriceCondition>("average_month");
   const [buyerDeliveryBasis, setBuyerDeliveryBasis] = useState("");
   const [buyerStationId, setBuyerStationId] = useState("");
+  const [supplierDepartureStationId, setSupplierDepartureStationId] = useState("");
   const [buyerFixDate, setBuyerFixDate] = useState("");
   const [buyerTriggerStart, setBuyerTriggerStart] = useState("");
   const [buyerTriggerDays, setBuyerTriggerDays] = useState("35");
@@ -278,6 +279,7 @@ export default function NewDealPage() {
       buyer_price_condition: buyerPriceCondition || null,
       buyer_delivery_basis: buyerDeliveryBasis || null,
       buyer_destination_station_id: buyerStationId || null,
+      supplier_departure_station_id: supplierDepartureStationId || null,
       forwarder_id: forwarderId || null,
       logistics_company_group_id: logisticsCompanyGroupId || null,
       planned_tariff: plannedTariff ? parseFloat(plannedTariff) : null,
@@ -498,6 +500,12 @@ export default function NewDealPage() {
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
               <Input value={supplierDeliveryBasis} onChange={(e) => setSupplierDeliveryBasis(e.target.value)} placeholder="FCA Текесу" className="h-8 text-[13px]" />
             </div>
+            <SelectField
+              label="Ст. отправления"
+              value={supplierDepartureStationId}
+              onChange={setSupplierDepartureStationId}
+              options={stations.map((s) => ({ value: s.id, label: s.name }))}
+            />
             <div className="flex items-center gap-2 pt-5">
               <input
                 type="checkbox"

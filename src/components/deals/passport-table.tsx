@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { type Deal, updateDeal } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
+import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { toast } from "sonner";
 
 function formatNum(val: number | null | undefined): string {
@@ -16,8 +17,12 @@ function FuelDot({ color }: { color?: string }) {
   return <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color ?? "#6B7280" }} />;
 }
 
-function EditableNumCell({ value, dealId, field, onSaved }: {
-  value: number | null | undefined; dealId: string; field: string; onSaved: () => void;
+// ─────────────────────────────────────────────────────────────────────
+//  Inline cell primitives
+// ─────────────────────────────────────────────────────────────────────
+
+function EditableNumCell({ value, dealId, field }: {
+  value: number | null | undefined; dealId: string; field: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
@@ -39,17 +44,18 @@ function EditableNumCell({ value, dealId, field, onSaved }: {
   );
 }
 
-function EditableTextCell({ value, dealId, field, onSaved }: {
-  value: string | null | undefined; dealId: string; field: string; onSaved: () => void;
+function EditableTextCell({ value, dealId, field, wide = false }: {
+  value: string | null | undefined; dealId: string; field: string; wide?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
   const pendingVal = useRef<string | null | undefined>(undefined);
   const shown = pendingVal.current !== undefined ? pendingVal.current : value;
   if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
+  const maxW = wide ? "max-w-[140px]" : "max-w-[100px]";
   if (!editing) return (
     <button onClick={() => { setLocalVal(shown ?? ""); setEditing(true); }}
-      className="w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] truncate max-w-[100px]">
+      className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] truncate ${maxW}`}>
       {shown ?? ""}
     </button>
   );
@@ -57,11 +63,50 @@ function EditableTextCell({ value, dealId, field, onSaved }: {
     <input autoFocus value={localVal} onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const nv = localVal || null; if (nv !== (value ?? null)) { pendingVal.current = nv; updateDeal(dealId, { [field]: nv }).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      className="w-20 border border-amber-400 rounded px-1 py-0 text-[11px] bg-amber-50 focus:outline-none" />
+      className={`${wide ? "w-32" : "w-20"} border border-amber-400 rounded px-1 py-0 text-[11px] bg-amber-50 focus:outline-none`} />
   );
 }
 
-// Editable company group price
+// Reference-select cell: click to open a dropdown; persists on change.
+// Uses defaultValue so we don't bind to a controlled state; that way the
+// pending display keeps showing until the row reloads with the new value.
+function EditableSelectCell({ value, displayLabel, dealId, field, options, color = "stone" }: {
+  value: string | null | undefined;
+  displayLabel: string;
+  dealId: string;
+  field: string;
+  options: { value: string; label: string }[];
+  color?: "stone" | "amber" | "blue";
+}) {
+  const [editing, setEditing] = useState(false);
+  const colorClass =
+    color === "amber" ? "text-stone-700" :
+    color === "blue" ? "text-stone-700" :
+    "text-stone-600";
+  if (!editing) return (
+    <button onClick={() => setEditing(true)}
+      className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-pointer min-h-[18px] truncate max-w-[110px] ${colorClass}`}>
+      {displayLabel || <span className="text-stone-300">—</span>}
+    </button>
+  );
+  return (
+    <select autoFocus defaultValue={value ?? ""}
+      onBlur={() => setEditing(false)}
+      onChange={(e) => {
+        const nv = e.target.value || null;
+        setEditing(false);
+        if (nv !== (value ?? null)) {
+          updateDeal(dealId, { [field]: nv }).catch(() => {});
+        }
+      }}
+      className="w-full h-6 text-[11px] border border-amber-300 rounded bg-amber-50/50 px-1 focus:outline-none cursor-pointer">
+      <option value="">—</option>
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+// Editable company-group price (inline, purple accent to match chain styling)
 function EditableCGPrice({ cgId, value, onSaved }: { cgId: string; value: number | null; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
@@ -88,6 +133,55 @@ function EditableCGPrice({ cgId, value, onSaved }: { cgId: string; value: number
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+//  Shared ref loader
+// ─────────────────────────────────────────────────────────────────────
+
+type Opt = { value: string; label: string };
+
+type Refs = {
+  suppliers: Opt[]; buyers: Opt[]; forwarders: Opt[]; managers: Opt[];
+  stations: Opt[]; factories: Opt[]; fuelTypes: Opt[]; companyGroups: Opt[];
+};
+
+function useRefs(): Refs {
+  const [refs, setRefs] = useState<Refs>({
+    suppliers: [], buyers: [], forwarders: [], managers: [],
+    stations: [], factories: [], fuelTypes: [], companyGroups: [],
+  });
+  useEffect(() => {
+    const sb = createClient();
+    Promise.all([
+      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
+      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
+      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
+      sb.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
+      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
+      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
+      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
+      sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
+    ]).then(([sup, buy, fw, mgr, st, fac, ft, cg]) => {
+      setRefs({
+        suppliers: (sup.data ?? []).map((r) => ({ value: r.id, label: r.short_name ?? r.full_name })),
+        buyers: (buy.data ?? []).map((r) => ({ value: r.id, label: r.short_name ?? r.full_name })),
+        forwarders: (fw.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        managers: (mgr.data ?? []).map((r) => ({ value: r.id, label: r.full_name })),
+        stations: (st.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        factories: (fac.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        fuelTypes: (ft.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        companyGroups: (cg.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+      });
+    });
+  }, []);
+  return refs;
+}
+
+const MONTH_OPTS: Opt[] = MONTHS_RU.map((m) => ({ value: m, label: m }));
+
+// ─────────────────────────────────────────────────────────────────────
+//  Main table
+// ─────────────────────────────────────────────────────────────────────
+
 type PassportTableProps = {
   deals: Deal[];
   loading: boolean;
@@ -95,9 +189,9 @@ type PassportTableProps = {
   onDataChanged: () => void;
 };
 
-function getCurrency(dt: string) { return dt === "KZ" ? "₸" : "$"; }
-
 export function PassportTable({ deals, loading, dealType, onDataChanged }: PassportTableProps) {
+  const refs = useRefs();
+
   if (loading) return <p className="text-sm text-muted-foreground py-4">Загрузка паспорта...</p>;
   if (deals.length === 0) return (
     <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
@@ -118,14 +212,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
           </tr>
           <tr className="bg-stone-50 border-b">
             <th className="sticky left-0 z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
-            <th className="sticky left-[70px] z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[55px]">Месяц</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[55px]">Завод</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">ГСМ</th>
-            <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[35px]">%S</th>
+            <th className="sticky left-[70px] z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[75px]">Месяц</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">Завод</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">ГСМ</th>
+            <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[40px]">%S</th>
             {/* Supplier: 9 cols */}
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[100px] bg-amber-50/30">Поставщик</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-amber-50/30">Поставщик</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Договор</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[60px] bg-amber-50/30">Ст. отпр.</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-amber-50/30">Базис</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-amber-50/30">Объем</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Сумма дог.</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Отгр. сумма</th>
@@ -136,9 +230,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-purple-50/30">Компания</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[60px] bg-purple-50/30">Цена гр.</th>
             {/* Buyer: 10 cols */}
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[100px] bg-blue-50/30">Покупатель</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-blue-50/30">Покупатель</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Договор</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[60px] bg-blue-50/30">Ст. назн.</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-blue-50/30">Базис</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-blue-50/30">Объем</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Сумма дог.</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-blue-50/30">Заявлено</th>
@@ -146,14 +240,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Отгр. сумма</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Оплата</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-blue-50/30">Долг</th>
-            {/* Logistics: 9 cols */}
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">Экспедитор</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">Группа комп.</th>
+            {/* Logistics: 8 cols */}
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px]">Экспедитор</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px]">Группа комп.</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Объем план</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Предв. сумма</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Факт объем</th>
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Сумма</th>
-            <th className="px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">Менеджер</th>
+            <th className="px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px]">Менеджер</th>
             <th className="px-1 py-1.5 w-[30px]"></th>
           </tr>
         </thead>
@@ -164,23 +258,35 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="sticky left-0 z-10 bg-white border-r px-2 py-1 font-mono font-medium">
                 <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">{deal.deal_code}</Link>
               </td>
-              <td className="sticky left-[70px] z-10 bg-white border-r px-2 py-1 text-stone-600">{deal.month}</td>
-              <td className="border-r px-2 py-1 text-stone-600">{deal.factory?.name ?? ""}</td>
-              <td className="border-r px-2 py-1">
-                {deal.fuel_type ? <span className="inline-flex items-center gap-1"><FuelDot color={deal.fuel_type.color} /><span className="text-stone-700">{deal.fuel_type.name}</span></span> : ""}
+              <td className="sticky left-[70px] z-10 bg-white border-r px-1 py-0.5">
+                <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} />
               </td>
-              <td className="border-r border-stone-300 px-2 py-1 text-stone-500">{deal.sulfur_percent ?? ""}</td>
+              <td className="border-r px-1 py-0.5">
+                <EditableSelectCell value={deal.factory_id} displayLabel={deal.factory?.name ?? ""} dealId={deal.id} field="factory_id" options={refs.factories} />
+              </td>
+              <td className="border-r px-1 py-0.5">
+                <EditableSelectCell
+                  value={deal.fuel_type_id}
+                  displayLabel={deal.fuel_type?.name ?? ""}
+                  dealId={deal.id}
+                  field="fuel_type_id"
+                  options={refs.fuelTypes}
+                />
+              </td>
+              <td className="border-r border-stone-300 px-1 py-0.5"><EditableTextCell value={deal.sulfur_percent} dealId={deal.id} field="sulfur_percent" /></td>
 
               {/* Supplier: 9 cols */}
-              <td className="border-r px-2 py-1 text-stone-700 bg-amber-50/10 truncate max-w-[100px]">{deal.supplier?.short_name ?? ""}</td>
-              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" onSaved={onDataChanged} /></td>
-              <td className="border-r px-2 py-1 text-stone-500 bg-amber-50/10 text-[10px] truncate max-w-[60px]">{deal.supplier_delivery_basis ?? ""}</td>
-              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" onSaved={onDataChanged} /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_contracted_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_shipped_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.buyer_shipped_volume)}</td>
-              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" onSaved={onDataChanged} /></td>
-              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10">{formatNum(deal.supplier_balance)}</td>
+              <td className="border-r px-1 py-0.5 bg-amber-50/10">
+                <EditableSelectCell value={deal.supplier_id} displayLabel={deal.supplier?.short_name ?? deal.supplier?.full_name ?? ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" />
+              </td>
+              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" /></td>
+              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_delivery_basis} dealId={deal.id} field="supplier_delivery_basis" /></td>
+              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" /></td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: объем × цена">{formatNum(deal.supplier_contracted_amount)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatNum(deal.supplier_shipped_amount)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="тонны из реестра">{formatNum(deal.buyer_shipped_volume)}</td>
+              <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
+              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">{formatNum(deal.supplier_balance)}</td>
 
               {/* Company groups — editable prices */}
               <td className="border-r px-1 py-1 text-[10px] bg-purple-50/10 min-w-[140px]" colSpan={2}>
@@ -198,25 +304,33 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
 
               {/* Buyer: 10 cols */}
-              <td className="border-r px-2 py-1 text-stone-700 bg-blue-50/10 truncate max-w-[100px]">{deal.buyer?.short_name ?? ""}</td>
-              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" onSaved={onDataChanged} /></td>
-              <td className="border-r px-2 py-1 text-stone-500 bg-blue-50/10 text-[10px] truncate max-w-[60px]">{deal.buyer_delivery_basis ?? ""}</td>
-              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" onSaved={onDataChanged} /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_contracted_amount)}</td>
-              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" onSaved={onDataChanged} /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_shipped_volume)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_shipped_amount)}</td>
-              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" onSaved={onDataChanged} /></td>
-              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10">{formatNum(deal.buyer_debt)}</td>
+              <td className="border-r px-1 py-0.5 bg-blue-50/10">
+                <EditableSelectCell value={deal.buyer_id} displayLabel={deal.buyer?.short_name ?? deal.buyer?.full_name ?? ""} dealId={deal.id} field="buyer_id" options={refs.buyers} color="blue" />
+              </td>
+              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" /></td>
+              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_delivery_basis} dealId={deal.id} field="buyer_delivery_basis" /></td>
+              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" /></td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: объем × цена">{formatNum(deal.buyer_contracted_amount)}</td>
+              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="тонны из реестра">{formatNum(deal.buyer_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatNum(deal.buyer_shipped_amount)}</td>
+              <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
+              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: отгружено − оплата">{formatNum(deal.buyer_debt)}</td>
 
               {/* Logistics */}
-              <td className="border-r px-2 py-1 text-stone-600 truncate max-w-[80px]">{deal.forwarder?.name ?? ""}</td>
-              <td className="border-r px-2 py-1 text-stone-500 text-[10px] truncate max-w-[80px]">{""}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.preliminary_tonnage)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.preliminary_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.actual_shipped_volume)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums">{formatNum(deal.invoice_amount)}</td>
-              <td className="px-2 py-1 text-stone-500">{deal.supplier_manager?.full_name ?? ""}</td>
+              <td className="border-r px-1 py-0.5">
+                <EditableSelectCell value={deal.forwarder_id} displayLabel={deal.forwarder?.name ?? ""} dealId={deal.id} field="forwarder_id" options={refs.forwarders} />
+              </td>
+              <td className="border-r px-1 py-0.5">
+                <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={deal.logistics_company_group?.name ?? ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} />
+              </td>
+              <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatNum(deal.preliminary_amount)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="тонны из реестра">{formatNum(deal.actual_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatNum(deal.invoice_amount)}</td>
+              <td className="px-1 py-0.5">
+                <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
+              </td>
               <td className="px-1 py-1">
                 <button onClick={async () => {
                   if (!confirm("Удалить сделку?")) return;
