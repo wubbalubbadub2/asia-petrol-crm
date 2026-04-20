@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -177,53 +177,67 @@ export function DealCompanyChain({
                   <div>№ приложения / договора</div>
                   <div></div>
                 </div>
-                {sorted.map((cg) => (
-                  <div
-                    key={cg.id}
-                    className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
-                  >
-                    <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
-
-                    <select
-                      defaultValue={cg.company_group_id}
-                      onChange={(e) => {
-                        if (e.target.value !== cg.company_group_id) updateGroup(cg.id, { company_group_id: e.target.value });
-                      }}
-                      className="h-8 rounded border border-stone-200 bg-white px-2 text-[12px] focus:border-purple-400 focus:outline-none cursor-pointer"
+                {sorted.map((cg) => {
+                  const currentOption = companyGroupOptions.find((o) => o.value === cg.company_group_id);
+                  const currentLabel = currentOption?.label ?? cg.company_group?.name ?? "—";
+                  return (
+                    <div
+                      key={cg.id}
+                      className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
                     >
-                      {companyGroupOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                      <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
 
-                    <Input
-                      type="number" step="0.01"
-                      defaultValue={cg.price ?? ""}
-                      placeholder="цена"
-                      onBlur={(e) => {
-                        const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
-                        if (v !== cg.price) updateGroup(cg.id, { price: Number.isFinite(v as number) ? v : null });
-                      }}
-                      className="h-8 text-[12px] font-mono text-right"
-                    />
+                      <div className="relative">
+                        <select
+                          value={currentOption ? cg.company_group_id : (cg.company_group_id ?? "")}
+                          onChange={(e) => {
+                            if (e.target.value && e.target.value !== cg.company_group_id) updateGroup(cg.id, { company_group_id: e.target.value });
+                          }}
+                          className="h-8 w-full rounded border border-stone-300 bg-white px-2 pr-7 text-[12px] text-stone-800 hover:border-amber-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
+                        >
+                          {/* Always include the current value option so the selected company is visible
+                              even if the active-options list doesn't contain it (e.g. inactive group). */}
+                          {cg.company_group_id && (
+                            <option value={cg.company_group_id}>{currentLabel}</option>
+                          )}
+                          {companyGroupOptions
+                            .filter((o) => o.value !== cg.company_group_id)
+                            .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+                      </div>
 
-                    <Input
-                      defaultValue={cg.contract_ref ?? ""}
-                      placeholder="напр. 2 от 21.01.2026"
-                      onBlur={(e) => {
-                        const v = e.target.value.trim() || null;
-                        if (v !== cg.contract_ref) updateGroup(cg.id, { contract_ref: v });
-                      }}
-                      className="h-8 text-[12px]"
-                    />
+                      <Input
+                        type="number" step="0.01"
+                        defaultValue={cg.price ?? ""}
+                        placeholder="цена"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
+                          if (v !== cg.price) updateGroup(cg.id, { price: Number.isFinite(v as number) ? v : null });
+                        }}
+                        className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
+                      />
 
-                    <button
-                      onClick={() => removeGroup(cg.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                      title="Удалить группу"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
+                      <Input
+                        defaultValue={cg.contract_ref ?? ""}
+                        placeholder="напр. 2 от 21.01.2026"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() || null;
+                          if (v !== cg.contract_ref) updateGroup(cg.id, { contract_ref: v });
+                        }}
+                        className="h-8 text-[12px] border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
+                      />
+
+                      <button
+                        onClick={() => removeGroup(cg.id)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Удалить группу"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

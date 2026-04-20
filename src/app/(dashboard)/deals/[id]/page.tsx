@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,9 +52,8 @@ function Field({ label, value, suffix, editing, field, dealId, inputType }: {
 }) {
   const isNumeric = typeof value === "number" || inputType === "number";
   const isDate = inputType === "date";
-  const [localVal, setLocalVal] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
   const pendingVal = useRef<string | number | null | undefined>(undefined);
+  const [, forceRender] = useState(0);
 
   // What to show: pending save value takes priority, then prop
   const shown = pendingVal.current !== undefined ? pendingVal.current : value;
@@ -70,43 +69,35 @@ function Field({ label, value, suffix, editing, field, dealId, inputType }: {
 
   const monoClass = isNumeric ? "font-mono tabular-nums" : "";
 
+  // Edit mode: always render a real input so fields look editable at rest.
   if (editing && field && dealId) {
-    if (!isEditing) {
-      return (
-        <div>
-          <span className="text-[11px] text-stone-400 block">{label}</span>
-          <button
-            onClick={() => { setLocalVal(shown?.toString() ?? ""); setIsEditing(true); }}
-            className={`text-[13px] text-stone-800 hover:bg-amber-50 rounded px-1 -ml-1 cursor-text min-w-[40px] text-left ${monoClass}`}
-          >
-            {formatted}{suffix && shown != null ? ` ${suffix}` : ""}
-          </button>
-        </div>
-      );
-    }
+    const inputVal = shown == null ? "" : String(shown);
     return (
       <div>
-        <span className="text-[11px] text-stone-400 block">{label}</span>
+        <span className="text-[11px] text-stone-400 block">
+          {label}{suffix ? ` (${suffix})` : ""}
+        </span>
         <input
-          autoFocus
+          key={String(value ?? "")}
           type={isDate ? "date" : isNumeric ? "number" : "text"}
           step="0.01"
-          value={localVal}
-          onChange={(e) => setLocalVal(e.target.value)}
-          onBlur={() => {
-            setIsEditing(false);
+          defaultValue={inputVal}
+          onBlur={(e) => {
+            const raw = e.target.value;
             const newVal = isNumeric
-              ? (localVal.trim() === "" ? null : parseFloat(localVal))
-              : (localVal.trim() || null);
+              ? (raw.trim() === "" ? null : parseFloat(raw.replace(",", ".")))
+              : (raw.trim() || null);
             if (newVal !== value) {
-              pendingVal.current = newVal; // Show new value immediately via ref
+              pendingVal.current = newVal as string | number | null;
+              forceRender((n) => n + 1);
               updateDeal(dealId, { [field]: newVal }).catch(() => {
-                pendingVal.current = undefined; // Revert on error
+                pendingVal.current = undefined;
+                forceRender((n) => n + 1);
               });
             }
           }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setIsEditing(false); }}
-          className={`w-full border border-amber-300 rounded px-1 py-0 text-[13px] bg-amber-50/50 focus:outline-none focus:border-amber-500 ${monoClass}`}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          className={`w-full h-8 border border-stone-300 rounded px-2 text-[13px] bg-white hover:border-amber-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-colors ${monoClass}`}
         />
       </div>
     );
@@ -141,21 +132,28 @@ function EditableSelect({ label, value, displayValue, editing, field, dealId, op
     );
   }
 
+  // Include current option even if not in list (e.g. inactive reference)
+  const hasCurrent = shown && options.some((o) => o.value === shown);
+
   return (
     <div>
       <span className="text-[11px] text-stone-400 block">{label}</span>
-      <select
-        value={shown ?? ""}
-        onChange={(e) => {
-          const newVal = e.target.value || null;
-          pendingVal.current = newVal ?? undefined;
-          updateDeal(dealId, { [field]: newVal }).catch(() => { pendingVal.current = undefined; });
-        }}
-        className="w-full h-8 rounded-md border border-amber-300 bg-amber-50/50 px-2 text-[13px] focus:border-amber-500 focus:outline-none cursor-pointer"
-      >
-        <option value="">—</option>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      <div className="relative">
+        <select
+          value={shown ?? ""}
+          onChange={(e) => {
+            const newVal = e.target.value || null;
+            pendingVal.current = newVal ?? undefined;
+            updateDeal(dealId, { [field]: newVal }).catch(() => { pendingVal.current = undefined; });
+          }}
+          className="w-full h-8 rounded border border-stone-300 hover:border-amber-400 bg-white pl-2 pr-7 text-[13px] text-stone-800 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
+        >
+          <option value="">—</option>
+          {!hasCurrent && shown && <option value={shown}>{displayValue || "—"}</option>}
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+      </div>
     </div>
   );
 }
