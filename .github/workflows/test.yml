@@ -76,3 +76,33 @@ jobs:
 
       - name: Run DB test suite
         run: ./supabase/tests/run.sh
+
+  # End-to-end smoke test. Runs against a real Supabase project using
+  # credentials stored as GitHub repo secrets. Skipped (as a pass) if the
+  # secrets aren't configured — see e2e/smoke.spec.ts for the skip logic.
+  e2e:
+    runs-on: ubuntu-latest
+    # Only run on main branch pushes; pull-requests from forks don't get
+    # access to secrets so the spec would skip anyway.
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run smoke
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

@@ -44,3 +44,8 @@ next-env.d.ts
 # supabase CLI build artefacts
 supabase/.temp/
 supabase/.branches/
+
+# playwright
+/playwright-report
+/test-results
+/playwright/.cache
