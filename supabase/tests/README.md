@@ -52,6 +52,7 @@ ever need TAP-formatted output, pgTAP is a drop-in upgrade.
 | 11 | `handle_new_user` | Profile auto-provisioning on `auth.users` insert — metadata → role/full_name mapping, fallback to 'readonly'/email, malformed-role rejection (mig 00001) |
 | 12 | `quotation_averages` | `refresh_quotation_averages` aggregation — in-window filtering, null-price exclusion, cross-product isolation, ON CONFLICT rerun idempotence (mig 00011) |
 | 13 | `tariff_lookup` | `lookup_tariff` exact-match lookup across six dimensions, NULL on any mismatch (mig 00011) |
+| 14 | `activity_payment_log` | Four-trigger cascade: `deal_payments INSERT` → rollup → `deals.supplier_payment` change → `deal_activity` auto-log, with IS DISTINCT FROM noise-suppression (mig 00016 + 00028) |
 
 ## Bugs surfaced during this sweep
 
