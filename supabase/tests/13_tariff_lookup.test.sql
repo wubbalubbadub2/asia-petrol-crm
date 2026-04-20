@@ -16,9 +16,9 @@ DECLARE
   v_fuel_other UUID := gen_random_uuid();
   v_tariff     DECIMAL;
 BEGIN
-  INSERT INTO stations (id, name) VALUES
-    (v_dest, 'T-Dest'),
-    (v_dep,  'T-Dep');
+  INSERT INTO stations (id, name, type) VALUES
+    (v_dest, 'T-Dest', 'destination'),
+    (v_dep,  'T-Dep',  'departure');
   INSERT INTO forwarders (id, name)  VALUES (v_fw,         'T-Forwarder');
   INSERT INTO fuel_types (id, name)  VALUES
     (v_fuel,       'T-Fuel'),
