@@ -48,6 +48,7 @@ ever need TAP-formatted output, pgTAP is a drop-in upgrade.
 | 07 | `rls_matrix` | Admin/manager/readonly policy matrix + archive-protection carve-out (mig 00010) |
 | 08 | `registry_autoprice` | Shipment insert → auto-spawned `deal_shipment_prices`, volume/date propagation, CASCADE delete (mig 00037) |
 | 09 | `deal_number_sequence` | `generate_deal_number` monotonic per-(type, year) counter (mig 00011) |
+| 10 | `deal_lifecycle` | End-to-end integration: create deal → log shipment → auto-pricing + rollups → cross-currency payment ignored → shipment delete → payment-only state (mig 00011, 00021, 00027, 00028, 00030, 00037, 00040, 00041) |
 
 ## Bugs surfaced during this sweep
 
