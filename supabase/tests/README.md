@@ -53,6 +53,7 @@ ever need TAP-formatted output, pgTAP is a drop-in upgrade.
 ## Bugs surfaced during this sweep
 
 - **[fixed in mig 00041]** `refresh_deal_shipment_totals` and `refresh_deal_esf_totals` didn't zero their rolled-up totals when the last source row for a deal was deleted (same shape as the already-fixed payment/price rollups from migs 00028/00030).
+- **[fixed in mig 00042]** Missing indexes on 14 FK columns across `deals` + `shipment_registry`. The new filter rows on /deals and /registry (client feedback 2026-04-20) would otherwise table-scan as data grows. Pure-additive, no behavioural change.
 - **[documented, open]** `LPAD(deal_number::text, 3, '0')` truncates the fourth digit — silent collision past 999 deals/year for one deal_type. Not a problem at current volumes; raise to 4 digits before it matters.
 - **[documented, open]** `refresh_deal_shipment_totals` and `refresh_deal_esf_totals` both write to `invoice_amount` / `invoice_volume`. The trigger-firing order decides which wins. Needs a focused PR to pick an authoritative source.
 - **[documented, open]** `dt_kt_logistics.payment` is a plain column; there's no trigger summing `dt_kt_payments` into it. Manual edits and child-payment inserts can diverge.
