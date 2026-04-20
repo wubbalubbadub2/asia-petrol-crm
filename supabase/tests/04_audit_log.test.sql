@@ -11,11 +11,17 @@ DECLARE
   v_count   INT;
   v_entry   audit_log%ROWTYPE;
 BEGIN
-  -- INSERT should create exactly one audit entry
+  -- INSERT should create exactly one audit entry. We populate both
+  -- volume and price so the derived-fields trigger (00021) has the
+  -- inputs it needs — otherwise updating supplier_price later would
+  -- not cascade to supplier_contracted_amount and the
+  -- "derived fields also tracked" assertion below wouldn't fire.
   INSERT INTO deals (id, deal_type, deal_number, year, month,
-                     supplier_id, supplier_price)
+                     supplier_id,
+                     supplier_contracted_volume, supplier_price)
   VALUES (v_deal_id, 'KG', 9904, 2099, 'январь',
-          '00000000-0000-0000-0000-000000000301', 10);
+          '00000000-0000-0000-0000-000000000301',
+          10, 10);
 
   SELECT COUNT(*) INTO v_count
   FROM audit_log WHERE table_name = 'deals' AND row_id = v_deal_id;
