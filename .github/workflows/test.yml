@@ -1,7 +1,7 @@
 name: Tests
 on:
   push:
-    branches: [main]
+    branches: [main, qa-audit]
   pull_request:
     branches: [main]
 
@@ -52,19 +52,35 @@ jobs:
           CREATE SCHEMA IF NOT EXISTS auth;
           CREATE TABLE IF NOT EXISTS auth.users (
             id UUID PRIMARY KEY,
-            email TEXT
+            email TEXT,
+            encrypted_password TEXT,
+            email_confirmed_at TIMESTAMPTZ,
+            aud TEXT,
+            role TEXT,
+            instance_id UUID,
+            raw_app_meta_data JSONB DEFAULT '{}'::jsonb,
+            raw_user_meta_data JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT now()
           );
-          -- auth.uid() returns the current user id; in CI we default to NULL
-          -- so triggers don't fail, and individual tests can override it.
+          -- auth.uid() reads the JWT claims GUC the same way Supabase does
+          -- in production. Tests that don't touch the GUC see NULL;
+          -- tests that set request.jwt.claims (e.g. 07_rls_matrix) get
+          -- back a real uuid so the RLS helpers evaluate correctly.
           CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID
-            LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
-          -- Row-level-security helpers referenced by later migrations.
-          -- We stub them to always allow writes in CI; real policies run
-          -- in production where is_writable_role() reads profiles.role.
-          CREATE OR REPLACE FUNCTION public.is_writable_role() RETURNS BOOLEAN
-            LANGUAGE sql STABLE AS $$ SELECT true $$;
-          CREATE OR REPLACE FUNCTION public.is_admin() RETURNS BOOLEAN
-            LANGUAGE sql STABLE AS $$ SELECT true $$;
+            LANGUAGE sql STABLE AS $$
+              SELECT NULLIF(
+                current_setting('request.jwt.claims', true)::json->>'sub',
+                ''
+              )::uuid
+            $$;
+          -- `authenticated` is the Postgres role PostgREST assigns to
+          -- logged-in requests in real Supabase. Create it as a no-op so
+          -- `SET LOCAL role = authenticated` inside tests doesn't error.
+          DO $DO$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated;
+            END IF;
+          END $DO$;
           SQL
 
       - name: Apply all migrations in order
