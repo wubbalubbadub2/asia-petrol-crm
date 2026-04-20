@@ -24,43 +24,40 @@ CREATE INDEX IF NOT EXISTS idx_deal_shipment_prices_registry
 
 -- INSERT trigger: after a shipment row is committed, spawn up to two
 -- pricing rows (supplier + buyer) using the deal's current price.
+-- Uses INSERT…SELECT to avoid plpgsql's SELECT INTO ambiguity with
+-- SQL CREATE TABLE AS (same quirk that tripped migration 00036).
 CREATE OR REPLACE FUNCTION autoprice_registry_insert()
 RETURNS TRIGGER AS $$
-DECLARE
-  v_deal deals%ROWTYPE;
 BEGIN
   IF NEW.deal_id IS NULL OR NEW.shipment_volume IS NULL THEN
     RETURN NEW;
   END IF;
 
-  SELECT * INTO v_deal FROM deals WHERE id = NEW.deal_id;
-  IF NOT FOUND THEN RETURN NEW; END IF;
+  -- Supplier side — only when the deal has a supplier_price set.
+  INSERT INTO deal_shipment_prices (
+    deal_id, side, shipment_registry_id,
+    shipment_date, volume, calculated_price, amount, discount
+  )
+  SELECT
+    NEW.deal_id, 'supplier', NEW.id,
+    NEW.date, NEW.shipment_volume, d.supplier_price,
+    NEW.shipment_volume * d.supplier_price,
+    COALESCE(d.supplier_discount, 0)
+  FROM deals d
+  WHERE d.id = NEW.deal_id AND d.supplier_price IS NOT NULL;
 
-  -- Supplier side
-  IF v_deal.supplier_price IS NOT NULL THEN
-    INSERT INTO deal_shipment_prices (
-      deal_id, side, shipment_registry_id,
-      shipment_date, volume, calculated_price, amount, discount
-    ) VALUES (
-      NEW.deal_id, 'supplier', NEW.id,
-      NEW.date, NEW.shipment_volume, v_deal.supplier_price,
-      NEW.shipment_volume * v_deal.supplier_price,
-      COALESCE(v_deal.supplier_discount, 0)
-    );
-  END IF;
-
-  -- Buyer side
-  IF v_deal.buyer_price IS NOT NULL THEN
-    INSERT INTO deal_shipment_prices (
-      deal_id, side, shipment_registry_id,
-      shipment_date, volume, calculated_price, amount, discount
-    ) VALUES (
-      NEW.deal_id, 'buyer', NEW.id,
-      NEW.date, NEW.shipment_volume, v_deal.buyer_price,
-      NEW.shipment_volume * v_deal.buyer_price,
-      COALESCE(v_deal.buyer_discount, 0)
-    );
-  END IF;
+  -- Buyer side — same pattern.
+  INSERT INTO deal_shipment_prices (
+    deal_id, side, shipment_registry_id,
+    shipment_date, volume, calculated_price, amount, discount
+  )
+  SELECT
+    NEW.deal_id, 'buyer', NEW.id,
+    NEW.date, NEW.shipment_volume, d.buyer_price,
+    NEW.shipment_volume * d.buyer_price,
+    COALESCE(d.buyer_discount, 0)
+  FROM deals d
+  WHERE d.id = NEW.deal_id AND d.buyer_price IS NOT NULL;
 
   RETURN NEW;
 END;
