@@ -233,4 +233,47 @@ BEGIN
   RESET role;
 END $$;
 
+-- ── Known gap: readonly users can read the full audit_log ─────────────
+-- Migration 00036's audit_log SELECT policy is
+--   USING (auth.uid() IS NOT NULL)
+-- so any logged-in profile — including a readonly bookkeeper — sees
+-- every audited row's old_row/new_row JSON. This effectively exposes
+-- the historical values of fields a readonly user could not see live.
+--
+-- We document it here so a future migration that restricts to
+-- is_writable_role() or is_admin() is forced to flip this assertion.
+DO $$
+DECLARE
+  v_sample_id   UUID := gen_random_uuid();
+  v_ro_count    INT;
+BEGIN
+  -- Generate one audit row as admin.
+  SET LOCAL role = authenticated;
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated"}', true);
+
+  INSERT INTO deals (id, deal_type, deal_number, year, month,
+                     supplier_id, buyer_id, supplier_price)
+  VALUES (v_sample_id, 'KG', 9917, 2099, 'январь',
+          '00000000-0000-0000-0000-000000000501',
+          '00000000-0000-0000-0000-000000000502',
+          777);
+
+  -- Switch to readonly and assert we can still read the audit entry.
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000cc","role":"authenticated"}', true);
+
+  SELECT COUNT(*) FROM audit_log
+    WHERE table_name = 'deals' AND row_id = v_sample_id
+    INTO v_ro_count;
+
+  IF v_ro_count < 1 THEN
+    RAISE EXCEPTION
+      'audit_log SELECT policy tightened? readonly should still see audit rows under current policy, got %',
+      v_ro_count;
+  END IF;
+
+  RESET role;
+END $$;
+
 ROLLBACK;
