@@ -6,7 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # Fast unit tests: vitest + parser tests + TypeScript build.
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,3 +17,62 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npx tsc --noEmit
+
+  # Database tests: spin up Postgres, apply every migration in order, run
+  # the SQL test suite. Catches trigger / RLS / constraint regressions
+  # before they hit production.
+  db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      # Apply Supabase's minimal auth/storage scaffold that our migrations
+      # reference (auth.users, auth.uid(), profiles FKs, etc.). We stub
+      # these just enough to let the migrations run outside Supabase Cloud.
+      - name: Stub Supabase auth schema
+        run: |
+          psql "$DATABASE_URL" <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (
+            id UUID PRIMARY KEY,
+            email TEXT
+          );
+          -- auth.uid() returns the current user id; in CI we default to NULL
+          -- so triggers don't fail, and individual tests can override it.
+          CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID
+            LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+          -- Row-level-security helpers referenced by later migrations.
+          -- We stub them to always allow writes in CI; real policies run
+          -- in production where is_writable_role() reads profiles.role.
+          CREATE OR REPLACE FUNCTION public.is_writable_role() RETURNS BOOLEAN
+            LANGUAGE sql STABLE AS $$ SELECT true $$;
+          CREATE OR REPLACE FUNCTION public.is_admin() RETURNS BOOLEAN
+            LANGUAGE sql STABLE AS $$ SELECT true $$;
+          SQL
+
+      - name: Apply all migrations in order
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "▶ $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f" > /dev/null
+          done
+
+      - name: Run DB test suite
+        run: ./supabase/tests/run.sh

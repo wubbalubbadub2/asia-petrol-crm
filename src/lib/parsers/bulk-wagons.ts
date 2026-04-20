@@ -39,22 +39,40 @@ function parseVolume(raw: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Verify that (y, m, d) describes a real calendar date. JavaScript's Date
+// constructor silently rolls over invalid components (Feb 31 → Mar 3), so
+// we round-trip through Date and compare the parts back to the input.
+function isRealDate(y: number, mo: number, d: number): boolean {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === mo - 1 &&
+    date.getUTCDate() === d
+  );
+}
+
 function parseDate(raw: string | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
+
   // ISO already
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
   if (m) {
     const [, y, mo, d] = m;
+    if (!isRealDate(+y, +mo, +d)) return null;
     return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
+
   // DD.MM.YYYY or DD/MM/YYYY
   m = /^(\d{1,2})[./](\d{1,2})[./](\d{2,4})$/.exec(trimmed);
   if (m) {
     const [, d, mo, y] = m;
     const year = y.length === 2 ? `20${y}` : y;
+    if (!isRealDate(+year, +mo, +d)) return null;
     return `${year}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
+
   return null;
 }
 
