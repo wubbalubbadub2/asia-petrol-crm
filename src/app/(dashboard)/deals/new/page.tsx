@@ -302,7 +302,9 @@ export default function NewDealPage() {
         .single();
       if (error) { toast.error(`Ошибка: ${error.message}`); setSaving(false); return; }
       deal = data;
-      toast.success(`Сделка ${dealType}/${dealNumber}/${year % 100} создана`);
+      toast.success(
+        `Сделка ${dealType}/${String(year % 100).padStart(2, "0")}/${String(dealNumber).padStart(3, "0")} создана`,
+      );
     } else {
       deal = await createDeal(dealData);
     }

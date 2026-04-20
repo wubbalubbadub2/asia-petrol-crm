@@ -756,6 +756,7 @@ export type Database = {
           quotation_avg: number | null
           quotation_product_type_id: string | null
           shipment_date: string | null
+          shipment_registry_id: string | null
           side: string
           trigger_basis: Database["public"]["Enums"]["trigger_basis"]
           trigger_days: number
@@ -776,6 +777,7 @@ export type Database = {
           quotation_avg?: number | null
           quotation_product_type_id?: string | null
           shipment_date?: string | null
+          shipment_registry_id?: string | null
           side: string
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"]
           trigger_days?: number
@@ -796,6 +798,7 @@ export type Database = {
           quotation_avg?: number | null
           quotation_product_type_id?: string | null
           shipment_date?: string | null
+          shipment_registry_id?: string | null
           side?: string
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"]
           trigger_days?: number
@@ -823,6 +826,13 @@ export type Database = {
             columns: ["quotation_product_type_id"]
             isOneToOne: false
             referencedRelation: "quotation_product_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_shipment_prices_shipment_registry_id_fkey"
+            columns: ["shipment_registry_id"]
+            isOneToOne: false
+            referencedRelation: "shipment_registry"
             referencedColumns: ["id"]
           },
         ]
@@ -884,6 +894,7 @@ export type Database = {
           supplier_contracted_amount: number | null
           supplier_contracted_volume: number | null
           supplier_delivery_basis: string | null
+          supplier_departure_station_id: string | null
           supplier_discount: number | null
           supplier_id: string | null
           supplier_manager_id: string | null
@@ -959,6 +970,7 @@ export type Database = {
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_delivery_basis?: string | null
+          supplier_departure_station_id?: string | null
           supplier_discount?: number | null
           supplier_id?: string | null
           supplier_manager_id?: string | null
@@ -1034,6 +1046,7 @@ export type Database = {
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_delivery_basis?: string | null
+          supplier_departure_station_id?: string | null
           supplier_discount?: number | null
           supplier_id?: string | null
           supplier_manager_id?: string | null
@@ -1108,6 +1121,13 @@ export type Database = {
             columns: ["logistics_company_group_id"]
             isOneToOne: false
             referencedRelation: "company_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_supplier_departure_station_id_fkey"
+            columns: ["supplier_departure_station_id"]
+            isOneToOne: false
+            referencedRelation: "stations"
             referencedColumns: ["id"]
           },
           {

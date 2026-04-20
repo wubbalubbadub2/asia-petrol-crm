@@ -188,7 +188,9 @@ export async function createDeal(values: Omit<TablesInsert<"deals">, "deal_numbe
     return null;
   }
 
-  toast.success(`Сделка ${dealType}/${dealNumber}/${year % 100} создана`);
+  toast.success(
+    `Сделка ${dealType}/${String(year % 100).padStart(2, "0")}/${String(dealNumber).padStart(3, "0")} создана`,
+  );
   return data;
 }
 
