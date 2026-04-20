@@ -104,4 +104,44 @@ describe("Price Formation Calculator", () => {
       expect(range.end).toBe("2026-04-29"); // 2026-03-20 + 40 days in UTC
     });
   });
+
+  // Edge-case sweep per the Phase 1.3 plan — null quotation, negative
+  // discount, empty trigger price list. These codify the behaviour the
+  // UI depends on when incomplete data is entered.
+  describe("edge cases", () => {
+    it("null monthlyAverage yields null price, preserves discount", () => {
+      const r = calculatePrice({ mode: "average_month", discount: 10, monthlyAverage: null });
+      expect(r.quotation).toBeNull();
+      expect(r.price).toBeNull();
+      expect(r.discount).toBe(10);
+    });
+
+    it("null fixedDatePrice yields null price", () => {
+      const r = calculatePrice({ mode: "fixed", discount: 5, fixedDatePrice: null });
+      expect(r.quotation).toBeNull();
+      expect(r.price).toBeNull();
+    });
+
+    it("empty triggerPrices array yields null quotation", () => {
+      const r = calculatePrice({ mode: "trigger", discount: 0, triggerPrices: [] });
+      expect(r.quotation).toBeNull();
+      expect(r.price).toBeNull();
+    });
+
+    it("negative discount is treated as a bonus (added back to price)", () => {
+      // Intentional corner: a user may enter -10 to model a markup.
+      // calculatePrice subtracts it literally → price = quotation - (-10) = quotation + 10.
+      const r = calculatePrice({ mode: "average_month", discount: -10, monthlyAverage: 500 });
+      expect(r.quotation).toBe(500);
+      expect(r.price).toBe(510);
+    });
+
+    it("trigger mode averages a long price list without losing precision", () => {
+      const prices = Array.from({ length: 40 }, (_, i) => 400 + i * 0.25); // 400, 400.25, ..., 409.75
+      const r = calculatePrice({ mode: "trigger", discount: 0, triggerPrices: prices, triggerDays: 40 });
+      // Arithmetic mean is (first + last) / 2 = (400 + 409.75) / 2 = 404.875
+      expect(r.quotation).toBeCloseTo(404.875, 10);
+      expect(r.label).toBe("Триггер (40 дней)");
+    });
+  });
 });
