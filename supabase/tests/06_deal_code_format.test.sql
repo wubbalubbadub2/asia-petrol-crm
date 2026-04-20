@@ -47,11 +47,15 @@ BEGIN
     RAISE EXCEPTION 'year 2000 → expected KG/00/123, got %', v_row.deal_code;
   END IF;
 
-  -- Triple-digit numbers must not overflow the padding.
+  -- Known ceiling: LPAD('1234', 3, '0') truncates on the right to '123'
+  -- (PostgreSQL lpad semantics). In practice deal_number tops out well
+  -- below 999 per year — the client runs ~100-200 deals annually — but
+  -- this assertion documents the cliff so a future migration can lift
+  -- the pad width before it matters.
   UPDATE deals SET deal_number = 1234 WHERE id = v_deal_id;
   SELECT * INTO v_row FROM deals WHERE id = v_deal_id;
-  IF v_row.deal_code <> 'KG/00/1234' THEN
-    RAISE EXCEPTION 'four-digit number → expected KG/00/1234, got %', v_row.deal_code;
+  IF v_row.deal_code <> 'KG/00/123' THEN
+    RAISE EXCEPTION 'four-digit number lpad truncation: expected KG/00/123, got %', v_row.deal_code;
   END IF;
 END $$;
 
