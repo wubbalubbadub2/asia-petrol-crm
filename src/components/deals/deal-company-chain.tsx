@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useRef } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -30,86 +31,6 @@ type Props = {
   companyGroupOptions: { value: string; label: string }[];
   onReload: () => void;
 };
-
-// ──────────────────────────────────────────────────────────────
-//  Inline editor widgets — matching the passport-table pattern
-//  (read-only button by default, input/select on click)
-// ──────────────────────────────────────────────────────────────
-
-function ChipSelect({ value, displayLabel, options, onSave }: {
-  value: string; displayLabel: string;
-  options: { value: string; label: string }[];
-  onSave: (v: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  if (!editing) return (
-    <button onClick={() => setEditing(true)}
-      className="block w-full text-[12px] font-medium text-stone-800 hover:bg-white/60 rounded px-1 -mx-1 cursor-pointer truncate">
-      {displayLabel || <span className="text-stone-400">— выбрать —</span>}
-    </button>
-  );
-  return (
-    <select autoFocus defaultValue={value}
-      onBlur={() => setEditing(false)}
-      onChange={(e) => { setEditing(false); if (e.target.value !== value) onSave(e.target.value); }}
-      className="block w-full h-6 text-[12px] rounded border border-purple-400 bg-white px-1 focus:outline-none cursor-pointer">
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-  );
-}
-
-function ChipNum({ value, suffix, onSave }: {
-  value: number | null;
-  suffix?: string;
-  onSave: (v: number | null) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [lv, setLv] = useState("");
-  if (!editing) return (
-    <button onClick={() => { setLv(value == null ? "" : String(value)); setEditing(true); }}
-      className="block w-full text-[11px] font-mono tabular-nums text-purple-700 hover:bg-white/60 rounded px-1 -mx-1 cursor-text">
-      {value == null ? <span className="text-stone-400">— цена —</span> : `${value.toLocaleString("ru-RU", { maximumFractionDigits: 3 })}${suffix ? " " + suffix : ""}`}
-    </button>
-  );
-  return (
-    <input autoFocus type="number" step="0.01" value={lv}
-      onChange={(e) => setLv(e.target.value)}
-      onBlur={() => {
-        setEditing(false);
-        const n = lv.trim() === "" ? null : parseFloat(lv.replace(",", "."));
-        if (n !== value) onSave(Number.isFinite(n as number) ? n : null);
-      }}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      className="block w-full h-6 text-[11px] font-mono tabular-nums text-right rounded border border-purple-400 bg-white px-1 focus:outline-none" />
-  );
-}
-
-function ChipText({ value, placeholder, onSave }: {
-  value: string | null;
-  placeholder: string;
-  onSave: (v: string | null) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [lv, setLv] = useState("");
-  if (!editing) return (
-    <button onClick={() => { setLv(value ?? ""); setEditing(true); }}
-      className="block w-full text-[9px] text-stone-500 hover:bg-white/60 rounded px-1 -mx-1 cursor-text truncate">
-      {value || <span className="text-stone-400">— {placeholder} —</span>}
-    </button>
-  );
-  return (
-    <input autoFocus value={lv}
-      onChange={(e) => setLv(e.target.value)}
-      onBlur={() => { setEditing(false); const nv = lv.trim() || null; if (nv !== value) onSave(nv); }}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      placeholder={placeholder}
-      className="block w-full h-5 text-[10px] rounded border border-purple-400 bg-white px-1 focus:outline-none" />
-  );
-}
-
-// ──────────────────────────────────────────────────────────────
-//  Main component
-// ──────────────────────────────────────────────────────────────
 
 export function DealCompanyChain({
   dealId,
@@ -166,23 +87,16 @@ export function DealCompanyChain({
   return (
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-[14px]">
-          Цепочка компании
-          {editing && (
-            <span className="ml-2 text-[10px] font-normal text-stone-400">
-              (нажмите на название или цену, чтобы изменить)
-            </span>
-          )}
-        </CardTitle>
+        <CardTitle className="text-[14px]">Цепочка компании</CardTitle>
         {editing && (
           <Button size="sm" variant="outline" onClick={addGroup} className="h-7 text-[11px]">
             <Plus className="h-3 w-3 mr-1" /> Добавить группу
           </Button>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* Visual chain — always read-only, just the mental model */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Supplier */}
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center min-w-[140px]">
             <p className="text-[10px] text-amber-600 uppercase font-medium">Поставщик</p>
             <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{supplierName}</p>
@@ -196,53 +110,19 @@ export function DealCompanyChain({
           {sorted.map((cg) => (
             <div key={cg.id} className="flex items-center gap-2">
               <span className="text-stone-300 text-lg">→</span>
-              <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-center min-w-[160px] relative group">
+              <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-center min-w-[140px]">
                 <p className="text-[10px] text-purple-600 uppercase font-medium">Группа {cg.position}</p>
-
-                {editing ? (
-                  <>
-                    <ChipSelect
-                      value={cg.company_group_id}
-                      displayLabel={cg.company_group?.name ?? ""}
-                      options={companyGroupOptions}
-                      onSave={(v) => updateGroup(cg.id, { company_group_id: v })}
-                    />
-                    <ChipNum
-                      value={cg.price}
-                      suffix={currencySymbol}
-                      onSave={(v) => updateGroup(cg.id, { price: v })}
-                    />
-                    <ChipText
-                      value={cg.contract_ref}
-                      placeholder="№ приложения"
-                      onSave={(v) => updateGroup(cg.id, { contract_ref: v })}
-                    />
-                    <button
-                      onClick={() => removeGroup(cg.id)}
-                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-red-500 hover:border-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Удалить группу"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">
-                      {cg.company_group?.name ?? "—"}
-                    </p>
-                    {cg.price != null && (
-                      <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
-                        {fmt(cg.price)} {currencySymbol}
-                      </p>
-                    )}
-                    {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
-                  </>
+                <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{cg.company_group?.name ?? "—"}</p>
+                {cg.price != null && (
+                  <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
+                    {fmt(cg.price)} {currencySymbol}
+                  </p>
                 )}
+                {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
               </div>
             </div>
           ))}
 
-          {/* Buyer */}
           <span className="text-stone-300 text-lg">→</span>
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center min-w-[140px]">
             <p className="text-[10px] text-blue-600 uppercase font-medium">Покупатель</p>
@@ -254,7 +134,6 @@ export function DealCompanyChain({
             )}
           </div>
 
-          {/* Forwarder */}
           <span className="text-stone-300 text-lg">/</span>
           <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-center min-w-[140px]">
             <p className="text-[10px] text-teal-600 uppercase font-medium">Экспедитор</p>
@@ -266,7 +145,6 @@ export function DealCompanyChain({
             )}
           </div>
 
-          {/* Маржа */}
           <span className="text-stone-300 text-lg">=</span>
           <div className={`rounded-lg border px-3 py-2 text-center min-w-[140px] ${
             margin == null ? "border-stone-200 bg-stone-50" :
@@ -282,6 +160,74 @@ export function DealCompanyChain({
             <p className="text-[9px] text-stone-400">цена покуп − цена пост − тариф</p>
           </div>
         </div>
+
+        {/* Edit mode: explicit labelled form for each group */}
+        {editing && (
+          <div className="border-t border-stone-200 pt-3">
+            {sorted.length === 0 ? (
+              <p className="text-[12px] text-stone-400">
+                Нет групп компании. Нажмите <span className="font-medium">«Добавить группу»</span> в правом верхнем углу, чтобы добавить.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
+                  <div>#</div>
+                  <div>Компания</div>
+                  <div>Цена ({currencySymbol})</div>
+                  <div>№ приложения / договора</div>
+                  <div></div>
+                </div>
+                {sorted.map((cg) => (
+                  <div
+                    key={cg.id}
+                    className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
+                  >
+                    <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
+
+                    <select
+                      defaultValue={cg.company_group_id}
+                      onChange={(e) => {
+                        if (e.target.value !== cg.company_group_id) updateGroup(cg.id, { company_group_id: e.target.value });
+                      }}
+                      className="h-8 rounded border border-stone-200 bg-white px-2 text-[12px] focus:border-purple-400 focus:outline-none cursor-pointer"
+                    >
+                      {companyGroupOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+
+                    <Input
+                      type="number" step="0.01"
+                      defaultValue={cg.price ?? ""}
+                      placeholder="цена"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
+                        if (v !== cg.price) updateGroup(cg.id, { price: Number.isFinite(v as number) ? v : null });
+                      }}
+                      className="h-8 text-[12px] font-mono text-right"
+                    />
+
+                    <Input
+                      defaultValue={cg.contract_ref ?? ""}
+                      placeholder="напр. 2 от 21.01.2026"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim() || null;
+                        if (v !== cg.contract_ref) updateGroup(cg.id, { contract_ref: v });
+                      }}
+                      className="h-8 text-[12px]"
+                    />
+
+                    <button
+                      onClick={() => removeGroup(cg.id)}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="Удалить группу"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
