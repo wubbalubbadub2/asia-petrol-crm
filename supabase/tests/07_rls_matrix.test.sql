@@ -183,4 +183,54 @@ BEGIN
   RESET role;
 END $$;
 
+-- ── Known gap: archive protection doesn't cascade to child rows ───────
+-- The `writable_update_deals` policy forbids UPDATEs to archived deals
+-- (unless admin), but child tables (deal_payments, shipment_registry,
+-- deal_shipment_prices, dt_kt_logistics, deal_attachments, …) only
+-- check is_writable_role(). A manager therefore can still INSERT new
+-- shipments or payments into an archived deal and the totals will
+-- recompute as if it were active.
+--
+-- This assertion *documents* the current behaviour so anyone widening
+-- the policies knows the test has to flip accordingly. The fix lives
+-- in a future migration outside the audit scope — it needs to walk
+-- each child policy and add an EXISTS check against the parent deal's
+-- is_archived column.
+DO $$
+DECLARE
+  v_deal_id   UUID := gen_random_uuid();
+  v_ins_count INT;
+BEGIN
+  -- Admin seeds an archived deal.
+  SET LOCAL role = authenticated;
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated"}', true);
+
+  INSERT INTO deals (id, deal_type, deal_number, year, month,
+                     supplier_id, buyer_id, is_archived)
+  VALUES (v_deal_id, 'KG', 9916, 2099, 'январь',
+          '00000000-0000-0000-0000-000000000501',
+          '00000000-0000-0000-0000-000000000502',
+          true);
+
+  -- Manager now adds a payment to the archived deal. If the gap has
+  -- been closed in a future migration this will start failing with
+  -- `check_violation`; flip the assertion then.
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000bb","role":"authenticated"}', true);
+
+  INSERT INTO deal_payments (deal_id, side, amount, payment_date)
+  VALUES (v_deal_id, 'buyer', 1, '2099-01-10');
+
+  SELECT COUNT(*) FROM deal_payments WHERE deal_id = v_deal_id
+    INTO v_ins_count;
+  IF v_ins_count <> 1 THEN
+    RAISE EXCEPTION
+      'archive cascade closed? manager INSERT on deal_payments for archived deal should succeed under current policies, got % rows',
+      v_ins_count;
+  END IF;
+
+  RESET role;
+END $$;
+
 ROLLBACK;
