@@ -50,6 +50,7 @@ ever need TAP-formatted output, pgTAP is a drop-in upgrade.
 | 09 | `deal_number_sequence` | `generate_deal_number` monotonic per-(type, year) counter (mig 00011) |
 | 10 | `deal_lifecycle` | End-to-end integration: create deal → log shipment → auto-pricing + rollups → cross-currency payment ignored → shipment delete → payment-only state (mig 00011, 00021, 00027, 00028, 00030, 00037, 00040, 00041) |
 | 11 | `handle_new_user` | Profile auto-provisioning on `auth.users` insert — metadata → role/full_name mapping, fallback to 'readonly'/email, malformed-role rejection (mig 00001) |
+| 12 | `quotation_averages` | `refresh_quotation_averages` aggregation — in-window filtering, null-price exclusion, cross-product isolation, ON CONFLICT rerun idempotence (mig 00011) |
 
 ## Bugs surfaced during this sweep
 
