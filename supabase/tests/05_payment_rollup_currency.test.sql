@@ -31,13 +31,13 @@ BEGIN
           'KZT');
 
   -- Buyer side: two KZT payments (80k each) + one USD (ignored for the KZT rollup)
-  INSERT INTO deal_payments (deal_id, side, amount, currency, date) VALUES
+  INSERT INTO deal_payments (deal_id, side, amount, currency, payment_date) VALUES
     (v_deal_id, 'buyer', 80000, 'KZT', '2099-01-10'),
     (v_deal_id, 'buyer', 80000, 'KZT', '2099-01-11'),
     (v_deal_id, 'buyer', 80000, 'USD', '2099-01-12');
 
   -- Supplier side: one KZT + one NULL (legacy, treated as KZT)
-  INSERT INTO deal_payments (deal_id, side, amount, currency, date) VALUES
+  INSERT INTO deal_payments (deal_id, side, amount, currency, payment_date) VALUES
     (v_deal_id, 'supplier', 50000, 'KZT', '2099-01-13'),
     (v_deal_id, 'supplier', 10000, NULL,  '2099-01-14');
 
