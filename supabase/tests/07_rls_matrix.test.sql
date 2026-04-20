@@ -139,4 +139,48 @@ BEGIN
   RESET role;
 END $$;
 
+-- ── Archive protection: manager cannot update is_archived deals ──────
+-- Migration 00010 carves out an extra condition on deals UPDATE:
+--   is_writable_role() AND (NOT is_archived OR is_admin())
+-- so a manager can edit active deals but not archived ones. An admin
+-- can edit anything.
+DO $$
+DECLARE
+  v_id        UUID := gen_random_uuid();
+  v_upd_count INT;
+BEGIN
+  -- Seed as admin (the SET LOCAL below doesn't escape this block).
+  SET LOCAL role = authenticated;
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated"}', true);
+
+  INSERT INTO deals (id, deal_type, deal_number, year, month,
+                     supplier_id, buyer_id, is_archived)
+  VALUES (v_id, 'KG', 9915, 2099, 'январь',
+          '00000000-0000-0000-0000-000000000501',
+          '00000000-0000-0000-0000-000000000502',
+          true);
+
+  -- Switch to manager.
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000bb","role":"authenticated"}', true);
+
+  UPDATE deals SET buyer_ordered_volume = 50 WHERE id = v_id;
+  GET DIAGNOSTICS v_upd_count = ROW_COUNT;
+  IF v_upd_count <> 0 THEN
+    RAISE EXCEPTION 'manager UPDATE of archived deal should be filtered to 0 rows, got %', v_upd_count;
+  END IF;
+
+  -- Admin still can.
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated"}', true);
+  UPDATE deals SET buyer_ordered_volume = 50 WHERE id = v_id;
+  GET DIAGNOSTICS v_upd_count = ROW_COUNT;
+  IF v_upd_count <> 1 THEN
+    RAISE EXCEPTION 'admin UPDATE of archived deal expected 1 row, got %', v_upd_count;
+  END IF;
+
+  RESET role;
+END $$;
+
 ROLLBACK;
