@@ -10,6 +10,7 @@ import { useRegistry, createRegistryEntry, updateRegistryEntry, bulkInsertRegist
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
+import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -297,9 +298,10 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   const [ftId, setFtId] = useState(""); const [facId, setFacId] = useState(""); const [fwId, setFwId] = useState("");
   const [destId, setDestId] = useState(""); const [depId, setDepId] = useState(""); const [cgId, setCgId] = useState("");
   const [tariff, setTariff] = useState("");
-  const [wagon, setWagon] = useState(""); const [vol, setVol] = useState(""); const [loadVol, setLoadVol] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]); const [sfNum, setSfNum] = useState("");
-  const [addComment, setAddComment] = useState("");
+  const [pasted, setPasted] = useState("");
+  // Which parsed-volume column to write — "ship" (отгрузка / shipment_volume) is the
+  // factory-to-us side, "load" (налив / loading_volume) is the us-to-buyer side.
+  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
 
   useEffect(() => {
     if (!open) return;
@@ -317,7 +319,8 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     });
   }, [open, regType]);
 
-  // Auto-fill from deal
+  // Auto-fill from deal. Company group is intentionally NOT auto-filled:
+  // a shipment chain can involve two different groups, so logistics always picks it manually.
   useEffect(() => {
     if (!dealId) return;
     const d = deals.find((x) => x.id === dealId);
@@ -328,7 +331,6 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (d.forwarder_id) setFwId(d.forwarder_id);
     if (d.buyer_destination_station_id) setDestId(d.buyer_destination_station_id);
     if (d.supplier_departure_station_id) setDepId(d.supplier_departure_station_id);
-    if (d.logistics_company_group_id) setCgId(d.logistics_company_group_id);
   }, [dealId, deals]);
 
   // Factory from station
@@ -338,34 +340,57 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (st?.default_factory_id && !facId) setFacId(st.default_factory_id);
   }, [depId, stations, facId]);
 
-  // Tariff lookup: месяц + ГСМ + ст. Отправления + ст. Назначения + Экспедитор
+  // Tariff auto-lookup keyed off месяц формирования (from the deal) so it fires
+  // as soon as a deal is picked — logistics doesn't need to choose месяц отгрузки first.
   useEffect(() => {
-    if (!depId || !destId || !ftId || !shipMonth || !fwId || tariff) return;
+    if (!depId || !destId || !ftId || !month || !fwId || tariff) return;
     sb.current.from("tariffs").select("planned_tariff")
       .eq("departure_station_id", depId).eq("destination_station_id", destId)
-      .eq("fuel_type_id", ftId).eq("month", shipMonth).eq("forwarder_id", fwId)
+      .eq("fuel_type_id", ftId).eq("month", month).eq("forwarder_id", fwId)
       .limit(1).single()
       .then(({ data }) => { if (data?.planned_tariff) setTariff(String(data.planned_tariff)); });
-  }, [depId, destId, ftId, shipMonth, fwId, tariff]);
+  }, [depId, destId, ftId, month, fwId, tariff]);
+
+  const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
+  const validCount = parsed.filter((p) => !p.error).length;
+  const errorCount = parsed.filter((p) => p.error).length;
+
+  function resetAll() {
+    setDealId(""); setMonth(""); setShipMonth("");
+    setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
+    setPasted(""); setVolumeTarget("ship");
+  }
 
   async function save() {
-    if (!wagon || !vol) { toast.error("Укажите № вагона и объем"); return; }
+    const valid = parsed.filter((p) => !p.error);
+    if (valid.length === 0) { toast.error("Нет валидных строк для добавления"); return; }
+    if (errorCount > 0 && !confirm(`${errorCount} строк с ошибками будут пропущены. Добавить ${valid.length} валидных?`)) return;
     setSaving(true);
     const d = deals.find((x) => x.id === dealId);
-    await createRegistryEntry({
-      registry_type: regType, deal_id: dealId || null, month: month || null,
-      shipment_month: shipMonth || null, fuel_type_id: ftId || null,
-      factory_id: facId || null, supplier_id: d?.supplier_id || null,
-      buyer_id: d?.buyer_id || null, forwarder_id: fwId || null,
-      destination_station_id: destId || null, departure_station_id: depId || null,
-      company_group_id: cgId || null, railway_tariff: tariff ? parseFloat(tariff) : null,
-      wagon_number: wagon, shipment_volume: parseFloat(vol),
-      loading_volume: loadVol ? parseFloat(loadVol) : null, date: date || null, invoice_number: sfNum || null,
-      comment: addComment || null,
-    });
-    setSaving(false); onDone(); onClose();
-    setWagon(""); setVol(""); setLoadVol(""); setSfNum(""); setAddComment(""); setDealId(""); setMonth(""); setShipMonth("");
-    setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
+    const tariffNum = tariff ? parseFloat(tariff) : null;
+    const rows = valid.map((p) => ({
+      registry_type: regType,
+      deal_id: dealId || null,
+      month: month || null,
+      shipment_month: shipMonth || null,
+      fuel_type_id: ftId || null,
+      factory_id: facId || null,
+      supplier_id: d?.supplier_id || null,
+      buyer_id: d?.buyer_id || null,
+      forwarder_id: fwId || null,
+      destination_station_id: destId || null,
+      departure_station_id: depId || null,
+      company_group_id: cgId || null,
+      railway_tariff: tariffNum,
+      wagon_number: p.wagon,
+      shipment_volume: volumeTarget === "ship" ? p.volume : null,
+      loading_volume: volumeTarget === "load" ? p.volume : null,
+      date: p.date || null,
+      waybill_number: p.waybill || null,
+    }));
+    const result = await bulkInsertRegistry(rows);
+    setSaving(false);
+    if (result) { onDone(); onClose(); resetAll(); }
   }
 
   const Sel = ({ l, v, fn, opts }: { l: string; v: string; fn: (v: string) => void; opts: { value: string; label: string }[] }) => (
@@ -376,7 +401,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Новая запись в реестр {regType}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="rounded border border-amber-200 bg-amber-50/30 p-3">
@@ -407,19 +432,88 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
               <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
             </div>
           </div>
-          <div className="rounded border border-stone-200 p-3">
-            <p className="text-[11px] font-medium text-stone-600 mb-2">Первая отгрузка</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-              <div><Label className="text-[10px] text-stone-500">№ вагона *</Label><Input value={wagon} onChange={(e) => setWagon(e.target.value)} placeholder="51742534" className="h-8 text-[12px] font-mono" /></div>
-              <div><Label className="text-[10px] text-stone-500">Тонн *</Label><Input type="number" step="0.001" value={vol} onChange={(e) => setVol(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
-              <div><Label className="text-[10px] text-stone-500">Налив тонн</Label><Input type="number" step="0.001" value={loadVol} onChange={(e) => setLoadVol(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
-              <div><Label className="text-[10px] text-stone-500">Дата отгрузки</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[12px]" /></div>
-              <div><Label className="text-[10px] text-stone-500">№ СФ</Label><Input value={sfNum} onChange={(e) => setSfNum(e.target.value)} className="h-8 text-[12px]" /></div>
-              <div className="sm:col-span-2 md:col-span-3"><Label className="text-[10px] text-stone-500">Коммент.</Label><Input value={addComment} onChange={(e) => setAddComment(e.target.value)} className="h-8 text-[12px]" /></div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-[11px] text-stone-600 flex items-center gap-1">
+                <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB между колонками)
+              </Label>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-stone-500">Объём идёт в:</span>
+                <div className="inline-flex rounded border border-stone-200 bg-white overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setVolumeTarget("ship")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    Отгрузка
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVolumeTarget("load")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    Налив
+                  </button>
+                </div>
+              </div>
             </div>
+            <textarea
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              placeholder={"51742534\t54,719\t05.11.2025\tЭД0012345\n51667558\t54,719\t05.11.2025\n75040170\t54,719"}
+              rows={6}
+              className="w-full rounded-md border border-stone-200 bg-white p-2 text-[12px] font-mono focus:border-amber-400 focus:outline-none"
+            />
+            <p className="mt-1 text-[10px] text-stone-400">
+              Колонки: <code>№ вагона ⇥ объём ⇥ дата ⇥ № накладной</code>. Последние три — опциональны. Запятая и точка в числах поддерживаются.
+            </p>
           </div>
+
+          {parsed.length > 0 && (
+            <div className="rounded border border-stone-200">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-stone-50 border-b border-stone-200">
+                <p className="text-[11px] font-medium text-stone-600">Предпросмотр ({parsed.length} строк)</p>
+                <div className="text-[10px]">
+                  {validCount > 0 && <span className="mr-2 text-green-700">✓ валидных: {validCount}</span>}
+                  {errorCount > 0 && <span className="text-red-700">✗ с ошибками: {errorCount}</span>}
+                </div>
+              </div>
+              <div className="max-h-[250px] overflow-y-auto">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-stone-50 text-stone-500 sticky top-0">
+                    <tr>
+                      <th className="text-left px-2 py-1 w-8">#</th>
+                      <th className="text-left px-2 py-1">№ вагона</th>
+                      <th className="text-right px-2 py-1">{volumeTarget === "ship" ? "Отгрузка" : "Налив"}</th>
+                      <th className="text-left px-2 py-1">Дата (стр.)</th>
+                      <th className="text-left px-2 py-1">№ накладной</th>
+                      <th className="text-left px-2 py-1">Ошибка</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsed.map((p, i) => (
+                      <tr key={i} className={`border-t border-stone-100 ${p.error ? "bg-red-50/50" : ""}`}>
+                        <td className="px-2 py-0.5 text-stone-400">{i + 1}</td>
+                        <td className="px-2 py-0.5 font-mono">{p.wagon || <span className="text-red-500">(пусто)</span>}</td>
+                        <td className="px-2 py-0.5 font-mono text-right">{p.volume != null ? p.volume.toLocaleString("ru-RU", { maximumFractionDigits: 3 }) : "—"}</td>
+                        <td className="px-2 py-0.5 text-stone-500">{p.date ?? "—"}</td>
+                        <td className="px-2 py-0.5 font-mono text-stone-500">{p.waybill ?? "—"}</td>
+                        <td className="px-2 py-0.5 text-red-600 text-[10px]">{p.error ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-        <Button onClick={save} disabled={saving} className="w-full mt-2">{saving ? "Сохранение..." : "Создать"}</Button>
+        <div className="flex gap-2 mt-2">
+          <Button variant="outline" onClick={onClose} disabled={saving} className="flex-1">Отмена</Button>
+          <Button onClick={save} disabled={saving || validCount === 0} className="flex-1">
+            {saving ? "Сохранение..." : `+ Добавить ${validCount} отгрузок${errorCount > 0 ? ` (${errorCount} с ошибками пропустим)` : ""}`}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

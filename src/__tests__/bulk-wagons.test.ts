@@ -14,14 +14,14 @@ describe("parseBulkWagons", () => {
     it("parses a single wagon number alone", () => {
       const rows = parseBulkWagons("51742534");
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toEqual({ wagon: "51742534", volume: null, date: null });
+      expect(rows[0]).toEqual({ wagon: "51742534", volume: null, date: null, waybill: null });
     });
   });
 
   describe("tab-separated Excel paste", () => {
     it("parses wagon + volume", () => {
       const rows = parseBulkWagons("51742534\t54.719");
-      expect(rows).toEqual([{ wagon: "51742534", volume: 54.719, date: null }]);
+      expect(rows).toEqual([{ wagon: "51742534", volume: 54.719, date: null, waybill: null }]);
     });
 
     it("accepts comma as decimal separator (Russian locale)", () => {
@@ -32,7 +32,7 @@ describe("parseBulkWagons", () => {
     it("parses wagon + volume + DD.MM.YYYY date", () => {
       const rows = parseBulkWagons("51742534\t54,719\t05.11.2025");
       expect(rows).toEqual([
-        { wagon: "51742534", volume: 54.719, date: "2025-11-05" },
+        { wagon: "51742534", volume: 54.719, date: "2025-11-05", waybill: null },
       ]);
     });
 
@@ -55,6 +55,21 @@ describe("parseBulkWagons", () => {
       const rows = parseBulkWagons("51742534\t54.719\t05.11.25");
       expect(rows[0].date).toBe("2025-11-05");
     });
+
+    it("parses wagon + volume + date + waybill #", () => {
+      const rows = parseBulkWagons("51742534\t54,719\t05.11.2025\tЭД0012345");
+      expect(rows[0]).toEqual({
+        wagon: "51742534",
+        volume: 54.719,
+        date: "2025-11-05",
+        waybill: "ЭД0012345",
+      });
+    });
+
+    it("waybill is null when 4th column is missing", () => {
+      const rows = parseBulkWagons("51742534\t54,719\t05.11.2025");
+      expect(rows[0].waybill).toBeNull();
+    });
   });
 
   describe("multiple rows", () => {
@@ -76,7 +91,7 @@ describe("parseBulkWagons", () => {
 
     it("trims whitespace on each cell", () => {
       const rows = parseBulkWagons("  51742534  \t  54.719  ");
-      expect(rows[0]).toEqual({ wagon: "51742534", volume: 54.719, date: null });
+      expect(rows[0]).toEqual({ wagon: "51742534", volume: 54.719, date: null, waybill: null });
     });
 
     it("preserves leading zeros in wagon numbers", () => {

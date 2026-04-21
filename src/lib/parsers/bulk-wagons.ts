@@ -2,9 +2,13 @@
  * Parses a multi-line paste (from Excel or hand-typed) into wagon rows.
  *
  * Input examples (one row per line):
- *   51742534           → wagon only
- *   51742534  54,719   → wagon + volume (tab or 2+ spaces)
- *   51742534\t54.719\t05.11.2025  → wagon + volume + date
+ *   51742534                                           → wagon only
+ *   51742534\t54,719                                   → wagon + volume
+ *   51742534\t54.719\t05.11.2025                       → wagon + volume + date
+ *   51742534\t54.719\t05.11.2025\tЭД0012345            → wagon + volume + date + waybill #
+ *
+ * Column order: wagon, volume, date, waybill. Volume column maps to either
+ * `shipment_volume` or `loading_volume` at save time (UI toggle).
  *
  * Accepts:
  *   - Column separator: tab preferred; falls back to 2+ spaces, then single whitespace
@@ -19,6 +23,7 @@ export type ParsedWagon = {
   wagon: string;
   volume: number | null;
   date: string | null; // ISO YYYY-MM-DD or null
+  waybill: string | null;
   error?: string;
 };
 
@@ -98,11 +103,13 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
     const wagon = (cells[0] ?? "").replace(/\s/g, "");
     const volumeRaw = cells[1];
     const dateRaw = cells[2];
+    const waybillRaw = cells[3];
 
     const row: ParsedWagon = {
       wagon,
       volume: parseVolume(volumeRaw),
       date: parseDate(dateRaw),
+      waybill: waybillRaw ? waybillRaw.trim() || null : null,
     };
 
     if (!wagon) {

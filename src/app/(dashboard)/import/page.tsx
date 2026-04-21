@@ -32,6 +32,11 @@ export default function ImportPage() {
   const [importDone, setImportDone] = useState(false);
   const [esfDealId, setEsfDealId] = useState("");
   const [dealOptions, setDealOptions] = useState<{ id: string; deal_code: string }[]>([]);
+  // When the source only carries one volume column (e.g. СНТ «Количество» or a
+  // registry export with just «объем»), the toggle decides which DB column it
+  // lands in — отгрузка → shipment_volume, налив → loading_volume. Explicit
+  // «объем отгрузки» + «Налив тонн» columns always win over this default.
+  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
   const sbRef = useRef(createClient());
 
   // Load deal options for ESF assignment
@@ -119,21 +124,29 @@ export default function ImportPage() {
     setImporting(true);
 
     // Map Excel columns to DB columns (best effort)
-    const records = parsedData.map((row) => ({
-      registry_type: "KG" as const,
-      quarter: asString(row["квартал"] ?? row["quarter"]),
-      month: asString(row["месяц"] ?? row["month"]),
-      date: asString(row["дата"] ?? row["date"]),
-      waybill_number: asString(row["№ накладной"] ?? row["waybill"]),
-      wagon_number: asString(row["№ вагонов"] ?? row["wagon"]),
-      shipment_volume: parseFloat(String(row["объем отгрузки"] ?? row["Объем отгрузки"] ?? row["volume"] ?? 0)) || null,
-      shipment_month: asString(row["месяц отгрузки"]),
-      railway_tariff: parseFloat(String(row["Ж/Д тариф"] ?? row["тариф"] ?? 0)) || null,
-      invoice_number: asString(row["№ СФ"]),
-      comment: asString(row["коментарий"] ?? row["комент"]),
-      loading_volume: parseFloat(String(row["Налив тонн"] ?? row["налив"] ?? 0)) || null,
-      additional_month: asString(row["месяц доп"] ?? row["доп месяц"]),
-    }));
+    const records = parsedData.map((row) => {
+      const shipExplicit = parseFloat(String(row["объем отгрузки"] ?? row["Объем отгрузки"] ?? 0)) || null;
+      const loadExplicit = parseFloat(String(row["Налив тонн"] ?? 0)) || null;
+      const fallback = parseFloat(String(row["volume"] ?? row["налив"] ?? 0)) || null;
+      // If the row had only a single unlabeled volume, route it per toggle.
+      const shipFinal = shipExplicit ?? (loadExplicit == null && volumeTarget === "ship" ? fallback : null);
+      const loadFinal = loadExplicit ?? (shipExplicit == null && volumeTarget === "load" ? fallback : null);
+      return {
+        registry_type: "KG" as const,
+        quarter: asString(row["квартал"] ?? row["quarter"]),
+        month: asString(row["месяц"] ?? row["month"]),
+        date: asString(row["дата"] ?? row["date"]),
+        waybill_number: asString(row["№ накладной"] ?? row["waybill"]),
+        wagon_number: asString(row["№ вагонов"] ?? row["wagon"]),
+        shipment_volume: shipFinal,
+        shipment_month: asString(row["месяц отгрузки"]),
+        railway_tariff: parseFloat(String(row["Ж/Д тариф"] ?? row["тариф"] ?? 0)) || null,
+        invoice_number: asString(row["№ СФ"]),
+        comment: asString(row["коментарий"] ?? row["комент"]),
+        loading_volume: loadFinal,
+        additional_month: asString(row["месяц доп"] ?? row["доп месяц"]),
+      };
+    });
 
     const result = await bulkInsertRegistry(records);
     setImporting(false);
@@ -162,15 +175,20 @@ export default function ImportPage() {
       : await supabase.from("esf_documents").insert(docs);
     if (docError) { toast.error(`Ошибка импорта документов: ${docError.message}`); setImporting(false); return; }
 
-    // Also create registry entries from the same data
-    const registryRecords = parsedData.map((row) => ({
-      registry_type: "KG" as const,
-      date: asString(row["Дата"] ?? row["дата"] ?? row["date"]),
-      waybill_number: asString(row["№ накладной"] ?? row["№ СНТ"] ?? row["waybill"]),
-      wagon_number: asString(row["№ вагонов"] ?? row["№ ВЦ"] ?? row["wagon"]),
-      shipment_volume: parseFloat(String(row["Количество"] ?? row["объем отгрузки"] ?? row["quantity"] ?? 0)) || null,
-      comment: `Импорт из ${activeTab === "snt" ? "СНТ" : "ЭСФ"}`,
-    })).filter((r) => r.shipment_volume);
+    // Also create registry entries from the same data. СНТ/ЭСФ only carry one
+    // quantity column — route it to shipment_volume or loading_volume per toggle.
+    const registryRecords = parsedData.map((row) => {
+      const qty = parseFloat(String(row["Количество"] ?? row["объем отгрузки"] ?? row["quantity"] ?? 0)) || null;
+      return {
+        registry_type: "KG" as const,
+        date: asString(row["Дата"] ?? row["дата"] ?? row["date"]),
+        waybill_number: asString(row["№ накладной"] ?? row["№ СНТ"] ?? row["waybill"]),
+        wagon_number: asString(row["№ вагонов"] ?? row["№ ВЦ"] ?? row["wagon"]),
+        shipment_volume: volumeTarget === "ship" ? qty : null,
+        loading_volume: volumeTarget === "load" ? qty : null,
+        comment: `Импорт из ${activeTab === "snt" ? "СНТ" : "ЭСФ"}`,
+      };
+    }).filter((r) => r.shipment_volume || r.loading_volume);
 
     if (registryRecords.length > 0) {
       await bulkInsertRegistry(registryRecords);
@@ -232,7 +250,26 @@ export default function ImportPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px] flex items-center justify-between">
               <span>2. Предварительный просмотр ({parsedData.length} строк)</span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-[11px] text-stone-500 whitespace-nowrap">Объём идёт в:</Label>
+                  <div className="inline-flex rounded border border-stone-200 bg-white overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setVolumeTarget("ship")}
+                      className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    >
+                      Отгрузка
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVolumeTarget("load")}
+                      className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    >
+                      Налив
+                    </button>
+                  </div>
+                </div>
                 <Button size="sm" variant="outline" onClick={clearData}>
                   Отмена
                 </Button>

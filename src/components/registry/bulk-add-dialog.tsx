@@ -73,6 +73,10 @@ export function BulkAddDialog({
   // Paste + preview
   const [pasted, setPasted] = useState("");
   const [saving, setSaving] = useState(false);
+  // Volume column target: "ship" (отгрузка → shipment_volume, Завод отписывает нам) vs
+  // "load" (налив → loading_volume, мы отписываем). Logisticians pick which side
+  // the pasted "Объём" column represents.
+  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
 
   // References
   const [factories, setFactories] = useState<Ref[]>([]);
@@ -124,6 +128,7 @@ export function BulkAddDialog({
     setPasted("");
     setInvoiceNum("");
     setBulkComment("");
+    setVolumeTarget("ship");
   }, [open, context]);
 
   const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
@@ -153,8 +158,10 @@ export function BulkAddDialog({
       railway_tariff: tariffNum,
       currency: currency || null,
       wagon_number: p.wagon,
-      shipment_volume: p.volume,
+      shipment_volume: volumeTarget === "ship" ? p.volume : null,
+      loading_volume: volumeTarget === "load" ? p.volume : null,
       date: p.date ?? date ?? null,
+      waybill_number: p.waybill || null,
       invoice_number: invoiceNum || null,
       comment: bulkComment || null,
     }));
@@ -239,18 +246,39 @@ export function BulkAddDialog({
 
           {/* Paste textarea */}
           <div>
-            <Label className="text-[11px] text-stone-600 flex items-center gap-1">
-              <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB между колонками)
-            </Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-[11px] text-stone-600 flex items-center gap-1">
+                <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB между колонками)
+              </Label>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-stone-500">Объём идёт в:</span>
+                <div className="inline-flex rounded border border-stone-200 bg-white overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setVolumeTarget("ship")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    Отгрузка
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVolumeTarget("load")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    Налив
+                  </button>
+                </div>
+              </div>
+            </div>
             <textarea
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
-              placeholder={"51742534\t54,719\n51667558\t54,719\n75040170\t54,719"}
+              placeholder={"51742534\t54,719\t05.11.2025\tЭД0012345\n51667558\t54,719\t05.11.2025\n75040170\t54,719"}
               rows={6}
               className="w-full rounded-md border border-stone-200 bg-white p-2 text-[12px] font-mono focus:border-amber-400 focus:outline-none"
             />
             <p className="mt-1 text-[10px] text-stone-400">
-              Форматы: <code>№вагона</code> / <code>№вагона ⇥ объём</code> / <code>№вагона ⇥ объём ⇥ дата</code>. Запятая и точка в числах поддерживаются.
+              Колонки: <code>№ вагона ⇥ объём ⇥ дата ⇥ № накладной</code>. Последние три — опциональны. Запятая и точка в числах поддерживаются.
             </p>
           </div>
 
@@ -270,8 +298,9 @@ export function BulkAddDialog({
                     <tr>
                       <th className="text-left px-2 py-1 w-8">#</th>
                       <th className="text-left px-2 py-1">№ вагона</th>
-                      <th className="text-right px-2 py-1">Объём</th>
+                      <th className="text-right px-2 py-1">{volumeTarget === "ship" ? "Отгрузка" : "Налив"}</th>
                       <th className="text-left px-2 py-1">Дата (стр.)</th>
+                      <th className="text-left px-2 py-1">№ накладной</th>
                       <th className="text-left px-2 py-1">Ошибка</th>
                     </tr>
                   </thead>
@@ -282,6 +311,7 @@ export function BulkAddDialog({
                         <td className="px-2 py-0.5 font-mono">{p.wagon || <span className="text-red-500">(пусто)</span>}</td>
                         <td className="px-2 py-0.5 font-mono text-right">{p.volume != null ? p.volume.toLocaleString("ru-RU", { maximumFractionDigits: 3 }) : "—"}</td>
                         <td className="px-2 py-0.5 text-stone-500">{p.date ?? "—"}</td>
+                        <td className="px-2 py-0.5 font-mono text-stone-500">{p.waybill ?? "—"}</td>
                         <td className="px-2 py-0.5 text-red-600 text-[10px]">{p.error ?? ""}</td>
                       </tr>
                     ))}
