@@ -48,7 +48,15 @@ function roleLabel(r: UserRole) {
   return ROLES.find((x) => x.value === r)?.label ?? r;
 }
 
-export function UsersManager({ initialRows }: { initialRows: Row[] }) {
+export function UsersManager({
+  initialRows,
+  readOnly = false,
+  title = "Пользователи системы",
+}: {
+  initialRows: Row[];
+  readOnly?: boolean;
+  title?: string;
+}) {
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<Row | null>(null);
   const [pwdRow, setPwdRow] = useState<Row | null>(null);
@@ -56,11 +64,13 @@ export function UsersManager({ initialRows }: { initialRows: Row[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">Пользователи системы</h2>
-        <Button size="sm" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Добавить пользователя
-        </Button>
+        <h2 className="text-base font-semibold">{title}</h2>
+        {!readOnly && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Добавить пользователя
+          </Button>
+        )}
       </div>
 
       <div className="rounded-md border border-stone-200 bg-white overflow-x-auto">
@@ -71,13 +81,13 @@ export function UsersManager({ initialRows }: { initialRows: Row[] }) {
               <TableHead className="text-[11px]">Email</TableHead>
               <TableHead className="text-[11px]">Роль</TableHead>
               <TableHead className="text-[11px]">Активен</TableHead>
-              <TableHead className="text-[11px] w-[110px]"></TableHead>
+              {!readOnly && <TableHead className="text-[11px] w-[110px]"></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {initialRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={readOnly ? 4 : 5} className="h-24 text-center text-muted-foreground">
                   Нет пользователей
                 </TableCell>
               </TableRow>
@@ -94,25 +104,27 @@ export function UsersManager({ initialRows }: { initialRows: Row[] }) {
                       <span className="text-muted-foreground">Нет</span>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex gap-0.5">
-                      <button
-                        title="Редактировать"
-                        onClick={() => setEditRow(r)}
-                        className="rounded p-1 text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
-                      <button
-                        title="Сбросить пароль"
-                        onClick={() => setPwdRow(r)}
-                        className="rounded p-1 text-stone-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                      >
-                        <Key className="h-3 w-3" />
-                      </button>
-                      <DeleteButton row={r} />
-                    </div>
-                  </TableCell>
+                  {!readOnly && (
+                    <TableCell>
+                      <div className="flex gap-0.5">
+                        <button
+                          title="Редактировать"
+                          onClick={() => setEditRow(r)}
+                          className="rounded p-1 text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          title="Сбросить пароль"
+                          onClick={() => setPwdRow(r)}
+                          className="rounded p-1 text-stone-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <Key className="h-3 w-3" />
+                        </button>
+                        <DeleteButton row={r} />
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}

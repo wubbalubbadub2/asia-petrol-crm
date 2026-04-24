@@ -1,87 +1,46 @@
-"use client";
-
-import Link from "next/link";
-import { type ColumnDef } from "@tanstack/react-table";
 import { Info } from "lucide-react";
-import { CrudTable } from "@/components/shared/crud-table";
-import { useSupabaseTable } from "@/lib/hooks/use-references";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { UsersManager } from "@/app/(dashboard)/settings/users/users-manager";
 
-type Profile = {
-  id?: string;
-  full_name?: string;
-  role?: string;
-  is_active?: boolean;
-};
+type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly";
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Администратор",
-  manager: "Менеджер",
-  operator: "Оператор",
-  viewer: "Наблюдатель",
-};
+export default async function ManagersPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-const columns: ColumnDef<Profile, unknown>[] = [
-  {
-    accessorKey: "full_name",
-    header: "ФИО",
-    cell: ({ row }) => row.original.full_name ?? "—",
-  },
-  {
-    accessorKey: "role",
-    header: "Роль",
-    cell: ({ row }) => {
-      const val = row.original.role;
-      return val ? (ROLE_LABELS[val] ?? val) : "—";
-    },
-  },
-  {
-    accessorKey: "is_active",
-    header: "Активен",
-    cell: ({ row }) =>
-      row.original.is_active !== false ? (
-        <span className="text-green-600 font-medium">Да</span>
-      ) : (
-        <span className="text-muted-foreground">Нет</span>
-      ),
-  },
-];
+  const { data: me } = user
+    ? await supabase.from("profiles").select("role").eq("id", user.id).single()
+    : { data: null };
+  const isAdmin = me?.role === "admin";
 
-export default function ManagersPage() {
-  const { data, loading } = useSupabaseTable<Profile>("profiles", "full_name");
+  const admin = createAdminClient();
+  const [{ data: profiles }, listed] = await Promise.all([
+    admin.from("profiles").select("id, full_name, role, is_active").order("full_name", { ascending: true }),
+    admin.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
+  const emailById = new Map<string, string | null>();
+  for (const u of listed.data?.users ?? []) emailById.set(u.id, u.email ?? null);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-40 text-muted-foreground">
-        Загрузка...
-      </div>
-    );
-  }
+  const rows = (profiles ?? []).map((p) => ({
+    id: p.id,
+    full_name: p.full_name,
+    role: p.role as UserRole,
+    is_active: p.is_active ?? true,
+    email: emailById.get(p.id) ?? null,
+  }));
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>
-          Добавление и редактирование менеджеров доступно в разделе{" "}
-          <Link
-            href="/settings/users"
-            className="font-semibold underline decoration-blue-400 hover:text-blue-900"
-          >
-            Настройки › Пользователи
-          </Link>
-          . Здесь отображается список менеджеров в режиме просмотра.
-        </span>
-      </div>
-
-      <CrudTable<Profile>
-        data={data}
-        columns={columns}
-        title="Менеджеры"
-        searchPlaceholder="Поиск менеджера..."
-        canEdit={false}
-        onSave={async () => {}}
-        renderForm={() => null}
-      />
+    <div className="space-y-4">
+      {!isAdmin && (
+        <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Добавление и редактирование менеджеров доступно только администратору.
+          </span>
+        </div>
+      )}
+      <UsersManager initialRows={rows} readOnly={!isAdmin} title="Менеджеры" />
     </div>
   );
 }
