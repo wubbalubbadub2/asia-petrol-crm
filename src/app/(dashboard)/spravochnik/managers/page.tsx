@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Info } from "lucide-react";
 import { CrudTable } from "@/components/shared/crud-table";
@@ -58,12 +59,17 @@ export default function ManagersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
-          Управление пользователями доступно в разделе{" "}
-          <strong>Настройки &rsaquo; Пользователи</strong>. Здесь отображается
-          список менеджеров в режиме просмотра.
+          Добавление и редактирование менеджеров доступно в разделе{" "}
+          <Link
+            href="/settings/users"
+            className="font-semibold underline decoration-blue-400 hover:text-blue-900"
+          >
+            Настройки › Пользователи
+          </Link>
+          . Здесь отображается список менеджеров в режиме просмотра.
         </span>
       </div>
 
