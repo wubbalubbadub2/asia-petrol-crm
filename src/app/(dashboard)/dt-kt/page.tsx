@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Plus, Filter, Trash2 } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Plus, Filter, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { Button } from "@/components/ui/button";
@@ -206,6 +206,11 @@ export default function DtKtPage() {
   const [registrySums, setRegistrySums] = useState<RegistrySums[]>([]);
   const [dtktPayments, setDtktPayments] = useState<Record<string, DtKtPayment[]>>({});
   const [expandedPayments, setExpandedPayments] = useState<string | null>(null);
+  // Column filters
+  const [forwarderFilter, setForwarderFilter] = useState("");
+  const [companyGroupFilter, setCompanyGroupFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [onlyNegativeSaldo, setOnlyNegativeSaldo] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -290,6 +295,57 @@ export default function DtKtPage() {
     return { vol: s?.total_volume ?? 0, amt: s?.total_amount ?? 0 };
   }
 
+  // Build filter option lists from the loaded set so dropdowns only contain
+  // values that actually appear for the current year — avoids dead options.
+  const forwarderOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of records) {
+      const name = (r.forwarder as { name?: string } | null)?.name;
+      if (r.forwarder_id && name) m.set(r.forwarder_id, name);
+    }
+    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [records]);
+
+  const companyGroupOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of records) {
+      const name = (r.company_group as { name?: string } | null)?.name;
+      if (r.company_group_id && name) m.set(r.company_group_id, name);
+    }
+    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [records]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return records.filter((r) => {
+      if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
+      if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
+      if (onlyNegativeSaldo) {
+        const reg = getRegistryForForwarder(r.forwarder_id);
+        if (computeSaldo(r, reg.amt) >= 0) return false;
+      }
+      if (q) {
+        const fwName = ((r.forwarder as { name?: string } | null)?.name ?? "").toLowerCase();
+        const cgName = ((r.company_group as { name?: string } | null)?.name ?? "").toLowerCase();
+        if (!fwName.includes(q) && !cgName.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [records, forwarderFilter, companyGroupFilter, onlyNegativeSaldo, search, registrySums]);
+
+  const activeFilterCount =
+    (forwarderFilter ? 1 : 0) +
+    (companyGroupFilter ? 1 : 0) +
+    (onlyNegativeSaldo ? 1 : 0) +
+    (search.trim() ? 1 : 0);
+
+  function clearAllFilters() {
+    setForwarderFilter("");
+    setCompanyGroupFilter("");
+    setOnlyNegativeSaldo(false);
+    setSearch("");
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -298,17 +354,66 @@ export default function DtKtPage() {
           <Plus className="mr-1.5 h-3.5 w-3.5" />Добавить
         </Button>
       </div>
-      <div className="flex items-center gap-3">
-        <Filter className="h-3.5 w-3.5 text-stone-400" />
-        <span className="text-[12px] text-stone-500">Год:</span>
-        <Input type="number" value={yearFilter} onChange={(e) => setYearFilter(Number(e.target.value))} className="w-20 h-7 text-[12px]" />
-        <span className="text-[11px] text-stone-400 ml-auto">{records.length} записей</span>
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-stone-400" />
+            <span className="text-[12px] text-stone-500">Год:</span>
+            <Input type="number" value={yearFilter} onChange={(e) => setYearFilter(Number(e.target.value))} className="w-20 h-7 text-[12px]" />
+          </div>
+          <Input
+            placeholder="Поиск по экспедитору / группе..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs h-7 text-[12px]"
+          />
+          <label className="flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={onlyNegativeSaldo}
+              onChange={(e) => setOnlyNegativeSaldo(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-stone-300 text-amber-500 focus:ring-amber-300"
+            />
+            Только отриц. сальдо
+          </label>
+          {activeFilterCount > 0 && (
+            <Button size="sm" variant="ghost" onClick={clearAllFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600">
+              <X className="h-3 w-3 mr-0.5" />
+              Сбросить фильтры ({activeFilterCount})
+            </Button>
+          )}
+          <span className="text-[11px] text-stone-400 ml-auto">
+            {filtered.length} {filtered.length === records.length ? "" : `из ${records.length}`} записей
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          <select
+            value={forwarderFilter}
+            onChange={(e) => setForwarderFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer"
+          >
+            <option value="">Все экспедиторы</option>
+            {forwarderOptions.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <select
+            value={companyGroupFilter}
+            onChange={(e) => setCompanyGroupFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer"
+          >
+            <option value="">Все группы</option>
+            {companyGroupOptions.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? <p className="text-sm text-muted-foreground">Загрузка...</p>
       : records.length === 0 ? (
         <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
           <p className="text-sm text-stone-500">Нет данных за {yearFilter} год</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
+          <p className="text-sm text-stone-500">Ни одна запись не подходит под фильтры</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
@@ -331,7 +436,7 @@ export default function DtKtPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((rec) => {
+              {filtered.map((rec) => {
                 const reg = getRegistryForForwarder(rec.forwarder_id);
                 const saldo = computeSaldo(rec, reg.amt);
                 const pays = dtktPayments[rec.id] ?? [];
