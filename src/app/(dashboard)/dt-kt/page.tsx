@@ -28,7 +28,7 @@ type DtKtRecord = {
 };
 
 type DtKtPayment = { id: string; payment_date: string; amount: number; description: string | null; currency: string | null };
-type RegistrySums = { forwarder_id: string; total_volume: number; total_amount: number };
+type RegistrySums = { forwarder_id: string; company_group_id: string | null; total_volume: number; total_amount: number };
 
 function fmt(v: number | null | undefined) { return v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }); }
 function n(v: number | null | undefined) { return v ?? 0; }
@@ -224,21 +224,24 @@ export default function DtKtPage() {
       sb.current.from("dt_kt_payments").select("id, dt_kt_id, payment_date, amount, description, currency").order("payment_date"),
     ]);
     setRecords((recs ?? []) as unknown as DtKtRecord[]);
-    // Registry sums by forwarder — fallback to manual query if RPC doesn't exist
+    // Registry sums grouped by (forwarder_id, company_group_id). Each
+    // dt_kt_logistics row is keyed on that triple (+ year), so a forwarder
+    // with multiple group companies has multiple buckets that must NOT be
+    // collapsed. Amount comes from shipped_tonnage_amount (populated by
+    // trigger 00031) so registry / DT-KT / dashboard all show the same number.
     if (!regData) {
       const { data: fallback } = await sb.current.from("shipment_registry")
-        .select("forwarder_id, shipment_volume, railway_tariff")
+        .select("forwarder_id, company_group_id, shipment_volume, shipped_tonnage_amount")
         .gte("date", `${yearFilter}-01-01`).lte("date", `${yearFilter}-12-31`);
       if (fallback) {
         const sums = new Map<string, RegistrySums>();
-        for (const r of fallback as { forwarder_id: string; shipment_volume: number; railway_tariff: number | null }[]) {
+        for (const r of fallback as { forwarder_id: string | null; company_group_id: string | null; shipment_volume: number | null; shipped_tonnage_amount: number | null }[]) {
           if (!r.forwarder_id) continue;
-          if (!sums.has(r.forwarder_id)) sums.set(r.forwarder_id, { forwarder_id: r.forwarder_id, total_volume: 0, total_amount: 0 });
-          const s = sums.get(r.forwarder_id)!;
-          const vol = r.shipment_volume ?? 0;
-          s.total_volume += vol;
-          // Compute amount same as registry: Math.ceil(volume) * tariff
-          if (r.railway_tariff) s.total_amount += Math.ceil(vol) * r.railway_tariff;
+          const key = `${r.forwarder_id}::${r.company_group_id ?? ""}`;
+          if (!sums.has(key)) sums.set(key, { forwarder_id: r.forwarder_id, company_group_id: r.company_group_id, total_volume: 0, total_amount: 0 });
+          const s = sums.get(key)!;
+          s.total_volume += r.shipment_volume ?? 0;
+          s.total_amount += r.shipped_tonnage_amount ?? 0;
         }
         setRegistrySums(Array.from(sums.values()));
       }
@@ -289,9 +292,9 @@ export default function DtKtPage() {
     await load();
   }
 
-  function getRegistryForForwarder(fwId: string | null) {
+  function getRegistrySum(fwId: string | null, cgId: string | null) {
     if (!fwId) return { vol: 0, amt: 0 };
-    const s = registrySums.find((r) => r.forwarder_id === fwId);
+    const s = registrySums.find((r) => r.forwarder_id === fwId && r.company_group_id === cgId);
     return { vol: s?.total_volume ?? 0, amt: s?.total_amount ?? 0 };
   }
 
@@ -321,7 +324,7 @@ export default function DtKtPage() {
       if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
       if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
       if (onlyNegativeSaldo) {
-        const reg = getRegistryForForwarder(r.forwarder_id);
+        const reg = getRegistrySum(r.forwarder_id, r.company_group_id);
         if (computeSaldo(r, reg.amt) >= 0) return false;
       }
       if (q) {
@@ -437,7 +440,7 @@ export default function DtKtPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((rec) => {
-                const reg = getRegistryForForwarder(rec.forwarder_id);
+                const reg = getRegistrySum(rec.forwarder_id, rec.company_group_id);
                 const saldo = computeSaldo(rec, reg.amt);
                 const pays = dtktPayments[rec.id] ?? [];
                 return (
