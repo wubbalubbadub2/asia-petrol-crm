@@ -67,6 +67,9 @@ export type Deal = {
   buyer_manager_id: string | null;
   trader_id: string | null;
   currency: string | null;
+  supplier_currency: string;
+  buyer_currency: string;
+  logistics_currency: string;
   is_archived: boolean;
   created_at: string;
   // Joined fields

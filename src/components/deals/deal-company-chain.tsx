@@ -26,7 +26,13 @@ type Props = {
   buyerPrice: number | null;
   forwarderName: string;
   forwarderTariff: number | null;
-  currencySymbol: string;
+  supplierCurrencySymbol: string;
+  buyerCurrencySymbol: string;
+  logisticsCurrencySymbol: string;
+  // True when supplier_currency, buyer_currency and logistics_currency
+  // all match. Margin computation collapses three currencies into one
+  // number, so we hide the value when they differ.
+  currenciesAligned: boolean;
   groups: DealCompanyGroup[];
   companyGroupOptions: { value: string; label: string }[];
   onReload: () => void;
@@ -41,7 +47,10 @@ export function DealCompanyChain({
   buyerPrice,
   forwarderName,
   forwarderTariff,
-  currencySymbol,
+  supplierCurrencySymbol,
+  buyerCurrencySymbol,
+  logisticsCurrencySymbol,
+  currenciesAligned,
   groups,
   companyGroupOptions,
   onReload,
@@ -49,9 +58,10 @@ export function DealCompanyChain({
   const sbRef = useRef(createClient());
   const sorted = [...groups].sort((a, b) => a.position - b.position);
 
-  // Маржа = цена покупателя − цена поставщика − тариф экспедитора
+  // Маржа = цена покупателя − цена поставщика − тариф экспедитора.
+  // Only meaningful when all three sides are denominated in the same currency.
   const margin =
-    buyerPrice != null && supplierPrice != null
+    currenciesAligned && buyerPrice != null && supplierPrice != null
       ? buyerPrice - supplierPrice - (forwarderTariff ?? 0)
       : null;
 
@@ -102,7 +112,7 @@ export function DealCompanyChain({
             <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{supplierName}</p>
             {supplierPrice != null && (
               <p className="text-[11px] font-mono tabular-nums text-amber-700 mt-0.5">
-                {fmt(supplierPrice)} {currencySymbol}
+                {fmt(supplierPrice)} {supplierCurrencySymbol}
               </p>
             )}
           </div>
@@ -115,7 +125,7 @@ export function DealCompanyChain({
                 <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{cg.company_group?.name ?? "—"}</p>
                 {cg.price != null && (
                   <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
-                    {fmt(cg.price)} {currencySymbol}
+                    {fmt(cg.price)} {supplierCurrencySymbol}
                   </p>
                 )}
                 {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
@@ -129,7 +139,7 @@ export function DealCompanyChain({
             <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{buyerName}</p>
             {buyerPrice != null && (
               <p className="text-[11px] font-mono tabular-nums text-blue-700 mt-0.5">
-                {fmt(buyerPrice)} {currencySymbol}
+                {fmt(buyerPrice)} {buyerCurrencySymbol}
               </p>
             )}
           </div>
@@ -140,24 +150,29 @@ export function DealCompanyChain({
             <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{forwarderName}</p>
             {forwarderTariff != null && (
               <p className="text-[11px] font-mono tabular-nums text-teal-700 mt-0.5">
-                {fmt(forwarderTariff)} {currencySymbol}
+                {fmt(forwarderTariff)} {logisticsCurrencySymbol}
               </p>
             )}
           </div>
 
           <span className="text-stone-300 text-lg">=</span>
-          <div className={`rounded-lg border px-3 py-2 text-center min-w-[140px] ${
-            margin == null ? "border-stone-200 bg-stone-50" :
-            margin >= 0 ? "border-green-200 bg-green-50" :
-            "border-red-200 bg-red-50"
-          }`}>
+          <div
+            className={`rounded-lg border px-3 py-2 text-center min-w-[140px] ${
+              margin == null ? "border-stone-200 bg-stone-50" :
+              margin >= 0 ? "border-green-200 bg-green-50" :
+              "border-red-200 bg-red-50"
+            }`}
+            title={!currenciesAligned ? "Валюты разделов не совпадают — конвертация ещё не реализована" : undefined}
+          >
             <p className={`text-[10px] uppercase font-medium ${
               margin == null ? "text-stone-500" : margin >= 0 ? "text-green-600" : "text-red-600"
             }`}>Маржа</p>
             <p className={`text-[13px] font-mono tabular-nums font-semibold ${
               margin == null ? "text-stone-500" : margin >= 0 ? "text-green-700" : "text-red-700"
-            }`}>{fmt(margin)} {margin != null && currencySymbol}</p>
-            <p className="text-[9px] text-stone-400">цена покуп − цена пост − тариф</p>
+            }`}>{fmt(margin)} {margin != null && buyerCurrencySymbol}</p>
+            <p className="text-[9px] text-stone-400">
+              {currenciesAligned ? "цена покуп − цена пост − тариф" : "разные валюты"}
+            </p>
           </div>
         </div>
 
@@ -173,7 +188,7 @@ export function DealCompanyChain({
                 <div className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
                   <div>#</div>
                   <div>Компания</div>
-                  <div>Цена ({currencySymbol})</div>
+                  <div>Цена ({supplierCurrencySymbol})</div>
                   <div>№ приложения / договора</div>
                   <div></div>
                 </div>

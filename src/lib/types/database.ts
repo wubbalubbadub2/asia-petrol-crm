@@ -848,6 +848,7 @@ export type Database = {
           buyer_contract: string | null
           buyer_contracted_amount: number | null
           buyer_contracted_volume: number | null
+          buyer_currency: string
           buyer_debt: number | null
           buyer_delivery_basis: string | null
           buyer_destination_station_id: string | null
@@ -884,6 +885,7 @@ export type Database = {
           is_archived: boolean | null
           is_draft: boolean | null
           logistics_company_group_id: string | null
+          logistics_currency: string
           logistics_notes: string | null
           month: string
           planned_tariff: number | null
@@ -896,6 +898,7 @@ export type Database = {
           supplier_contract: string | null
           supplier_contracted_amount: number | null
           supplier_contracted_volume: number | null
+          supplier_currency: string
           supplier_delivery_basis: string | null
           supplier_departure_station_id: string | null
           supplier_discount: number | null
@@ -924,6 +927,7 @@ export type Database = {
           buyer_contract?: string | null
           buyer_contracted_amount?: number | null
           buyer_contracted_volume?: number | null
+          buyer_currency?: string
           buyer_debt?: number | null
           buyer_delivery_basis?: string | null
           buyer_destination_station_id?: string | null
@@ -960,6 +964,7 @@ export type Database = {
           is_archived?: boolean | null
           is_draft?: boolean | null
           logistics_company_group_id?: string | null
+          logistics_currency?: string
           logistics_notes?: string | null
           month: string
           planned_tariff?: number | null
@@ -972,6 +977,7 @@ export type Database = {
           supplier_contract?: string | null
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
+          supplier_currency?: string
           supplier_delivery_basis?: string | null
           supplier_departure_station_id?: string | null
           supplier_discount?: number | null
@@ -1000,6 +1006,7 @@ export type Database = {
           buyer_contract?: string | null
           buyer_contracted_amount?: number | null
           buyer_contracted_volume?: number | null
+          buyer_currency?: string
           buyer_debt?: number | null
           buyer_delivery_basis?: string | null
           buyer_destination_station_id?: string | null
@@ -1036,6 +1043,7 @@ export type Database = {
           is_archived?: boolean | null
           is_draft?: boolean | null
           logistics_company_group_id?: string | null
+          logistics_currency?: string
           logistics_notes?: string | null
           month?: string
           planned_tariff?: number | null
@@ -1048,6 +1056,7 @@ export type Database = {
           supplier_contract?: string | null
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
+          supplier_currency?: string
           supplier_delivery_basis?: string | null
           supplier_departure_station_id?: string | null
           supplier_discount?: number | null
