@@ -337,6 +337,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       )}
       {/* Supplier payments */}
       <DealPayments dealId={deal.id} currencySymbol={currencySymbol} side="supplier" />
+      {/* Supplier documents */}
+      <DocumentsSection dealId={deal.id} section="supplier" title="Документы — Поставщик" />
 
       {/* ===== BUYER SECTION (fields + pricing + payments) ===== */}
       <Card>
@@ -377,6 +379,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       )}
       {/* Buyer payments */}
       <DealPayments dealId={deal.id} currencySymbol={currencySymbol} side="buyer" />
+      {/* Buyer documents */}
+      <DocumentsSection dealId={deal.id} section="buyer" title="Документы — Покупатель" />
 
       {/* ===== COMPANY CHAIN ===== */}
       <DealCompanyChain
@@ -393,6 +397,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         companyGroupOptions={refs.companyGroups}
         onReload={reload}
       />
+      {/* Company chain documents */}
+      <DocumentsSection dealId={deal.id} section="company_chain" title="Документы — Цепочка компании" />
 
       {/* ===== LOGISTICS ===== */}
       <Card>
@@ -412,6 +418,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <DealShipments dealId={deal.id} currencySymbol={currencySymbol} />
         </CardContent>
       </Card>
+      {/* Logistics documents */}
+      <DocumentsSection dealId={deal.id} section="logistics" title="Документы — Логистика" />
 
       {/* ===== MANAGERS ===== */}
       <Card>
@@ -423,8 +431,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </CardContent>
       </Card>
 
-      {/* Documents */}
-      <DocumentsSection dealId={deal.id} />
     </div>
 
     {/* History drawer */}
@@ -498,7 +504,13 @@ function MobileChatButton({ dealId }: { dealId: string }) {
   );
 }
 
-function DocumentsSection({ dealId }: { dealId: string }) {
+type DocSection = "supplier" | "buyer" | "company_chain" | "logistics";
+
+function DocumentsSection({ dealId, section, title }: {
+  dealId: string;
+  section: DocSection;
+  title: string;
+}) {
   const supabase = createClient();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -508,7 +520,8 @@ function DocumentsSection({ dealId }: { dealId: string }) {
 
   useEffect(() => {
     loadAttachments();
-  }, [dealId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealId, section]);
 
   async function loadAttachments() {
     setLoading(true);
@@ -516,6 +529,7 @@ function DocumentsSection({ dealId }: { dealId: string }) {
       .from("deal_attachments")
       .select("id, category, file_name, file_path, file_size, uploaded_at")
       .eq("deal_id", dealId)
+      .eq("section", section)
       .order("uploaded_at", { ascending: false });
     setAttachments((data ?? []) as Attachment[]);
     setLoading(false);
@@ -526,7 +540,7 @@ function DocumentsSection({ dealId }: { dealId: string }) {
     if (!file) return;
 
     setUploading(true);
-    const filePath = `deals/${dealId}/${category}/${Date.now()}-${file.name}`;
+    const filePath = `deals/${dealId}/${section}/${category}/${Date.now()}-${file.name}`;
 
     const { error: uploadError } = await supabase.storage
       .from("deal-attachments")
@@ -539,6 +553,7 @@ function DocumentsSection({ dealId }: { dealId: string }) {
 
     const { error: dbError } = await supabase.from("deal_attachments").insert({
       deal_id: dealId,
+      section,
       category,
       file_name: file.name,
       file_path: filePath,
@@ -573,7 +588,7 @@ function DocumentsSection({ dealId }: { dealId: string }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-[14px]">Документы</CardTitle>
+        <CardTitle className="text-[13px] text-stone-600">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Upload */}
