@@ -187,12 +187,14 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   useEffect(() => {
     if (!dealId) return;
     sb.current.from("deals")
-      .select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
+      .select("id, deal_code, year, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
       .eq("id", dealId).single()
       .then(({ data }) => { if (data) setDeal(data as unknown as DRef); });
   }, [dealId]);
 
-  // Auto-lookup tariff from tariffs table using deal fields
+  // Auto-lookup tariff. The tariffs table is keyed by (dep, dest, fuel,
+  // forwarder, month, year) — every dimension is required, otherwise
+  // duplicate rows for different years cause the lookup to silently fail.
   useEffect(() => {
     if (!deal || tariffVal) return;
     const firstRec = group.records[0];
@@ -201,11 +203,13 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
     const ftId = deal.fuel_type_id;
     const fwId = deal.forwarder_id;
     const month = sm || firstRec?.shipment_month || deal.month;
-    if (!depId || !destId || !ftId || !fwId || !month) return;
+    const year = deal.year;
+    if (!depId || !destId || !ftId || !fwId || !month || !year) return;
     sb.current.from("tariffs").select("planned_tariff")
       .eq("departure_station_id", depId).eq("destination_station_id", destId)
-      .eq("fuel_type_id", ftId).eq("forwarder_id", fwId).eq("month", month)
-      .limit(1).single()
+      .eq("fuel_type_id", ftId).eq("forwarder_id", fwId)
+      .eq("month", month).eq("year", year)
+      .limit(1).maybeSingle()
       .then(({ data }) => { if (data?.planned_tariff) setTariffVal(data.planned_tariff); });
   }, [deal, sm, group.records, tariffVal]);
 
@@ -286,7 +290,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 type Ref = { id: string; name: string };
 type DRef2 = { id: string; short_name: string | null; full_name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
-type DRef = { id: string; deal_code: string; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
+type DRef = { id: string; deal_code: string; year: number | null; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
   const sb = useRef(createClient());
@@ -306,7 +310,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      sb.current.from("deals").select("id, deal_code, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
+      sb.current.from("deals").select("id, deal_code, year, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
       sb.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
@@ -342,14 +346,17 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
 
   // Tariff auto-lookup keyed off месяц формирования (from the deal) so it fires
   // as soon as a deal is picked — logistics doesn't need to choose месяц отгрузки first.
+  // Year comes from the selected deal — without it duplicates across years break the lookup.
+  const dealYear = deals.find((x) => x.id === dealId)?.year ?? null;
   useEffect(() => {
-    if (!depId || !destId || !ftId || !month || !fwId || tariff) return;
+    if (!depId || !destId || !ftId || !month || !fwId || !dealYear || tariff) return;
     sb.current.from("tariffs").select("planned_tariff")
       .eq("departure_station_id", depId).eq("destination_station_id", destId)
-      .eq("fuel_type_id", ftId).eq("month", month).eq("forwarder_id", fwId)
-      .limit(1).single()
+      .eq("fuel_type_id", ftId).eq("forwarder_id", fwId)
+      .eq("month", month).eq("year", dealYear)
+      .limit(1).maybeSingle()
       .then(({ data }) => { if (data?.planned_tariff) setTariff(String(data.planned_tariff)); });
-  }, [depId, destId, ftId, month, fwId, tariff]);
+  }, [depId, destId, ftId, month, fwId, dealYear, tariff]);
 
   const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
   const validCount = parsed.filter((p) => !p.error).length;
