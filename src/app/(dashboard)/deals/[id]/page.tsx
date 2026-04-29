@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,8 @@ import { DealShipments } from "@/components/deals/deal-shipments";
 import { DealCompanyChain } from "@/components/deals/deal-company-chain";
 import { AuditHistory } from "@/components/shared/audit-history";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
+import { ChangeDealNumberDialog } from "@/components/deals/change-deal-number-dialog";
+import { useRole } from "@/lib/hooks/use-role";
 
 const ATTACHMENT_CATEGORIES = [
   { value: "contract", label: "Договор / Приложение" },
@@ -164,6 +166,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [numberDialogOpen, setNumberDialogOpen] = useState(false);
+  const { isAdmin } = useRole();
   const [refs, setRefs] = useState<{
     suppliers: { value: string; label: string }[];
     buyers: { value: string; label: string }[];
@@ -233,6 +237,15 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold font-mono">{deal.deal_code}</h1>
+            {isAdmin && (
+              <button
+                title="Изменить номер сделки"
+                onClick={() => setNumberDialogOpen(true)}
+                className="rounded p-1 text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
             <div className="ml-auto flex items-center gap-2">
               <Button
                 size="sm"
@@ -416,6 +429,19 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
 
     {/* History drawer */}
     <AuditHistory open={historyOpen} onClose={() => setHistoryOpen(false)} dealId={deal.id} />
+
+    {isAdmin && (
+      <ChangeDealNumberDialog
+        open={numberDialogOpen}
+        onOpenChange={setNumberDialogOpen}
+        dealId={deal.id}
+        dealType={deal.deal_type}
+        year={deal.year}
+        currentNumber={deal.deal_number}
+        currentCode={deal.deal_code}
+        onChanged={reload}
+      />
+    )}
 
     {/* Right sidebar: Activity feed — sidebar on large, floating button + modal on small */}
     <div className="hidden lg:block w-[340px] shrink-0">
