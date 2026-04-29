@@ -291,7 +291,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="тонны из реестра">{formatComputedNum(deal.buyer_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="налив (loading_volume) — реестр">{formatComputedNum(deal.supplier_shipped_volume)}</td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">{formatComputedNum(deal.supplier_balance)}</td>
 
@@ -319,7 +319,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="тонны из реестра">{formatComputedNum(deal.buyer_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="тонн (shipment_volume) — реестр">{formatComputedNum(deal.buyer_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: отгружено − оплата">{formatComputedNum(deal.buyer_debt)}</td>

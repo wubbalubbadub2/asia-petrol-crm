@@ -7,6 +7,7 @@ type ShipmentRow = {
   id: string;
   wagon_number: string | null;
   shipment_volume: number | null;
+  loading_volume: number | null;
   date: string | null;
   railway_tariff: number | null;
   invoice_number: string | null;
@@ -14,6 +15,7 @@ type ShipmentRow = {
 
 type DateGroup = {
   date: string;
+  totalLoading: number;
   totalVolume: number;
   totalAmount: number;
   tariffFact: number | null;
@@ -43,7 +45,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
   useEffect(() => {
     sb.current
       .from("shipment_registry")
-      .select("id, wagon_number, shipment_volume, date, railway_tariff, invoice_number")
+      .select("id, wagon_number, shipment_volume, loading_volume, date, railway_tariff, invoice_number")
       .eq("deal_id", dealId)
       .order("date", { ascending: true })
       .then(({ data }) => {
@@ -61,13 +63,14 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
   for (const r of rows) {
     const d = r.date ?? "без даты";
     if (!dateMap.has(d)) {
-      const g: DateGroup = { date: d, totalVolume: 0, totalAmount: 0, tariffFact: null, wagons: [] };
+      const g: DateGroup = { date: d, totalLoading: 0, totalVolume: 0, totalAmount: 0, tariffFact: null, wagons: [] };
       dateMap.set(d, g);
       groups.push(g);
     }
     const g = dateMap.get(d)!;
     const amount = calcAmount(r.shipment_volume, r.railway_tariff);
     g.wagons.push({ ...r, amount });
+    g.totalLoading += r.loading_volume ?? 0;
     g.totalVolume += r.shipment_volume ?? 0;
     g.totalAmount += amount ?? 0;
   }
@@ -77,6 +80,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
     }
   }
 
+  const totalLoading = rows.reduce((s, r) => s + (r.loading_volume ?? 0), 0);
   const totalVol = rows.reduce((s, r) => s + (r.shipment_volume ?? 0), 0);
   const totalAmt = rows.reduce((s, r) => s + (calcAmount(r.shipment_volume, r.railway_tariff) ?? 0), 0);
 
@@ -87,6 +91,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
         <thead>
           <tr className="border-b border-stone-200 text-stone-500">
             <th className="text-left py-1 pr-2 font-medium">Дата отгрузки</th>
+            <th className="text-right py-1 pr-2 font-medium">Налив</th>
             <th className="text-right py-1 pr-2 font-medium">Отгружено (тонн)</th>
             <th className="text-right py-1 pr-2 font-medium">Сумма {currencySymbol}</th>
             <th className="text-right py-1 pr-2 font-medium">Тариф факт</th>
@@ -104,6 +109,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
                   <span className={`inline-block w-3 text-[9px] text-stone-400 transition-transform ${expandedDate === g.date ? "rotate-90" : ""}`}>▶</span>
                   {fmtDate(g.date)}
                 </td>
+                <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{g.totalLoading > 0 ? fmtNum(g.totalLoading) : "—"}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalVolume)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalAmount, 2)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">{fmtNum(g.tariffFact)}</td>
@@ -114,6 +120,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
               {expandedDate === g.date && g.wagons.map((w) => (
                 <tr key={w.id} className="bg-stone-50/50 border-b border-stone-50">
                   <td className="py-0.5 pr-2 pl-6 text-stone-400 font-mono text-[10px]">{w.wagon_number ?? "—"}</td>
+                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-amber-700">{fmtNum(w.loading_volume)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px]">{fmtNum(w.shipment_volume)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.amount, 2)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.railway_tariff)}</td>
@@ -124,6 +131,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
           ))}
           <tr className="border-t border-stone-300 font-medium">
             <td className="py-1 pr-2 text-stone-500">Итого</td>
+            <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{totalLoading > 0 ? fmtNum(totalLoading) : "—"}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(totalVol)}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(totalAmt, 2)}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">

@@ -27,6 +27,7 @@ export type Deal = {
   supplier_price: number | null;
   supplier_price_condition: string | null;
   supplier_shipped_amount: number | null;
+  supplier_shipped_volume: number | null;
   supplier_payment: number | null;
   supplier_payment_date: string | null;
   supplier_balance: number | null;

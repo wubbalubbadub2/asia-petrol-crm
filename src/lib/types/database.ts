@@ -913,6 +913,7 @@ export type Database = {
           supplier_quotation: number | null
           supplier_quotation_comment: string | null
           supplier_shipped_amount: number | null
+          supplier_shipped_volume: number | null
           surcharge_amount: number | null
           surcharge_reinvoiced_to: string | null
           trader_id: string | null
@@ -992,6 +993,7 @@ export type Database = {
           supplier_quotation?: number | null
           supplier_quotation_comment?: string | null
           supplier_shipped_amount?: number | null
+          supplier_shipped_volume?: number | null
           surcharge_amount?: number | null
           surcharge_reinvoiced_to?: string | null
           trader_id?: string | null
@@ -1071,6 +1073,7 @@ export type Database = {
           supplier_quotation?: number | null
           supplier_quotation_comment?: string | null
           supplier_shipped_amount?: number | null
+          supplier_shipped_volume?: number | null
           surcharge_amount?: number | null
           surcharge_reinvoiced_to?: string | null
           trader_id?: string | null
