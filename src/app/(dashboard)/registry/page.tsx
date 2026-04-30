@@ -261,9 +261,22 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-1 py-1"><input value={w} onChange={(e) => setW(e.target.value)} placeholder="№ вагона *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-1 py-1"><input type="number" step="0.001" value={v} onChange={(e) => setV(e.target.value)} placeholder="тонн *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
       <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{fmtNum(tariff)}</td>
+      <td className="border-r px-1 py-1">
+        <input
+          type="number" step="0.01"
+          value={tariffVal == null ? "" : String(tariffVal)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") { setTariffVal(null); return; }
+            const n = parseFloat(raw.replace(",", "."));
+            setTariffVal(Number.isFinite(n) ? n : null);
+          }}
+          placeholder="тариф"
+          className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50"
+        />
+      </td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{v ? fmtNum(ceil(parseFloat(v))) : ""}</td>
-      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff ? fmtNum(calcAmt(parseFloat(v), tariff), 2) : ""}</td>
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff != null ? fmtNum(calcAmt(parseFloat(v), tariff), 2) : ""}</td>
       <td className="border-r px-1 py-1">
         <select value={curOverride} onChange={(e) => setCurOverride(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-0.5 bg-green-50 cursor-pointer focus:outline-none">
           <option value="">сделка</option>
