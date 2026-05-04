@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import type { TablesUpdate } from "@/lib/types/database";
 
@@ -342,6 +342,26 @@ export default function DtKtPage() {
     (onlyNegativeSaldo ? 1 : 0) +
     (search.trim() ? 1 : 0);
 
+  // Footer totals — sum across the currently visible rows so the row reflects
+  // whatever the user has filtered down to. Currencies are summed naively;
+  // mixed-currency aggregates are a known limitation (same as cell display).
+  const totals = useMemo(() => {
+    let opening = 0, payment = 0, regVol = 0, regAmt = 0, refund = 0, fines = 0, surcharge = 0, ogem = 0, saldo = 0;
+    for (const r of filtered) {
+      const reg = getRegistrySum(r.forwarder_id, r.company_group_id);
+      opening += n(r.opening_balance);
+      payment += n(r.payment);
+      regVol += reg.vol;
+      regAmt += reg.amt;
+      refund += n(r.refund);
+      fines += n(r.fines);
+      surcharge += n(r.surcharge_preliminary);
+      ogem += n(r.ogem);
+      saldo += computeSaldo(r, reg.amt);
+    }
+    return { opening, payment, regVol, regAmt, refund, fines, surcharge, ogem, saldo };
+  }, [filtered, registrySums]);
+
   function clearAllFilters() {
     setForwarderFilter("");
     setCompanyGroupFilter("");
@@ -529,6 +549,23 @@ export default function DtKtPage() {
                 );
               })}
             </TableBody>
+            <TableFooter>
+              <TableRow className="bg-stone-100 hover:bg-stone-100 border-t-2 border-stone-300">
+                <TableCell colSpan={3} className="text-[12px] font-semibold text-stone-700">
+                  Итого ({filtered.length})
+                </TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.opening)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.payment)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-blue-700">{totals.regVol > 0 ? fmt(totals.regVol) : "—"}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-blue-700">{totals.regAmt > 0 ? fmt(totals.regAmt) : "—"}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.refund)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-red-600">{fmt(totals.fines)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-orange-600">{fmt(totals.surcharge)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.ogem)}</TableCell>
+                <TableCell className={`text-right font-mono text-[11px] tabular-nums font-bold ${totals.saldo < 0 ? "text-red-600" : "text-green-700"}`}>{fmt(totals.saldo)}</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
           </Table>
         </div>
       )}
