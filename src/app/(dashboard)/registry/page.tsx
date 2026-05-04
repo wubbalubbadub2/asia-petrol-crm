@@ -106,6 +106,7 @@ type RGroup = {
   key: string;
   dealId: string | null;
   dealCode: string;
+  dealYear: number | null;
   month: string;
   fuelType: string;
   fuelColor: string;
@@ -141,6 +142,7 @@ function groupRecs(records: ShipmentRecord[]): RGroup[] {
     const k = r.deal_id ?? `o-${r.id}`;
     if (!m.has(k)) m.set(k, {
       key: k, dealId: r.deal_id, dealCode: r.deal?.deal_code ?? "—",
+      dealYear: r.deal?.year ?? null,
       month: r.month ?? "",
       fuelType: r.fuel_type?.name ?? "", fuelColor: r.fuel_type?.color ?? "#6B7280",
       factory: r.factory?.name ?? "",
@@ -357,19 +359,20 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (st?.default_factory_id && !facId) setFacId(st.default_factory_id);
   }, [depId, stations, facId]);
 
-  // Tariff auto-lookup keyed off месяц формирования (from the deal) so it fires
-  // as soon as a deal is picked — logistics doesn't need to choose месяц отгрузки first.
-  // Year comes from the selected deal — without it duplicates across years break the lookup.
+  // Tariffs are keyed by SHIPMENT month (rate changes by RR timetable month).
+  // Месяц формирования (deal.month) and месяц отгрузки can diverge — e.g. a
+  // май-formed deal can ship in февраль. Prefer shipMonth; fall back to month.
   const dealYear = deals.find((x) => x.id === dealId)?.year ?? null;
   useEffect(() => {
-    if (!depId || !destId || !ftId || !month || !fwId || !dealYear || tariff) return;
+    const lookupMonth = shipMonth || month;
+    if (!depId || !destId || !ftId || !lookupMonth || !fwId || !dealYear || tariff) return;
     sb.current.from("tariffs").select("planned_tariff")
       .eq("departure_station_id", depId).eq("destination_station_id", destId)
       .eq("fuel_type_id", ftId).eq("forwarder_id", fwId)
-      .eq("month", month).eq("year", dealYear)
+      .eq("month", lookupMonth).eq("year", dealYear)
       .limit(1).maybeSingle()
       .then(({ data }) => { if (data?.planned_tariff) setTariff(String(data.planned_tariff)); });
-  }, [depId, destId, ftId, month, fwId, dealYear, tariff]);
+  }, [depId, destId, ftId, month, shipMonth, fwId, dealYear, tariff]);
 
   const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
   const validCount = parsed.filter((p) => !p.error).length;
@@ -456,7 +459,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label className="text-[11px] text-stone-600 flex items-center gap-1">
-                <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB между колонками)
+                <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB или пробелы между колонками)
               </Label>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-stone-500">Объём идёт в:</span>
@@ -743,6 +746,7 @@ export default function RegistryPage() {
           destinationStationId: bulkIn.ids.destinationStationId,
           departureStationId: bulkIn.ids.departureStationId,
           railwayTariff: bulkIn.tariff,
+          dealYear: bulkIn.dealYear,
           currency: bulkIn.ids.currency,
         } : null}
         onDone={reload}

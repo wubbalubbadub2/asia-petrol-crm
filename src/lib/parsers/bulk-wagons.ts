@@ -16,7 +16,8 @@
  *   - Date formats: DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD → ISO YYYY-MM-DD
  *   - Leading/trailing whitespace trimmed per line and per cell
  *   - Empty lines skipped
- *   - First row skipped if it looks like a header (first cell is non-numeric text)
+ *   - First row skipped only if it has zero digits anywhere (clear header).
+ *     Any digit-bearing first row is treated as data.
  */
 
 export type ParsedWagon = {
@@ -82,9 +83,11 @@ function parseDate(raw: string | undefined): string | null {
 }
 
 function looksLikeHeader(cells: string[]): boolean {
-  const first = cells[0] ?? "";
-  // Headers typically have at least one alpha char and don't start with a digit
-  return /[A-Za-zА-Яа-яЁё]/.test(first) && !/^\d/.test(first);
+  // A header row has zero numeric content. If any cell carries a digit
+  // (wagon number, volume, date, waybill) the row is data, not a header.
+  // Earlier "first cell starts with non-digit alpha" logic silently dropped
+  // real rows whose first cell happened to start with a letter.
+  return cells.length > 0 && cells.every((c) => !/\d/.test(c));
 }
 
 export function parseBulkWagons(raw: string): ParsedWagon[] {

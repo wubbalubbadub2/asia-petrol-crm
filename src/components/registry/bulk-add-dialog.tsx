@@ -34,6 +34,7 @@ export type BulkAddGroupContext = {
   destinationStationId: string | null;
   departureStationId: string | null;
   railwayTariff: number | null;
+  dealYear: number | null;
   currency: string | null; // deal currency
 };
 
@@ -130,6 +131,28 @@ export function BulkAddDialog({
     setBulkComment("");
     setVolumeTarget("ship");
   }, [open, context]);
+
+  // Auto-tariff lookup: tariffs are keyed by SHIPMENT month + year, not the
+  // deal's "месяц формирования". When the existing group has no tariff yet
+  // (e.g. wagons added before the rate was published), fill it now from the
+  // /tariffs reference. Stays out of the way once the user has typed something.
+  useEffect(() => {
+    if (!open || !context) return;
+    if (tariff) return;
+    const lookupMonth = shipmentMonth || month;
+    const year = context.dealYear;
+    if (!departureStationId || !destinationStationId || !fuelTypeId || !forwarderId || !lookupMonth || !year) return;
+    const sb = createClient();
+    sb.from("tariffs").select("planned_tariff")
+      .eq("departure_station_id", departureStationId)
+      .eq("destination_station_id", destinationStationId)
+      .eq("fuel_type_id", fuelTypeId)
+      .eq("forwarder_id", forwarderId)
+      .eq("month", lookupMonth)
+      .eq("year", year)
+      .limit(1).maybeSingle()
+      .then(({ data }) => { if (data?.planned_tariff) setTariff(String(data.planned_tariff)); });
+  }, [open, context, departureStationId, destinationStationId, fuelTypeId, forwarderId, shipmentMonth, month, tariff]);
 
   const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
   const validCount = parsed.filter((p) => !p.error).length;
@@ -248,7 +271,7 @@ export function BulkAddDialog({
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label className="text-[11px] text-stone-600 flex items-center gap-1">
-                <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB между колонками)
+                <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB или пробелы между колонками)
               </Label>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-stone-500">Объём идёт в:</span>

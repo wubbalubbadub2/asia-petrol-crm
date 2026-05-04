@@ -101,7 +101,7 @@ describe("parseBulkWagons", () => {
   });
 
   describe("header row auto-skip", () => {
-    it("skips a header row that starts with non-numeric text", () => {
+    it("skips a header row with no digits", () => {
       const input = [
         "№ вагона\tОбъем",
         "51742534\t54.719",
@@ -121,6 +121,23 @@ describe("parseBulkWagons", () => {
     it("skips Latin-alphabet headers too", () => {
       const rows = parseBulkWagons("Wagon\tVolume\n51742534\t54.719");
       expect(rows).toHaveLength(1);
+    });
+
+    it("does NOT silently drop a data row whose first cell starts with a letter", () => {
+      // Earlier behavior dropped this row; now it's preserved as data with
+      // a wagon-parse error so the user can see and correct it.
+      const input = "АИ-92 75083287 64.625\n75051862 64.876";
+      const rows = parseBulkWagons(input);
+      expect(rows).toHaveLength(2);
+      expect(rows[1].wagon).toBe("75051862");
+    });
+
+    it("does NOT skip a header-shaped row that contains digits", () => {
+      // If headers happen to include digits ("Вагон 1\tОбъем 2"), the row
+      // is treated as data — biases toward not dropping content.
+      const input = "Вагон 1\tОбъем 2\n51742534\t54.719";
+      const rows = parseBulkWagons(input);
+      expect(rows).toHaveLength(2);
     });
   });
 
