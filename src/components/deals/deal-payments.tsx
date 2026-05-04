@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 
+type PaymentType = "payment" | "refund";
+
 type Payment = {
   id: string;
   side: "supplier" | "buyer";
@@ -17,7 +19,13 @@ type Payment = {
   payment_date: string;
   description: string | null;
   currency: string | null;
+  payment_type: PaymentType;
 };
+
+// Net contribution to the deal's payment rollup: refunds subtract.
+function signedAmount(p: Payment): number {
+  return p.payment_type === "refund" ? -p.amount : p.amount;
+}
 
 function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
@@ -41,8 +49,22 @@ function PaymentRow({
   const [editDesc, setEditDesc] = useState(false);
   const [descLv, setDescLv] = useState("");
 
+  const isRefund = p.payment_type === "refund";
   return (
-    <div className="flex items-center gap-2 rounded bg-stone-50 px-2 py-1 text-[11px]">
+    <div className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] ${isRefund ? "bg-red-50/60" : "bg-stone-50"}`}>
+      {/* Type toggle */}
+      <select
+        value={p.payment_type}
+        onChange={(e) => {
+          const nv = e.target.value as PaymentType;
+          if (nv !== p.payment_type) onUpdate(p.id, { payment_type: nv });
+        }}
+        className={`h-5 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300 ${isRefund ? "text-red-600 font-medium" : "text-stone-600"}`}
+        title="Тип записи"
+      >
+        <option value="payment">Оплата</option>
+        <option value="refund">Возврат</option>
+      </select>
       {/* Date */}
       {!editDate ? (
         <button
@@ -67,9 +89,9 @@ function PaymentRow({
       {!editAmount ? (
         <button
           onClick={() => { setAmountLv(String(p.amount)); setEditAmount(true); }}
-          className="font-mono tabular-nums font-medium text-stone-800 flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text"
+          className={`font-mono tabular-nums font-medium flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text ${isRefund ? "text-red-700" : "text-stone-800"}`}
         >
-          {formatMoney(p.amount)} {sym}
+          {isRefund ? "−" : ""}{formatMoney(p.amount)} {sym}
         </button>
       ) : (
         <input
@@ -137,6 +159,7 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
   const [newDesc, setNewDesc] = useState("");
   const [newCurrency, setNewCurrency] = useState("");  // empty = inherit deal currency
+  const [newType, setNewType] = useState<PaymentType>("payment");
 
   useEffect(() => { loadPayments(); }, [dealId]);
 
@@ -147,7 +170,9 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
       .select("*")
       .eq("deal_id", dealId)
       .order("payment_date", { ascending: true });
-    setPayments((data ?? []) as Payment[]);
+    // Migration 00051 introduces payment_type; tolerate older rows that
+    // predate it by defaulting to 'payment'.
+    setPayments(((data ?? []) as Array<Omit<Payment, "payment_type"> & { payment_type?: PaymentType }>).map((r) => ({ ...r, payment_type: r.payment_type ?? "payment" })));
     setLoading(false);
   }
 
@@ -160,12 +185,14 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
       payment_date: newDate,
       description: newDesc || null,
       currency: newCurrency || null,
+      payment_type: newType,
     });
     if (error) { toast.error(`Ошибка: ${error.message}`); return; }
     setAddingSide(null);
     setNewAmount("");
     setNewDesc("");
     setNewCurrency("");
+    setNewType("payment");
     await loadPayments();
   }
 
@@ -185,11 +212,13 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   const buyerPayments = payments.filter((p) => p.side === "buyer");
 
   function PaymentList({ items, side, label }: { items: Payment[]; side: "supplier" | "buyer"; label: string }) {
-    // Sum per-currency so mixed-currency lists make sense.
+    // Sum per-currency so mixed-currency lists make sense. Refunds
+    // subtract — so the displayed total reflects what the rollup writes
+    // to deals.supplier_payment / buyer_payment.
     const totals = new Map<string, number>();
     for (const p of items) {
       const code = p.currency ?? dealCurrency;
-      totals.set(code, (totals.get(code) ?? 0) + p.amount);
+      totals.set(code, (totals.get(code) ?? 0) + signedAmount(p));
     }
     return (
       <div>
@@ -241,11 +270,18 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
 
         {/* Add payment form */}
         {addingSide && (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/30 p-3">
+          <div className={`mt-3 rounded-md border p-3 ${newType === "refund" ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30"}`}>
             <p className="text-[12px] font-medium text-stone-700 mb-2">
-              Новая оплата ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
+              {newType === "refund" ? "Новый возврат" : "Новая оплата"} ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
             </p>
             <div className="flex gap-2 items-end">
+              <div className="w-24">
+                <Label className="text-[10px]">Тип</Label>
+                <select value={newType} onChange={(e) => setNewType(e.target.value as PaymentType)} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
+                  <option value="payment">Оплата</option>
+                  <option value="refund">Возврат</option>
+                </select>
+              </div>
               <div className="w-28">
                 <Label className="text-[10px]">Сумма</Label>
                 <Input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="h-7 text-[12px] font-mono" />
