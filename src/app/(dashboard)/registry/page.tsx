@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useRegistry, createRegistryEntry, updateRegistryEntry, bulkInsertRegistry, type ShipmentRecord } from "@/lib/hooks/use-registry";
+import { useRegistry, createRegistryEntry, updateRegistryEntry, bulkInsertRegistry, type ShipmentRecord, type RegistryUpdate } from "@/lib/hooks/use-registry";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
@@ -69,6 +69,61 @@ function EM({ value, recId, field, onSaved }: { value: string | null | undefined
     </select>
   );
 }
+// Editable amount cell with override semantics. Writes both
+// shipped_tonnage_amount and shipped_tonnage_amount_override so the value
+// survives subsequent row edits. Clearing reverts to auto-compute.
+function EAmount({ value, override, recId, onSaved, suffix = "" }: {
+  value: number | null | undefined;
+  override: boolean | null | undefined;
+  recId: string;
+  onSaved: () => void;
+  suffix?: string;
+}) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  if (!ed) return (
+    <button
+      onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
+      title={override ? "Сумма переопределена вручную. Очистите поле, чтобы вернуть авто-расчёт." : "Авто-расчёт: ⌈тонн⌉ × тариф. Введите значение, чтобы переопределить."}
+      className={`w-full text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[60px] ${override ? "italic text-amber-700" : "font-medium"}`}
+    >
+      {fmtNum(value, 2)} {suffix}
+    </button>
+  );
+  return (
+    <input
+      autoFocus
+      type="number"
+      step="0.01"
+      value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => {
+        setEd(false);
+        const raw = lv.trim();
+        if (raw === "") {
+          // Clear → revert to auto-compute on next trigger pass.
+          if (override) {
+            updateRegistryEntry(recId, {
+              shipped_tonnage_amount: null,
+              shipped_tonnage_amount_override: false,
+            } as RegistryUpdate).then(onSaved).catch(() => {});
+          }
+          return;
+        }
+        const n = parseFloat(raw.replace(",", "."));
+        if (!Number.isFinite(n)) return;
+        if (n === value && override) return;
+        updateRegistryEntry(recId, {
+          shipped_tonnage_amount: n,
+          shipped_tonnage_amount_override: true,
+        } as RegistryUpdate).then(onSaved).catch(() => {});
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="w-20 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none"
+    />
+  );
+}
+
 // Editable reference-select cell: shows label text by default, turns into <select> on click.
 function ES({ value, displayLabel, recId, field, options, onSaved, className = "" }: {
   value: string | null | undefined; displayLabel: string; recId: string; field: string;
@@ -167,7 +222,11 @@ function groupRecs(records: ShipmentRecord[]): RGroup[] {
         currency: r.currency ?? r.deal?.currency ?? null,
       },
     });
-    const g = m.get(k)!; g.records.push(r); g.totalVol += r.shipment_volume ?? 0; g.totalAmt += calcAmt(r.shipment_volume, r.railway_tariff) ?? 0;
+    const g = m.get(k)!; g.records.push(r); g.totalVol += r.shipment_volume ?? 0;
+    // Prefer the stored amount (trigger-computed OR user-overridden) over a
+    // client recompute so manual overrides flow into rollups. Fall back to
+    // the computation only when nothing is stored yet (rare).
+    g.totalAmt += r.shipped_tonnage_amount ?? calcAmt(r.shipment_volume, r.railway_tariff) ?? 0;
   }
   return Array.from(m.values());
 }
@@ -677,7 +736,15 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
                               <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums text-stone-400">{fmtNum(ceil(r.shipment_volume))}</td>
-                              <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums font-medium">{fmtNum(calcAmt(r.shipment_volume, r.railway_tariff), 2)} {currencyFor(r, tab)}</td>
+                              <td className="border-r px-1 py-0.5">
+                                <EAmount
+                                  value={r.shipped_tonnage_amount}
+                                  override={r.shipped_tonnage_amount_override}
+                                  recId={r.id}
+                                  onSaved={reload}
+                                  suffix={currencyFor(r, tab)}
+                                />
+                              </td>
                               <td className="border-r px-1 py-0.5">
                                 <ES
                                   value={r.currency}

@@ -26,6 +26,8 @@ export type ShipmentRecord = {
   buyer_id: string | null;
   rounded_tonnage_from_forwarder: number | null;
   shipped_tonnage_amount: number | null;
+  // Migration 00050 — optional until applied + types regenerated
+  shipped_tonnage_amount_override?: boolean | null;
   invoice_number: string | null;
   comment: string | null;
   loading_volume: number | null;
@@ -88,7 +90,11 @@ export function useRegistry(type: "KG" | "KZ") {
 import type { TablesInsert, TablesUpdate } from "@/lib/types/database";
 
 type RegistryInsert = TablesInsert<"shipment_registry">;
-type RegistryUpdate = TablesUpdate<"shipment_registry">;
+// Override field is post-migration-00050; types here may run ahead of the
+// generated database.ts until `npm run types:db` is rerun.
+export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
+  shipped_tonnage_amount_override?: boolean | null;
+};
 
 export async function createRegistryEntry(values: RegistryInsert) {
   const supabase = createClient();
