@@ -74,6 +74,9 @@ export type Deal = {
   logistics_currency: string;
   is_archived: boolean;
   created_at: string;
+  // Variant counts — populated post-fetch from the embedded line arrays.
+  supplier_lines_count?: number;
+  buyer_lines_count?: number;
   // Joined fields
   factory?: { name: string } | null;
   fuel_type?: { name: string; color: string } | null;
@@ -100,8 +103,21 @@ const DEAL_SELECT = `
   trader:profiles!trader_id(full_name),
   buyer_destination_station:stations!buyer_destination_station_id(name),
   logistics_company_group:company_groups!logistics_company_group_id(name),
-  deal_company_groups(id, position, company_group_id, price, contract_ref, company_group:company_groups(name))
+  deal_company_groups(id, position, company_group_id, price, contract_ref, company_group:company_groups(name)),
+  supplier_lines:deal_supplier_lines(id),
+  buyer_lines:deal_buyer_lines(id)
 `;
+
+// Annotate fetched deals with simple line counts so the passport table
+// can render a "+N линий" badge without a second round trip.
+type WithLines = { supplier_lines?: { id: string }[]; buyer_lines?: { id: string }[] };
+function annotateLineCounts<T extends WithLines>(rows: T[]): (T & Deal)[] {
+  return rows.map((r) => ({
+    ...(r as unknown as Deal),
+    supplier_lines_count: r.supplier_lines?.length ?? 0,
+    buyer_lines_count: r.buyer_lines?.length ?? 0,
+  })) as (T & Deal)[];
+}
 
 export function useDeals(filters?: {
   dealType?: "KG" | "KZ" | "OIL";
@@ -130,7 +146,7 @@ export function useDeals(filters?: {
     if (error) {
       toast.error(`Ошибка загрузки сделок: ${error.message}`);
     } else {
-      setData((data ?? []) as Deal[]);
+      setData(annotateLineCounts((data ?? []) as unknown as WithLines[]) as unknown as Deal[]);
     }
     setLoading(false);
   }, [filters?.dealType, filters?.year, filters?.month, filters?.isArchived]);
@@ -155,8 +171,9 @@ export function useDeal(id: string | null) {
       .single();
     if (error) {
       toast.error(`Ошибка загрузки сделки: ${error.message}`);
-    } else {
-      setData(data as Deal);
+    } else if (data) {
+      const [annotated] = annotateLineCounts([data as unknown as WithLines]);
+      setData(annotated as unknown as Deal);
     }
     setLoading(false);
   }, [id]);

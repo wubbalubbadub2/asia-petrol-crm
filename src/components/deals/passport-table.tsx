@@ -24,6 +24,27 @@ function FuelDot({ color }: { color?: string }) {
   return <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color ?? "#6B7280" }} />;
 }
 
+// "+N лин." chip — only renders when at least one side has multiple
+// pricing variants. Tooltip spells out per-side counts so users know
+// where to look (Поставщик / Покупатель card on the deal detail).
+function VariantsBadge({ supplierCount, buyerCount }: { supplierCount: number; buyerCount: number }) {
+  const supplierExtra = Math.max(0, supplierCount - 1);
+  const buyerExtra = Math.max(0, buyerCount - 1);
+  if (supplierExtra === 0 && buyerExtra === 0) return null;
+  const parts: string[] = [];
+  if (supplierExtra > 0) parts.push(`Поставщик: +${supplierExtra}`);
+  if (buyerExtra > 0) parts.push(`Покупатель: +${buyerExtra}`);
+  const total = supplierExtra + buyerExtra;
+  return (
+    <span
+      title={parts.join(" · ")}
+      className="ml-1 inline-flex items-center rounded bg-purple-100 px-1 py-0.5 align-middle text-[9px] font-medium text-purple-700"
+    >
+      +{total} лин.
+    </span>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Inline cell primitives
 // ─────────────────────────────────────────────────────────────────────
@@ -264,6 +285,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               {/* Identity */}
               <td className="sticky left-0 z-10 bg-white border-r px-2 py-1 font-mono font-medium">
                 <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">{deal.deal_code}</Link>
+                <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
               </td>
               <td className="sticky left-[70px] z-10 bg-white border-r px-1 py-0.5">
                 <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} />
