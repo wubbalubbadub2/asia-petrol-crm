@@ -631,6 +631,79 @@ export type Database = {
           },
         ]
       }
+      deal_buyer_lines: {
+        Row: {
+          created_at: string | null
+          deal_id: string
+          delivery_basis: string | null
+          destination_station_id: string | null
+          discount: number | null
+          id: string
+          is_default: boolean
+          position: number
+          price: number | null
+          price_condition: Database["public"]["Enums"]["price_condition"] | null
+          quotation: number | null
+          quotation_comment: string | null
+          quotation_type_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deal_id: string
+          delivery_basis?: string | null
+          destination_station_id?: string | null
+          discount?: number | null
+          id?: string
+          is_default?: boolean
+          position?: number
+          price?: number | null
+          price_condition?: Database["public"]["Enums"]["price_condition"] | null
+          quotation?: number | null
+          quotation_comment?: string | null
+          quotation_type_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deal_id?: string
+          delivery_basis?: string | null
+          destination_station_id?: string | null
+          discount?: number | null
+          id?: string
+          is_default?: boolean
+          position?: number
+          price?: number | null
+          price_condition?: Database["public"]["Enums"]["price_condition"] | null
+          quotation?: number | null
+          quotation_comment?: string | null
+          quotation_type_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_buyer_lines_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_buyer_lines_destination_station_id_fkey"
+            columns: ["destination_station_id"]
+            isOneToOne: false
+            referencedRelation: "stations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_buyer_lines_quotation_type_id_fkey"
+            columns: ["quotation_type_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_product_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_company_groups: {
         Row: {
           company_group_id: string
@@ -836,6 +909,79 @@ export type Database = {
             columns: ["shipment_registry_id"]
             isOneToOne: false
             referencedRelation: "shipment_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_supplier_lines: {
+        Row: {
+          created_at: string | null
+          deal_id: string
+          delivery_basis: string | null
+          departure_station_id: string | null
+          discount: number | null
+          id: string
+          is_default: boolean
+          position: number
+          price: number | null
+          price_condition: Database["public"]["Enums"]["price_condition"] | null
+          quotation: number | null
+          quotation_comment: string | null
+          quotation_type_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deal_id: string
+          delivery_basis?: string | null
+          departure_station_id?: string | null
+          discount?: number | null
+          id?: string
+          is_default?: boolean
+          position?: number
+          price?: number | null
+          price_condition?: Database["public"]["Enums"]["price_condition"] | null
+          quotation?: number | null
+          quotation_comment?: string | null
+          quotation_type_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deal_id?: string
+          delivery_basis?: string | null
+          departure_station_id?: string | null
+          discount?: number | null
+          id?: string
+          is_default?: boolean
+          position?: number
+          price?: number | null
+          price_condition?: Database["public"]["Enums"]["price_condition"] | null
+          quotation?: number | null
+          quotation_comment?: string | null
+          quotation_type_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_supplier_lines_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_supplier_lines_departure_station_id_fkey"
+            columns: ["departure_station_id"]
+            isOneToOne: false
+            referencedRelation: "stations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_supplier_lines_quotation_type_id_fkey"
+            columns: ["quotation_type_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_product_types"
             referencedColumns: ["id"]
           },
         ]
@@ -2665,6 +2811,7 @@ export type Database = {
         Row: {
           additional_month: string | null
           buyer_id: string | null
+          buyer_line_id: string | null
           comment: string | null
           company_group_id: string | null
           created_at: string | null
@@ -2690,6 +2837,7 @@ export type Database = {
           shipment_volume: number | null
           shipped_tonnage_amount: number | null
           supplier_id: string | null
+          supplier_line_id: string | null
           updated_at: string | null
           wagon_number: string | null
           waybill_number: string | null
@@ -2697,6 +2845,7 @@ export type Database = {
         Insert: {
           additional_month?: string | null
           buyer_id?: string | null
+          buyer_line_id?: string | null
           comment?: string | null
           company_group_id?: string | null
           created_at?: string | null
@@ -2722,6 +2871,7 @@ export type Database = {
           shipment_volume?: number | null
           shipped_tonnage_amount?: number | null
           supplier_id?: string | null
+          supplier_line_id?: string | null
           updated_at?: string | null
           wagon_number?: string | null
           waybill_number?: string | null
@@ -2729,6 +2879,7 @@ export type Database = {
         Update: {
           additional_month?: string | null
           buyer_id?: string | null
+          buyer_line_id?: string | null
           comment?: string | null
           company_group_id?: string | null
           created_at?: string | null
@@ -2754,6 +2905,7 @@ export type Database = {
           shipment_volume?: number | null
           shipped_tonnage_amount?: number | null
           supplier_id?: string | null
+          supplier_line_id?: string | null
           updated_at?: string | null
           wagon_number?: string | null
           waybill_number?: string | null

@@ -24,6 +24,8 @@ import { AuditHistory } from "@/components/shared/audit-history";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { ChangeDealNumberDialog } from "@/components/deals/change-deal-number-dialog";
 import { useRole } from "@/lib/hooks/use-role";
+import { useDealSupplierLines, useDealBuyerLines } from "@/lib/hooks/use-deal-lines";
+import { SupplierLinesEditor, BuyerLinesEditor } from "@/components/deals/deal-lines-editor";
 
 const ATTACHMENT_CATEGORIES = [
   { value: "contract", label: "Договор / Приложение" },
@@ -259,11 +261,16 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     companyGroups: { value: string; label: string }[];
     factories: { value: string; label: string }[];
     fuelTypes: { value: string; label: string }[];
-  }>({ suppliers: [], buyers: [], forwarders: [], managers: [], stations: [], companyGroups: [], factories: [], fuelTypes: [] });
+    quotationTypes: { value: string; label: string }[];
+  }>({ suppliers: [], buyers: [], forwarders: [], managers: [], stations: [], companyGroups: [], factories: [], fuelTypes: [], quotationTypes: [] });
 
-  // Load reference data when entering edit mode
+  // Pricing variants per side (multi-line, 00053+00054)
+  const { data: supplierLines, reload: reloadSupplierLines } = useDealSupplierLines(id);
+  const { data: buyerLines,    reload: reloadBuyerLines }    = useDealBuyerLines(id);
+
+  // Load reference data — needed at all times so the variants block
+  // can render station/quotation labels even outside edit mode.
   useEffect(() => {
-    if (!editing) return;
     const sb = createClient();
     Promise.all([
       sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true),
@@ -274,7 +281,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
       sb.from("factories").select("id, name").eq("is_active", true).order("name"),
       sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-    ]).then(([s, b, f, m, st, cg, fac, ft]) => {
+      sb.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
+    ]).then(([s, b, f, m, st, cg, fac, ft, qt]) => {
       setRefs({
         suppliers: (s.data ?? []).map((r) => ({ value: r.id, label: r.short_name || r.full_name })),
         buyers: (b.data ?? []).map((r) => ({ value: r.id, label: r.short_name || r.full_name })),
@@ -284,9 +292,10 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         companyGroups: (cg.data ?? []).map((r) => ({ value: r.id, label: r.name })),
         factories: (fac.data ?? []).map((r) => ({ value: r.id, label: r.name })),
         fuelTypes: (ft.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+        quotationTypes: (qt.data ?? []).map((r) => ({ value: r.id, label: r.name })),
       });
     });
-  }, [editing]);
+  }, []);
 
   const priceConditionOptions = [
     { value: "average_month", label: "Средний месяц" },
@@ -394,27 +403,37 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <CardTitle className="text-[14px]">Поставщик</CardTitle>
           <SectionCurrencyPicker editing={editing} value={supplierCurrency} dealId={deal.id} field="supplier_currency" syncLegacy />
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
-          <EditableSelect label="Поставщик" value={deal.supplier_id} displayValue={deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"} editing={editing} field="supplier_id" dealId={deal.id} options={refs.suppliers} />
-          <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
-          <Field label="Базис поставки" value={deal.supplier_delivery_basis} editing={editing} field="supplier_delivery_basis" dealId={deal.id} />
-          <EditableSelect label="Условие фиксации" value={deal.supplier_price_condition} displayValue={
-            deal.supplier_price_condition === "average_month" ? "Средний месяц" :
-            deal.supplier_price_condition === "fixed" ? "Фикс цена на дату" :
-            deal.supplier_price_condition === "trigger" ? "Триггер" :
-            deal.supplier_price_condition === "manual" ? "Вручную" : "—"
-          } editing={editing} field="supplier_price_condition" dealId={deal.id} options={priceConditionOptions} />
-          <Field label="Котировка" value={deal.supplier_quotation} suffix={supplierCurrencySymbol} editing={editing} field="supplier_quotation" dealId={deal.id} />
-          <Field label="Комментарий котировки" value={deal.supplier_quotation_comment} editing={editing} field="supplier_quotation_comment" dealId={deal.id} />
-          <Field label="Скидка" value={deal.supplier_discount} suffix={supplierCurrencySymbol} editing={editing} field="supplier_discount" dealId={deal.id} />
-          <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
-          <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${supplierCurrencySymbol} (авто)`} />
-          <Field label="Цена" value={deal.supplier_price} editing={editing} field="supplier_price" dealId={deal.id} />
-          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
-          <Field label="Оплата" value={deal.supplier_payment} suffix={`${supplierCurrencySymbol} (оплаты)`} />
-          <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
-          <Field label="Баланс" value={deal.supplier_balance} suffix={`${supplierCurrencySymbol} (авто)`} />
-          <Field label="% S" value={deal.sulfur_percent} editing={editing} field="sulfur_percent" dealId={deal.id} />
+        <CardContent className="space-y-4">
+          {/* Header / scalar fields (one per side) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+            <EditableSelect label="Поставщик" value={deal.supplier_id} displayValue={deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"} editing={editing} field="supplier_id" dealId={deal.id} options={refs.suppliers} />
+            <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
+            <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
+            <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${supplierCurrencySymbol} (авто)`} />
+            <Field label="% S" value={deal.sulfur_percent} editing={editing} field="sulfur_percent" dealId={deal.id} />
+          </div>
+
+          {/* Multi-line pricing variants */}
+          <div>
+            <div className="text-[12px] font-medium text-stone-600 mb-1.5">Условия и маршрут</div>
+            <SupplierLinesEditor
+              dealId={deal.id}
+              editing={editing}
+              currencySymbol={supplierCurrencySymbol}
+              stations={refs.stations}
+              quotationTypes={refs.quotationTypes}
+              lines={supplierLines}
+              onChanged={() => { reloadSupplierLines(); reload(); }}
+            />
+          </div>
+
+          {/* Rollups — derived from registry / payments */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+            <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
+            <Field label="Оплата" value={deal.supplier_payment} suffix={`${supplierCurrencySymbol} (оплаты)`} />
+            <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
+            <Field label="Баланс" value={deal.supplier_balance} suffix={`${supplierCurrencySymbol} (авто)`} />
+          </div>
         </CardContent>
       </Card>
       {/* Supplier pricing by month */}
@@ -436,30 +455,40 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <CardTitle className="text-[14px]">Покупатель</CardTitle>
           <SectionCurrencyPicker editing={editing} value={buyerCurrency} dealId={deal.id} field="buyer_currency" />
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
-          <EditableSelect label="Покупатель" value={deal.buyer_id} displayValue={deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"} editing={editing} field="buyer_id" dealId={deal.id} options={refs.buyers} />
-          <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
-          <Field label="Базис поставки" value={deal.buyer_delivery_basis} editing={editing} field="buyer_delivery_basis" dealId={deal.id} />
-          <EditableSelect label="Условие фиксации" value={deal.buyer_price_condition} displayValue={
-            deal.buyer_price_condition === "average_month" ? "Средний месяц" :
-            deal.buyer_price_condition === "fixed" ? "Фикс цена на дату" :
-            deal.buyer_price_condition === "trigger" ? "Триггер" :
-            deal.buyer_price_condition === "manual" ? "Вручную" : "—"
-          } editing={editing} field="buyer_price_condition" dealId={deal.id} options={priceConditionOptions} />
-          <Field label="Котировка" value={deal.buyer_quotation} suffix={buyerCurrencySymbol} editing={editing} field="buyer_quotation" dealId={deal.id} />
-          <Field label="Комментарий котировки" value={deal.buyer_quotation_comment} editing={editing} field="buyer_quotation_comment" dealId={deal.id} />
-          <Field label="Скидка" value={deal.buyer_discount} suffix={buyerCurrencySymbol} editing={editing} field="buyer_discount" dealId={deal.id} />
-          <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
-          <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={`${buyerCurrencySymbol} (авто)`} />
-          <Field label="Цена" value={deal.buyer_price} editing={editing} field="buyer_price" dealId={deal.id} />
-          <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
-          <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн (авто)" />
-          <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн (реестр)" />
-          <Field label="Дата отгрузки" value={deal.buyer_ship_date} inputType="date" editing={editing} field="buyer_ship_date" dealId={deal.id} />
-          <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={buyerCurrencySymbol} />
-          <Field label="Оплата" value={deal.buyer_payment} suffix={`${buyerCurrencySymbol} (оплаты)`} />
-          <Field label="Дата оплаты" value={deal.buyer_payment_date} inputType="date" editing={editing} field="buyer_payment_date" dealId={deal.id} />
-          <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${buyerCurrencySymbol} (авто)`} />
+        <CardContent className="space-y-4">
+          {/* Header / scalar fields (one per side) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+            <EditableSelect label="Покупатель" value={deal.buyer_id} displayValue={deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"} editing={editing} field="buyer_id" dealId={deal.id} options={refs.buyers} />
+            <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
+            <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
+            <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={`${buyerCurrencySymbol} (авто)`} />
+            <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
+            <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн (авто)" />
+          </div>
+
+          {/* Multi-line pricing variants */}
+          <div>
+            <div className="text-[12px] font-medium text-stone-600 mb-1.5">Условия и маршрут</div>
+            <BuyerLinesEditor
+              dealId={deal.id}
+              editing={editing}
+              currencySymbol={buyerCurrencySymbol}
+              stations={refs.stations}
+              quotationTypes={refs.quotationTypes}
+              lines={buyerLines}
+              onChanged={() => { reloadBuyerLines(); reload(); }}
+            />
+          </div>
+
+          {/* Rollups — derived from registry / payments */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+            <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн (реестр)" />
+            <Field label="Дата отгрузки" value={deal.buyer_ship_date} inputType="date" editing={editing} field="buyer_ship_date" dealId={deal.id} />
+            <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={buyerCurrencySymbol} />
+            <Field label="Оплата" value={deal.buyer_payment} suffix={`${buyerCurrencySymbol} (оплаты)`} />
+            <Field label="Дата оплаты" value={deal.buyer_payment_date} inputType="date" editing={editing} field="buyer_payment_date" dealId={deal.id} />
+            <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${buyerCurrencySymbol} (авто)`} />
+          </div>
         </CardContent>
       </Card>
       {/* Buyer pricing by month */}
