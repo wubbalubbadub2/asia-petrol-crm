@@ -381,6 +381,16 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   // factory-to-us side, "load" (налив / loading_volume) is the us-to-buyer side.
   const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
 
+  // Multi-line variant selection. Loaded for the selected deal; auto-picks
+  // the default line. User can switch to another variant and we mirror the
+  // line's station onto the per-row station state.
+  type SupLine = { id: string; is_default: boolean; position: number; price: number | null; departure_station_id: string | null; departure_station: { name: string } | null };
+  type BuyLine = { id: string; is_default: boolean; position: number; price: number | null; destination_station_id: string | null; destination_station: { name: string } | null };
+  const [supplierLines, setSupplierLines] = useState<SupLine[]>([]);
+  const [buyerLines, setBuyerLines]       = useState<BuyLine[]>([]);
+  const [supplierLineId, setSupplierLineId] = useState("");
+  const [buyerLineId, setBuyerLineId]       = useState("");
+
   useEffect(() => {
     if (!open) return;
     Promise.all([
@@ -410,6 +420,47 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (d.buyer_destination_station_id) setDestId(d.buyer_destination_station_id);
     if (d.supplier_departure_station_id) setDepId(d.supplier_departure_station_id);
   }, [dealId, deals]);
+
+  // Load pricing variants for the selected deal — preselect the defaults.
+  // Hides itself entirely when both sides have a single variant (most cases).
+  useEffect(() => {
+    if (!dealId) {
+      setSupplierLines([]); setBuyerLines([]);
+      setSupplierLineId(""); setBuyerLineId("");
+      return;
+    }
+    Promise.all([
+      sb.current.from("deal_supplier_lines")
+        .select("id, is_default, position, price, departure_station_id, departure_station:stations!departure_station_id(name)")
+        .eq("deal_id", dealId)
+        .order("is_default", { ascending: false }).order("position"),
+      sb.current.from("deal_buyer_lines")
+        .select("id, is_default, position, price, destination_station_id, destination_station:stations!destination_station_id(name)")
+        .eq("deal_id", dealId)
+        .order("is_default", { ascending: false }).order("position"),
+    ]).then(([s, b]) => {
+      const sl = (s.data ?? []) as unknown as SupLine[];
+      const bl = (b.data ?? []) as unknown as BuyLine[];
+      setSupplierLines(sl); setBuyerLines(bl);
+      const sd = sl.find((l) => l.is_default) ?? sl[0];
+      const bd = bl.find((l) => l.is_default) ?? bl[0];
+      if (sd) setSupplierLineId(sd.id);
+      if (bd) setBuyerLineId(bd.id);
+    });
+  }, [dealId]);
+
+  // When the user picks a non-default variant, mirror its station onto
+  // the per-row state so the rest of the dialog (tariff lookup, insert)
+  // uses that station instead of the deal's default.
+  useEffect(() => {
+    const l = supplierLines.find((x) => x.id === supplierLineId);
+    if (l?.departure_station_id) setDepId(l.departure_station_id);
+  }, [supplierLineId, supplierLines]);
+
+  useEffect(() => {
+    const l = buyerLines.find((x) => x.id === buyerLineId);
+    if (l?.destination_station_id) setDestId(l.destination_station_id);
+  }, [buyerLineId, buyerLines]);
 
   // Factory from station
   useEffect(() => {
@@ -441,6 +492,8 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     setDealId(""); setMonth(""); setShipMonth("");
     setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
     setPasted(""); setVolumeTarget("ship");
+    setSupplierLineId(""); setBuyerLineId("");
+    setSupplierLines([]); setBuyerLines([]);
   }
 
   async function save() {
@@ -469,6 +522,8 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
       loading_volume: volumeTarget === "load" ? p.volume : null,
       date: p.date || null,
       waybill_number: p.waybill || null,
+      supplier_line_id: supplierLineId || null,
+      buyer_line_id: buyerLineId || null,
     }));
     const result = await bulkInsertRegistry(rows);
     setSaving(false);
@@ -512,6 +567,44 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
               <Sel l="Ст. назначения" v={destId} fn={setDestId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. отправления" v={depId} fn={setDepId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
+
+              {/* Variant pickers — only shown when the deal has >1 line on a side */}
+              {supplierLines.length > 1 && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Вариант поставщика</Label>
+                  <select
+                    value={supplierLineId}
+                    onChange={(e) => setSupplierLineId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    {supplierLines.map((l, idx) => (
+                      <option key={l.id} value={l.id}>
+                        {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
+                        {l.departure_station?.name ? ` — ${l.departure_station.name}` : ""}
+                        {l.price != null ? ` · ${l.price}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {buyerLines.length > 1 && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Вариант покупателя</Label>
+                  <select
+                    value={buyerLineId}
+                    onChange={(e) => setBuyerLineId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    {buyerLines.map((l, idx) => (
+                      <option key={l.id} value={l.id}>
+                        {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
+                        {l.destination_station?.name ? ` — ${l.destination_station.name}` : ""}
+                        {l.price != null ? ` · ${l.price}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
