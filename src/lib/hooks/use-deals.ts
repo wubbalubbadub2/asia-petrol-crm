@@ -62,6 +62,7 @@ export type Deal = {
   logistics_notes: string | null;
   surcharge_amount: number | null;
   surcharge_reinvoiced_to: string | null;
+  railway_in_price: boolean | null;
   buyer_multi_deal_payments: string | null;
   buyer_snt_written: string | null;
   supplier_manager_id: string | null;

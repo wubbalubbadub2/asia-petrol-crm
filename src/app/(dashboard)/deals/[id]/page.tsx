@@ -160,6 +160,44 @@ function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy }: {
   );
 }
 
+// "ЖД в цене" — when ON the railway invoice_amount is debited from
+// supplier_balance by the DB trigger (see migration 00052).
+function RailwayInPriceToggle({ dealId, value, editing }: {
+  dealId: string; value: boolean; editing: boolean;
+}) {
+  const pendingVal = useRef<boolean | undefined>(undefined);
+  const [, forceRender] = useState(0);
+  const shown = pendingVal.current ?? value;
+  if (pendingVal.current !== undefined && value === pendingVal.current) {
+    pendingVal.current = undefined;
+  }
+  return (
+    <div>
+      <span className="text-[11px] text-stone-400 block">ЖД в цене</span>
+      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={shown}
+          disabled={!editing}
+          onChange={(e) => {
+            const nv = e.target.checked;
+            pendingVal.current = nv;
+            forceRender((n) => n + 1);
+            updateDeal(dealId, { railway_in_price: nv }).catch(() => {
+              pendingVal.current = undefined;
+              forceRender((n) => n + 1);
+            });
+          }}
+          className={`h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 ${editing ? "" : "cursor-default"}`}
+        />
+        <span className="text-[12px] text-stone-700">
+          {shown ? "Да (минусует с баланса)" : "Нет"}
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function EditableSelect({ label, value, displayValue, editing, field, dealId, options }: {
   label: string; value: string | null | undefined; displayValue: string;
   editing: boolean; field: string; dealId: string;
@@ -476,6 +514,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
+            <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} />
             <EditableSelect label="Менеджер" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={logisticsCurrencySymbol} />
