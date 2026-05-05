@@ -20,6 +20,20 @@ function formatComputedNum(val: number | null | undefined): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
 }
 
+// Same as formatComputedNum but wrapped in a span that colors negative
+// values red. Used for balance / debt columns where the sign carries the
+// meaning (overpayment vs остаток) and a bare leading "−" is too easy to
+// miss in a dense table.
+function ComputedNumSigned({ value, className = "" }: { value: number | null | undefined; className?: string }) {
+  if (value == null) return null;
+  const isNegative = value < 0;
+  return (
+    <span className={`${className} ${isNegative ? "text-red-600 font-medium" : ""}`}>
+      {formatComputedNum(value)}
+    </span>
+  );
+}
+
 function FuelDot({ color }: { color?: string }) {
   return <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color ?? "#6B7280" }} />;
 }
@@ -315,7 +329,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="налив (loading_volume) — реестр">{formatComputedNum(deal.supplier_shipped_volume)}</td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
-              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">{formatComputedNum(deal.supplier_balance)}</td>
+              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">
+                <ComputedNumSigned value={deal.supplier_balance} />
+              </td>
 
               {/* Company groups — editable prices */}
               <td className="border-r px-1 py-1 text-[10px] bg-purple-50/10 min-w-[140px]" colSpan={2}>
@@ -344,7 +360,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="тонн (shipment_volume) — реестр">{formatComputedNum(deal.buyer_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
-              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: отгружено − оплата">{formatComputedNum(deal.buyer_debt)}</td>
+              <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: оплата − отгружено">
+                <ComputedNumSigned value={deal.buyer_debt} />
+              </td>
 
               {/* Logistics */}
               <td className="border-r px-1 py-0.5">

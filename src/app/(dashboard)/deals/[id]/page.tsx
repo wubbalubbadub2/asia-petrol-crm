@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil, Eye, Download } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil, Eye, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -107,10 +107,14 @@ function Field({ label, value, suffix, editing, field, dealId, inputType }: {
     );
   }
 
+  // Negative monetary values (буyer overpayment, supplier balance after
+  // ЖД-в-цене subtraction, etc.) render in red so the sign is obvious at
+  // a glance — the leading "−" alone is too easy to miss.
+  const isNegative = typeof shown === "number" && shown < 0;
   return (
     <div>
       <span className="text-[11px] text-stone-400 block">{label}</span>
-      <span className={`text-[13px] text-stone-800 ${monoClass}`}>
+      <span className={`text-[13px] ${monoClass} ${isNegative ? "text-red-600 font-medium" : "text-stone-800"}`}>
         {formatted}{suffix && shown != null ? ` ${suffix}` : ""}
       </span>
     </div>
@@ -784,6 +788,37 @@ function DocumentsSection({ dealId, section, title }: {
     if (r.blob) setTimeout(() => URL.revokeObjectURL(r.url), 5_000);
   }
 
+  // Re-upload an attachment in place. For legacy files whose storage key
+  // was rejected by Supabase's validator (literal-space paths), the only
+  // path forward is to upload a fresh copy from disk under a UUID-based
+  // key and rewire the DB row to point at the new file. The old object
+  // stays as orphan in storage — harmless, just no longer referenced.
+  async function handleReupload(att: Attachment) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
+      const newPath = `deals/${dealId}/${section}/${att.category}/${Date.now()}-${crypto.randomUUID()}${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("deal-attachments")
+        .upload(newPath, file);
+      if (upErr) { toast.error(`Загрузка не удалась: ${upErr.message}`); return; }
+      const { error: dbErr } = await supabase.from("deal_attachments").update({
+        file_path: newPath,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+      }).eq("id", att.id);
+      if (dbErr) { toast.error(`Сохранение не удалось: ${dbErr.message}`); return; }
+      toast.success("Файл перезалит");
+      await loadAttachments();
+    };
+    input.click();
+  }
+
   const getCategoryLabel = (cat: string) =>
     ATTACHMENT_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
 
@@ -862,6 +897,13 @@ function DocumentsSection({ dealId, section, title }: {
                   className="text-stone-400 hover:text-amber-600 shrink-0"
                 >
                   <Download className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => handleReupload(att)}
+                  title="Перезалить — для старых файлов которые не открываются"
+                  className="text-stone-400 hover:text-amber-600 shrink-0"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => handleDelete(att)}
