@@ -185,32 +185,48 @@ export function useDealLineRollups(dealId: string | null) {
         .eq("deal_id", dealId),
     ]);
 
+    if (regRes.error)   console.error("rollup: shipment_registry query failed", regRes.error);
+    if (priceRes.error) console.error("rollup: deal_shipment_prices query failed", priceRes.error);
+
     const supplier: Record<string, LineRollup> = {};
     const buyer:    Record<string, LineRollup> = {};
 
-    type RegRow = { supplier_line_id: string | null; buyer_line_id: string | null; shipment_volume: number | null; loading_volume: number | null };
+    // PostgREST returns NUMERIC as JS number when within Number range, but
+    // can return string for very large values. Always coerce with Number()
+    // so the running sum stays numeric (string concat would silently produce
+    // "54.0452.65" garbage that fails comparisons downstream).
+    const num = (v: unknown) => {
+      const n = typeof v === "number" ? v : v == null ? 0 : Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    type RegRow = { supplier_line_id: string | null; buyer_line_id: string | null; shipment_volume: number | string | null; loading_volume: number | string | null };
     for (const r of (regRes.data ?? []) as RegRow[]) {
       if (r.supplier_line_id) {
         const s = supplier[r.supplier_line_id] ?? { volume: 0, amount: 0 };
-        s.volume += r.loading_volume ?? r.shipment_volume ?? 0;
+        s.volume += num(r.loading_volume ?? r.shipment_volume);
         supplier[r.supplier_line_id] = s;
       }
       if (r.buyer_line_id) {
         const b = buyer[r.buyer_line_id] ?? { volume: 0, amount: 0 };
-        b.volume += r.shipment_volume ?? 0;
+        b.volume += num(r.shipment_volume);
         buyer[r.buyer_line_id] = b;
       }
     }
 
-    type PriceRow = { side: string; amount: number | null; shipment_registry: { supplier_line_id: string | null; buyer_line_id: string | null } | null };
+    // Embedded relation can come back as either a single object or an array
+    // (PostgREST shape depends on how it resolves the FK). Normalize both.
+    type RegShape = { supplier_line_id: string | null; buyer_line_id: string | null };
+    type PriceRow = { side: string; amount: number | string | null; shipment_registry: RegShape | RegShape[] | null };
     for (const p of (priceRes.data ?? []) as unknown as PriceRow[]) {
-      const reg = p.shipment_registry;
+      const regRaw = p.shipment_registry;
+      const reg = Array.isArray(regRaw) ? regRaw[0] : regRaw;
       if (!reg) continue;
       const lineId = p.side === "supplier" ? reg.supplier_line_id : reg.buyer_line_id;
       if (!lineId) continue;
       const map = p.side === "supplier" ? supplier : buyer;
       const it = map[lineId] ?? { volume: 0, amount: 0 };
-      it.amount += p.amount ?? 0;
+      it.amount += num(p.amount);
       map[lineId] = it;
     }
 
