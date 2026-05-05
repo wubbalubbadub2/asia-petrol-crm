@@ -309,6 +309,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 
   return (
     <tr className="bg-green-50/50 border-t-2 border-green-300">
+      <td className="border-r px-1 py-1"></td>
       <td className="border-r px-2 py-1 font-mono text-amber-700 text-[10px]">{group.dealCode}</td>
       <td className="border-r px-1 py-1"></td>
       <td className="border-r px-1 py-1"><MonthSelect value={sm} onChange={setSm} className="w-full" /></td>
@@ -702,6 +703,39 @@ export default function RegistryPage() {
   const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addingIn, setAddingIn] = useState<string | null>(null); // which group is adding
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Reset selection when tab switches — selected ids belong to the previous tab.
+  useEffect(() => { setSelected(new Set()); }, [tab]);
+
+  function toggleSelect(id: string) {
+    setSelected((p) => {
+      const s = new Set(p);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  }
+  function toggleSelectGroup(g: RGroup) {
+    const ids = g.records.map((r) => r.id);
+    setSelected((p) => {
+      const s = new Set(p);
+      const allSelected = ids.every((id) => s.has(id));
+      if (allSelected) ids.forEach((id) => s.delete(id));
+      else ids.forEach((id) => s.add(id));
+      return s;
+    });
+  }
+  async function handleBulkDelete() {
+    const n = selected.size;
+    if (n === 0) return;
+    if (!confirm(`Удалить ${n} ${n === 1 ? "отгрузку" : "отгрузок"}?`)) return;
+    const sb = createClient();
+    const { error } = await sb.from("shipment_registry").delete().in("id", Array.from(selected));
+    if (error) { toast.error(`Ошибка: ${error.message}`); return; }
+    toast.success(`Удалено ${n}`);
+    setSelected(new Set());
+    reload();
+  }
   const groups = groupRecs(records);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
 
@@ -756,6 +790,24 @@ export default function RegistryPage() {
         <span className="ml-auto self-center text-[11px] text-stone-400">{records.length} записей | {groups.length} сделок</span>
       </div>
 
+      {/* Bulk-action bar — shows when at least one shipment is checked.
+          Sticky at the top of the viewport so it stays accessible while
+          scrolling through long groups. */}
+      {selected.size > 0 && (
+        <div className="sticky top-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 border-b border-amber-200 bg-amber-50/95 backdrop-blur flex items-center gap-3">
+          <span className="text-[12px] text-amber-900 font-medium">
+            Выбрано: {selected.size}
+          </span>
+          <Button size="sm" variant="destructive" onClick={handleBulkDelete} className="h-7 text-[11px]">
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Удалить
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setSelected(new Set())} className="h-7 text-[11px]">
+            Снять выделение
+          </Button>
+        </div>
+      )}
+
       {loading ? <p className="text-sm text-muted-foreground">Загрузка...</p>
       : groups.length === 0 ? <div className="rounded-md border border-stone-200 bg-white py-12 text-center"><Truck className="h-8 w-8 text-stone-300 mx-auto mb-2" /><p className="text-sm text-stone-500">Реестр {tab.toUpperCase()} пуст</p></div>
       : <div className="space-y-2">
@@ -788,6 +840,21 @@ export default function RegistryPage() {
                     <div className="overflow-x-auto">
                       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
                         <thead><tr className="bg-stone-100/70 border-b text-stone-500">
+                          <th className="border-r px-2 py-1 w-[28px] text-center">
+                            <input
+                              type="checkbox"
+                              checked={g.records.length > 0 && g.records.every((r) => selected.has(r.id))}
+                              ref={(el) => {
+                                if (!el) return;
+                                const some = g.records.some((r) => selected.has(r.id));
+                                const all  = g.records.every((r) => selected.has(r.id));
+                                el.indeterminate = some && !all;
+                              }}
+                              onChange={() => toggleSelectGroup(g)}
+                              title="Выделить все в группе"
+                              className="h-3 w-3 cursor-pointer"
+                            />
+                          </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[60px]">№ сделки</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">мес. доп</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[75px]">мес. отгр.</th>
@@ -813,7 +880,15 @@ export default function RegistryPage() {
                         </tr></thead>
                         <tbody>
                           {g.records.map((r) => (
-                            <tr key={r.id} className="border-b border-stone-100 hover:bg-amber-50/20">
+                            <tr key={r.id} className={`border-b border-stone-100 hover:bg-amber-50/20 ${selected.has(r.id) ? "bg-amber-50/60" : ""}`}>
+                              <td className="border-r px-1 py-0.5 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(r.id)}
+                                  onChange={() => toggleSelect(r.id)}
+                                  className="h-3 w-3 cursor-pointer"
+                                />
+                              </td>
                               <td className="border-r px-2 py-0.5 font-mono text-amber-700 text-[10px]">{r.deal?.deal_code ?? ""}</td>
                               <td className="border-r px-1 py-0.5"><EM value={r.additional_month} recId={r.id} field="additional_month" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EM value={r.shipment_month} recId={r.id} field="shipment_month" onSaved={reload} /></td>

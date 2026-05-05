@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil, Eye, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -715,6 +715,37 @@ function DocumentsSection({ dealId, section, title }: {
     }
   }
 
+  // Open the file in a new tab via a short-lived signed URL. The bucket is
+  // private (RLS-enforced via policies on the table), so we can't link
+  // directly to a public URL.
+  async function handleView(att: Attachment) {
+    const { data, error } = await supabase.storage
+      .from("deal-attachments")
+      .createSignedUrl(att.file_path, 3600);
+    if (error || !data?.signedUrl) {
+      toast.error(`Не удалось открыть файл: ${error?.message ?? "нет ссылки"}`);
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleDownload(att: Attachment) {
+    // download:true flag tells the browser to save instead of preview.
+    const { data, error } = await supabase.storage
+      .from("deal-attachments")
+      .createSignedUrl(att.file_path, 3600, { download: att.file_name });
+    if (error || !data?.signedUrl) {
+      toast.error(`Не удалось скачать файл: ${error?.message ?? "нет ссылки"}`);
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = data.signedUrl;
+    a.download = att.file_name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   const getCategoryLabel = (cat: string) =>
     ATTACHMENT_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
 
@@ -781,7 +812,22 @@ function DocumentsSection({ dealId, section, title }: {
                   </span>
                 )}
                 <button
+                  onClick={() => handleView(att)}
+                  title="Открыть"
+                  className="text-stone-400 hover:text-amber-600 shrink-0"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => handleDownload(att)}
+                  title="Скачать"
+                  className="text-stone-400 hover:text-amber-600 shrink-0"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+                <button
                   onClick={() => handleDelete(att)}
+                  title="Удалить"
                   className="text-red-400 hover:text-red-600 shrink-0"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
