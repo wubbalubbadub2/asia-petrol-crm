@@ -24,7 +24,7 @@ import { AuditHistory } from "@/components/shared/audit-history";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { ChangeDealNumberDialog } from "@/components/deals/change-deal-number-dialog";
 import { useRole } from "@/lib/hooks/use-role";
-import { useDealSupplierLines, useDealBuyerLines } from "@/lib/hooks/use-deal-lines";
+import { useDealSupplierLines, useDealBuyerLines, useDealLineRollups } from "@/lib/hooks/use-deal-lines";
 import { SupplierLinesEditor, BuyerLinesEditor } from "@/components/deals/deal-lines-editor";
 
 const ATTACHMENT_CATEGORIES = [
@@ -267,6 +267,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   // Pricing variants per side (multi-line, 00053+00054)
   const { data: supplierLines, reload: reloadSupplierLines } = useDealSupplierLines(id);
   const { data: buyerLines,    reload: reloadBuyerLines }    = useDealBuyerLines(id);
+  const { data: lineRollups,   reload: reloadLineRollups }   = useDealLineRollups(id);
 
   // Load reference data — needed at all times so the variants block
   // can render station/quotation labels even outside edit mode.
@@ -423,7 +424,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               stations={refs.stations}
               quotationTypes={refs.quotationTypes}
               lines={supplierLines}
-              onChanged={() => { reloadSupplierLines(); reload(); }}
+              rollups={lineRollups.supplier}
+              onChanged={() => { reloadSupplierLines(); reloadLineRollups(); reload(); }}
             />
           </div>
 
@@ -476,7 +478,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               stations={refs.stations}
               quotationTypes={refs.quotationTypes}
               lines={buyerLines}
-              onChanged={() => { reloadBuyerLines(); reload(); }}
+              rollups={lineRollups.buyer}
+              onChanged={() => { reloadBuyerLines(); reloadLineRollups(); reload(); }}
             />
           </div>
 

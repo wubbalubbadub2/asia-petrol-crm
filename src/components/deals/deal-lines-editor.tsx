@@ -7,6 +7,7 @@ import { PRICE_CONDITIONS } from "@/lib/constants/deal-types";
 import {
   type DealSupplierLine,
   type DealBuyerLine,
+  type LineRollup,
   updateSupplierLine,
   updateBuyerLine,
   addSupplierLine,
@@ -23,11 +24,12 @@ type CommonProps = {
   currencySymbol: string;
   stations: Option[];
   quotationTypes: Option[];
+  rollups?: Record<string, LineRollup>;
   onChanged: () => void;
 };
 
 export function SupplierLinesEditor({
-  dealId, editing, currencySymbol, stations, quotationTypes, lines, onChanged,
+  dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
 }: CommonProps & { lines: DealSupplierLine[] }) {
   const [busy, setBusy] = useState(false);
 
@@ -71,6 +73,7 @@ export function SupplierLinesEditor({
         station_label: l.departure_station?.name ?? null,
         stationField: "departure_station_id",
         stationLabel: "Ст. отправления",
+        rollup: rollups?.[l.id],
       }))}
       editing={editing}
       busy={busy}
@@ -85,7 +88,7 @@ export function SupplierLinesEditor({
 }
 
 export function BuyerLinesEditor({
-  dealId, editing, currencySymbol, stations, quotationTypes, lines, onChanged,
+  dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
 }: CommonProps & { lines: DealBuyerLine[] }) {
   const [busy, setBusy] = useState(false);
 
@@ -129,6 +132,7 @@ export function BuyerLinesEditor({
         station_label: l.destination_station?.name ?? null,
         stationField: "destination_station_id",
         stationLabel: "Ст. назначения",
+        rollup: rollups?.[l.id],
       }))}
       editing={editing}
       busy={busy}
@@ -160,6 +164,7 @@ type LineVM = {
   station_label: string | null;
   stationField: "departure_station_id" | "destination_station_id";
   stationLabel: string;
+  rollup?: LineRollup;
 };
 
 function LinesEditorView({
@@ -279,6 +284,36 @@ function LinesEditorView({
               onChange={(v) => onUpdate(l.id, { [l.stationField]: v || null })}
             />
           </div>
+
+          {/* Per-variant rollup — what's been shipped against this line */}
+          {l.rollup && (l.rollup.volume > 0 || l.rollup.amount > 0) && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-stone-200/70 pt-2 text-[11px]">
+              <span className="text-stone-500">
+                Отгружено по этому варианту:{" "}
+                <span className="font-mono tabular-nums font-medium text-stone-700">
+                  {l.rollup.volume.toLocaleString("ru-RU", { maximumFractionDigits: 3 })}
+                </span>
+                <span className="text-stone-500"> тонн</span>
+              </span>
+              <span className="text-stone-500">
+                Сумма:{" "}
+                <span className="font-mono tabular-nums font-medium text-stone-700">
+                  {l.rollup.amount.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-stone-500"> {currencySymbol}</span>
+                {l.price != null && l.rollup.volume > 0 && (
+                  <span className="ml-1 text-stone-400">
+                    (по цене {l.price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })})
+                  </span>
+                )}
+              </span>
+              {l.rollup.volume > 0 && l.rollup.amount === 0 && (
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700" title="Зайдите в реестр и обновите эту отгрузку, чтобы пересчитать сумму">
+                  ⚠ цена не разнесена
+                </span>
+              )}
+            </div>
+          )}
         </div>
       ))}
 

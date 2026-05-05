@@ -157,3 +157,67 @@ export async function deleteBuyerLine(id: string) {
     throw error;
   }
 }
+
+// Per-line shipping rollup: how much volume + amount have been attributed
+// to each variant. Computed by joining shipment_registry (volumes, line_id)
+// with deal_shipment_prices (amounts) — both grouped by line_id per side.
+export type LineRollup = { volume: number; amount: number };
+export type LineRollups = {
+  supplier: Record<string, LineRollup>;
+  buyer:    Record<string, LineRollup>;
+};
+
+export function useDealLineRollups(dealId: string | null) {
+  const [data, setData] = useState<LineRollups>({ supplier: {}, buyer: {} });
+  const [loading, setLoading] = useState(true);
+  const sb = useRef(createClient());
+
+  const load = useCallback(async () => {
+    if (!dealId) { setLoading(false); return; }
+    setLoading(true);
+
+    const [regRes, priceRes] = await Promise.all([
+      sb.current.from("shipment_registry")
+        .select("supplier_line_id, buyer_line_id, shipment_volume, loading_volume")
+        .eq("deal_id", dealId),
+      sb.current.from("deal_shipment_prices")
+        .select("side, amount, shipment_registry_id, shipment_registry:shipment_registry_id(supplier_line_id, buyer_line_id)")
+        .eq("deal_id", dealId),
+    ]);
+
+    const supplier: Record<string, LineRollup> = {};
+    const buyer:    Record<string, LineRollup> = {};
+
+    type RegRow = { supplier_line_id: string | null; buyer_line_id: string | null; shipment_volume: number | null; loading_volume: number | null };
+    for (const r of (regRes.data ?? []) as RegRow[]) {
+      if (r.supplier_line_id) {
+        const s = supplier[r.supplier_line_id] ?? { volume: 0, amount: 0 };
+        s.volume += r.loading_volume ?? r.shipment_volume ?? 0;
+        supplier[r.supplier_line_id] = s;
+      }
+      if (r.buyer_line_id) {
+        const b = buyer[r.buyer_line_id] ?? { volume: 0, amount: 0 };
+        b.volume += r.shipment_volume ?? 0;
+        buyer[r.buyer_line_id] = b;
+      }
+    }
+
+    type PriceRow = { side: string; amount: number | null; shipment_registry: { supplier_line_id: string | null; buyer_line_id: string | null } | null };
+    for (const p of (priceRes.data ?? []) as unknown as PriceRow[]) {
+      const reg = p.shipment_registry;
+      if (!reg) continue;
+      const lineId = p.side === "supplier" ? reg.supplier_line_id : reg.buyer_line_id;
+      if (!lineId) continue;
+      const map = p.side === "supplier" ? supplier : buyer;
+      const it = map[lineId] ?? { volume: 0, amount: 0 };
+      it.amount += p.amount ?? 0;
+      map[lineId] = it;
+    }
+
+    setData({ supplier, buyer });
+    setLoading(false);
+  }, [dealId]);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, reload: load };
+}
