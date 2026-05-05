@@ -720,79 +720,68 @@ function DocumentsSection({ dealId, section, title }: {
     }
   }
 
-  // Try to generate a signed URL for the file. Legacy attachments stored
-  // before the fix below may have spaces or other unsafe chars in the
-  // storage key — Supabase rejects those with "Invalid key". On that
-  // specific failure we move the object to a UUID-based path and retry,
-  // then persist the new path so the next click just works.
-  async function getSignedUrl(att: Attachment, opts?: { download?: string }): Promise<string | null> {
+  // Resolve a URL the browser can open for this attachment. Tries three
+  // paths because Supabase Storage rejects keys with literal spaces on the
+  // /sign endpoint (legacy uploads like "Прил 1.pdf" trip "Invalid key"):
+  //
+  //   1. createSignedUrl on the stored path — works for new uploads with
+  //      UUID-based keys.
+  //   2. createSignedUrl with spaces percent-encoded — sometimes the
+  //      server's validator passes the encoded form but resolves it to
+  //      the literally-keyed object on lookup.
+  //   3. storage.download() — pulls bytes through the /object endpoint
+  //      whose validator is more permissive. Returns a blob URL the
+  //      browser can open or save the same way.
+  //
+  // If a blob URL is returned, it's revoked after a short delay to free
+  // memory; we keep it around long enough that the new tab / download
+  // can finish loading.
+  async function getOpenableUrl(att: Attachment, opts?: { download?: string }): Promise<{ url: string; blob: boolean } | null> {
+    // 1. Original path.
     const r1 = await supabase.storage
       .from("deal-attachments")
       .createSignedUrl(att.file_path, 3600, opts);
-    if (r1.data?.signedUrl) return r1.data.signedUrl;
+    if (r1.data?.signedUrl) return { url: r1.data.signedUrl, blob: false };
 
-    if (r1.error?.message?.includes("Invalid key")) {
-      const newPath = await migrateLegacyAttachmentPath(att);
-      if (newPath) {
-        const r2 = await supabase.storage
-          .from("deal-attachments")
-          .createSignedUrl(newPath, 3600, opts);
-        if (r2.data?.signedUrl) return r2.data.signedUrl;
-        toast.error(`Не удалось открыть файл после миграции: ${r2.error?.message ?? "нет ссылки"}`);
-        return null;
-      }
+    // 2. Same path with literal spaces percent-encoded.
+    if (att.file_path.includes(" ")) {
+      const encoded = att.file_path.replace(/ /g, "%20");
+      const r2 = await supabase.storage
+        .from("deal-attachments")
+        .createSignedUrl(encoded, 3600, opts);
+      if (r2.data?.signedUrl) return { url: r2.data.signedUrl, blob: false };
     }
 
-    toast.error(`Не удалось открыть файл: ${r1.error?.message ?? "нет ссылки"}`);
+    // 3. Direct blob download — different storage endpoint, different
+    //    server-side validator. Works in practice when /sign rejects.
+    const dl = await supabase.storage
+      .from("deal-attachments")
+      .download(att.file_path);
+    if (dl.data) {
+      return { url: URL.createObjectURL(dl.data), blob: true };
+    }
+
+    toast.error(`Не удалось открыть файл: ${r1.error?.message ?? dl.error?.message ?? "нет данных"}`);
     return null;
   }
 
-  async function migrateLegacyAttachmentPath(att: Attachment): Promise<string | null> {
-    // Build a UUID-based path next to the original (same dealId/section/
-    // category folder) and ask storage to rename. move() takes paths in
-    // the JSON body so its server-side validator is more permissive than
-    // createSignedUrl.
-    const lastSlash = att.file_path.lastIndexOf("/");
-    const dir = att.file_path.slice(0, lastSlash + 1);
-    const ext = (att.file_name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
-    const newPath = `${dir}${Date.now()}-${crypto.randomUUID()}${ext}`;
-
-    const { error: moveErr } = await supabase.storage
-      .from("deal-attachments")
-      .move(att.file_path, newPath);
-    if (moveErr) {
-      toast.error(`Не удалось мигрировать путь файла: ${moveErr.message}. Попробуйте загрузить файл заново.`);
-      return null;
-    }
-
-    const { error: dbErr } = await supabase.from("deal_attachments")
-      .update({ file_path: newPath })
-      .eq("id", att.id);
-    if (dbErr) {
-      // Storage was renamed but DB update failed — log and return new path
-      // anyway so the in-memory click still works; reload will pick up the
-      // mismatch and the user can retry to repair.
-      console.warn("DB sync after move failed:", dbErr);
-    }
-    await loadAttachments();
-    return newPath;
-  }
-
   async function handleView(att: Attachment) {
-    const url = await getSignedUrl(att);
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    const r = await getOpenableUrl(att);
+    if (!r) return;
+    window.open(r.url, "_blank", "noopener,noreferrer");
+    if (r.blob) setTimeout(() => URL.revokeObjectURL(r.url), 60_000);
   }
 
   async function handleDownload(att: Attachment) {
-    // download:true flag tells the browser to save instead of preview.
-    const url = await getSignedUrl(att, { download: att.file_name });
-    if (!url) return;
+    const r = await getOpenableUrl(att, { download: att.file_name });
+    if (!r) return;
     const a = document.createElement("a");
-    a.href = url;
+    a.href = r.url;
     a.download = att.file_name;
     document.body.appendChild(a);
     a.click();
     a.remove();
+    if (r.blob) setTimeout(() => URL.revokeObjectURL(r.url), 5_000);
   }
 
   const getCategoryLabel = (cat: string) =>
