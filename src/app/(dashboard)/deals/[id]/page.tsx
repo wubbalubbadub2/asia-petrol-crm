@@ -409,7 +409,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Скидка" value={deal.supplier_discount} suffix={supplierCurrencySymbol} editing={editing} field="supplier_discount" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
           <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${supplierCurrencySymbol} (авто)`} />
-          <Field label="Цена" value={deal.supplier_price} suffix={supplierCurrencySymbol} editing={editing} field="supplier_price" dealId={deal.id} />
+          <Field label="Цена" value={deal.supplier_price} editing={editing} field="supplier_price" dealId={deal.id} />
           <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
           <Field label="Оплата" value={deal.supplier_payment} suffix={`${supplierCurrencySymbol} (оплаты)`} />
           <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
@@ -451,7 +451,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Скидка" value={deal.buyer_discount} suffix={buyerCurrencySymbol} editing={editing} field="buyer_discount" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
           <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={`${buyerCurrencySymbol} (авто)`} />
-          <Field label="Цена" value={deal.buyer_price} suffix={buyerCurrencySymbol} editing={editing} field="buyer_price" dealId={deal.id} />
+          <Field label="Цена" value={deal.buyer_price} editing={editing} field="buyer_price" dealId={deal.id} />
           <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
           <Field label="Остаток" value={deal.buyer_remaining} suffix="тонн (авто)" />
           <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн (реестр)" />

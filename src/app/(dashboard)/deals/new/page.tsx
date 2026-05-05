@@ -207,18 +207,35 @@ export default function NewDealPage() {
     return null;
   }
 
+  // Track whether user has hand-edited the price. Once they have, the
+  // trigger/fixed/avg fetch effect stops clobbering it — use case is when
+  // the auto price comes in USD but the deal currency is e.g. KZT and the
+  // user wants to enter the converted figure manually.
+  const supplierPriceEdited = useRef(false);
+  const buyerPriceEdited = useRef(false);
+
   // Auto-fetch supplier price
   useEffect(() => {
     if (supplierPriceCondition === "manual" || !supplierQuotTypeId) return;
+    if (supplierPriceEdited.current) return;
     fetchQuotationPrice(supplierPriceCondition, supplierQuotTypeId, month, year, supplierFixDate, supplierTriggerStart, supplierTriggerDays)
-      .then((price) => { if (price != null) setSupplierPrice(String(Math.round(price * 100) / 100)); });
+      .then((price) => {
+        if (price != null && !supplierPriceEdited.current) {
+          setSupplierPrice(String(Math.round(price * 100) / 100));
+        }
+      });
   }, [supplierPriceCondition, supplierQuotTypeId, month, year, supplierFixDate, supplierTriggerStart, supplierTriggerDays]);
 
   // Auto-fetch buyer price
   useEffect(() => {
     if (buyerPriceCondition === "manual" || !buyerQuotTypeId) return;
+    if (buyerPriceEdited.current) return;
     fetchQuotationPrice(buyerPriceCondition, buyerQuotTypeId, month, year, buyerFixDate, buyerTriggerStart, buyerTriggerDays)
-      .then((price) => { if (price != null) setBuyerPrice(String(Math.round(price * 100) / 100)); });
+      .then((price) => {
+        if (price != null && !buyerPriceEdited.current) {
+          setBuyerPrice(String(Math.round(price * 100) / 100));
+        }
+      });
   }, [buyerPriceCondition, buyerQuotTypeId, month, year, buyerFixDate, buyerTriggerStart, buyerTriggerDays]);
 
 
@@ -456,14 +473,14 @@ export default function NewDealPage() {
             <SelectField
               label="Условие фиксации"
               value={supplierPriceCondition}
-              onChange={(v) => { setSupplierPriceCondition(v as PriceCondition); setSupplierPrice(""); markChanged(); }}
+              onChange={(v) => { setSupplierPriceCondition(v as PriceCondition); setSupplierPrice(""); supplierPriceEdited.current = false; markChanged(); }}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
             {supplierPriceCondition !== "manual" && (
               <SelectField
                 label="Котировка"
                 value={supplierQuotTypeId}
-                onChange={(v) => { setSupplierQuotTypeId(v); setSupplierPrice(""); markChanged(); }}
+                onChange={(v) => { setSupplierQuotTypeId(v); setSupplierPrice(""); supplierPriceEdited.current = false; markChanged(); }}
                 options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
                 placeholder="Выбрать котировку..."
               />
@@ -488,15 +505,26 @@ export default function NewDealPage() {
             )}
             <div>
               <Label className="text-[12px] text-stone-500">
-                Цена {supplierPriceCondition !== "manual" ? (supplierPrice ? <span className="text-[10px] text-green-600">(из котировки)</span> : <span className="text-[10px] text-red-500">(нет данных)</span>) : ""}
+                Цена {supplierPriceCondition !== "manual" ? (
+                  supplierPriceEdited.current
+                    ? <span className="text-[10px] text-amber-600">(вручную)</span>
+                    : supplierPrice
+                      ? <span className="text-[10px] text-green-600">(из котировки)</span>
+                      : <span className="text-[10px] text-red-500">(нет данных)</span>
+                ) : ""}
               </Label>
-              {supplierPriceCondition === "manual" ? (
-                <Input type="number" step="0.01" value={supplierPrice} onChange={(e) => { setSupplierPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
-              ) : (
-                <div className={`h-8 flex items-center rounded-md border px-2 text-[13px] font-mono ${supplierPrice ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-50 border-stone-200 text-stone-400"}`}>
-                  {supplierPrice || "ожидание данных..."}
-                </div>
-              )}
+              <Input
+                type="number"
+                step="0.01"
+                value={supplierPrice}
+                onChange={(e) => {
+                  setSupplierPrice(e.target.value);
+                  if (supplierPriceCondition !== "manual") supplierPriceEdited.current = true;
+                  markChanged();
+                }}
+                placeholder={supplierPriceCondition !== "manual" ? "ожидание / можно ввести вручную" : ""}
+                className="h-8 text-[13px] font-mono"
+              />
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис поставки</Label>
@@ -544,14 +572,14 @@ export default function NewDealPage() {
             <SelectField
               label="Условие фиксации"
               value={buyerPriceCondition}
-              onChange={(v) => { setBuyerPriceCondition(v as PriceCondition); setBuyerPrice(""); markChanged(); }}
+              onChange={(v) => { setBuyerPriceCondition(v as PriceCondition); setBuyerPrice(""); buyerPriceEdited.current = false; markChanged(); }}
               options={PRICE_CONDITIONS.map((p) => ({ value: p.value, label: p.label }))}
             />
             {buyerPriceCondition !== "manual" && (
               <SelectField
                 label="Котировка"
                 value={buyerQuotTypeId}
-                onChange={(v) => { setBuyerQuotTypeId(v); setBuyerPrice(""); markChanged(); }}
+                onChange={(v) => { setBuyerQuotTypeId(v); setBuyerPrice(""); buyerPriceEdited.current = false; markChanged(); }}
                 options={quotationTypes.map((q) => ({ value: q.id, label: q.name }))}
                 placeholder="Выбрать котировку..."
               />
@@ -576,15 +604,26 @@ export default function NewDealPage() {
             )}
             <div>
               <Label className="text-[12px] text-stone-500">
-                Цена {buyerPriceCondition !== "manual" ? (buyerPrice ? <span className="text-[10px] text-green-600">(из котировки)</span> : <span className="text-[10px] text-red-500">(нет данных)</span>) : ""}
+                Цена {buyerPriceCondition !== "manual" ? (
+                  buyerPriceEdited.current
+                    ? <span className="text-[10px] text-amber-600">(вручную)</span>
+                    : buyerPrice
+                      ? <span className="text-[10px] text-green-600">(из котировки)</span>
+                      : <span className="text-[10px] text-red-500">(нет данных)</span>
+                ) : ""}
               </Label>
-              {buyerPriceCondition === "manual" ? (
-                <Input type="number" step="0.01" value={buyerPrice} onChange={(e) => { setBuyerPrice(e.target.value); markChanged(); }} className="h-8 text-[13px] font-mono" />
-              ) : (
-                <div className={`h-8 flex items-center rounded-md border px-2 text-[13px] font-mono ${buyerPrice ? "bg-green-50 border-green-200 text-green-800" : "bg-stone-50 border-stone-200 text-stone-400"}`}>
-                  {buyerPrice || "ожидание данных..."}
-                </div>
-              )}
+              <Input
+                type="number"
+                step="0.01"
+                value={buyerPrice}
+                onChange={(e) => {
+                  setBuyerPrice(e.target.value);
+                  if (buyerPriceCondition !== "manual") buyerPriceEdited.current = true;
+                  markChanged();
+                }}
+                placeholder={buyerPriceCondition !== "manual" ? "ожидание / можно ввести вручную" : ""}
+                className="h-8 text-[13px] font-mono"
+              />
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Базис / ст. назначения</Label>
