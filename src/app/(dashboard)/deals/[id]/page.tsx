@@ -673,7 +673,12 @@ function DocumentsSection({ dealId, section, title }: {
     if (!file) return;
 
     setUploading(true);
-    const filePath = `deals/${dealId}/${section}/${category}/${Date.now()}-${file.name}`;
+    // Storage key uses UUID + extension only — Supabase storage rejects
+    // signed-URL lookups when the key carries a literal space ("Invalid
+    // key" 400). The user's original filename is preserved in the
+    // file_name DB column and used for display + download.
+    const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
+    const filePath = `deals/${dealId}/${section}/${category}/${Date.now()}-${crypto.randomUUID()}${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("deal-attachments")
@@ -715,31 +720,75 @@ function DocumentsSection({ dealId, section, title }: {
     }
   }
 
-  // Open the file in a new tab via a short-lived signed URL. The bucket is
-  // private (RLS-enforced via policies on the table), so we can't link
-  // directly to a public URL.
-  async function handleView(att: Attachment) {
-    const { data, error } = await supabase.storage
+  // Try to generate a signed URL for the file. Legacy attachments stored
+  // before the fix below may have spaces or other unsafe chars in the
+  // storage key — Supabase rejects those with "Invalid key". On that
+  // specific failure we move the object to a UUID-based path and retry,
+  // then persist the new path so the next click just works.
+  async function getSignedUrl(att: Attachment, opts?: { download?: string }): Promise<string | null> {
+    const r1 = await supabase.storage
       .from("deal-attachments")
-      .createSignedUrl(att.file_path, 3600);
-    if (error || !data?.signedUrl) {
-      toast.error(`Не удалось открыть файл: ${error?.message ?? "нет ссылки"}`);
-      return;
+      .createSignedUrl(att.file_path, 3600, opts);
+    if (r1.data?.signedUrl) return r1.data.signedUrl;
+
+    if (r1.error?.message?.includes("Invalid key")) {
+      const newPath = await migrateLegacyAttachmentPath(att);
+      if (newPath) {
+        const r2 = await supabase.storage
+          .from("deal-attachments")
+          .createSignedUrl(newPath, 3600, opts);
+        if (r2.data?.signedUrl) return r2.data.signedUrl;
+        toast.error(`Не удалось открыть файл после миграции: ${r2.error?.message ?? "нет ссылки"}`);
+        return null;
+      }
     }
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+
+    toast.error(`Не удалось открыть файл: ${r1.error?.message ?? "нет ссылки"}`);
+    return null;
+  }
+
+  async function migrateLegacyAttachmentPath(att: Attachment): Promise<string | null> {
+    // Build a UUID-based path next to the original (same dealId/section/
+    // category folder) and ask storage to rename. move() takes paths in
+    // the JSON body so its server-side validator is more permissive than
+    // createSignedUrl.
+    const lastSlash = att.file_path.lastIndexOf("/");
+    const dir = att.file_path.slice(0, lastSlash + 1);
+    const ext = (att.file_name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
+    const newPath = `${dir}${Date.now()}-${crypto.randomUUID()}${ext}`;
+
+    const { error: moveErr } = await supabase.storage
+      .from("deal-attachments")
+      .move(att.file_path, newPath);
+    if (moveErr) {
+      toast.error(`Не удалось мигрировать путь файла: ${moveErr.message}. Попробуйте загрузить файл заново.`);
+      return null;
+    }
+
+    const { error: dbErr } = await supabase.from("deal_attachments")
+      .update({ file_path: newPath })
+      .eq("id", att.id);
+    if (dbErr) {
+      // Storage was renamed but DB update failed — log and return new path
+      // anyway so the in-memory click still works; reload will pick up the
+      // mismatch and the user can retry to repair.
+      console.warn("DB sync after move failed:", dbErr);
+    }
+    await loadAttachments();
+    return newPath;
+  }
+
+  async function handleView(att: Attachment) {
+    const url = await getSignedUrl(att);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
   async function handleDownload(att: Attachment) {
     // download:true flag tells the browser to save instead of preview.
-    const { data, error } = await supabase.storage
-      .from("deal-attachments")
-      .createSignedUrl(att.file_path, 3600, { download: att.file_name });
-    if (error || !data?.signedUrl) {
-      toast.error(`Не удалось скачать файл: ${error?.message ?? "нет ссылки"}`);
-      return;
-    }
+    const url = await getSignedUrl(att, { download: att.file_name });
+    if (!url) return;
     const a = document.createElement("a");
-    a.href = data.signedUrl;
+    a.href = url;
     a.download = att.file_name;
     document.body.appendChild(a);
     a.click();
