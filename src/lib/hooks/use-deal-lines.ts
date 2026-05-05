@@ -200,14 +200,17 @@ export function useDealLineRollups(dealId: string | null) {
       return Number.isFinite(n) ? n : 0;
     };
 
+    // Налив (loading_volume) is the supplier-side number; отгрузка
+    // (shipment_volume) is the buyer-side number. They're separate events
+    // and should never substitute for each other in the rollup.
     type RegRow = { supplier_line_id: string | null; buyer_line_id: string | null; shipment_volume: number | string | null; loading_volume: number | string | null };
     for (const r of (regRes.data ?? []) as RegRow[]) {
-      if (r.supplier_line_id) {
+      if (r.supplier_line_id && r.loading_volume != null) {
         const s = supplier[r.supplier_line_id] ?? { volume: 0, amount: 0 };
-        s.volume += num(r.loading_volume ?? r.shipment_volume);
+        s.volume += num(r.loading_volume);
         supplier[r.supplier_line_id] = s;
       }
-      if (r.buyer_line_id) {
+      if (r.buyer_line_id && r.shipment_volume != null) {
         const b = buyer[r.buyer_line_id] ?? { volume: 0, amount: 0 };
         b.volume += num(r.shipment_volume);
         buyer[r.buyer_line_id] = b;
