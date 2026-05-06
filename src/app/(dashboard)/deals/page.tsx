@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Plus, Filter, Trash2, X } from "lucide-react";
+import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +107,27 @@ export default function DealsPage() {
     });
   }, []);
 
+  // Excel export — dynamic-imports exceljs so it stays out of the
+  // initial bundle. Always exports the *currently filtered* rows so
+  // the file matches what's on screen.
+  const [exporting, setExporting] = useState(false);
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { exportPassportToExcel } = await import("@/lib/exports/passport-excel");
+      await exportPassportToExcel(filtered, {
+        dealType: activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL",
+        year: yearFilter,
+      });
+      toast.success("Файл готов");
+    } catch (e) {
+      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleDelete(deal: Deal) {
     if (!confirm(`Удалить сделку ${deal.deal_code}?`)) return;
     const supabase = createClient();
@@ -160,12 +181,18 @@ export default function DealsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Сделки</h1>
-        <Link href="/deals/new">
-          <Button size="sm">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Новая сделка
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting || filtered.length === 0} title="Экспорт текущей выборки в Excel">
+            {exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+            Excel
           </Button>
-        </Link>
+          <Link href="/deals/new">
+            <Button size="sm">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Новая сделка
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-stone-200">
