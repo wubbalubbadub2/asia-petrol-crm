@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 
-type PaymentType = "payment" | "refund";
+type PaymentType = "payment" | "refund" | "offset";
 
 type Payment = {
   id: string;
@@ -22,10 +22,17 @@ type Payment = {
   payment_type: PaymentType;
 };
 
-// Net contribution to the deal's payment rollup: refunds subtract.
+// Net contribution to the deal's payment rollup: refunds and offsets
+// (перезачёты) subtract — they are minus by definition.
 function signedAmount(p: Payment): number {
-  return p.payment_type === "refund" ? -p.amount : p.amount;
+  return p.payment_type === "refund" || p.payment_type === "offset" ? -p.amount : p.amount;
 }
+
+const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  payment: "Оплата",
+  refund: "Возврат",
+  offset: "Перезачёт",
+};
 
 function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
@@ -49,9 +56,9 @@ function PaymentRow({
   const [editDesc, setEditDesc] = useState(false);
   const [descLv, setDescLv] = useState("");
 
-  const isRefund = p.payment_type === "refund";
+  const isMinus = p.payment_type === "refund" || p.payment_type === "offset";
   return (
-    <div className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] ${isRefund ? "bg-red-50/60" : "bg-stone-50"}`}>
+    <div className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] ${isMinus ? "bg-red-50/60" : "bg-stone-50"}`}>
       {/* Type toggle */}
       <select
         value={p.payment_type}
@@ -59,11 +66,12 @@ function PaymentRow({
           const nv = e.target.value as PaymentType;
           if (nv !== p.payment_type) onUpdate(p.id, { payment_type: nv });
         }}
-        className={`h-5 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300 ${isRefund ? "text-red-600 font-medium" : "text-stone-600"}`}
+        className={`h-5 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300 ${isMinus ? "text-red-600 font-medium" : "text-stone-600"}`}
         title="Тип записи"
       >
-        <option value="payment">Оплата</option>
-        <option value="refund">Возврат</option>
+        <option value="payment">{PAYMENT_TYPE_LABELS.payment}</option>
+        <option value="refund">{PAYMENT_TYPE_LABELS.refund}</option>
+        <option value="offset">{PAYMENT_TYPE_LABELS.offset}</option>
       </select>
       {/* Date */}
       {!editDate ? (
@@ -89,9 +97,9 @@ function PaymentRow({
       {!editAmount ? (
         <button
           onClick={() => { setAmountLv(String(p.amount)); setEditAmount(true); }}
-          className={`font-mono tabular-nums font-medium flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text ${isRefund ? "text-red-700" : "text-stone-800"}`}
+          className={`font-mono tabular-nums font-medium flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text ${isMinus ? "text-red-700" : "text-stone-800"}`}
         >
-          {isRefund ? "−" : ""}{formatMoney(p.amount)} {sym}
+          {isMinus ? "−" : ""}{formatMoney(p.amount)} {sym}
         </button>
       ) : (
         <input
@@ -270,16 +278,17 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
 
         {/* Add payment form */}
         {addingSide && (
-          <div className={`mt-3 rounded-md border p-3 ${newType === "refund" ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30"}`}>
+          <div className={`mt-3 rounded-md border p-3 ${newType === "payment" ? "border-amber-200 bg-amber-50/30" : "border-red-200 bg-red-50/30"}`}>
             <p className="text-[12px] font-medium text-stone-700 mb-2">
-              {newType === "refund" ? "Новый возврат" : "Новая оплата"} ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
+              {newType === "payment" ? "Новая оплата" : `Новый ${PAYMENT_TYPE_LABELS[newType].toLowerCase()}`} ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
             </p>
             <div className="flex gap-2 items-end">
-              <div className="w-24">
+              <div className="w-28">
                 <Label className="text-[10px]">Тип</Label>
                 <select value={newType} onChange={(e) => setNewType(e.target.value as PaymentType)} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
-                  <option value="payment">Оплата</option>
-                  <option value="refund">Возврат</option>
+                  <option value="payment">{PAYMENT_TYPE_LABELS.payment}</option>
+                  <option value="refund">{PAYMENT_TYPE_LABELS.refund}</option>
+                  <option value="offset">{PAYMENT_TYPE_LABELS.offset}</option>
                 </select>
               </div>
               <div className="w-28">

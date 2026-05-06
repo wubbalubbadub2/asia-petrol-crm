@@ -121,4 +121,17 @@
     font-family: 'JetBrains Mono', monospace;
     font-variant-numeric: tabular-nums;
   }
+
+  /* Hide native number-input spinner arrows globally — they distract
+     users in dense data tables and inline editors. The user can still
+     type, paste, and use arrow keys; only the visual stepper is hidden. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }

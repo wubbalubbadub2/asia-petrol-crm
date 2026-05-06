@@ -28,6 +28,8 @@ export type ShipmentRecord = {
   shipped_tonnage_amount: number | null;
   // Migration 00050 — optional until applied + types regenerated
   shipped_tonnage_amount_override?: boolean | null;
+  // Migration 00061 — manual override for the rolled-up volume («округл»)
+  rounded_volume_override?: number | null;
   invoice_number: string | null;
   comment: string | null;
   loading_volume: number | null;
@@ -94,6 +96,7 @@ type RegistryInsert = TablesInsert<"shipment_registry">;
 // generated database.ts until `npm run types:db` is rerun.
 export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   shipped_tonnage_amount_override?: boolean | null;
+  rounded_volume_override?: number | null;
 };
 
 export async function createRegistryEntry(values: RegistryInsert) {

@@ -52,7 +52,12 @@ export function SupplierLinesEditor({
   }
 
   async function handleUpdate(id: string, patch: Record<string, unknown>) {
-    try { await updateSupplierLine(id, patch); onChanged(); } catch {}
+    // When the user edits the quotation or discount on a line, recompute
+    // price = quotation - discount inside the same UPDATE so the supplier
+    // shipped amount stays in sync. Editing the price field directly skips
+    // the recompute (patch.price is set explicitly by the caller).
+    const finalPatch = applyPriceFormulaPatch(patch, lines.find((l) => l.id === id));
+    try { await updateSupplierLine(id, finalPatch); onChanged(); } catch {}
   }
 
   return (
@@ -87,6 +92,26 @@ export function SupplierLinesEditor({
   );
 }
 
+// Adds patch.price = quotation - discount when the user edits one of those
+// two without also touching price. Caller passes the current line so we
+// can read the field that wasn't part of this patch. If the resulting
+// quotation is non-numeric we leave price untouched.
+function applyPriceFormulaPatch(
+  patch: Record<string, unknown>,
+  line: { quotation: number | null; discount: number | null; price: number | null } | undefined,
+): Record<string, unknown> {
+  if (!line) return patch;
+  const touchedQuotation = "quotation" in patch;
+  const touchedDiscount  = "discount" in patch;
+  const touchedPrice     = "price" in patch;
+  if (touchedPrice) return patch;       // explicit price — keep as is
+  if (!touchedQuotation && !touchedDiscount) return patch;
+  const q = touchedQuotation ? (patch.quotation as number | null) : line.quotation;
+  if (q == null) return patch;
+  const d = touchedDiscount ? (patch.discount as number | null) : line.discount;
+  return { ...patch, price: q - (d ?? 0) };
+}
+
 export function BuyerLinesEditor({
   dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
 }: CommonProps & { lines: DealBuyerLine[] }) {
@@ -111,7 +136,8 @@ export function BuyerLinesEditor({
   }
 
   async function handleUpdate(id: string, patch: Record<string, unknown>) {
-    try { await updateBuyerLine(id, patch); onChanged(); } catch {}
+    const finalPatch = applyPriceFormulaPatch(patch, lines.find((l) => l.id === id));
+    try { await updateBuyerLine(id, finalPatch); onChanged(); } catch {}
   }
 
   return (

@@ -13,17 +13,20 @@ export type VariantDraft = {
   // persisted on the line
   priceCondition: "average_month" | "fixed" | "trigger" | "manual";
   quotationTypeId: string;
-  quotation: string;
+  quotation: string;          // numeric quotation value (auto from quotations table; manual override allowed)
   quotationComment: string;
   discount: string;
-  price: string;
+  price: string;              // = quotation - discount, auto-computed unless manually edited
   deliveryBasis: string;
   stationId: string;
-  // form-only helpers used to auto-compute price; not persisted
+  // form-only helpers, not persisted
   fixDate: string;
   triggerStart: string;
   triggerDays: string;
-  manualEdited: boolean;
+  // Tracks per-field manual override so auto-flow stops clobbering it.
+  // Reset when condition or quotation type changes (fresh autofill cycle).
+  quotationManualEdited: boolean;
+  priceManualEdited: boolean;
 };
 
 export const EMPTY_VARIANT: VariantDraft = {
@@ -38,7 +41,8 @@ export const EMPTY_VARIANT: VariantDraft = {
   fixDate: "",
   triggerStart: "",
   triggerDays: "35",
-  manualEdited: false,
+  quotationManualEdited: false,
+  priceManualEdited: false,
 };
 
 type RefOption = { id: string; name: string };
@@ -107,23 +111,36 @@ function VariantRow({
 }) {
   const supabase = useRef(createClient());
 
-  // Per-row auto-fetch: when condition + quotation_type + dates are set, pull
-  // the matching quotation price. Hands off if user has typed in the price
-  // field (manualEdited flag set on price onChange below).
+  // Auto-fetch the quotation VALUE (not price) whenever condition / type /
+  // dates change. The price is derived from the quotation by the next
+  // effect below (price = quotation - discount). Hands off if the user
+  // has manually entered something in the quotation field.
   useEffect(() => {
     if (v.priceCondition === "manual" || !v.quotationTypeId) return;
-    if (v.manualEdited) return;
+    if (v.quotationManualEdited) return;
     fetchQuotationPrice(
       supabase.current,
       v.priceCondition, v.quotationTypeId, month, year,
       v.fixDate, v.triggerStart, v.triggerDays,
-    ).then((p) => {
-      if (p != null && !v.manualEdited) {
-        onChange({ price: String(Math.round(p * 100) / 100) });
+    ).then((q) => {
+      if (q != null && !v.quotationManualEdited) {
+        onChange({ quotation: String(Math.round(q * 100) / 100) });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v.priceCondition, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays]);
+
+  // Auto-compute price = quotation − discount whenever either input
+  // changes. Skips when the user has explicitly entered a price value.
+  useEffect(() => {
+    if (v.priceManualEdited) return;
+    const q = v.quotation ? parseFloat(v.quotation.replace(",", ".")) : NaN;
+    if (!Number.isFinite(q)) return;
+    const d = v.discount ? parseFloat(v.discount.replace(",", ".")) : 0;
+    const next = String(Math.round((q - (Number.isFinite(d) ? d : 0)) * 100) / 100);
+    if (next !== v.price) onChange({ price: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v.quotation, v.discount, v.priceManualEdited]);
 
   return (
     <div className={`rounded-md border p-3 ${isDefault ? "border-amber-200 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}>
@@ -147,7 +164,8 @@ function VariantRow({
             value={v.priceCondition}
             onChange={(e) => onChange({
               priceCondition: e.target.value as VariantDraft["priceCondition"],
-              price: "", manualEdited: false,
+              quotation: "", price: "",
+              quotationManualEdited: false, priceManualEdited: false,
             })}
             className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
           >
@@ -160,7 +178,11 @@ function VariantRow({
             <Label className="text-[12px] text-stone-500">Котировка</Label>
             <select
               value={v.quotationTypeId}
-              onChange={(e) => onChange({ quotationTypeId: e.target.value, price: "", manualEdited: false })}
+              onChange={(e) => onChange({
+                quotationTypeId: e.target.value,
+                quotation: "", price: "",
+                quotationManualEdited: false, priceManualEdited: false,
+              })}
               className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
             >
               <option value="">Выбрать котировку...</option>
@@ -189,27 +211,53 @@ function VariantRow({
           </>
         )}
 
+        {/* Котировка значение — auto-fetched from quotations table when
+            condition + type + dates are set; manually overridable. */}
         <div>
           <Label className="text-[12px] text-stone-500">
-            Цена {v.priceCondition !== "manual" ? (
-              v.manualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
-                : v.price ? <span className="text-[10px] text-green-600">(из котировки)</span>
+            Котировка значение {v.priceCondition !== "manual" && v.quotationTypeId ? (
+              v.quotationManualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
+                : v.quotation ? <span className="text-[10px] text-green-600">(из таблицы)</span>
                 : <span className="text-[10px] text-red-500">(нет данных)</span>
             ) : ""}
           </Label>
           <Input
             type="number"
             step="0.01"
-            value={v.price}
-            onChange={(e) => onChange({ price: e.target.value, manualEdited: v.priceCondition !== "manual" })}
-            placeholder={v.priceCondition !== "manual" ? "ожидание / можно ввести вручную" : ""}
+            value={v.quotation}
+            onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: true })}
+            placeholder={v.priceCondition !== "manual" ? "авто или вручную" : "вручную"}
             className="h-8 text-[13px] font-mono"
           />
         </div>
 
         <div>
           <Label className="text-[12px] text-stone-500">Скидка</Label>
-          <Input type="number" step="0.01" value={v.discount} onChange={(e) => onChange({ discount: e.target.value })} className="h-8 text-[13px] font-mono" />
+          <Input
+            type="number"
+            step="0.01"
+            value={v.discount}
+            onChange={(e) => onChange({ discount: e.target.value })}
+            className="h-8 text-[13px] font-mono"
+          />
+        </div>
+
+        {/* Цена — авто = котировка − скидка, можно перебить руками. */}
+        <div>
+          <Label className="text-[12px] text-stone-500">
+            Цена {v.priceManualEdited
+              ? <span className="text-[10px] text-amber-600">(вручную)</span>
+              : v.price ? <span className="text-[10px] text-green-600">(котировка − скидка)</span>
+              : <span className="text-[10px] text-stone-400">(ожидание)</span>}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={v.price}
+            onChange={(e) => onChange({ price: e.target.value, priceManualEdited: true })}
+            placeholder="авто из котировки − скидки"
+            className="h-8 text-[13px] font-mono"
+          />
         </div>
 
         <div>

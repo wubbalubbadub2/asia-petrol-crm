@@ -69,6 +69,58 @@ function EM({ value, recId, field, onSaved }: { value: string | null | undefined
     </select>
   );
 }
+// Editable «округл» cell. Defaults to CEIL(shipment_volume) but accepts
+// a manual override stored in rounded_volume_override; clearing the value
+// reverts to auto-rounding.
+function ERound({ rawVolume, override, recId, onSaved }: {
+  rawVolume: number | null | undefined;
+  override: number | null | undefined;
+  recId: string;
+  onSaved: () => void;
+}) {
+  const [ed, setEd] = useState(false);
+  const [lv, setLv] = useState("");
+  const auto = rawVolume == null ? null : Math.ceil(rawVolume);
+  const display = override != null ? override : auto;
+  const isOverridden = override != null;
+  if (!ed) return (
+    <button
+      onClick={() => { setLv(display == null ? "" : String(display)); setEd(true); }}
+      title={isOverridden ? "Округл переопределён вручную. Очистите поле, чтобы вернуть авто-расчёт." : "Авто: ⌈тонн⌉. Введите значение, чтобы переопределить."}
+      className={`w-full text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${isOverridden ? "italic text-amber-700" : "text-stone-400"}`}
+    >
+      {fmtNum(display)}
+    </button>
+  );
+  return (
+    <input
+      autoFocus
+      type="number"
+      step="0.01"
+      value={lv}
+      onChange={(e) => setLv(e.target.value)}
+      onBlur={() => {
+        setEd(false);
+        const raw = lv.trim();
+        if (raw === "") {
+          if (isOverridden) {
+            updateRegistryEntry(recId, { rounded_volume_override: null } as RegistryUpdate)
+              .then(onSaved).catch(() => {});
+          }
+          return;
+        }
+        const n = parseFloat(raw.replace(",", "."));
+        if (!Number.isFinite(n)) return;
+        if (n === override) return;
+        updateRegistryEntry(recId, { rounded_volume_override: n } as RegistryUpdate)
+          .then(onSaved).catch(() => {});
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+      className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none"
+    />
+  );
+}
+
 // Editable amount cell with override semantics. Writes both
 // shipped_tonnage_amount and shipped_tonnage_amount_override so the value
 // survives subsequent row edits. Clearing reverts to auto-compute.
@@ -903,7 +955,14 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
-                              <td className="border-r px-2 py-0.5 text-right font-mono tabular-nums text-stone-400">{fmtNum(ceil(r.shipment_volume))}</td>
+                              <td className="border-r px-1 py-0.5">
+                                <ERound
+                                  rawVolume={r.shipment_volume}
+                                  override={r.rounded_volume_override}
+                                  recId={r.id}
+                                  onSaved={reload}
+                                />
+                              </td>
                               <td className="border-r px-1 py-0.5">
                                 <EAmount
                                   value={r.shipped_tonnage_amount}
