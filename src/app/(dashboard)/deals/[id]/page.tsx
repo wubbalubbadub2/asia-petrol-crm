@@ -166,8 +166,10 @@ function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy }: {
   );
 }
 
-// "ЖД в цене" — when ON the railway invoice_amount is debited from
-// supplier_balance by the DB trigger (see migration 00052).
+// "ЖД в цене" — when ON the railway invoice_amount is added to
+// supplier_balance by the DB trigger (see migrations 00052/00063).
+// Rationale: the supplier's price already includes the railway, so we
+// owe him the railway amount on top of the goods value.
 function RailwayInPriceToggle({ dealId, value, editing }: {
   dealId: string; value: boolean; editing: boolean;
 }) {
@@ -197,7 +199,7 @@ function RailwayInPriceToggle({ dealId, value, editing }: {
           className={`h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 ${editing ? "" : "cursor-default"}`}
         />
         <span className="text-[12px] text-stone-700">
-          {shown ? "Да (минусует с баланса)" : "Нет"}
+          {shown ? "Да (плюсует к балансу)" : "Нет"}
         </span>
       </label>
     </div>
