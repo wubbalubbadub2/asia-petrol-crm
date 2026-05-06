@@ -36,6 +36,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Re-fire the trigger across the table so existing rows pick up the new
--- amount semantics if they had no override (idempotent for ones that did).
-UPDATE shipment_registry SET id = id WHERE id IS NOT NULL;
+-- No bulk re-fire needed: rounded_volume_override is NULL for all
+-- existing rows, so the trigger's output is identical to before this
+-- migration. Touching every row would fan out into 4+ secondary
+-- triggers per row (autoprice, deal totals, line reassignment) for no
+-- functional change — cheaper to skip.

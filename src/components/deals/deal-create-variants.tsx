@@ -225,7 +225,7 @@ function VariantRow({
             type="number"
             step="0.01"
             value={v.quotation}
-            onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: true })}
+            onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
             placeholder={v.priceCondition !== "manual" ? "авто или вручную" : "вручную"}
             className="h-8 text-[13px] font-mono"
           />
@@ -254,7 +254,7 @@ function VariantRow({
             type="number"
             step="0.01"
             value={v.price}
-            onChange={(e) => onChange({ price: e.target.value, priceManualEdited: true })}
+            onChange={(e) => onChange({ price: e.target.value, priceManualEdited: e.target.value !== "" })}
             placeholder="авто из котировки − скидки"
             className="h-8 text-[13px] font-mono"
           />
