@@ -5,13 +5,16 @@ import { Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PRICE_CONDITIONS } from "@/lib/constants/deal-types";
+import { PRICE_MODES, decodePriceMode, type PriceMode, type TriggerBasisLite } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { createClient } from "@/lib/supabase/client";
 
 export type VariantDraft = {
-  // persisted on the line
-  priceCondition: "average_month" | "fixed" | "trigger" | "manual";
+  // ── Persisted on the line ─────────────────────────────────────
+  // priceMode is the UI-level mode (manual / average_month / fixed /
+  // trigger_shipment / trigger_border). It encodes both
+  // price_condition and trigger_basis — see decodePriceMode at save.
+  priceMode: PriceMode;
   quotationTypeId: string;
   quotation: string;          // numeric quotation value (auto from quotations table; manual override allowed)
   quotationComment: string;
@@ -19,10 +22,12 @@ export type VariantDraft = {
   price: string;              // = quotation - discount, auto-computed unless manually edited
   deliveryBasis: string;
   stationId: string;
-  // form-only helpers, not persisted
+  // Trigger config — persisted on the line when priceMode is a trigger.
+  // For non-trigger modes these stay empty and are dropped on save.
+  triggerDays: string;
+  // ── Form-only helpers, not persisted on the line ──────────────
   fixDate: string;
   triggerStart: string;
-  triggerDays: string;
   // Tracks per-field manual override so auto-flow stops clobbering it.
   // Reset when condition or quotation type changes (fresh autofill cycle).
   quotationManualEdited: boolean;
@@ -30,7 +35,7 @@ export type VariantDraft = {
 };
 
 export const EMPTY_VARIANT: VariantDraft = {
-  priceCondition: "average_month",
+  priceMode: "average_month",
   quotationTypeId: "",
   quotation: "",
   quotationComment: "",
@@ -44,6 +49,23 @@ export const EMPTY_VARIANT: VariantDraft = {
   quotationManualEdited: false,
   priceManualEdited: false,
 };
+
+// Helper used by the deal-creation page when persisting a variant: turn
+// VariantDraft into a column patch for deal_supplier_lines / deal_buyer_lines.
+export function variantDraftToLinePatch(v: VariantDraft): {
+  price_condition: "manual" | "fixed" | "average_month" | "trigger";
+  trigger_basis: TriggerBasisLite | null;
+  trigger_days: number | null;
+} {
+  const decoded = decodePriceMode(v.priceMode);
+  return {
+    price_condition: decoded.price_condition,
+    trigger_basis:   decoded.trigger_basis,
+    trigger_days:    decoded.price_condition === "trigger"
+                       ? (parseInt(v.triggerDays || String(decoded.trigger_days_default ?? 35), 10) || decoded.trigger_days_default || 35)
+                       : null,
+  };
+}
 
 type RefOption = { id: string; name: string };
 
@@ -111,16 +133,20 @@ function VariantRow({
 }) {
   const supabase = useRef(createClient());
 
+  const decoded = decodePriceMode(v.priceMode);
+  const isTriggerMode = decoded.price_condition === "trigger";
+  const triggerBasis: TriggerBasisLite | null = decoded.trigger_basis;
+
   // Auto-fetch the quotation VALUE (not price) whenever condition / type /
   // dates change. The price is derived from the quotation by the next
   // effect below (price = quotation - discount). Hands off if the user
   // has manually entered something in the quotation field.
   useEffect(() => {
-    if (v.priceCondition === "manual" || !v.quotationTypeId) return;
+    if (decoded.price_condition === "manual" || !v.quotationTypeId) return;
     if (v.quotationManualEdited) return;
     fetchQuotationPrice(
       supabase.current,
-      v.priceCondition, v.quotationTypeId, month, year,
+      decoded.price_condition, v.quotationTypeId, month, year,
       v.fixDate, v.triggerStart, v.triggerDays,
     ).then((q) => {
       if (q != null && !v.quotationManualEdited) {
@@ -128,7 +154,7 @@ function VariantRow({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceCondition, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays]);
+  }, [v.priceMode, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays]);
 
   // Auto-compute price = quotation − discount whenever either input
   // changes. Skips when the user has explicitly entered a price value.
@@ -159,21 +185,31 @@ function VariantRow({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         <div>
-          <Label className="text-[12px] text-stone-500">Условие фиксации</Label>
+          <Label className="text-[12px] text-stone-500">Тип цены</Label>
           <select
-            value={v.priceCondition}
-            onChange={(e) => onChange({
-              priceCondition: e.target.value as VariantDraft["priceCondition"],
-              quotation: "", price: "",
-              quotationManualEdited: false, priceManualEdited: false,
-            })}
+            value={v.priceMode}
+            onChange={(e) => {
+              const next = e.target.value as PriceMode;
+              const dec = decodePriceMode(next);
+              onChange({
+                priceMode: next,
+                quotation: "", price: "",
+                quotationManualEdited: false, priceManualEdited: false,
+                // When switching INTO a trigger mode, seed the days from
+                // the basis-specific default (35 for shipment, 37 for
+                // border). User can edit further within 30-44 / 35-40.
+                triggerDays: dec.price_condition === "trigger"
+                  ? String(dec.trigger_days_default ?? 35)
+                  : v.triggerDays,
+              });
+            }}
             className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
           >
-            {PRICE_CONDITIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {PRICE_MODES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
 
-        {v.priceCondition !== "manual" && (
+        {decoded.price_condition !== "manual" && (
           <div>
             <Label className="text-[12px] text-stone-500">Котировка</Label>
             <select
@@ -191,31 +227,37 @@ function VariantRow({
           </div>
         )}
 
-        {v.priceCondition === "fixed" && (
+        {decoded.price_condition === "fixed" && (
           <div>
             <Label className="text-[12px] text-stone-500">Дата фиксации</Label>
             <Input type="date" value={v.fixDate} onChange={(e) => onChange({ fixDate: e.target.value })} className="h-8 text-[13px]" />
           </div>
         )}
 
-        {v.priceCondition === "trigger" && (
+        {isTriggerMode && (
           <>
             <div>
-              <Label className="text-[12px] text-stone-500">Дата начала</Label>
+              <Label className="text-[12px] text-stone-500">
+                {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата отгрузки"}
+              </Label>
               <Input type="date" value={v.triggerStart} onChange={(e) => onChange({ triggerStart: e.target.value })} className="h-8 text-[13px]" />
             </div>
             <div>
-              <Label className="text-[12px] text-stone-500">Кол-во дней</Label>
+              <Label className="text-[12px] text-stone-500">
+                Кол-во дней <span className="text-[10px] text-stone-400">({triggerBasis === "border_crossing_date" ? "обычно 35-40" : "обычно 30-44"})</span>
+              </Label>
               <Input type="number" value={v.triggerDays} onChange={(e) => onChange({ triggerDays: e.target.value })} className="h-8 text-[13px]" min="1" max="90" />
             </div>
           </>
         )}
 
         {/* Котировка значение — auto-fetched from quotations table when
-            condition + type + dates are set; manually overridable. */}
+            condition + type + dates are set; manually overridable. This
+            is the «Предварительная цена» — the working number until the
+            окончательная formula resolves with real shipment dates. */}
         <div>
           <Label className="text-[12px] text-stone-500">
-            Котировка значение {v.priceCondition !== "manual" && v.quotationTypeId ? (
+            Котировка значение {decoded.price_condition !== "manual" && v.quotationTypeId ? (
               v.quotationManualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
                 : v.quotation ? <span className="text-[10px] text-green-600">(из таблицы)</span>
                 : <span className="text-[10px] text-red-500">(нет данных)</span>
@@ -226,7 +268,7 @@ function VariantRow({
             step="0.01"
             value={v.quotation}
             onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
-            placeholder={v.priceCondition !== "manual" ? "авто или вручную" : "вручную"}
+            placeholder={decoded.price_condition !== "manual" ? "авто или вручную" : "вручную"}
             className="h-8 text-[13px] font-mono"
           />
         </div>

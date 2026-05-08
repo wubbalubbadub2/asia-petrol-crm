@@ -12,6 +12,11 @@ export type DealSupplierLine = {
   position: number;
   is_default: boolean;
   price_condition: "average_month" | "fixed" | "trigger" | "manual" | null;
+  // Migration 00064 — per-line trigger config. Optional until the
+  // generated database.ts is regenerated (they live as `?` here so the
+  // SELECT * still types cleanly when the columns exist on the row).
+  trigger_basis?: "shipment_date" | "border_crossing_date" | null;
+  trigger_days?: number | null;
   quotation_type_id: string | null;
   quotation: number | null;
   quotation_comment: string | null;
@@ -30,6 +35,11 @@ export type DealBuyerLine = {
   position: number;
   is_default: boolean;
   price_condition: "average_month" | "fixed" | "trigger" | "manual" | null;
+  // Migration 00064 — per-line trigger config. Optional until the
+  // generated database.ts is regenerated (they live as `?` here so the
+  // SELECT * still types cleanly when the columns exist on the row).
+  trigger_basis?: "shipment_date" | "border_crossing_date" | null;
+  trigger_days?: number | null;
   quotation_type_id: string | null;
   quotation: number | null;
   quotation_comment: string | null;

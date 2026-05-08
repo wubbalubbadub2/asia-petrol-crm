@@ -3,7 +3,13 @@
 import { useState, useRef } from "react";
 import { Trash2, Plus, ChevronDown, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PRICE_CONDITIONS } from "@/lib/constants/deal-types";
+import {
+  PRICE_MODES,
+  encodePriceMode,
+  decodePriceMode,
+  type PriceMode,
+  type TriggerBasisLite,
+} from "@/lib/constants/deal-types";
 import {
   type DealSupplierLine,
   type DealBuyerLine,
@@ -67,6 +73,8 @@ export function SupplierLinesEditor({
         is_default: l.is_default,
         position: l.position,
         price_condition: l.price_condition,
+        trigger_basis: (l as { trigger_basis?: TriggerBasisLite | null }).trigger_basis ?? null,
+        trigger_days:  (l as { trigger_days?: number | null }).trigger_days ?? null,
         quotation_type_id: l.quotation_type_id,
         quotation_type_label: l.quotation_type?.name ?? null,
         quotation: l.quotation,
@@ -147,6 +155,8 @@ export function BuyerLinesEditor({
         is_default: l.is_default,
         position: l.position,
         price_condition: l.price_condition,
+        trigger_basis: (l as { trigger_basis?: TriggerBasisLite | null }).trigger_basis ?? null,
+        trigger_days:  (l as { trigger_days?: number | null }).trigger_days ?? null,
         quotation_type_id: l.quotation_type_id,
         quotation_type_label: l.quotation_type?.name ?? null,
         quotation: l.quotation,
@@ -179,6 +189,8 @@ type LineVM = {
   is_default: boolean;
   position: number;
   price_condition: string | null;
+  trigger_basis: TriggerBasisLite | null;
+  trigger_days: number | null;
   quotation_type_id: string | null;
   quotation_type_label: string | null;
   quotation: number | null;
@@ -207,8 +219,8 @@ function LinesEditorView({
   onDelete: (id: string) => void;
   onUpdate: (id: string, patch: Record<string, unknown>) => void;
 }) {
-  const conditionLabel = (v: string | null) =>
-    PRICE_CONDITIONS.find((c) => c.value === v)?.label ?? "—";
+  const modeLabel = (mode: PriceMode) =>
+    PRICE_MODES.find((m) => m.value === mode)?.label ?? "—";
 
   return (
     <div className="space-y-2">
@@ -239,15 +251,29 @@ function LinesEditorView({
             )}
           </div>
 
+          {(() => {
+            const mode = encodePriceMode(l.price_condition, l.trigger_basis);
+            const isTrigger = mode === "trigger_shipment" || mode === "trigger_border";
+            const daysHint = mode === "trigger_border" ? "обычно 35-40" : "обычно 30-44";
+            return (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
-            {/* Условие фиксации */}
+            {/* Тип цены — encodes (price_condition, trigger_basis) */}
             <SelectCell
-              label="Условие фиксации"
-              value={l.price_condition}
-              displayValue={conditionLabel(l.price_condition)}
+              label="Тип цены"
+              value={mode}
+              displayValue={modeLabel(mode)}
               editing={editing}
-              options={PRICE_CONDITIONS.map((c) => ({ value: c.value, label: c.label }))}
-              onChange={(v) => onUpdate(l.id, { price_condition: v || null })}
+              options={PRICE_MODES.map((m) => ({ value: m.value, label: m.label }))}
+              onChange={(v) => {
+                const dec = decodePriceMode(v as PriceMode);
+                onUpdate(l.id, {
+                  price_condition: dec.price_condition,
+                  trigger_basis:   dec.trigger_basis,
+                  trigger_days:    dec.price_condition === "trigger"
+                                     ? (l.trigger_days ?? dec.trigger_days_default ?? 35)
+                                     : null,
+                });
+              }}
             />
 
             {/* Котировка */}
@@ -259,6 +285,16 @@ function LinesEditorView({
               options={quotationTypes}
               onChange={(v) => onUpdate(l.id, { quotation_type_id: v || null })}
             />
+
+            {/* Дни триггера — only when this variant uses a trigger */}
+            {isTrigger && (
+              <NumberCell
+                label={`Кол-во дней (${daysHint})`}
+                value={l.trigger_days}
+                editing={editing}
+                onChange={(v) => onUpdate(l.id, { trigger_days: v })}
+              />
+            )}
 
             {/* Цена */}
             <NumberCell
@@ -310,6 +346,8 @@ function LinesEditorView({
               onChange={(v) => onUpdate(l.id, { [l.stationField]: v || null })}
             />
           </div>
+            );
+          })()}
 
           {/* Per-variant rollup — what's been shipped against this line */}
           {l.rollup && (l.rollup.volume > 0 || l.rollup.amount > 0) && (

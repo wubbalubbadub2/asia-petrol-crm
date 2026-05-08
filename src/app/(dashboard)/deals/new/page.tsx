@@ -16,7 +16,7 @@ import { DEAL_TYPES } from "@/lib/constants/deal-types";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
-import { VariantsCard, EMPTY_VARIANT, type VariantDraft } from "@/components/deals/deal-create-variants";
+import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft } from "@/components/deals/deal-create-variants";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -194,7 +194,7 @@ export default function NewDealPage() {
       // Variant 0 (default) values mirror to the deals scalars via reverse
       // sync trigger. Additional variants are written below.
       supplier_price: sv0.price ? parseFloat(sv0.price) : null,
-      supplier_price_condition: sv0.priceCondition || null,
+      supplier_price_condition: variantDraftToLinePatch(sv0).price_condition,
       supplier_delivery_basis: sv0.deliveryBasis || null,
       supplier_departure_station_id: sv0.stationId || null,
       supplier_quotation: sv0.quotation ? parseFloat(sv0.quotation) : null,
@@ -205,7 +205,7 @@ export default function NewDealPage() {
       buyer_contract: buyerContract || null,
       buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,
       buyer_price: bv0.price ? parseFloat(bv0.price) : null,
-      buyer_price_condition: bv0.priceCondition || null,
+      buyer_price_condition: variantDraftToLinePatch(bv0).price_condition,
       buyer_delivery_basis: bv0.deliveryBasis || null,
       buyer_destination_station_id: bv0.stationId || null,
       buyer_quotation: bv0.quotation ? parseFloat(bv0.quotation) : null,
@@ -251,7 +251,7 @@ export default function NewDealPage() {
           deal_id: deal.id,
           position: i + 1,
           is_default: i === 0,
-          price_condition: v.priceCondition,
+          ...variantDraftToLinePatch(v),
           quotation_type_id: v.quotationTypeId || null,
           quotation: v.quotation ? parseFloat(v.quotation) : null,
           quotation_comment: v.quotationComment || null,
@@ -268,7 +268,7 @@ export default function NewDealPage() {
           deal_id: deal.id,
           position: i + 1,
           is_default: i === 0,
-          price_condition: v.priceCondition,
+          ...variantDraftToLinePatch(v),
           quotation_type_id: v.quotationTypeId || null,
           quotation: v.quotation ? parseFloat(v.quotation) : null,
           quotation_comment: v.quotationComment || null,

@@ -49,6 +49,29 @@ type Attachment = {
   uploaded_at: string;
 };
 
+// Some OS / drag-drop paths leave file.type === "" — Supabase Storage
+// then falls back to application/octet-stream, which forces browsers to
+// download attachments instead of rendering them inline (PDFs in
+// particular). Map the extension when file.type is missing so signed
+// URLs serve a sensible Content-Type.
+const MIME_BY_EXT: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xls": "application/vnd.ms-excel",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".doc": "application/msword",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".csv": "text/csv",
+  ".txt": "text/plain",
+};
+function resolveMime(file: File, ext: string): string {
+  if (file.type && file.type.length > 0) return file.type;
+  return MIME_BY_EXT[ext.toLowerCase()] ?? "application/octet-stream";
+}
+
 function Field({ label, value, suffix, editing, field, dealId, inputType }: {
   label: string; value: string | number | null | undefined; suffix?: string;
   editing?: boolean; field?: string; dealId?: string; onSaved?: () => void;
@@ -685,10 +708,11 @@ function DocumentsSection({ dealId, section, title }: {
     // file_name DB column and used for display + download.
     const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
     const filePath = `deals/${dealId}/${section}/${category}/${Date.now()}-${crypto.randomUUID()}${ext}`;
+    const contentType = resolveMime(file, ext);
 
     const { error: uploadError } = await supabase.storage
       .from("deal-attachments")
-      .upload(filePath, file);
+      .upload(filePath, file, { contentType, cacheControl: "3600", upsert: false });
 
     if (uploadError) {
       // Storage bucket might not exist yet, save record anyway with path
@@ -702,7 +726,7 @@ function DocumentsSection({ dealId, section, title }: {
       file_name: file.name,
       file_path: filePath,
       file_size: file.size,
-      mime_type: file.type,
+      mime_type: contentType,
     });
 
     if (dbError) {
@@ -804,15 +828,16 @@ function DocumentsSection({ dealId, section, title }: {
       if (!file) return;
       const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
       const newPath = `deals/${dealId}/${section}/${att.category}/${Date.now()}-${crypto.randomUUID()}${ext}`;
+      const contentType = resolveMime(file, ext);
       const { error: upErr } = await supabase.storage
         .from("deal-attachments")
-        .upload(newPath, file);
+        .upload(newPath, file, { contentType, cacheControl: "3600", upsert: false });
       if (upErr) { toast.error(`Загрузка не удалась: ${upErr.message}`); return; }
       const { error: dbErr } = await supabase.from("deal_attachments").update({
         file_path: newPath,
         file_name: file.name,
         file_size: file.size,
-        mime_type: file.type,
+        mime_type: contentType,
       }).eq("id", att.id);
       if (dbErr) { toast.error(`Сохранение не удалось: ${dbErr.message}`); return; }
       toast.success("Файл перезалит");
