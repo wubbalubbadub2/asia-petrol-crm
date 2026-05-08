@@ -715,8 +715,13 @@ function DocumentsSection({ dealId, section, title }: {
       .upload(filePath, file, { contentType, cacheControl: "3600", upsert: false });
 
     if (uploadError) {
-      // Storage bucket might not exist yet, save record anyway with path
-      console.warn("Storage upload:", uploadError.message);
+      // Hard fail — do NOT create a DB row pointing at a file that
+      // didn't land in Storage. The previous behavior (warn + insert
+      // anyway) produced hundreds of dangling rows that 400'd on view.
+      toast.error(`Загрузка не удалась: ${uploadError.message}`);
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
     }
 
     const { error: dbError } = await supabase.from("deal_attachments").insert({
@@ -730,6 +735,9 @@ function DocumentsSection({ dealId, section, title }: {
     });
 
     if (dbError) {
+      // The bytes are in Storage but the DB insert failed — try to
+      // clean up the orphan file so the bucket doesn't grow forever.
+      await supabase.storage.from("deal-attachments").remove([filePath]).catch(() => {});
       toast.error(`Ошибка: ${dbError.message}`);
     } else {
       toast.success(`Файл "${file.name}" прикреплен`);
@@ -750,68 +758,29 @@ function DocumentsSection({ dealId, section, title }: {
     }
   }
 
-  // Resolve a URL the browser can open for this attachment. Tries three
-  // paths because Supabase Storage rejects keys with literal spaces on the
-  // /sign endpoint (legacy uploads like "Прил 1.pdf" trip "Invalid key"):
-  //
-  //   1. createSignedUrl on the stored path — works for new uploads with
-  //      UUID-based keys.
-  //   2. createSignedUrl with spaces percent-encoded — sometimes the
-  //      server's validator passes the encoded form but resolves it to
-  //      the literally-keyed object on lookup.
-  //   3. storage.download() — pulls bytes through the /object endpoint
-  //      whose validator is more permissive. Returns a blob URL the
-  //      browser can open or save the same way.
-  //
-  // If a blob URL is returned, it's revoked after a short delay to free
-  // memory; we keep it around long enough that the new tab / download
-  // can finish loading.
-  async function getOpenableUrl(att: Attachment, opts?: { download?: string }): Promise<{ url: string; blob: boolean } | null> {
-    // 1. Original path.
-    const r1 = await supabase.storage
+  // Public-bucket URL builder. The bucket is PUBLIC, so a plain public
+  // URL renders inline (PDFs in particular) with the Content-Type that
+  // we now set explicitly on upload. The `download` option appends
+  // `?download=<filename>` so Supabase serves the same file with
+  // Content-Disposition: attachment + filename.
+  function publicUrl(att: Attachment, opts?: { download?: string }): string {
+    const { data } = supabase.storage
       .from("deal-attachments")
-      .createSignedUrl(att.file_path, 3600, opts);
-    if (r1.data?.signedUrl) return { url: r1.data.signedUrl, blob: false };
-
-    // 2. Same path with literal spaces percent-encoded.
-    if (att.file_path.includes(" ")) {
-      const encoded = att.file_path.replace(/ /g, "%20");
-      const r2 = await supabase.storage
-        .from("deal-attachments")
-        .createSignedUrl(encoded, 3600, opts);
-      if (r2.data?.signedUrl) return { url: r2.data.signedUrl, blob: false };
-    }
-
-    // 3. Direct blob download — different storage endpoint, different
-    //    server-side validator. Works in practice when /sign rejects.
-    const dl = await supabase.storage
-      .from("deal-attachments")
-      .download(att.file_path);
-    if (dl.data) {
-      return { url: URL.createObjectURL(dl.data), blob: true };
-    }
-
-    toast.error(`Не удалось открыть файл: ${r1.error?.message ?? dl.error?.message ?? "нет данных"}`);
-    return null;
+      .getPublicUrl(att.file_path, opts);
+    return data.publicUrl;
   }
 
-  async function handleView(att: Attachment) {
-    const r = await getOpenableUrl(att);
-    if (!r) return;
-    window.open(r.url, "_blank", "noopener,noreferrer");
-    if (r.blob) setTimeout(() => URL.revokeObjectURL(r.url), 60_000);
+  function handleView(att: Attachment) {
+    window.open(publicUrl(att), "_blank", "noopener,noreferrer");
   }
 
-  async function handleDownload(att: Attachment) {
-    const r = await getOpenableUrl(att, { download: att.file_name });
-    if (!r) return;
+  function handleDownload(att: Attachment) {
     const a = document.createElement("a");
-    a.href = r.url;
+    a.href = publicUrl(att, { download: att.file_name });
     a.download = att.file_name;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    if (r.blob) setTimeout(() => URL.revokeObjectURL(r.url), 5_000);
   }
 
   // Re-upload an attachment in place. For legacy files whose storage key
