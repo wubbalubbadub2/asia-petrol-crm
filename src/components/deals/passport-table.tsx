@@ -245,23 +245,28 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
     <div className="overflow-auto h-full rounded-md border border-stone-200 bg-white">
       {/* The wrapper has its OWN vertical + horizontal scroll context.
           The page above is non-scrollable; users scroll the table
-          internally. <thead sticky top-0> pins against this wrapper's
-          top edge — reliable, no JS measurement needed. */}
+          internally.
+
+          Sticky-top is applied to each <tr> individually (NOT to the
+          <thead>) because the second header row has a sticky-left
+          cell — Chrome silently drops the parent's sticky-top from
+          rows that contain a sticky-left child. Per-row sticky keeps
+          both axes independent and reliable. */}
       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
-        <thead className="sticky top-0 z-20 bg-white shadow-sm">
-          <tr className="bg-stone-100 border-b">
-            <th colSpan={5} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Сделка</th>
+        <thead>
+          <tr className="bg-stone-100 border-b sticky top-0 z-20">
+            <th colSpan={5} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Сделка</th>
             <th colSpan={10} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">Поставщик</th>
             <th colSpan={2} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50/50">Группы компании</th>
             <th colSpan={11} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50/50">Покупатель</th>
-            <th colSpan={8} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Логистика</th>
+            <th colSpan={8} className="px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Логистика</th>
           </tr>
-          <tr className="bg-stone-50 border-b">
+          <tr className="bg-stone-50 border-b sticky top-[26px] z-20">
             <th className="sticky left-0 z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[75px] bg-stone-50">Месяц</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">Завод</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">ГСМ</th>
-            <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[40px]">%S</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-stone-50">Завод</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-stone-50">ГСМ</th>
+            <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[40px] bg-stone-50">%S</th>
             {/* Supplier: 10 cols */}
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-amber-50/30">Поставщик</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-amber-50/30">Договор</th>
@@ -289,14 +294,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50/30">Оплата</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-blue-50/30">Долг</th>
             {/* Logistics: 8 cols */}
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px]">Экспедитор</th>
-            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px]">Группа комп.</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Объем план</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Предв. сумма</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px]">Факт объем</th>
-            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px]">Сумма</th>
-            <th className="px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px]">Менеджер</th>
-            <th className="px-1 py-1.5 w-[30px]"></th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Экспедитор</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Группа комп.</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Объем план</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Предв. сумма</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Факт объем</th>
+            <th className="border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Сумма</th>
+            <th className="px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Менеджер</th>
+            <th className="px-1 py-1.5 w-[30px] bg-stone-50"></th>
           </tr>
         </thead>
         <tbody>
