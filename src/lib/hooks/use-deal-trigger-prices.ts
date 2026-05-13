@@ -119,3 +119,31 @@ export async function fetchTriggerQuotationAvg(
   if (prices.length === 0) return null;
   return prices.reduce((a, b) => a + b, 0) / prices.length;
 }
+
+/**
+ * Fetch the monthly average quotation for «Средний месяц» mode.
+ * Calls the SQL helper `compute_monthly_quotation_avg(product_type_id, year, month)`
+ * which averages COALESCE(price, price_cif_nwe, price_fob_rotterdam, price_fob_med)
+ * over all quotations whose date falls in that calendar month.
+ */
+export async function fetchMonthlyQuotationAvg(
+  productTypeId: string,
+  year: number,
+  month: number
+): Promise<number | null> {
+  const sb = createClient();
+  // RPC not in generated types yet (migration 00067) — cast to keep TS happy.
+  const { data, error } = await (
+    sb.rpc as unknown as (
+      fn: string,
+      args: Record<string, unknown>
+    ) => Promise<{ data: number | string | null; error: { message: string } | null }>
+  )("compute_monthly_quotation_avg", {
+    p_product_type_id: productTypeId,
+    p_year: year,
+    p_month: month,
+  });
+  if (error || data == null) return null;
+  const n = typeof data === "number" ? data : parseFloat(String(data));
+  return Number.isFinite(n) ? n : null;
+}

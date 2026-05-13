@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   useDealTriggerPrices,
   fetchTriggerQuotationAvg,
+  fetchMonthlyQuotationAvg,
   type TriggerBasis,
   type ShipmentPrice,
 } from "@/lib/hooks/use-deal-trigger-prices";
@@ -100,6 +101,8 @@ export function DealTriggerPrices({
   priceCondition?: string;
 }) {
   const isTrigger = priceCondition === "trigger";
+  const isAverageMonth = priceCondition === "average_month";
+  const isAutoQuote = isTrigger || isAverageMonth;
   const { data, loading, insert, update, remove } = useDealTriggerPrices(dealId, side);
 
   // Apply a partial patch to a row and recompute derived fields (calculated_price, amount).
@@ -134,10 +137,11 @@ export function DealTriggerPrices({
       .then(({ data }) => setProductTypes((data ?? []) as ProductType[]));
   }, []);
 
-  // Pre-fill the quotation from the deal when opening the form in non-trigger mode.
-  // In trigger mode the value is fetched via the "Получить" button.
+  // Pre-fill the quotation from the deal when opening the form in modes that
+  // don't auto-compute (fixed/manual). Trigger and average_month always fetch
+  // via the «Получить» button.
   useEffect(() => {
-    if (adding && !isTrigger && quotationAvg == null && defaultQuotation != null) {
+    if (adding && !isAutoQuote && quotationAvg == null && defaultQuotation != null) {
       setQuotationAvg(defaultQuotation);
     }
     // Intentional: only react when `adding` flips open.
@@ -146,8 +150,22 @@ export function DealTriggerPrices({
 
   // Auto-fetch quotation when date + product type are set
   async function fetchQuotation() {
+    if (!productTypeId) return;
+    if (isAverageMonth) {
+      // Determine the shipment month from the shipment date (or border date
+      // as a safety fallback when shipment date isn't filled in).
+      const refDate = shipDate || borderDate;
+      if (!refDate) return;
+      const d = new Date(refDate + "T00:00:00");
+      if (Number.isNaN(d.getTime())) return;
+      setFetching(true);
+      const avg = await fetchMonthlyQuotationAvg(productTypeId, d.getFullYear(), d.getMonth() + 1);
+      setQuotationAvg(avg);
+      setFetching(false);
+      return;
+    }
     const startDate = basis === "shipment_date" ? shipDate : borderDate;
-    if (!startDate || !productTypeId) return;
+    if (!startDate) return;
     setFetching(true);
     const avg = await fetchTriggerQuotationAvg(productTypeId, startDate, parseInt(triggerDays) || 35);
     setQuotationAvg(avg);
@@ -283,7 +301,7 @@ export function DealTriggerPrices({
             </div>
 
             <div className="flex gap-2 items-end flex-wrap">
-              {isTrigger && (
+              {isAutoQuote && (
                 <>
                   <div className="w-48">
                     <Label className="text-[10px]">Продукт котировки</Label>
@@ -301,20 +319,26 @@ export function DealTriggerPrices({
               )}
               <div className="w-28">
                 <Label className="text-[10px]">
-                  {isTrigger ? "Котировка (средняя)" : priceCondition === "fixed" ? "Цена фикс" : "Средний месяц"}
+                  {isTrigger
+                    ? "Котировка (средняя)"
+                    : isAverageMonth
+                      ? "Котировка (средняя за месяц)"
+                      : priceCondition === "fixed"
+                        ? "Цена фикс"
+                        : "Цена"}
                 </Label>
                 <Input
                   type="number"
                   step="0.001"
                   value={quotationAvg != null ? String(quotationAvg) : ""}
-                  readOnly={isTrigger}
+                  readOnly={isAutoQuote}
                   onChange={(e) => {
                     const v = e.target.value.trim();
                     if (v === "") { setQuotationAvg(null); return; }
                     const n = parseFloat(v.replace(",", "."));
                     setQuotationAvg(Number.isFinite(n) ? n : null);
                   }}
-                  className={`h-7 text-[11px] font-mono ${isTrigger ? "bg-stone-50" : ""}`}
+                  className={`h-7 text-[11px] font-mono ${isAutoQuote ? "bg-stone-50" : ""}`}
                 />
               </div>
               <div className="w-20">
