@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { Trash2, Plus, ChevronDown, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -296,9 +296,30 @@ function LinesEditorView({
               />
             )}
 
-            {/* Цена */}
+            {/* Цена — preliminary vs final depends on price_condition.
+                For formula modes (average_month/fixed/trigger) this is the
+                planned price at deal signing; the actual prices used in
+                shipped_amount come from deal_shipment_prices (rendered by
+                <DealTriggerPrices/> below). For manual mode it is THE
+                price, so no badge. */}
             <NumberCell
-              label="Цена"
+              label={
+                l.price_condition === "average_month" ||
+                l.price_condition === "fixed" ||
+                l.price_condition === "trigger" ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span>Цена</span>
+                    <span
+                      title="Это плановая цена на момент подписания договора. Окончательные цены по отгрузкам считаются ниже."
+                      className="inline-flex items-center rounded bg-amber-100 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-amber-800"
+                    >
+                      Предварительная
+                    </span>
+                  </span>
+                ) : (
+                  "Цена"
+                )
+              }
               value={l.price}
               editing={editing}
               onChange={(v) => onUpdate(l.id, { price: v })}
@@ -401,7 +422,7 @@ function LinesEditorView({
 // ─── Inline cells ───
 
 function NumberCell({ label, value, editing, onChange }: {
-  label: string;
+  label: ReactNode;
   value: number | null;
   editing: boolean;
   onChange: (v: number | null) => void;

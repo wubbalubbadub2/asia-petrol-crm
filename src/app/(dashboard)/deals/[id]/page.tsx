@@ -469,11 +469,21 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
       {/* Supplier pricing by month */}
       {deal.supplier_price_condition && deal.supplier_price_condition !== "manual" && (
-        <DealTriggerPrices dealId={deal.id} side="supplier" currencySymbol={supplierCurrencySymbol}
-          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
-          defaultDiscount={deal.supplier_discount ?? 0}
-          defaultQuotation={deal.supplier_quotation ?? null}
-          priceCondition={deal.supplier_price_condition} />
+        <div className="space-y-1.5">
+          <div>
+            <h3 className="text-[14px] font-medium text-stone-800">
+              Окончательная цена — по отгрузкам
+            </h3>
+            <p className="text-[12px] text-stone-500">
+              Цена пересчитывается отдельно для каждой отгрузки по выбранному режиму. Можно править вручную.
+            </p>
+          </div>
+          <DealTriggerPrices dealId={deal.id} side="supplier" currencySymbol={supplierCurrencySymbol}
+            defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
+            defaultDiscount={deal.supplier_discount ?? 0}
+            defaultQuotation={deal.supplier_quotation ?? null}
+            priceCondition={deal.supplier_price_condition} />
+        </div>
       )}
       {/* Supplier payments */}
       <DealPayments dealId={deal.id} currencySymbol={supplierCurrencySymbol} side="supplier" />
@@ -525,11 +535,21 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
       {/* Buyer pricing by month */}
       {deal.buyer_price_condition && deal.buyer_price_condition !== "manual" && (
-        <DealTriggerPrices dealId={deal.id} side="buyer" currencySymbol={buyerCurrencySymbol}
-          defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
-          defaultDiscount={deal.buyer_discount ?? 0}
-          defaultQuotation={deal.buyer_quotation ?? null}
-          priceCondition={deal.buyer_price_condition} />
+        <div className="space-y-1.5">
+          <div>
+            <h3 className="text-[14px] font-medium text-stone-800">
+              Окончательная цена — по отгрузкам
+            </h3>
+            <p className="text-[12px] text-stone-500">
+              Цена пересчитывается отдельно для каждой отгрузки по выбранному режиму. Можно править вручную.
+            </p>
+          </div>
+          <DealTriggerPrices dealId={deal.id} side="buyer" currencySymbol={buyerCurrencySymbol}
+            defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
+            defaultDiscount={deal.buyer_discount ?? 0}
+            defaultQuotation={deal.buyer_quotation ?? null}
+            priceCondition={deal.buyer_price_condition} />
+        </div>
       )}
       {/* Buyer payments */}
       <DealPayments dealId={deal.id} currencySymbol={buyerCurrencySymbol} side="buyer" />
