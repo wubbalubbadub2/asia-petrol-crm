@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import Link from "next/link";
 import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,13 +84,25 @@ export default function DealsPage() {
     factories: { id: string; label: string }[];
     fuelTypes: { id: string; label: string }[];
     forwarders: { id: string; label: string }[];
-    applications: { id: string; label: string }[];
-  }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [], applications: [] });
-  // deal_id → Set<application_id>, built once from application_deals.
-  // Used to filter the visible deals when an application is picked.
-  const [appDealMap, setAppDealMap] = useState<Map<string, Set<string>>>(new Map());
+  }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [] });
   const sbRef = useRef(createClient());
   const { isAdmin } = useRole();
+  // Measure the sticky filter-bar height and expose it as a CSS variable
+  // (`--filter-h`) on the page wrapper so the passport table's <thead>
+  // can stick *below* the filter bar via `top: var(--filter-h)`.
+  // ResizeObserver keeps the value correct when the dropdown grid wraps
+  // to extra rows on narrow viewports.
+  const filterBarRef = useRef<HTMLDivElement>(null);
+  const [filterBarH, setFilterBarH] = useState(180);
+  useLayoutEffect(() => {
+    if (!filterBarRef.current) return;
+    const el = filterBarRef.current;
+    const update = () => setFilterBarH(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Load reference lists once for filter dropdowns
   useEffect(() => {
@@ -101,26 +113,13 @@ export default function DealsPage() {
       sb.from("factories").select("id, name").eq("is_active", true).order("name"),
       sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-      sb.from("applications").select("id, application_number, date").order("date", { ascending: false }),
-      sb.from("application_deals").select("application_id, deal_id"),
-    ]).then(([s, b, f, ft, fw, apps, ad]) => {
-      const map = new Map<string, Set<string>>();
-      for (const row of (ad.data ?? []) as { application_id: string; deal_id: string }[]) {
-        let set = map.get(row.deal_id);
-        if (!set) { set = new Set(); map.set(row.deal_id, set); }
-        set.add(row.application_id);
-      }
-      setAppDealMap(map);
+    ]).then(([s, b, f, ft, fw]) => {
       setRefs({
         suppliers: (s.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
         buyers: (b.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
         factories: (f.data ?? []).map((r) => ({ id: r.id, label: r.name })),
         fuelTypes: (ft.data ?? []).map((r) => ({ id: r.id, label: r.name })),
         forwarders: (fw.data ?? []).map((r) => ({ id: r.id, label: r.name })),
-        applications: (apps.data ?? []).map((r: { id: string; application_number: string | null; date: string }) => ({
-          id: r.id,
-          label: `${r.application_number ?? "—"} · ${new Date(r.date).toLocaleDateString("ru-RU")}`,
-        })),
       });
     });
   }, []);
@@ -162,6 +161,20 @@ export default function DealsPage() {
     isArchived: false,
   });
 
+  // «Приложение» dropdown options — distinct contract numbers across
+  // both supplier and buyer sides of the loaded deals. Per the product
+  // owner, the «договор» column in the passport IS the «приложение»
+  // they want to filter by (each contract / annex). Empty string +
+  // null are excluded so the dropdown only lists real values.
+  const contractOpts = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of deals) {
+      if (d.supplier_contract) set.add(d.supplier_contract);
+      if (d.buyer_contract) set.add(d.buyer_contract);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+  }, [deals]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return deals.filter((d) => {
@@ -171,7 +184,7 @@ export default function DealsPage() {
       if (fuelTypeFilter && d.fuel_type_id !== fuelTypeFilter) return false;
       if (monthFilter && d.month !== monthFilter) return false;
       if (forwarderFilter && d.forwarder_id !== forwarderFilter) return false;
-      if (applicationFilter && !appDealMap.get(d.id)?.has(applicationFilter)) return false;
+      if (applicationFilter && d.supplier_contract !== applicationFilter && d.buyer_contract !== applicationFilter) return false;
       if (!q) return true;
       return (
         d.deal_code?.toLowerCase().includes(q) ||
@@ -184,7 +197,7 @@ export default function DealsPage() {
         false
       );
     });
-  }, [deals, search, supplierFilter, buyerFilter, factoryFilter, fuelTypeFilter, monthFilter, forwarderFilter, applicationFilter, appDealMap]);
+  }, [deals, search, supplierFilter, buyerFilter, factoryFilter, fuelTypeFilter, monthFilter, forwarderFilter, applicationFilter]);
 
   const activeFilterCount =
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
@@ -199,11 +212,13 @@ export default function DealsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" style={{ "--filter-h": `${filterBarH}px` } as React.CSSProperties}>
       {/* Sticky top: title row + tabs + filters. Stays visible while the
           passport table scrolls underneath. negative-margin-x lets the
-          sticky background bleed past the page padding from layout. */}
-      <div className="sticky top-0 z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 bg-background pt-4 pb-3 space-y-3 border-b border-stone-200">
+          sticky background bleed past the page padding from layout.
+          Solid bg-stone-50 (matches the dashboard main) so table rows
+          can't bleed through. */}
+      <div ref={filterBarRef} className="sticky top-0 z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 bg-stone-50 pt-4 pb-3 space-y-3 border-b border-stone-200 shadow-sm">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Сделки</h1>
         <div className="flex items-center gap-2">
@@ -297,9 +312,10 @@ export default function DealsPage() {
             {refs.forwarders.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
           <select value={applicationFilter} onChange={(e) => setApplicationFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            title="Фильтр по номеру договора / приложения (любая сторона)">
             <option value="">Все приложения</option>
-            {refs.applications.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            {contractOpts.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
       </div>

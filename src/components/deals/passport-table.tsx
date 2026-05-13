@@ -244,7 +244,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   return (
     <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
-        <thead>
+        {/* Sticky header: stays pinned below the page filter bar while
+            the page scrolls. The page wrapper sets `--filter-h` via
+            useLayoutEffect so the offset adapts when the filter bar
+            wraps at narrow viewports. The thead has both band-row and
+            column-name row — both stick together. */}
+        <thead className="sticky top-[var(--filter-h)] z-20 bg-white">
           <tr className="bg-stone-100 border-b">
             <th colSpan={5} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Сделка</th>
             <th colSpan={10} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">Поставщик</th>
@@ -436,8 +441,12 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
       "bg-stone-100/60"
     }`}></td>
   );
+  // Note: removed `sticky bottom-0` — sticky on a <tr> inside
+  // <tbody> renders inconsistently across browsers (a phantom copy of
+  // the row was bleeding above the page-level sticky filter bar in
+  // Chrome). The totals row sits at the natural bottom of the table.
   return (
-    <tr className="border-t-2 border-stone-300 sticky bottom-0 z-10">
+    <tr className="border-t-2 border-stone-300">
       {/* Сделка (5 cols): label spans them */}
       <td colSpan={5} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[11px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
