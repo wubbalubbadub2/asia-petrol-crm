@@ -49,3 +49,6 @@ supabase/.branches/
 /playwright-report
 /test-results
 /playwright/.cache
+
+# Claude Code agent worktrees (transient, local only)
+.claude/
