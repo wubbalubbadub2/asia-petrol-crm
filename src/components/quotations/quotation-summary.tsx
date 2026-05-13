@@ -89,13 +89,19 @@ export function QuotationSummary() {
     return q.price ?? q.price_cif_nwe ?? q.price_fob_rotterdam ?? q.price_fob_med;
   }, [dailyQuotes, year, fixedDay]);
 
-  // Trigger: average over triggerDays starting from 1st of the month
+  // Trigger: average over triggerDays starting from 1st of the month.
+  //
+  // Build the date bounds via UTC arithmetic, not `new Date(local)` +
+  // `.toISOString()`. The latter would convert Almaty-local midnight
+  // (UTC+5/+6) to the prior UTC day, so January's trigger window
+  // started on Dec 31 of the previous year and missed the last day of
+  // January — every month's column was shifted by one day. Strings
+  // throughout, no timezone in the path.
   const getTrigger = useCallback((ptId: string, month: number): number | null => {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(start);
-    end.setDate(end.getDate() + triggerDays);
-    const startStr = start.toISOString().split("T")[0];
-    const endStr = end.toISOString().split("T")[0];
+    const startStr = `${year}-${String(month).padStart(2, "0")}-01`;
+    const startUtc = Date.UTC(year, month - 1, 1);
+    const endUtc = startUtc + triggerDays * 86_400_000;
+    const endStr = new Date(endUtc).toISOString().split("T")[0];
 
     const prices = dailyQuotes
       .filter((d) => d.product_type_id === ptId && d.date >= startStr && d.date <= endStr)
