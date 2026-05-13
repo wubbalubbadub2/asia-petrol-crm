@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -87,22 +87,6 @@ export default function DealsPage() {
   }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [] });
   const sbRef = useRef(createClient());
   const { isAdmin } = useRole();
-  // Measure the sticky filter-bar height and expose it as a CSS variable
-  // (`--filter-h`) on the page wrapper so the passport table's <thead>
-  // can stick *below* the filter bar via `top: var(--filter-h)`.
-  // ResizeObserver keeps the value correct when the dropdown grid wraps
-  // to extra rows on narrow viewports.
-  const filterBarRef = useRef<HTMLDivElement>(null);
-  const [filterBarH, setFilterBarH] = useState(180);
-  useLayoutEffect(() => {
-    if (!filterBarRef.current) return;
-    const el = filterBarRef.current;
-    const update = () => setFilterBarH(el.offsetHeight);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   // Load reference lists once for filter dropdowns
   useEffect(() => {
@@ -212,13 +196,12 @@ export default function DealsPage() {
   }
 
   return (
-    <div className="space-y-4" style={{ "--filter-h": `${filterBarH}px` } as React.CSSProperties}>
-      {/* Sticky top: title row + tabs + filters. Stays visible while the
-          passport table scrolls underneath. negative-margin-x lets the
-          sticky background bleed past the page padding from layout.
-          Solid bg-stone-50 (matches the dashboard main) so table rows
-          can't bleed through. */}
-      <div ref={filterBarRef} className="sticky top-0 z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 bg-stone-50 pt-4 pb-3 space-y-3 border-b border-stone-200 shadow-sm">
+    <div className="flex h-full flex-col gap-3">
+      {/* Top section: title + tabs + filters. NOT sticky — the table
+          below has its own internal scroll viewport with a sticky
+          <thead>, so this block stays naturally above and never gets
+          covered. */}
+      <div className="flex-shrink-0 space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Сделки</h1>
         <div className="flex items-center gap-2">
@@ -321,17 +304,20 @@ export default function DealsPage() {
       </div>
       </div>
 
-      {/* Passport views — all tabs use PassportTable */}
-      {(activeTab === "kg" || activeTab === "kz" || activeTab === "list") && (
-        <PassportTable
-          deals={filtered}
-          loading={loading}
-          onDataChanged={reload}
-          dealType={activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL"}
-        />
-      )}
-
-      {/* Old list view removed — all tabs use PassportTable now */}
+      {/* Passport views — all tabs use PassportTable. The wrapping
+          flex-1 min-h-0 lets the table take all remaining height; its
+          internal max-h + overflow gives <thead> a real scroll
+          container to stick to. */}
+      <div className="flex-1 min-h-0">
+        {(activeTab === "kg" || activeTab === "kz" || activeTab === "list") && (
+          <PassportTable
+            deals={filtered}
+            loading={loading}
+            onDataChanged={reload}
+            dealType={activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL"}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -242,14 +242,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   );
 
   return (
-    <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
+    <div className="overflow-auto h-full rounded-md border border-stone-200 bg-white">
+      {/* The wrapper has its OWN vertical + horizontal scroll context.
+          The page above is non-scrollable; users scroll the table
+          internally. <thead sticky top-0> pins against this wrapper's
+          top edge — reliable, no JS measurement needed. */}
       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
-        {/* Sticky header: stays pinned below the page filter bar while
-            the page scrolls. The page wrapper sets `--filter-h` via
-            useLayoutEffect so the offset adapts when the filter bar
-            wraps at narrow viewports. The thead has both band-row and
-            column-name row — both stick together. */}
-        <thead className="sticky top-[var(--filter-h)] z-20 bg-white">
+        <thead className="sticky top-0 z-20 bg-white shadow-sm">
           <tr className="bg-stone-100 border-b">
             <th colSpan={5} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Сделка</th>
             <th colSpan={10} className="border-r border-stone-300 px-2 py-1 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50/50">Поставщик</th>
