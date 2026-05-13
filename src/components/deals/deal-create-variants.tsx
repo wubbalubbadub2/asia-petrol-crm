@@ -5,7 +5,16 @@ import { Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PRICE_MODES, decodePriceMode, type PriceMode, type TriggerBasisLite } from "@/lib/constants/deal-types";
+import {
+  DEFAULT_FORMULA_MODE,
+  FORMULA_SUBMODES,
+  PRICE_TIER_LABELS,
+  decodePriceMode,
+  priceTierOf,
+  type PriceMode,
+  type PriceTier,
+  type TriggerBasisLite,
+} from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { createClient } from "@/lib/supabase/client";
 
@@ -184,30 +193,70 @@ function VariantRow({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        {/* Тип цены — 2-step picker. Tier 1: manual vs formula.
+            Tier 2 (only when formula): which formula subtype.
+            DB shape stays the same — priceMode collapses both choices
+            into a single PriceMode that decodePriceMode unwinds at save. */}
         <div>
           <Label className="text-[12px] text-stone-500">Тип цены</Label>
           <select
-            value={v.priceMode}
+            value={priceTierOf(v.priceMode)}
             onChange={(e) => {
-              const next = e.target.value as PriceMode;
-              const dec = decodePriceMode(next);
-              onChange({
-                priceMode: next,
-                quotation: "", price: "",
-                quotationManualEdited: false, priceManualEdited: false,
-                // When switching INTO a trigger mode, seed the days from
-                // the basis-specific default (35 for shipment, 37 for
-                // border). User can edit further within 30-44 / 35-40.
-                triggerDays: dec.price_condition === "trigger"
-                  ? String(dec.trigger_days_default ?? 35)
-                  : v.triggerDays,
-              });
+              const tier = e.target.value as PriceTier;
+              if (tier === "manual") {
+                // Drop quotation/formula state — manual entry has none of it.
+                onChange({
+                  priceMode: "manual",
+                  quotation: "", price: "",
+                  quotationManualEdited: false, priceManualEdited: false,
+                });
+              } else {
+                // Land on the default formula subtype. Seed triggerDays
+                // only if that default happens to be a trigger basis.
+                const dec = decodePriceMode(DEFAULT_FORMULA_MODE);
+                onChange({
+                  priceMode: DEFAULT_FORMULA_MODE,
+                  quotation: "", price: "",
+                  quotationManualEdited: false, priceManualEdited: false,
+                  triggerDays: dec.price_condition === "trigger"
+                    ? String(dec.trigger_days_default ?? 35)
+                    : v.triggerDays,
+                });
+              }
             }}
             className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
           >
-            {PRICE_MODES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            <option value="manual">{PRICE_TIER_LABELS.manual}</option>
+            <option value="formula">{PRICE_TIER_LABELS.formula}</option>
           </select>
         </div>
+
+        {priceTierOf(v.priceMode) === "formula" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">Подтип формулы</Label>
+            <select
+              value={v.priceMode}
+              onChange={(e) => {
+                const next = e.target.value as PriceMode;
+                const dec = decodePriceMode(next);
+                onChange({
+                  priceMode: next,
+                  quotation: "", price: "",
+                  quotationManualEdited: false, priceManualEdited: false,
+                  // When switching INTO a trigger subtype, seed days from
+                  // the basis-specific default (35 for shipment, 37 for
+                  // border). User can edit further within 30-44 / 35-40.
+                  triggerDays: dec.price_condition === "trigger"
+                    ? String(dec.trigger_days_default ?? 35)
+                    : v.triggerDays,
+                });
+              }}
+              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            >
+              {FORMULA_SUBMODES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+        )}
 
         {decoded.price_condition !== "manual" && (
           <div>

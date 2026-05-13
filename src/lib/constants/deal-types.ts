@@ -47,6 +47,40 @@ export const PRICE_MODES: { value: PriceMode; label: string; group: "manual" | "
   { value: "trigger_border",    label: "Формула: Триггер — с пересечения границы (35-40 дн)", group: "formula" },
 ];
 
+// ── Tier-1 / Tier-2 view over PRICE_MODES ────────────────────────
+// The product owner's mental model splits price selection into two
+// steps: first decide manual vs formula, then (when formula) pick the
+// subtype. We keep PRICE_MODES as the authoritative flat list and
+// expose helpers below for pickers that want the hierarchical UI.
+
+export type PriceTier = "manual" | "formula";
+
+// Display label for the tier-1 picker.
+export const PRICE_TIER_LABELS: Record<PriceTier, string> = {
+  manual: "Фикс / Вручную",
+  formula: "Формульная",
+};
+
+// Map a PriceMode back to its tier. Useful when seeding the tier
+// picker from a persisted line.
+export function priceTierOf(mode: PriceMode): PriceTier {
+  return mode === "manual" ? "manual" : "formula";
+}
+
+// Default subtype to land on when switching INTO the formula tier
+// from manual. «Средний месяц» is the most common formula in practice.
+export const DEFAULT_FORMULA_MODE: PriceMode = "average_month";
+
+// Curated list of formula sub-options for the tier-2 picker.
+// Labels intentionally drop the "Формула: " prefix from PRICE_MODES —
+// the tier label already conveys that context.
+export const FORMULA_SUBMODES: { value: PriceMode; label: string }[] = [
+  { value: "average_month",    label: "Средний месяц" },
+  { value: "fixed",            label: "Фикс цена на дату" },
+  { value: "trigger_shipment", label: "Триггер — по дате отгрузки (30-44 дн)" },
+  { value: "trigger_border",   label: "Триггер — с пересечения границы (35-40 дн)" },
+];
+
 export type TriggerBasisLite = "shipment_date" | "border_crossing_date";
 
 export function encodePriceMode(

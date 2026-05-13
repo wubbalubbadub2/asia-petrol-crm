@@ -4,10 +4,15 @@ import { useState, useRef, type ReactNode } from "react";
 import { Trash2, Plus, ChevronDown, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  DEFAULT_FORMULA_MODE,
+  FORMULA_SUBMODES,
   PRICE_MODES,
-  encodePriceMode,
+  PRICE_TIER_LABELS,
   decodePriceMode,
+  encodePriceMode,
+  priceTierOf,
   type PriceMode,
+  type PriceTier,
   type TriggerBasisLite,
 } from "@/lib/constants/deal-types";
 import {
@@ -253,28 +258,66 @@ function LinesEditorView({
 
           {(() => {
             const mode = encodePriceMode(l.price_condition, l.trigger_basis);
+            const tier = priceTierOf(mode);
             const isTrigger = mode === "trigger_shipment" || mode === "trigger_border";
             const daysHint = mode === "trigger_border" ? "обычно 35-40" : "обычно 30-44";
+            const tierOptions: Option[] = [
+              { value: "manual",  label: PRICE_TIER_LABELS.manual },
+              { value: "formula", label: PRICE_TIER_LABELS.formula },
+            ];
             return (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
-            {/* Тип цены — encodes (price_condition, trigger_basis) */}
+            {/* Тип цены — 2-step picker. Tier 1: manual vs formula.
+                When tier=formula, a second cell exposes the subtype.
+                Each onChange writes (price_condition, trigger_basis,
+                trigger_days) via decodePriceMode — same DB shape as before. */}
             <SelectCell
               label="Тип цены"
-              value={mode}
-              displayValue={modeLabel(mode)}
+              value={tier}
+              displayValue={PRICE_TIER_LABELS[tier]}
               editing={editing}
-              options={PRICE_MODES.map((m) => ({ value: m.value, label: m.label }))}
+              options={tierOptions}
               onChange={(v) => {
-                const dec = decodePriceMode(v as PriceMode);
-                onUpdate(l.id, {
-                  price_condition: dec.price_condition,
-                  trigger_basis:   dec.trigger_basis,
-                  trigger_days:    dec.price_condition === "trigger"
-                                     ? (l.trigger_days ?? dec.trigger_days_default ?? 35)
-                                     : null,
-                });
+                const nextTier = (v as PriceTier) || "manual";
+                if (nextTier === "manual") {
+                  onUpdate(l.id, {
+                    price_condition: "manual",
+                    trigger_basis:   null,
+                    trigger_days:    null,
+                  });
+                } else {
+                  const dec = decodePriceMode(DEFAULT_FORMULA_MODE);
+                  onUpdate(l.id, {
+                    price_condition: dec.price_condition,
+                    trigger_basis:   dec.trigger_basis,
+                    trigger_days:    dec.price_condition === "trigger"
+                                       ? (l.trigger_days ?? dec.trigger_days_default ?? 35)
+                                       : null,
+                  });
+                }
               }}
             />
+
+            {/* Подтип формулы — only when tier=formula. */}
+            {tier === "formula" && (
+              <SelectCell
+                label="Подтип формулы"
+                value={mode}
+                displayValue={modeLabel(mode)}
+                editing={editing}
+                options={FORMULA_SUBMODES.map((m) => ({ value: m.value, label: m.label }))}
+                onChange={(v) => {
+                  const dec = decodePriceMode(v as PriceMode);
+                  onUpdate(l.id, {
+                    price_condition: dec.price_condition,
+                    trigger_basis:   dec.trigger_basis,
+                    trigger_days:    dec.price_condition === "trigger"
+                                       ? (l.trigger_days ?? dec.trigger_days_default ?? 35)
+                                       : null,
+                  });
+                }}
+              />
+            )}
 
             {/* Котировка */}
             <SelectCell
