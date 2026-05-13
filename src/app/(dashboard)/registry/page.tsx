@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
 import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -880,23 +881,25 @@ export default function RegistryPage() {
       </div>
 
       {/* Header filters — narrow the visible shipments by forwarder /
-          deal / company group. Tab (KG/KZ) is already a separate axis. */}
+          deal / company group. Tab (KG/KZ) is already a separate axis.
+          All three are searchable (cmdk-backed) so long lists stay
+          navigable. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-        <select value={forwarderFilter} onChange={(e) => setForwarderFilter(e.target.value)}
-          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-          <option value="">Все экспедиторы</option>
-          {fwOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <select value={dealFilter} onChange={(e) => setDealFilter(e.target.value)}
-          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-          <option value="">Все сделки</option>
-          {dealOpts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-        </select>
-        <select value={companyGroupFilter} onChange={(e) => setCompanyGroupFilter(e.target.value)}
-          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-          <option value="">Все группы компаний</option>
-          {cgOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <SearchableSelect
+          value={forwarderFilter} onChange={setForwarderFilter}
+          options={fwOpts}
+          placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
+        />
+        <SearchableSelect
+          value={dealFilter} onChange={setDealFilter}
+          options={dealOpts.map((o) => ({ value: o.id, label: o.label }))}
+          placeholder="Все сделки" searchPlaceholder="Поиск сделки…"
+        />
+        <SearchableSelect
+          value={companyGroupFilter} onChange={setCompanyGroupFilter}
+          options={cgOpts}
+          placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
+        />
         {activeFilterCount > 0 && (
           <Button size="sm" variant="ghost" onClick={clearRegistryFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600 justify-self-start">
             <X className="h-3 w-3 mr-0.5" />

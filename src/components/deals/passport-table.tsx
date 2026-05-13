@@ -258,7 +258,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
           </tr>
           <tr className="bg-stone-50 border-b">
             <th className="sticky left-0 z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
-            <th className="sticky left-[70px] z-20 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[75px]">Месяц</th>
+            <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[75px] bg-stone-50">Месяц</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">Завод</th>
             <th className="border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px]">ГСМ</th>
             <th className="border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[40px]">%S</th>
@@ -307,7 +307,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">{deal.deal_code}</Link>
                 <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
               </td>
-              <td className="sticky left-[70px] z-10 bg-white border-r px-1 py-0.5">
+              <td className="border-r px-1 py-0.5">
                 <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} />
               </td>
               <td className="border-r px-1 py-0.5">

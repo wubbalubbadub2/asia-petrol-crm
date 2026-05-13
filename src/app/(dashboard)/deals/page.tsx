@@ -18,6 +18,7 @@ import { useDeals, type Deal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useRole } from "@/lib/hooks/use-role";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -264,42 +265,41 @@ export default function DealsPage() {
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2">
-          <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-            <option value="">Все поставщики</option>
-            {refs.suppliers.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-          <select value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-            <option value="">Все покупатели</option>
-            {refs.buyers.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-          <select value={factoryFilter} onChange={(e) => setFactoryFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-            <option value="">Все заводы</option>
-            {refs.factories.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-          <select value={fuelTypeFilter} onChange={(e) => setFuelTypeFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-            <option value="">Все ГСМ</option>
-            {refs.fuelTypes.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-          <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-            <option value="">Все месяцы</option>
-            {MONTHS_RU.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select value={forwarderFilter} onChange={(e) => setForwarderFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
-            <option value="">Все экспедиторы</option>
-            {refs.forwarders.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-          <select value={applicationFilter} onChange={(e) => setApplicationFilter(e.target.value)}
-            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer"
-            title="Фильтр по номеру договора / приложения (любая сторона)">
-            <option value="">Все приложения</option>
-            {contractOpts.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <SearchableSelect
+            value={supplierFilter} onChange={setSupplierFilter}
+            options={refs.suppliers.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Все поставщики" searchPlaceholder="Поиск поставщика…"
+          />
+          <SearchableSelect
+            value={buyerFilter} onChange={setBuyerFilter}
+            options={refs.buyers.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Все покупатели" searchPlaceholder="Поиск покупателя…"
+          />
+          <SearchableSelect
+            value={factoryFilter} onChange={setFactoryFilter}
+            options={refs.factories.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Все заводы" searchPlaceholder="Поиск завода…"
+          />
+          <SearchableSelect
+            value={fuelTypeFilter} onChange={setFuelTypeFilter}
+            options={refs.fuelTypes.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Все ГСМ" searchPlaceholder="Поиск ГСМ…"
+          />
+          <SearchableSelect
+            value={monthFilter} onChange={setMonthFilter}
+            options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
+            placeholder="Все месяцы" searchPlaceholder="Поиск месяца…"
+          />
+          <SearchableSelect
+            value={forwarderFilter} onChange={setForwarderFilter}
+            options={refs.forwarders.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
+          />
+          <SearchableSelect
+            value={applicationFilter} onChange={setApplicationFilter}
+            options={contractOpts.map((c) => ({ value: c, label: c }))}
+            placeholder="Все приложения" searchPlaceholder="Поиск договора…"
+          />
         </div>
       </div>
       </div>
