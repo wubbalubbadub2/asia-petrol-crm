@@ -25,7 +25,12 @@ import {
   addBuyerLine,
   deleteSupplierLine,
   deleteBuyerLine,
+  recomputeLineShipmentPrices,
 } from "@/lib/hooks/use-deal-lines";
+import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { toast } from "sonner";
+
+type PriceStage = "preliminary" | "final";
 
 type Option = { value: string; label: string };
 
@@ -63,16 +68,37 @@ export function SupplierLinesEditor({
   }
 
   async function handleUpdate(id: string, patch: Record<string, unknown>) {
-    // When the user edits the quotation or discount on a line, recompute
-    // price = quotation - discount inside the same UPDATE so the supplier
-    // shipped amount stays in sync. Editing the price field directly skips
-    // the recompute (patch.price is set explicitly by the caller).
+    // Stage flip to 'final' needs a confirmation + a recompute pass
+    // for all existing shipments under this line.
+    if (patch.price_stage === "final") {
+      const current = lines.find((l) => l.id === id);
+      if (current?.price_stage !== "final") {
+        const ok = confirm(
+          "Все существующие отгрузки под этим вариантом будут пересчитаны по окончательной цене. " +
+          "Текущая «Предварительная» цена сохранится в истории. Продолжить?",
+        );
+        if (!ok) { onChanged(); return; }
+      }
+    }
     const finalPatch = applyPriceFormulaPatch(patch, lines.find((l) => l.id === id));
-    try { await updateSupplierLine(id, finalPatch); onChanged(); } catch {}
+    try {
+      await updateSupplierLine(id, finalPatch);
+      // After a successful UPDATE: if the line is now (or stays) in
+      // final stage, refire pricing for existing shipments so
+      // deal_shipment_prices reflects the new config.
+      const updated = lines.find((l) => l.id === id);
+      const willBeFinal = (patch.price_stage as PriceStage | undefined) ?? updated?.price_stage;
+      if (willBeFinal === "final") {
+        const n = await recomputeLineShipmentPrices(id, "supplier");
+        if (n > 0) toast.success(`Пересчитано отгрузок: ${n}`);
+      }
+      onChanged();
+    } catch {}
   }
 
   return (
     <LinesEditorView
+      side="supplier"
       lines={lines.map((l) => ({
         id: l.id,
         is_default: l.is_default,
@@ -92,6 +118,11 @@ export function SupplierLinesEditor({
         stationField: "departure_station_id",
         stationLabel: "Ст. отправления",
         rollup: rollups?.[l.id],
+        price_stage: l.price_stage ?? "preliminary",
+        preliminary_quotation: l.preliminary_quotation ?? null,
+        preliminary_price: l.preliminary_price ?? null,
+        preliminary_set_at: l.preliminary_set_at ?? null,
+        selected_month: l.selected_month ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -149,12 +180,32 @@ export function BuyerLinesEditor({
   }
 
   async function handleUpdate(id: string, patch: Record<string, unknown>) {
+    if (patch.price_stage === "final") {
+      const current = lines.find((l) => l.id === id);
+      if (current?.price_stage !== "final") {
+        const ok = confirm(
+          "Все существующие отгрузки под этим вариантом будут пересчитаны по окончательной цене. " +
+          "Текущая «Предварительная» цена сохранится в истории. Продолжить?",
+        );
+        if (!ok) { onChanged(); return; }
+      }
+    }
     const finalPatch = applyPriceFormulaPatch(patch, lines.find((l) => l.id === id));
-    try { await updateBuyerLine(id, finalPatch); onChanged(); } catch {}
+    try {
+      await updateBuyerLine(id, finalPatch);
+      const updated = lines.find((l) => l.id === id);
+      const willBeFinal = (patch.price_stage as PriceStage | undefined) ?? updated?.price_stage;
+      if (willBeFinal === "final") {
+        const n = await recomputeLineShipmentPrices(id, "buyer");
+        if (n > 0) toast.success(`Пересчитано отгрузок: ${n}`);
+      }
+      onChanged();
+    } catch {}
   }
 
   return (
     <LinesEditorView
+      side="buyer"
       lines={lines.map((l) => ({
         id: l.id,
         is_default: l.is_default,
@@ -174,6 +225,11 @@ export function BuyerLinesEditor({
         stationField: "destination_station_id",
         stationLabel: "Ст. назначения",
         rollup: rollups?.[l.id],
+        price_stage: l.price_stage ?? "preliminary",
+        preliminary_quotation: l.preliminary_quotation ?? null,
+        preliminary_price: l.preliminary_price ?? null,
+        preliminary_set_at: l.preliminary_set_at ?? null,
+        selected_month: l.selected_month ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -208,12 +264,19 @@ type LineVM = {
   stationField: "departure_station_id" | "destination_station_id";
   stationLabel: string;
   rollup?: LineRollup;
+  // Stage workflow (migration 00068).
+  price_stage: PriceStage;
+  preliminary_quotation: number | null;
+  preliminary_price: number | null;
+  preliminary_set_at: string | null;
+  selected_month: string | null;
 };
 
 function LinesEditorView({
-  lines, editing, busy, currencySymbol, stations, quotationTypes,
+  side, lines, editing, busy, currencySymbol, stations, quotationTypes,
   onAdd, onDelete, onUpdate,
 }: {
+  side: "supplier" | "buyer";
   lines: LineVM[];
   editing: boolean;
   busy: boolean;
@@ -224,6 +287,8 @@ function LinesEditorView({
   onDelete: (id: string) => void;
   onUpdate: (id: string, patch: Record<string, unknown>) => void;
 }) {
+  // Keep `side` referenced (for the eventual per-side rendering hooks).
+  void side;
   const modeLabel = (mode: PriceMode) =>
     PRICE_MODES.find((m) => m.value === mode)?.label ?? "—";
 
@@ -319,6 +384,32 @@ function LinesEditorView({
               />
             )}
 
+            {/* Стадия — only for formula modes. Segmented control:
+                Предварительная (default) → Окончательная. Flipping to
+                final triggers a confirmation + recompute of all
+                existing shipments under this variant.  */}
+            {tier === "formula" && (
+              <StageCell
+                value={l.price_stage}
+                editing={editing}
+                onChange={(next) => onUpdate(l.id, { price_stage: next })}
+              />
+            )}
+
+            {/* Месяц расчёта — only for «Средний месяц». Lets the
+                manager pick a specific month for the monthly-avg
+                lookup; null falls back to the deal's own month. */}
+            {mode === "average_month" && (
+              <SelectCell
+                label="Месяц расчёта"
+                value={l.selected_month}
+                displayValue={l.selected_month ?? "(месяц сделки)"}
+                editing={editing}
+                options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
+                onChange={(v) => onUpdate(l.id, { selected_month: v || null })}
+              />
+            )}
+
             {/* Котировка */}
             <SelectCell
               label="Котировка"
@@ -339,34 +430,51 @@ function LinesEditorView({
               />
             )}
 
-            {/* Цена — preliminary vs final depends on price_condition.
-                For formula modes (average_month/fixed/trigger) this is the
-                planned price at deal signing; the actual prices used in
-                shipped_amount come from deal_shipment_prices (rendered by
-                <DealTriggerPrices/> below). For manual mode it is THE
-                price, so no badge. */}
-            <NumberCell
-              label={
-                l.price_condition === "average_month" ||
-                l.price_condition === "fixed" ||
-                l.price_condition === "trigger" ? (
-                  <span className="inline-flex items-center gap-1">
-                    <span>Цена</span>
-                    <span
-                      title="Это плановая цена на момент подписания договора. Окончательные цены по отгрузкам считаются ниже."
-                      className="inline-flex items-center rounded bg-amber-100 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-amber-800"
-                    >
-                      Предварительная
+            {/* Цена — label badge reflects the current stage.
+                For formula modes: «Предварительная» (amber) at first,
+                «Окончательная» (emerald) after the manager finalizes.
+                For manual mode: no badge — the price is just THE price. */}
+            <div>
+              <NumberCell
+                label={
+                  tier === "formula" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span>Цена</span>
+                      {l.price_stage === "final" ? (
+                        <span
+                          title="Окончательная цена. Per-shipment расчёт идёт по формуле выбранного подтипа."
+                          className="inline-flex items-center rounded bg-emerald-100 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-emerald-800"
+                        >
+                          Окончательная
+                        </span>
+                      ) : (
+                        <span
+                          title="Плановая цена на момент подписания договора. После переключения стадии на «Окончательную» все отгрузки пересчитаются."
+                          className="inline-flex items-center rounded bg-amber-100 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-amber-800"
+                        >
+                          Предварительная
+                        </span>
+                      )}
                     </span>
-                  </span>
-                ) : (
-                  "Цена"
-                )
-              }
-              value={l.price}
-              editing={editing}
-              onChange={(v) => onUpdate(l.id, { price: v })}
-            />
+                  ) : (
+                    "Цена"
+                  )
+                }
+                value={l.price}
+                editing={editing}
+                onChange={(v) => onUpdate(l.id, { price: v })}
+              />
+              {/* History: show the saved preliminary value once a
+                  variant has been finalized. Read-only, just for audit. */}
+              {l.price_stage === "final" && l.preliminary_price != null && (
+                <div className="mt-1 text-[10px] text-stone-400">
+                  Предв.: <span className="font-mono tabular-nums">{l.preliminary_price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</span>
+                  {l.preliminary_set_at && (
+                    <> · зафикс. {new Date(l.preliminary_set_at).toLocaleDateString("ru-RU")}</>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Котировка значение */}
             <NumberCell
@@ -463,6 +571,59 @@ function LinesEditorView({
 }
 
 // ─── Inline cells ───
+
+// Stage segmented control — two pills side by side for Preliminary
+// vs Final. In view mode it just renders a colored chip. In edit
+// mode the manager can click the other pill, which fires onChange.
+// The consumer (Supplier/BuyerLinesEditor) handles the confirm()
+// dialog + the recompute RPC.
+function StageCell({ value, editing, onChange }: {
+  value: PriceStage;
+  editing: boolean;
+  onChange: (next: PriceStage) => void;
+}) {
+  return (
+    <div>
+      <span className="text-[11px] text-stone-400 block">Стадия цены</span>
+      {editing ? (
+        <div className="inline-flex h-8 rounded-md border border-stone-300 bg-white p-0.5">
+          <button
+            type="button"
+            onClick={() => value !== "preliminary" && onChange("preliminary")}
+            className={`px-2.5 text-[12px] rounded-sm transition-colors ${
+              value === "preliminary"
+                ? "bg-amber-100 text-amber-800 font-medium"
+                : "text-stone-500 hover:text-stone-700"
+            }`}
+          >
+            Предварительная
+          </button>
+          <button
+            type="button"
+            onClick={() => value !== "final" && onChange("final")}
+            className={`px-2.5 text-[12px] rounded-sm transition-colors ${
+              value === "final"
+                ? "bg-emerald-100 text-emerald-800 font-medium"
+                : "text-stone-500 hover:text-stone-700"
+            }`}
+          >
+            Окончательная
+          </button>
+        </div>
+      ) : (
+        <span
+          className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ${
+            value === "final"
+              ? "bg-emerald-100 text-emerald-800"
+              : "bg-amber-100 text-amber-800"
+          }`}
+        >
+          {value === "final" ? "Окончательная" : "Предварительная"}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function NumberCell({ label, value, editing, onChange }: {
   label: ReactNode;

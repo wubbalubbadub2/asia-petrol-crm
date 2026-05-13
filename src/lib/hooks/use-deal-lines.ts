@@ -6,6 +6,16 @@ import { toast } from "sonner";
 
 export type DealLineSide = "supplier" | "buyer";
 
+type LineStageFields = {
+  // Migration 00068 — preliminary/final stage workflow.
+  price_stage?: "preliminary" | "final";
+  preliminary_quotation?: number | null;
+  preliminary_price?: number | null;
+  preliminary_set_at?: string | null;
+  // Custom month override for average_month mode (defaults to deal.month).
+  selected_month?: string | null;
+};
+
 export type DealSupplierLine = {
   id: string;
   deal_id: string;
@@ -27,7 +37,7 @@ export type DealSupplierLine = {
   // joined
   quotation_type?: { name: string } | null;
   departure_station?: { name: string } | null;
-};
+} & LineStageFields;
 
 export type DealBuyerLine = {
   id: string;
@@ -50,7 +60,7 @@ export type DealBuyerLine = {
   // joined
   quotation_type?: { name: string } | null;
   destination_station?: { name: string } | null;
-};
+} & LineStageFields;
 
 const SUPPLIER_SELECT = `
   *,
@@ -120,6 +130,26 @@ export async function updateBuyerLine(id: string, patch: Record<string, unknown>
   const sb = createClient();
   const { error } = await sb.from("deal_buyer_lines").update(patch).eq("id", id);
   if (error) { toast.error(`Ошибка: ${error.message}`); throw error; }
+}
+
+// Calls the recompute_line_shipment_prices(line_id, side) RPC
+// (migration 00068). Use after flipping a variant to 'final' or after
+// changing price/discount on a final-stage variant so the existing
+// per-shipment rows in `deal_shipment_prices` get refreshed.
+export async function recomputeLineShipmentPrices(
+  lineId: string,
+  side: "supplier" | "buyer",
+): Promise<number> {
+  const sb = createClient();
+  const { data, error } = await sb.rpc(
+    "recompute_line_shipment_prices" as never,
+    { p_line_id: lineId, p_side: side } as never,
+  );
+  if (error) {
+    toast.error(`Ошибка пересчёта цен: ${error.message}`);
+    throw error;
+  }
+  return (data as number) ?? 0;
 }
 
 export async function addSupplierLine(dealId: string, position: number) {

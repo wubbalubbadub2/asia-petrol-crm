@@ -34,6 +34,9 @@ export type VariantDraft = {
   // Trigger config — persisted on the line when priceMode is a trigger.
   // For non-trigger modes these stay empty and are dropped on save.
   triggerDays: string;
+  // Custom lookup month for «Средний месяц» mode. Empty string = use
+  // the deal's own month. Stored as `selected_month` on the line.
+  selectedMonth: string;
   // ── Form-only helpers, not persisted on the line ──────────────
   fixDate: string;
   triggerStart: string;
@@ -55,6 +58,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   fixDate: "",
   triggerStart: "",
   triggerDays: "35",
+  selectedMonth: "",
   quotationManualEdited: false,
   priceManualEdited: false,
 };
@@ -65,6 +69,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   price_condition: "manual" | "fixed" | "average_month" | "trigger";
   trigger_basis: TriggerBasisLite | null;
   trigger_days: number | null;
+  selected_month: string | null;
 } {
   const decoded = decodePriceMode(v.priceMode);
   return {
@@ -72,6 +77,9 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     trigger_basis:   decoded.trigger_basis,
     trigger_days:    decoded.price_condition === "trigger"
                        ? (parseInt(v.triggerDays || String(decoded.trigger_days_default ?? 35), 10) || decoded.trigger_days_default || 35)
+                       : null,
+    selected_month:  decoded.price_condition === "average_month"
+                       ? (v.selectedMonth || null)
                        : null,
   };
 }
@@ -153,9 +161,15 @@ function VariantRow({
   useEffect(() => {
     if (decoded.price_condition === "manual" || !v.quotationTypeId) return;
     if (v.quotationManualEdited) return;
+    // For «Средний месяц» the lookup month can be overridden by the
+    // user via the selectedMonth field; otherwise default to the
+    // deal's own month.
+    const lookupMonth = (decoded.price_condition === "average_month" && v.selectedMonth)
+      ? v.selectedMonth
+      : month;
     fetchQuotationPrice(
       supabase.current,
-      decoded.price_condition, v.quotationTypeId, month, year,
+      decoded.price_condition, v.quotationTypeId, lookupMonth, year,
       v.fixDate, v.triggerStart, v.triggerDays,
     ).then((q) => {
       if (q != null && !v.quotationManualEdited) {
@@ -163,7 +177,7 @@ function VariantRow({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceMode, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays]);
+  }, [v.priceMode, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
 
   // Auto-compute price = quotation − discount whenever either input
   // changes. Skips when the user has explicitly entered a price value.
@@ -280,6 +294,27 @@ function VariantRow({
           <div>
             <Label className="text-[12px] text-stone-500">Дата фиксации</Label>
             <Input type="date" value={v.fixDate} onChange={(e) => onChange({ fixDate: e.target.value })} className="h-8 text-[13px]" />
+          </div>
+        )}
+
+        {/* Месяц расчёта для «Средний месяц» — null/«» = месяц сделки */}
+        {decoded.price_condition === "average_month" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">
+              Месяц расчёта <span className="text-[10px] text-stone-400">(по умолч. — месяц сделки)</span>
+            </Label>
+            <select
+              value={v.selectedMonth}
+              onChange={(e) => onChange({
+                selectedMonth: e.target.value,
+                quotation: "", price: "",
+                quotationManualEdited: false, priceManualEdited: false,
+              })}
+              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            >
+              <option value="">— (месяц сделки)</option>
+              {MONTHS_RU.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
           </div>
         )}
 
