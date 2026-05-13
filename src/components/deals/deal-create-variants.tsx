@@ -57,7 +57,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   stationId: "",
   fixDate: "",
   triggerStart: "",
-  triggerDays: "35",
+  triggerDays: "37",
   selectedMonth: "",
   quotationManualEdited: false,
   priceManualEdited: false,
@@ -328,7 +328,7 @@ function VariantRow({
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">
-                Кол-во дней <span className="text-[10px] text-stone-400">({triggerBasis === "border_crossing_date" ? "обычно 35-40" : "обычно 30-44"})</span>
+                Кол-во дней <span className="text-[10px] text-stone-400">(обычно 35-40)</span>
               </Label>
               <Input type="number" value={v.triggerDays} onChange={(e) => onChange({ triggerDays: e.target.value })} className="h-8 text-[13px]" min="1" max="90" />
             </div>

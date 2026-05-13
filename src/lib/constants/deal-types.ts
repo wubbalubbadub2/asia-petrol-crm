@@ -26,10 +26,10 @@ export const PRICE_CONDITIONS = [
 // same time as the condition. Each entry maps back to (price_condition,
 // trigger_basis) — the DB shape — via `decodePriceMode`.
 //
-// User-facing wording (per client 2026-05-08):
+// User-facing wording (per client 2026-05-13):
 //   • Фикс / Вручную                   → manual entry, no quotation lookup
 //   • Формула: Средний месяц           → avg of all quotations in the deal month
-//   • Формула: Триггер по дате отгрузки → trigger window, basis = shipment_date,  default 35 days (range 30-44)
+//   • Формула: Триггер по дате отгрузки → trigger window, basis = shipment_date,  default 37 days (range 35-40)
 //   • Формула: Триггер с пересечения границы → trigger window, basis = border_crossing_date, default 37 days (range 35-40)
 //   • Формула: Фикс цена на дату        → snapshot quotation on a specific date
 export type PriceMode =
@@ -77,7 +77,7 @@ export const DEFAULT_FORMULA_MODE: PriceMode = "average_month";
 export const FORMULA_SUBMODES: { value: PriceMode; label: string }[] = [
   { value: "average_month",    label: "Средний месяц" },
   { value: "fixed",            label: "Фикс цена на дату" },
-  { value: "trigger_shipment", label: "Триггер — по дате отгрузки (30-44 дн)" },
+  { value: "trigger_shipment", label: "Триггер — по дате отгрузки (35-40 дн)" },
   { value: "trigger_border",   label: "Триггер — с пересечения границы (35-40 дн)" },
 ];
 
@@ -105,7 +105,7 @@ export function decodePriceMode(mode: PriceMode): {
     case "manual":           return { price_condition: "manual",        trigger_basis: null, trigger_days_default: null };
     case "average_month":    return { price_condition: "average_month", trigger_basis: null, trigger_days_default: null };
     case "fixed":            return { price_condition: "fixed",         trigger_basis: null, trigger_days_default: null };
-    case "trigger_shipment": return { price_condition: "trigger",       trigger_basis: "shipment_date",        trigger_days_default: 35 };
+    case "trigger_shipment": return { price_condition: "trigger",       trigger_basis: "shipment_date",        trigger_days_default: 37 };
     case "trigger_border":   return { price_condition: "trigger",       trigger_basis: "border_crossing_date", trigger_days_default: 37 };
   }
 }

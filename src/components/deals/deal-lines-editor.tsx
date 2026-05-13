@@ -325,7 +325,7 @@ function LinesEditorView({
             const mode = encodePriceMode(l.price_condition, l.trigger_basis);
             const tier = priceTierOf(mode);
             const isTrigger = mode === "trigger_shipment" || mode === "trigger_border";
-            const daysHint = mode === "trigger_border" ? "обычно 35-40" : "обычно 30-44";
+            const daysHint = "обычно 35-40";
             const tierOptions: Option[] = [
               { value: "manual",  label: PRICE_TIER_LABELS.manual },
               { value: "formula", label: PRICE_TIER_LABELS.formula },
@@ -430,42 +430,18 @@ function LinesEditorView({
               />
             )}
 
-            {/* Цена — label badge reflects the current stage.
-                For formula modes: «Предварительная» (amber) at first,
-                «Окончательная» (emerald) after the manager finalizes.
-                For manual mode: no badge — the price is just THE price. */}
+            {/* Цена — plain label. The current stage is shown by
+                the dedicated «Стадия цены» control above, so no
+                duplicate badge here. The saved preliminary value
+                appears as a small history line below once a variant
+                has been finalized. */}
             <div>
               <NumberCell
-                label={
-                  tier === "formula" ? (
-                    <span className="inline-flex items-center gap-1">
-                      <span>Цена</span>
-                      {l.price_stage === "final" ? (
-                        <span
-                          title="Окончательная цена. Per-shipment расчёт идёт по формуле выбранного подтипа."
-                          className="inline-flex items-center rounded bg-emerald-100 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-emerald-800"
-                        >
-                          Окончательная
-                        </span>
-                      ) : (
-                        <span
-                          title="Плановая цена на момент подписания договора. После переключения стадии на «Окончательную» все отгрузки пересчитаются."
-                          className="inline-flex items-center rounded bg-amber-100 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-amber-800"
-                        >
-                          Предварительная
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    "Цена"
-                  )
-                }
+                label="Цена"
                 value={l.price}
                 editing={editing}
                 onChange={(v) => onUpdate(l.id, { price: v })}
               />
-              {/* History: show the saved preliminary value once a
-                  variant has been finalized. Read-only, just for audit. */}
               {l.price_stage === "final" && l.preliminary_price != null && (
                 <div className="mt-1 text-[10px] text-stone-400">
                   Предв.: <span className="font-mono tabular-nums">{l.preliminary_price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</span>
