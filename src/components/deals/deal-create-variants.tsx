@@ -37,6 +37,10 @@ export type VariantDraft = {
   // Custom lookup month for «Средний месяц» mode. Empty string = use
   // the deal's own month. Stored as `selected_month` on the line.
   selectedMonth: string;
+  // Stage of the formula price (only meaningful when priceMode !== 'manual').
+  // 'preliminary' at deal-signing — all shipments use line.price. Manager
+  // can flip to 'final' later from the deal detail page.
+  priceStage: "preliminary" | "final";
   // ── Form-only helpers, not persisted on the line ──────────────
   fixDate: string;
   triggerStart: string;
@@ -59,6 +63,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   triggerStart: "",
   triggerDays: "37",
   selectedMonth: "",
+  priceStage: "preliminary",
   quotationManualEdited: false,
   priceManualEdited: false,
 };
@@ -70,6 +75,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   trigger_basis: TriggerBasisLite | null;
   trigger_days: number | null;
   selected_month: string | null;
+  price_stage: "preliminary" | "final";
 } {
   const decoded = decodePriceMode(v.priceMode);
   return {
@@ -81,6 +87,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     selected_month:  decoded.price_condition === "average_month"
                        ? (v.selectedMonth || null)
                        : null,
+    price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
   };
 }
 
@@ -269,6 +276,39 @@ function VariantRow({
             >
               {FORMULA_SUBMODES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
+          </div>
+        )}
+
+        {/* Стадия цены — segmented control. Default 'preliminary' at
+            deal creation; manager flips to 'final' later from the deal
+            page once the quotation period closes. */}
+        {priceTierOf(v.priceMode) === "formula" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">Стадия цены</Label>
+            <div className="inline-flex h-8 rounded-md border border-stone-200 bg-white p-0.5 w-full">
+              <button
+                type="button"
+                onClick={() => v.priceStage !== "preliminary" && onChange({ priceStage: "preliminary" })}
+                className={`flex-1 px-2 text-[12px] rounded-sm transition-colors ${
+                  v.priceStage === "preliminary"
+                    ? "bg-amber-100 text-amber-800 font-medium"
+                    : "text-stone-500 hover:text-stone-700"
+                }`}
+              >
+                Предварительная
+              </button>
+              <button
+                type="button"
+                onClick={() => v.priceStage !== "final" && onChange({ priceStage: "final" })}
+                className={`flex-1 px-2 text-[12px] rounded-sm transition-colors ${
+                  v.priceStage === "final"
+                    ? "bg-emerald-100 text-emerald-800 font-medium"
+                    : "text-stone-500 hover:text-stone-700"
+                }`}
+              >
+                Окончательная
+              </button>
+            </div>
           </div>
         )}
 

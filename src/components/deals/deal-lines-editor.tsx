@@ -1,8 +1,16 @@
 "use client";
 
 import { useState, useRef, type ReactNode } from "react";
-import { Trash2, Plus, ChevronDown, Star } from "lucide-react";
+import { Trash2, Plus, ChevronDown, Star, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DEFAULT_FORMULA_MODE,
   FORMULA_SUBMODES,
@@ -48,6 +56,10 @@ export function SupplierLinesEditor({
   dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
 }: CommonProps & { lines: DealSupplierLine[] }) {
   const [busy, setBusy] = useState(false);
+  // Pending finalize: holds the line id + the patch the user wants to
+  // apply. We surface a styled confirmation dialog and only commit the
+  // update on user confirm.
+  const [pending, setPending] = useState<{ id: string; patch: Record<string, unknown> } | null>(null);
 
   async function handleAdd() {
     setBusy(true);
@@ -67,25 +79,10 @@ export function SupplierLinesEditor({
     } catch { /* toast already shown */ } finally { setBusy(false); }
   }
 
-  async function handleUpdate(id: string, patch: Record<string, unknown>) {
-    // Stage flip to 'final' needs a confirmation + a recompute pass
-    // for all existing shipments under this line.
-    if (patch.price_stage === "final") {
-      const current = lines.find((l) => l.id === id);
-      if (current?.price_stage !== "final") {
-        const ok = confirm(
-          "Все существующие отгрузки под этим вариантом будут пересчитаны по окончательной цене. " +
-          "Текущая «Предварительная» цена сохранится в истории. Продолжить?",
-        );
-        if (!ok) { onChanged(); return; }
-      }
-    }
+  async function commitUpdate(id: string, patch: Record<string, unknown>) {
     const finalPatch = applyPriceFormulaPatch(patch, lines.find((l) => l.id === id));
     try {
       await updateSupplierLine(id, finalPatch);
-      // After a successful UPDATE: if the line is now (or stays) in
-      // final stage, refire pricing for existing shipments so
-      // deal_shipment_prices reflects the new config.
       const updated = lines.find((l) => l.id === id);
       const willBeFinal = (patch.price_stage as PriceStage | undefined) ?? updated?.price_stage;
       if (willBeFinal === "final") {
@@ -96,7 +93,33 @@ export function SupplierLinesEditor({
     } catch {}
   }
 
+  function handleUpdate(id: string, patch: Record<string, unknown>) {
+    // Stage flip to 'final' opens the styled confirmation dialog.
+    // Anything else commits immediately.
+    if (patch.price_stage === "final") {
+      const current = lines.find((l) => l.id === id);
+      if (current?.price_stage !== "final") {
+        setPending({ id, patch });
+        return;
+      }
+    }
+    void commitUpdate(id, patch);
+  }
+
+  // Build a short identifier for the pending variant — shown in the dialog title.
+  const pendingLine = pending ? lines.find((l) => l.id === pending.id) : null;
+  const pendingLabel = pendingLine
+    ? `${pendingLine.is_default ? "Основной" : `Вариант ${pendingLine.position}`} · ${pendingLine.quotation_type?.name ?? "без типа котировки"}`
+    : "";
+
   return (
+    <>
+    <FinalizeStageDialog
+      open={pending != null}
+      onOpenChange={(o) => { if (!o) setPending(null); }}
+      variantLabel={pendingLabel}
+      onConfirm={() => { if (pending) { void commitUpdate(pending.id, pending.patch); setPending(null); } }}
+    />
     <LinesEditorView
       side="supplier"
       lines={lines.map((l) => ({
@@ -133,6 +156,7 @@ export function SupplierLinesEditor({
       onDelete={handleDelete}
       onUpdate={handleUpdate}
     />
+    </>
   );
 }
 
@@ -160,6 +184,7 @@ export function BuyerLinesEditor({
   dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
 }: CommonProps & { lines: DealBuyerLine[] }) {
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<{ id: string; patch: Record<string, unknown> } | null>(null);
 
   async function handleAdd() {
     setBusy(true);
@@ -179,17 +204,7 @@ export function BuyerLinesEditor({
     } catch {} finally { setBusy(false); }
   }
 
-  async function handleUpdate(id: string, patch: Record<string, unknown>) {
-    if (patch.price_stage === "final") {
-      const current = lines.find((l) => l.id === id);
-      if (current?.price_stage !== "final") {
-        const ok = confirm(
-          "Все существующие отгрузки под этим вариантом будут пересчитаны по окончательной цене. " +
-          "Текущая «Предварительная» цена сохранится в истории. Продолжить?",
-        );
-        if (!ok) { onChanged(); return; }
-      }
-    }
+  async function commitUpdate(id: string, patch: Record<string, unknown>) {
     const finalPatch = applyPriceFormulaPatch(patch, lines.find((l) => l.id === id));
     try {
       await updateBuyerLine(id, finalPatch);
@@ -203,7 +218,30 @@ export function BuyerLinesEditor({
     } catch {}
   }
 
+  function handleUpdate(id: string, patch: Record<string, unknown>) {
+    if (patch.price_stage === "final") {
+      const current = lines.find((l) => l.id === id);
+      if (current?.price_stage !== "final") {
+        setPending({ id, patch });
+        return;
+      }
+    }
+    void commitUpdate(id, patch);
+  }
+
+  const pendingLine = pending ? lines.find((l) => l.id === pending.id) : null;
+  const pendingLabel = pendingLine
+    ? `${pendingLine.is_default ? "Основной" : `Вариант ${pendingLine.position}`} · ${pendingLine.quotation_type?.name ?? "без типа котировки"}`
+    : "";
+
   return (
+    <>
+    <FinalizeStageDialog
+      open={pending != null}
+      onOpenChange={(o) => { if (!o) setPending(null); }}
+      variantLabel={pendingLabel}
+      onConfirm={() => { if (pending) { void commitUpdate(pending.id, pending.patch); setPending(null); } }}
+    />
     <LinesEditorView
       side="buyer"
       lines={lines.map((l) => ({
@@ -240,6 +278,7 @@ export function BuyerLinesEditor({
       onDelete={handleDelete}
       onUpdate={handleUpdate}
     />
+    </>
   );
 }
 
@@ -598,6 +637,59 @@ function StageCell({ value, editing, onChange }: {
         </span>
       )}
     </div>
+  );
+}
+
+// Styled confirmation dialog shown before flipping a variant to
+// «Окончательная». Replaces the native confirm() popup — looks better
+// and matches DESIGN.md.
+function FinalizeStageDialog({
+  open, onOpenChange, onConfirm, variantLabel,
+}: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  onConfirm: () => void;
+  variantLabel: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+              <AlertTriangle className="h-5 w-5 text-amber-700" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <DialogTitle className="text-[15px]">
+                Перейти на окончательную цену?
+              </DialogTitle>
+              <DialogDescription className="text-[12px] text-stone-500">
+                Вариант: <span className="font-medium text-stone-700">{variantLabel}</span>
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+        <div className="text-[13px] text-stone-700 space-y-2">
+          <p>После переключения:</p>
+          <ul className="list-disc pl-5 space-y-1 text-stone-600">
+            <li>Все существующие отгрузки этого варианта будут <b>пересчитаны</b> по окончательной цене.</li>
+            <li>Новые отгрузки также будут считаться по окончательной формуле.</li>
+            <li>Текущая <span className="rounded bg-amber-100 px-1 text-[10px] font-medium uppercase tracking-wide text-amber-800">Предварительная</span> цена <b>сохранится в истории</b> и будет видна под полем «Цена».</li>
+          </ul>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Отмена
+          </Button>
+          <Button
+            onClick={() => { onConfirm(); onOpenChange(false); }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            Перейти на окончательную
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
