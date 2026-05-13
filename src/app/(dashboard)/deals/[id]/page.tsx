@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useState, useEffect, useRef, useContext, createContext } from "react";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -72,11 +72,23 @@ function resolveMime(file: File, ext: string): string {
   return MIME_BY_EXT[ext.toLowerCase()] ?? "application/octet-stream";
 }
 
-function Field({ label, value, suffix, editing, field, dealId, inputType }: {
+// Context lets every editable cell on this page refetch the deal
+// after a successful save. The BEFORE-UPDATE trigger on `deals`
+// recomputes derived columns (supplier_balance, buyer_debt,
+// preliminary_amount, contracted_amount) — without a refetch the UI
+// shows the stale derived values and the formula change looks
+// broken (e.g. flipping ЖД в цене didn't visibly update the balance).
+const DealReloadContext = createContext<(() => void) | null>(null);
+function useDealReload() {
+  return useContext(DealReloadContext);
+}
+
+function Field({ label, value, suffix, editing, field, dealId, inputType, onSaved }: {
   label: string; value: string | number | null | undefined; suffix?: string;
   editing?: boolean; field?: string; dealId?: string; onSaved?: () => void;
   inputType?: "text" | "number" | "date";
 }) {
+  const ctxReload = useDealReload();
   const isNumeric = typeof value === "number" || inputType === "number";
   const isDate = inputType === "date";
   const pendingVal = useRef<string | number | null | undefined>(undefined);
@@ -117,10 +129,15 @@ function Field({ label, value, suffix, editing, field, dealId, inputType }: {
             if (newVal !== value) {
               pendingVal.current = newVal as string | number | null;
               forceRender((n) => n + 1);
-              updateDeal(dealId, { [field]: newVal }).catch(() => {
-                pendingVal.current = undefined;
-                forceRender((n) => n + 1);
-              });
+              updateDeal(dealId, { [field]: newVal })
+                .then(() => {
+                  onSaved?.();
+                  ctxReload?.();
+                })
+                .catch(() => {
+                  pendingVal.current = undefined;
+                  forceRender((n) => n + 1);
+                });
             }
           }}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
@@ -145,16 +162,18 @@ function Field({ label, value, suffix, editing, field, dealId, inputType }: {
 }
 
 // Editable select for reference fields
-function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy }: {
+function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy, onSaved }: {
   editing: boolean;
   value: string;
   dealId: string;
   field: "supplier_currency" | "buyer_currency" | "logistics_currency";
   syncLegacy?: boolean;
+  onSaved?: () => void;
 }) {
   const pendingVal = useRef<string | undefined>(undefined);
   const [, forceRender] = useState(0);
   const shown = pendingVal.current ?? value;
+  const ctxReload = useDealReload();
   if (pendingVal.current !== undefined && value === pendingVal.current) {
     pendingVal.current = undefined;
   }
@@ -174,10 +193,12 @@ function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy }: {
         // Keep legacy deals.currency in sync with the supplier side so
         // dashboard / passport-table (still on the legacy column) stay consistent.
         if (syncLegacy) patch.currency = nv;
-        updateDeal(dealId, patch).catch(() => {
-          pendingVal.current = undefined;
-          forceRender((n) => n + 1);
-        });
+        updateDeal(dealId, patch)
+          .then(() => { onSaved?.(); ctxReload?.(); })
+          .catch(() => {
+            pendingVal.current = undefined;
+            forceRender((n) => n + 1);
+          });
       }}
       className="h-7 rounded border border-stone-300 hover:border-amber-400 bg-white pl-2 pr-6 text-[11px] focus:border-amber-500 focus:outline-none cursor-pointer"
     >
@@ -193,12 +214,13 @@ function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy }: {
 // supplier_balance by the DB trigger (see migrations 00052/00063).
 // Rationale: the supplier's price already includes the railway, so we
 // owe him the railway amount on top of the goods value.
-function RailwayInPriceToggle({ dealId, value, editing }: {
-  dealId: string; value: boolean; editing: boolean;
+function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
+  dealId: string; value: boolean; editing: boolean; onSaved?: () => void;
 }) {
   const pendingVal = useRef<boolean | undefined>(undefined);
   const [, forceRender] = useState(0);
   const shown = pendingVal.current ?? value;
+  const ctxReload = useDealReload();
   if (pendingVal.current !== undefined && value === pendingVal.current) {
     pendingVal.current = undefined;
   }
@@ -214,10 +236,12 @@ function RailwayInPriceToggle({ dealId, value, editing }: {
             const nv = e.target.checked;
             pendingVal.current = nv;
             forceRender((n) => n + 1);
-            updateDeal(dealId, { railway_in_price: nv }).catch(() => {
-              pendingVal.current = undefined;
-              forceRender((n) => n + 1);
-            });
+            updateDeal(dealId, { railway_in_price: nv })
+              .then(() => { onSaved?.(); ctxReload?.(); })
+              .catch(() => {
+                pendingVal.current = undefined;
+                forceRender((n) => n + 1);
+              });
           }}
           className={`h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 ${editing ? "" : "cursor-default"}`}
         />
@@ -229,13 +253,15 @@ function RailwayInPriceToggle({ dealId, value, editing }: {
   );
 }
 
-function EditableSelect({ label, value, displayValue, editing, field, dealId, options }: {
+function EditableSelect({ label, value, displayValue, editing, field, dealId, options, onSaved }: {
   label: string; value: string | null | undefined; displayValue: string;
   editing: boolean; field: string; dealId: string;
   options: { value: string; label: string }[];
+  onSaved?: () => void;
 }) {
   const pendingVal = useRef<string | undefined>(undefined);
   const shown = pendingVal.current !== undefined ? pendingVal.current : value;
+  const ctxReload = useDealReload();
   if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
 
   if (!editing) {
@@ -259,7 +285,9 @@ function EditableSelect({ label, value, displayValue, editing, field, dealId, op
           onChange={(e) => {
             const newVal = e.target.value || null;
             pendingVal.current = newVal ?? undefined;
-            updateDeal(dealId, { [field]: newVal }).catch(() => { pendingVal.current = undefined; });
+            updateDeal(dealId, { [field]: newVal })
+              .then(() => { onSaved?.(); ctxReload?.(); })
+              .catch(() => { pendingVal.current = undefined; });
           }}
           className="w-full h-8 rounded border border-stone-300 hover:border-amber-400 bg-white pl-2 pr-7 text-[13px] text-stone-800 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
         >
@@ -349,6 +377,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const logisticsCurrencySymbol = symbolOf(logisticsCurrency);
 
   return (
+    <DealReloadContext.Provider value={reload}>
     <div className="flex gap-4">
     <div className="space-y-4 flex-1 min-w-0">
       {/* Header */}
@@ -431,7 +460,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-[14px]">Поставщик</CardTitle>
-          <SectionCurrencyPicker editing={editing} value={supplierCurrency} dealId={deal.id} field="supplier_currency" syncLegacy />
+          <SectionCurrencyPicker editing={editing} value={supplierCurrency} dealId={deal.id} field="supplier_currency" syncLegacy onSaved={reload} />
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Header / scalar fields (one per side) */}
@@ -494,7 +523,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-[14px]">Покупатель</CardTitle>
-          <SectionCurrencyPicker editing={editing} value={buyerCurrency} dealId={deal.id} field="buyer_currency" />
+          <SectionCurrencyPicker editing={editing} value={buyerCurrency} dealId={deal.id} field="buyer_currency" onSaved={reload} />
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Header / scalar fields (one per side) */}
@@ -583,7 +612,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-[14px]">Логистика</CardTitle>
-          <SectionCurrencyPicker editing={editing} value={logisticsCurrency} dealId={deal.id} field="logistics_currency" />
+          <SectionCurrencyPicker editing={editing} value={logisticsCurrency} dealId={deal.id} field="logistics_currency" onSaved={reload} />
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
@@ -597,7 +626,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
-            <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} />
+            <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
             <EditableSelect label="Менеджер" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={logisticsCurrencySymbol} />
@@ -651,6 +680,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     {/* Mobile: floating chat button */}
     <MobileChatButton dealId={deal.id} />
     </div>
+    </DealReloadContext.Provider>
   );
 }
 
