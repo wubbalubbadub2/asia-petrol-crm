@@ -280,7 +280,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const [editing, setEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [numberDialogOpen, setNumberDialogOpen] = useState(false);
-  const { isAdmin } = useRole();
+  const { isAdmin, isWritable } = useRole();
   const [refs, setRefs] = useState<{
     suppliers: { value: string; label: string }[];
     buyers: { value: string; label: string }[];
@@ -359,7 +359,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold font-mono">{deal.deal_code}</h1>
-            {isAdmin && (
+            {isWritable && (
               <button
                 title="Изменить номер сделки"
                 onClick={() => setNumberDialogOpen(true)}
@@ -598,7 +598,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     {/* History drawer */}
     <AuditHistory open={historyOpen} onClose={() => setHistoryOpen(false)} dealId={deal.id} />
 
-    {isAdmin && (
+    {isWritable && (
       <ChangeDealNumberDialog
         open={numberDialogOpen}
         onOpenChange={setNumberDialogOpen}

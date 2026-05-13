@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste } from "lucide-react";
+import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -756,6 +756,11 @@ export default function RegistryPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addingIn, setAddingIn] = useState<string | null>(null); // which group is adding
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Header filters — narrow visible shipments without round-tripping
+  // the server. Combined with the tab (KG/KZ) which is server-side.
+  const [forwarderFilter, setForwarderFilter] = useState("");
+  const [dealFilter, setDealFilter] = useState("");
+  const [companyGroupFilter, setCompanyGroupFilter] = useState("");
 
   // Reset selection when tab switches — selected ids belong to the previous tab.
   useEffect(() => { setSelected(new Set()); }, [tab]);
@@ -788,8 +793,38 @@ export default function RegistryPage() {
     setSelected(new Set());
     reload();
   }
-  const groups = groupRecs(records);
+  // Apply header filters before grouping. Tab is already server-side
+  // (useRegistry pulls KG xor KZ); the rest narrow the rendered set.
+  const filteredRecords = useMemo(() => {
+    return records.filter((r) => {
+      if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
+      if (dealFilter && r.deal_id !== dealFilter) return false;
+      if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
+      return true;
+    });
+  }, [records, forwarderFilter, dealFilter, companyGroupFilter]);
+  const groups = groupRecs(filteredRecords);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
+
+  // Deals dropdown — derived from the current tab's records so we only
+  // list deals that actually have shipments here.
+  const dealOpts = useMemo(() => {
+    const seen = new Map<string, string>(); // id → code
+    for (const r of records) {
+      if (r.deal_id && r.deal?.deal_code && !seen.has(r.deal_id)) {
+        seen.set(r.deal_id, r.deal.deal_code);
+      }
+    }
+    return [...seen.entries()]
+      .map(([id, code]) => ({ id, label: code }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [records]);
+
+  const activeFilterCount =
+    (forwarderFilter ? 1 : 0) + (dealFilter ? 1 : 0) + (companyGroupFilter ? 1 : 0);
+  function clearRegistryFilters() {
+    setForwarderFilter(""); setDealFilter(""); setCompanyGroupFilter("");
+  }
 
   // Page-level reference data (loaded once, shared with inline ES cells)
   const [refs, setRefs] = useState<{
@@ -839,7 +874,35 @@ export default function RegistryPage() {
       </div>
       <div className="flex gap-1 border-b border-stone-200">
         {tabs.map((t) => <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-[13px] font-medium border-b-2 transition-colors ${tab === t.key ? "border-amber-500 text-amber-700" : "border-transparent text-stone-500 hover:text-stone-700"}`}>{t.label}</button>)}
-        <span className="ml-auto self-center text-[11px] text-stone-400">{records.length} записей | {groups.length} сделок</span>
+        <span className="ml-auto self-center text-[11px] text-stone-400">
+          {filteredRecords.length}{activeFilterCount > 0 ? ` из ${records.length}` : ""} записей | {groups.length} сделок
+        </span>
+      </div>
+
+      {/* Header filters — narrow the visible shipments by forwarder /
+          deal / company group. Tab (KG/KZ) is already a separate axis. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+        <select value={forwarderFilter} onChange={(e) => setForwarderFilter(e.target.value)}
+          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+          <option value="">Все экспедиторы</option>
+          {fwOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select value={dealFilter} onChange={(e) => setDealFilter(e.target.value)}
+          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+          <option value="">Все сделки</option>
+          {dealOpts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+        <select value={companyGroupFilter} onChange={(e) => setCompanyGroupFilter(e.target.value)}
+          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+          <option value="">Все группы компаний</option>
+          {cgOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {activeFilterCount > 0 && (
+          <Button size="sm" variant="ghost" onClick={clearRegistryFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600 justify-self-start">
+            <X className="h-3 w-3 mr-0.5" />
+            Сбросить ({activeFilterCount})
+          </Button>
+        )}
       </div>
 
       {/* Bulk-action bar — shows when at least one shipment is checked.

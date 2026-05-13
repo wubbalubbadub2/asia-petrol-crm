@@ -77,13 +77,18 @@ export default function DealsPage() {
   const [fuelTypeFilter, setFuelTypeFilter] = useState("");
   const [monthFilter, setMonthFilter] = useState("");
   const [forwarderFilter, setForwarderFilter] = useState("");
+  const [applicationFilter, setApplicationFilter] = useState("");
   const [refs, setRefs] = useState<{
     suppliers: { id: string; label: string }[];
     buyers: { id: string; label: string }[];
     factories: { id: string; label: string }[];
     fuelTypes: { id: string; label: string }[];
     forwarders: { id: string; label: string }[];
-  }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [] });
+    applications: { id: string; label: string }[];
+  }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [], applications: [] });
+  // deal_id → Set<application_id>, built once from application_deals.
+  // Used to filter the visible deals when an application is picked.
+  const [appDealMap, setAppDealMap] = useState<Map<string, Set<string>>>(new Map());
   const sbRef = useRef(createClient());
   const { isAdmin } = useRole();
 
@@ -96,13 +101,26 @@ export default function DealsPage() {
       sb.from("factories").select("id, name").eq("is_active", true).order("name"),
       sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-    ]).then(([s, b, f, ft, fw]) => {
+      sb.from("applications").select("id, application_number, date").order("date", { ascending: false }),
+      sb.from("application_deals").select("application_id, deal_id"),
+    ]).then(([s, b, f, ft, fw, apps, ad]) => {
+      const map = new Map<string, Set<string>>();
+      for (const row of (ad.data ?? []) as { application_id: string; deal_id: string }[]) {
+        let set = map.get(row.deal_id);
+        if (!set) { set = new Set(); map.set(row.deal_id, set); }
+        set.add(row.application_id);
+      }
+      setAppDealMap(map);
       setRefs({
         suppliers: (s.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
         buyers: (b.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
         factories: (f.data ?? []).map((r) => ({ id: r.id, label: r.name })),
         fuelTypes: (ft.data ?? []).map((r) => ({ id: r.id, label: r.name })),
         forwarders: (fw.data ?? []).map((r) => ({ id: r.id, label: r.name })),
+        applications: (apps.data ?? []).map((r: { id: string; application_number: string | null; date: string }) => ({
+          id: r.id,
+          label: `${r.application_number ?? "—"} · ${new Date(r.date).toLocaleDateString("ru-RU")}`,
+        })),
       });
     });
   }, []);
@@ -153,6 +171,7 @@ export default function DealsPage() {
       if (fuelTypeFilter && d.fuel_type_id !== fuelTypeFilter) return false;
       if (monthFilter && d.month !== monthFilter) return false;
       if (forwarderFilter && d.forwarder_id !== forwarderFilter) return false;
+      if (applicationFilter && !appDealMap.get(d.id)?.has(applicationFilter)) return false;
       if (!q) return true;
       return (
         d.deal_code?.toLowerCase().includes(q) ||
@@ -165,20 +184,26 @@ export default function DealsPage() {
         false
       );
     });
-  }, [deals, search, supplierFilter, buyerFilter, factoryFilter, fuelTypeFilter, monthFilter, forwarderFilter]);
+  }, [deals, search, supplierFilter, buyerFilter, factoryFilter, fuelTypeFilter, monthFilter, forwarderFilter, applicationFilter, appDealMap]);
 
   const activeFilterCount =
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
-    (fuelTypeFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (forwarderFilter ? 1 : 0);
+    (fuelTypeFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (forwarderFilter ? 1 : 0) +
+    (applicationFilter ? 1 : 0);
 
   function clearAllFilters() {
     setSupplierFilter(""); setBuyerFilter(""); setFactoryFilter("");
     setFuelTypeFilter(""); setMonthFilter(""); setForwarderFilter("");
+    setApplicationFilter("");
     setSearch("");
   }
 
   return (
     <div className="space-y-4">
+      {/* Sticky top: title row + tabs + filters. Stays visible while the
+          passport table scrolls underneath. negative-margin-x lets the
+          sticky background bleed past the page padding from layout. */}
+      <div className="sticky top-0 z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 bg-background pt-4 pb-3 space-y-3 border-b border-stone-200">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Сделки</h1>
         <div className="flex items-center gap-2">
@@ -240,7 +265,7 @@ export default function DealsPage() {
             {filtered.length} {filtered.length === 1 ? "сделка" : "сделок"}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2">
           <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}
             className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
             <option value="">Все поставщики</option>
@@ -271,7 +296,13 @@ export default function DealsPage() {
             <option value="">Все экспедиторы</option>
             {refs.forwarders.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
+          <select value={applicationFilter} onChange={(e) => setApplicationFilter(e.target.value)}
+            className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[11px] focus:border-amber-400 focus:outline-none cursor-pointer">
+            <option value="">Все приложения</option>
+            {refs.applications.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
         </div>
+      </div>
       </div>
 
       {/* Passport views — all tabs use PassportTable */}

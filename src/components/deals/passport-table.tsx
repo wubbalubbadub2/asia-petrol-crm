@@ -394,8 +394,82 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
             </tr>
           ))}
+          {/* Totals: sum numeric columns across visible (filtered) rows.
+              Mirrors the column ordering above. Empty cells under
+              identity / contract-text columns keep the layout aligned.
+              Mixed currencies are summed as raw numbers — the dashboard
+              already does the same, and per-side currency picker is per
+              deal, not a global field. */}
+          <PassportTotalsRow deals={deals} />
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Totals row — pure presentational, computes sums on the fly.
+function PassportTotalsRow({ deals }: { deals: Deal[] }) {
+  const sum = (pick: (d: Deal) => number | null | undefined): number => {
+    let s = 0;
+    for (const d of deals) {
+      const v = pick(d);
+      if (typeof v === "number" && Number.isFinite(v)) s += v;
+    }
+    return s;
+  };
+  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  const fmtVol = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+  // Cell builder — keeps the markup consistent.
+  const num = (band: "amber" | "blue" | "stone" | "purple", v: number, digits: 2 | 3 = 2) => (
+    <td className={`border-r px-2 py-1 text-right font-mono tabular-nums font-medium ${
+      band === "amber" ? "bg-amber-100/60 text-amber-900" :
+      band === "blue"  ? "bg-blue-100/60 text-blue-900" :
+      band === "purple" ? "bg-purple-100/60 text-purple-900" :
+      "bg-stone-100/60 text-stone-700"
+    }`}>{digits === 3 ? fmtVol(v) : fmt(v)}</td>
+  );
+  const blank = (band: "amber" | "blue" | "stone" | "purple") => (
+    <td className={`border-r px-2 py-1 ${
+      band === "amber" ? "bg-amber-100/60" :
+      band === "blue"  ? "bg-blue-100/60" :
+      band === "purple" ? "bg-purple-100/60" :
+      "bg-stone-100/60"
+    }`}></td>
+  );
+  return (
+    <tr className="border-t-2 border-stone-300 sticky bottom-0 z-10">
+      {/* Сделка (5 cols): label spans them */}
+      <td colSpan={5} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[11px] font-semibold text-stone-600 uppercase tracking-wider">
+        Итого ({deals.length})
+      </td>
+      {/* Поставщик (10 cols): name/contract/basis blank + numeric sums */}
+      {blank("amber")}{blank("amber")}{blank("amber")}
+      {num("amber", sum((d) => d.supplier_contracted_volume), 3)}
+      {num("amber", sum((d) => d.supplier_contracted_amount))}
+      {num("amber", sum((d) => d.supplier_price))}
+      {num("amber", sum((d) => d.supplier_shipped_amount))}
+      {num("amber", sum((d) => d.supplier_shipped_volume), 3)}
+      {num("amber", sum((d) => d.supplier_payment))}
+      {num("amber", sum((d) => d.supplier_balance))}
+      {/* Группы компании (2 cols) */}
+      {blank("purple")}{blank("purple")}
+      {/* Покупатель (11 cols) */}
+      {blank("blue")}{blank("blue")}{blank("blue")}
+      {num("blue", sum((d) => d.buyer_contracted_volume), 3)}
+      {num("blue", sum((d) => d.buyer_contracted_amount))}
+      {num("blue", sum((d) => d.buyer_price))}
+      {num("blue", sum((d) => d.buyer_ordered_volume), 3)}
+      {num("blue", sum((d) => d.buyer_shipped_volume), 3)}
+      {num("blue", sum((d) => d.buyer_shipped_amount))}
+      {num("blue", sum((d) => d.buyer_payment))}
+      {num("blue", sum((d) => d.buyer_debt))}
+      {/* Логистика (8 cols): expeditor / group blank, then numbers */}
+      {blank("stone")}{blank("stone")}
+      {num("stone", sum((d) => d.preliminary_tonnage), 3)}
+      {num("stone", sum((d) => d.preliminary_amount))}
+      {num("stone", sum((d) => d.actual_shipped_volume), 3)}
+      {num("stone", sum((d) => d.invoice_amount))}
+      {blank("stone")}{blank("stone")}
+    </tr>
   );
 }
