@@ -301,7 +301,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   useEffect(() => {
     if (!dealId) return;
     sb.current.from("deals")
-      .select("id, deal_code, year, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
+      .select("id, deal_code, year, month, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
       .eq("id", dealId).single()
       .then(({ data }) => { if (data) setDeal(data as unknown as DRef); });
   }, [dealId]);
@@ -309,6 +309,9 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   // Auto-lookup tariff. The tariffs table is keyed by (dep, dest, fuel,
   // forwarder, month, year) — every dimension is required, otherwise
   // duplicate rows for different years cause the lookup to silently fail.
+  // Month resolution priority: form-level pick → row's shipment_month
+  // → deal.logistics_shipment_month (deal-level override, migration
+  // 00069) → deal.month (the deal's own calendar month).
   useEffect(() => {
     if (!deal || tariffVal) return;
     const firstRec = group.records[0];
@@ -316,7 +319,10 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
     const destId = deal.buyer_destination_station_id || firstRec?.destination_station_id;
     const ftId = deal.fuel_type_id;
     const fwId = deal.forwarder_id;
-    const month = sm || firstRec?.shipment_month || deal.month;
+    const month = sm
+      || firstRec?.shipment_month
+      || (deal as { logistics_shipment_month?: string | null }).logistics_shipment_month
+      || deal.month;
     const year = deal.year;
     if (!depId || !destId || !ftId || !fwId || !month || !year) return;
     sb.current.from("tariffs").select("planned_tariff")
@@ -418,7 +424,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 type Ref = { id: string; name: string };
 type DRef2 = { id: string; short_name: string | null; full_name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
-type DRef = { id: string; deal_code: string; year: number | null; month: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
+type DRef = { id: string; deal_code: string; year: number | null; month: string | null; logistics_shipment_month?: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
   const sb = useRef(createClient());
@@ -448,7 +454,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      sb.current.from("deals").select("id, deal_code, year, month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
+      sb.current.from("deals").select("id, deal_code, year, month, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
       sb.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
@@ -463,11 +469,15 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
 
   // Auto-fill from deal. Company group is intentionally NOT auto-filled:
   // a shipment chain can involve two different groups, so logistics always picks it manually.
+  // Месяц отгрузки: prefer the deal-level logistics_shipment_month
+  // override (migration 00069) over the deal's own calendar month.
   useEffect(() => {
     if (!dealId) return;
     const d = deals.find((x) => x.id === dealId);
     if (!d) return;
     if (d.month) setMonth(d.month);
+    const shipMonthOverride = (d as { logistics_shipment_month?: string | null }).logistics_shipment_month;
+    if (shipMonthOverride) setShipMonth(shipMonthOverride);
     if (d.fuel_type_id) setFtId(d.fuel_type_id);
     if (d.factory_id) setFacId(d.factory_id);
     if (d.forwarder_id) setFwId(d.forwarder_id);

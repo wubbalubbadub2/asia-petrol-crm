@@ -620,6 +620,17 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <EditableSelect label="Группа компании" value={deal.logistics_company_group_id} displayValue={deal.logistics_company_group?.name ?? "—"} editing={editing} field="logistics_company_group_id" dealId={deal.id} options={refs.companyGroups} />
             <EditableSelect label="Ст. отправления" value={deal.supplier_departure_station_id} displayValue={deal.supplier_departure_station?.name ?? "—"} editing={editing} field="supplier_departure_station_id" dealId={deal.id} options={refs.stations} />
             <EditableSelect label="Ст. назначения" value={deal.buyer_destination_station_id} displayValue={deal.buyer_destination_station?.name ?? "—"} editing={editing} field="buyer_destination_station_id" dealId={deal.id} options={refs.stations} />
+            {/* Месяц отгрузки для поиска тарифа. NULL → fall back на
+                deal.month. Без календаря — просто dropdown месяцев. */}
+            <EditableSelect
+              label="Месяц отгрузки"
+              value={deal.logistics_shipment_month ?? null}
+              displayValue={deal.logistics_shipment_month ?? `${deal.month} (мес. сделки)`}
+              editing={editing}
+              field="logistics_shipment_month"
+              dealId={deal.id}
+              options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
+            />
             <Field label="Тариф план" value={deal.planned_tariff} suffix={logisticsCurrencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
             <Field label="Тариф факт" value={deal.actual_tariff} suffix={logisticsCurrencySymbol} editing={editing} field="actual_tariff" dealId={deal.id} inputType="number" />
             <Field label="Объем плановый" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />

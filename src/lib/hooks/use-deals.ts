@@ -53,6 +53,8 @@ export type Deal = {
   buyer_debt: number | null;
   forwarder_id: string | null;
   logistics_company_group_id: string | null;
+  // Migration 00069 — overrides deal.month for tariff lookups when set.
+  logistics_shipment_month?: string | null;
   planned_tariff: number | null;
   preliminary_tonnage: number | null;
   preliminary_amount: number | null;
