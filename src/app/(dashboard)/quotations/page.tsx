@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, ArrowLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, ArrowLeft, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -257,14 +257,34 @@ export default function QuotationsPage() {
   const [activeTab, setActiveTab] = useState<"products" | "summary">("products");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<QuotationProductType | null>(null);
+  const [exporting, setExporting] = useState(false);
   const { data: productTypes, loading: typesLoading, reload: reloadTypes } = useQuotationProductTypes();
   const { isWritable } = useRole();
+
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      // Dynamic import so exceljs stays out of the initial bundle.
+      const { exportQuotationsToExcel } = await import("@/lib/exports/quotations-excel");
+      const n = await exportQuotationsToExcel({}); // all years
+      toast.success(`Файл готов: ${n} строк`);
+    } catch (e) {
+      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Котировки</h1>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} title="Экспорт всех котировок в Excel">
+            {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+            Excel
+          </Button>
           {isWritable && (
             <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
               <Plus className="mr-1 h-3.5 w-3.5" />
