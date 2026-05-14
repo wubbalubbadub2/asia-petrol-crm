@@ -60,14 +60,9 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <Link href="/settings" className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-700">
-            <ArrowLeft className="h-3 w-3" /> Настройки
-          </Link>
-          <h1 className="text-xl font-bold">Пользователи</h1>
-        </div>
-      </div>
+      <Link href="/settings" className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-700">
+        <ArrowLeft className="h-3 w-3" /> Настройки
+      </Link>
       <UsersManager initialRows={rows} />
     </div>
   );

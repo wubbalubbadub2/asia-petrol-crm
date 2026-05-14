@@ -79,9 +79,12 @@ export function useDealSupplierLines(dealId: string | null) {
   const [loading, setLoading] = useState(true);
   const sb = useRef(createClient());
 
+  // Same rationale as useDeal: don't toggle loading=true on reload,
+  // otherwise the parent that gates render on `loading` would unmount
+  // the variant card and lose all local state. Initial mount handles
+  // it via useState; reloads silently swap data.
   const load = useCallback(async () => {
     if (!dealId) { setLoading(false); return; }
-    setLoading(true);
     const { data, error } = await sb.current
       .from("deal_supplier_lines")
       .select(SUPPLIER_SELECT)
@@ -104,7 +107,6 @@ export function useDealBuyerLines(dealId: string | null) {
 
   const load = useCallback(async () => {
     if (!dealId) { setLoading(false); return; }
-    setLoading(true);
     const { data, error } = await sb.current
       .from("deal_buyer_lines")
       .select(BUYER_SELECT)
@@ -212,9 +214,10 @@ export function useDealLineRollups(dealId: string | null) {
   const [loading, setLoading] = useState(true);
   const sb = useRef(createClient());
 
+  // Same pattern: don't toggle loading on subsequent loads, just swap
+  // data silently so the page stays mounted across edits.
   const load = useCallback(async () => {
     if (!dealId) { setLoading(false); return; }
-    setLoading(true);
 
     const [regRes, priceRes] = await Promise.all([
       sb.current.from("shipment_registry")

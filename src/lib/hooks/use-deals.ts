@@ -166,9 +166,16 @@ export function useDeal(id: string | null) {
   const [loading, setLoading] = useState(true);
   const supabaseRef2 = useRef(createClient());
 
+  // Note on `loading`: we deliberately do NOT toggle it back to true
+  // on subsequent loads. The deal-detail page has
+  //   `if (loading) return <p>Загрузка сделки...</p>`
+  // which would unmount the entire tree on every refetch — and the
+  // page is refetched after every field edit (DealReloadContext).
+  // Unmount/remount resets scroll, focus, and component-local state
+  // (expanded panels, pendingVal refs, etc). Initial mount toggles
+  // loading once via `useState(true)`; reloads silently swap `data`.
   const load = useCallback(async () => {
     if (!id) { setLoading(false); return; }
-    setLoading(true);
     const { data, error } = await supabaseRef2.current
       .from("deals")
       .select(DEAL_SELECT)
