@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { toast } from "sonner";
 
 type DealCompanyGroup = {
@@ -14,6 +15,7 @@ type DealCompanyGroup = {
   company_group_id: string;
   price: number | null;
   contract_ref: string | null;
+  currency: string | null;
   company_group: { name: string } | null;
 };
 
@@ -117,21 +119,28 @@ export function DealCompanyChain({
             )}
           </div>
 
-          {sorted.map((cg) => (
-            <div key={cg.id} className="flex items-center gap-2">
-              <span className="text-stone-300 text-lg">→</span>
-              <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-center min-w-[140px]">
-                <p className="text-[10px] text-purple-600 uppercase font-medium">Группа {cg.position}</p>
-                <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{cg.company_group?.name ?? "—"}</p>
-                {cg.price != null && (
-                  <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
-                    {fmt(cg.price)} {supplierCurrencySymbol}
-                  </p>
-                )}
-                {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
+          {sorted.map((cg) => {
+            // Per-group currency override; falls back to the supplier
+            // side's symbol when the manager hasn't picked one yet.
+            const groupSym = cg.currency
+              ? currencySymbol(cg.currency)
+              : supplierCurrencySymbol;
+            return (
+              <div key={cg.id} className="flex items-center gap-2">
+                <span className="text-stone-300 text-lg">→</span>
+                <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-center min-w-[140px]">
+                  <p className="text-[10px] text-purple-600 uppercase font-medium">Группа {cg.position}</p>
+                  <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{cg.company_group?.name ?? "—"}</p>
+                  {cg.price != null && (
+                    <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
+                      {fmt(cg.price)} {groupSym}
+                    </p>
+                  )}
+                  {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <span className="text-stone-300 text-lg">→</span>
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center min-w-[140px]">
@@ -185,10 +194,11 @@ export function DealCompanyChain({
               </p>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
+                <div className="grid grid-cols-[24px_1fr_140px_90px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
                   <div>#</div>
                   <div>Компания</div>
-                  <div>Цена ({supplierCurrencySymbol})</div>
+                  <div>Цена</div>
+                  <div>Валюта</div>
                   <div>№ приложения / договора</div>
                   <div></div>
                 </div>
@@ -198,7 +208,7 @@ export function DealCompanyChain({
                   return (
                     <div
                       key={cg.id}
-                      className="grid grid-cols-[24px_1fr_140px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
+                      className="grid grid-cols-[24px_1fr_140px_90px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
                     >
                       <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
 
@@ -232,6 +242,24 @@ export function DealCompanyChain({
                         }}
                         className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
                       />
+
+                      {/* Per-group currency override. Empty = inherit
+                          supplier-side currency for display. */}
+                      <div className="relative">
+                        <select
+                          value={cg.currency ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value || null;
+                            if (v !== cg.currency) updateGroup(cg.id, { currency: v });
+                          }}
+                          className="h-8 w-full rounded border border-stone-300 bg-white px-2 pr-6 text-[12px] text-stone-800 hover:border-amber-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
+                          title="Валюта группы (пусто — наследует валюту поставщика)"
+                        >
+                          <option value="">— ({supplierCurrencySymbol})</option>
+                          {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+                      </div>
 
                       <Input
                         defaultValue={cg.contract_ref ?? ""}
