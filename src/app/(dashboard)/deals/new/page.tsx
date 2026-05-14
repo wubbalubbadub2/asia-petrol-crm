@@ -119,20 +119,24 @@ export default function NewDealPage() {
   const [logisticsCompanyGroupId, setLogisticsCompanyGroupId] = useState("");
   const [plannedTariff, setPlannedTariff] = useState("");
   const [preliminaryTonnage, setPreliminaryTonnage] = useState("");
+  // Логистика: месяц отгрузки. Когда задан — tariff lookup идёт за
+  // этот месяц, а не за месяц создания сделки (migration 00069).
+  const [logisticsShipmentMonth, setLogisticsShipmentMonth] = useState("");
 
   // Auto-lookup tariff. Driven by the buyer's default variant's destination
   // station (variant 0). Per-variant tariff lookup isn't a thing yet —
   // logistics tariff is one row on the deal.
   useEffect(() => {
     const buyerDefaultStationId = buyerVariants[0]?.stationId || "";
-    if (!forwarderId || !buyerDefaultStationId || !month || !fuelTypeId) return;
+    const lookupMonth = logisticsShipmentMonth || month;
+    if (!forwarderId || !buyerDefaultStationId || !lookupMonth || !fuelTypeId) return;
     const supabase = createClient();
     supabase.from("tariffs")
       .select("planned_tariff")
       .eq("forwarder_id", forwarderId)
       .eq("destination_station_id", buyerDefaultStationId)
       .eq("fuel_type_id", fuelTypeId)
-      .eq("month", month)
+      .eq("month", lookupMonth)
       .eq("year", year)
       .limit(1)
       .single()
@@ -141,7 +145,7 @@ export default function NewDealPage() {
           setPlannedTariff(String(data.planned_tariff));
         }
       });
-  }, [forwarderId, buyerVariants, month, fuelTypeId, year]);
+  }, [forwarderId, buyerVariants, month, fuelTypeId, year, logisticsShipmentMonth]);
 
   // Managers
   const [supplierManagerId, setSupplierManagerId] = useState("");
@@ -213,6 +217,7 @@ export default function NewDealPage() {
       buyer_discount: bv0.discount ? parseFloat(bv0.discount) : null,
       forwarder_id: forwarderId || null,
       logistics_company_group_id: logisticsCompanyGroupId || null,
+      logistics_shipment_month: logisticsShipmentMonth || null,
       planned_tariff: plannedTariff ? parseFloat(plannedTariff) : null,
       preliminary_tonnage: preliminaryTonnage ? parseFloat(preliminaryTonnage) : null,
       supplier_manager_id: supplierManagerId || null,
@@ -557,6 +562,19 @@ export default function NewDealPage() {
               onChange={setLogisticsCompanyGroupId}
               options={companyGroups.map((c) => ({ value: c.id, label: c.name }))}
             />
+            <div>
+              <Label className="text-[12px] text-stone-500">
+                Месяц отгрузки <span className="text-[10px] text-stone-400">(по умолч. — мес. сделки)</span>
+              </Label>
+              <select
+                value={logisticsShipmentMonth}
+                onChange={(e) => setLogisticsShipmentMonth(e.target.value)}
+                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="">— (мес. сделки)</option>
+                {MONTHS_RU.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
             <div>
               <Label className="text-[12px] text-stone-500">Тариф план</Label>
               <Input type="number" step="0.01" value={plannedTariff} onChange={(e) => setPlannedTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
