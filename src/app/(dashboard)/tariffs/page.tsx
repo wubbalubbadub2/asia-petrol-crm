@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Plus, Filter, Trash2 } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Plus, Filter, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -326,6 +327,13 @@ export default function TariffsPage() {
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [showAdd, setShowAdd] = useState(false);
+  // Per-column filters. Each holds the selected id (or month name for month).
+  const [destFilter, setDestFilter] = useState("");
+  const [depFilter, setDepFilter] = useState("");
+  const [forwarderFilter, setForwarderFilter] = useState("");
+  const [fuelFilter, setFuelFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [factoryFilter, setFactoryFilter] = useState("");
 
   // References for inline edit dropdowns
   const [refs, setRefs] = useState<{ stations: Station[]; forwarders: Forwarder[]; fuelTypes: FuelType[]; factories: Factory[] }>({ stations: [], forwarders: [], fuelTypes: [], factories: [] });
@@ -392,6 +400,24 @@ export default function TariffsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearFilter]);
 
+  const filtered = useMemo(() => tariffs.filter((t) => {
+    if (destFilter      && t.destination_station_id !== destFilter)      return false;
+    if (depFilter       && t.departure_station_id   !== depFilter)       return false;
+    if (forwarderFilter && t.forwarder_id           !== forwarderFilter) return false;
+    if (fuelFilter      && t.fuel_type_id           !== fuelFilter)      return false;
+    if (monthFilter     && t.month                  !== monthFilter)     return false;
+    if (factoryFilter   && t.factory_id             !== factoryFilter)   return false;
+    return true;
+  }), [tariffs, destFilter, depFilter, forwarderFilter, fuelFilter, monthFilter, factoryFilter]);
+
+  const activeFilterCount =
+    (destFilter ? 1 : 0) + (depFilter ? 1 : 0) + (forwarderFilter ? 1 : 0)
+    + (fuelFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (factoryFilter ? 1 : 0);
+  function clearFilters() {
+    setDestFilter(""); setDepFilter(""); setForwarderFilter("");
+    setFuelFilter(""); setMonthFilter(""); setFactoryFilter("");
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -417,9 +443,50 @@ export default function TariffsPage() {
             className="w-20 h-7 text-[12px]"
           />
         </div>
+        {activeFilterCount > 0 && (
+          <Button size="sm" variant="ghost" onClick={clearFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600">
+            <X className="h-3 w-3 mr-0.5" />
+            Сбросить ({activeFilterCount})
+          </Button>
+        )}
         <span className="text-[11px] text-stone-400 ml-auto">
-          {tariffs.length} тарифов
+          {filtered.length}{activeFilterCount > 0 ? ` из ${tariffs.length}` : ""} тарифов
         </span>
+      </div>
+
+      {/* Per-column filters. Все searchable — длинные списки станций
+          / экспедиторов остаются навигируемыми через поиск внутри. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        <SearchableSelect
+          value={destFilter} onChange={setDestFilter}
+          options={refs.stations.map((s) => ({ value: s.id, label: s.name }))}
+          placeholder="Все ст. назначения" searchPlaceholder="Поиск станции…"
+        />
+        <SearchableSelect
+          value={depFilter} onChange={setDepFilter}
+          options={refs.stations.map((s) => ({ value: s.id, label: s.name }))}
+          placeholder="Все ст. отправления" searchPlaceholder="Поиск станции…"
+        />
+        <SearchableSelect
+          value={forwarderFilter} onChange={setForwarderFilter}
+          options={refs.forwarders.map((f) => ({ value: f.id, label: f.name }))}
+          placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
+        />
+        <SearchableSelect
+          value={fuelFilter} onChange={setFuelFilter}
+          options={refs.fuelTypes.map((f) => ({ value: f.id, label: f.name }))}
+          placeholder="Все ГСМ" searchPlaceholder="Поиск ГСМ…"
+        />
+        <SearchableSelect
+          value={monthFilter} onChange={setMonthFilter}
+          options={MONTHS_RU_FULL.map((m) => ({ value: m, label: m }))}
+          placeholder="Все месяцы" searchPlaceholder="Поиск месяца…"
+        />
+        <SearchableSelect
+          value={factoryFilter} onChange={setFactoryFilter}
+          options={refs.factories.map((f) => ({ value: f.id, label: f.name }))}
+          placeholder="Все заводы" searchPlaceholder="Поиск завода…"
+        />
       </div>
 
       {loading ? (
@@ -432,9 +499,22 @@ export default function TariffsPage() {
             variant="outline"
             className="mt-2"
             onClick={() => setShowAdd(true)}
-          >
+            >
             <Plus className="mr-1 h-3.5 w-3.5" />
             Добавить первый тариф
+          </Button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
+          <p className="text-sm text-stone-500">Под фильтры ничего не подошло</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={clearFilters}
+          >
+            <X className="mr-1 h-3.5 w-3.5" />
+            Сбросить фильтры
           </Button>
         </div>
       ) : (
@@ -454,7 +534,7 @@ export default function TariffsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tariffs.map((t) => {
+              {filtered.map((t) => {
                 const stationOpts = refs.stations.map((s) => ({ value: s.id, label: s.name }));
                 const forwarderOpts = refs.forwarders.map((f) => ({ value: f.id, label: f.name }));
                 const fuelOpts = refs.fuelTypes.map((f) => ({ value: f.id, label: f.name }));
