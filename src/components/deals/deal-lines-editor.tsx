@@ -482,10 +482,17 @@ function LinesEditorView({
                 onChange={(v) => onUpdate(l.id, { price: v })}
               />
               {l.price_stage === "final" && l.preliminary_price != null && (
-                <div className="mt-1 text-[10px] text-stone-400">
-                  Предв.: <span className="font-mono tabular-nums">{l.preliminary_price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</span>
+                <div className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1">
+                  <span className="rounded bg-amber-200/70 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-amber-900">
+                    Предв.
+                  </span>
+                  <span className="font-mono tabular-nums text-[12px] font-medium text-amber-900">
+                    {l.preliminary_price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}
+                  </span>
                   {l.preliminary_set_at && (
-                    <> · зафикс. {new Date(l.preliminary_set_at).toLocaleDateString("ru-RU")}</>
+                    <span className="text-[10px] text-amber-700/80">
+                      · зафикс. {new Date(l.preliminary_set_at).toLocaleDateString("ru-RU")}
+                    </span>
                   )}
                 </div>
               )}
