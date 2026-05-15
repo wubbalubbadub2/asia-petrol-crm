@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Download, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 type ProductType = { id: string; name: string; sub_name: string | null };
 type DailyQuotation = {
@@ -146,6 +149,32 @@ export function QuotationSummary() {
     return val.toFixed(3);
   }
 
+  // Excel export — same matrix the user sees on screen.
+  const [exporting, setExporting] = useState(false);
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { exportQuotationSummaryToExcel } = await import("@/lib/exports/quotations-excel");
+      const rows = productTypes.map((pt) => ({
+        productId: pt.id,
+        productName: pt.name,
+        months: Array.from({ length: 12 }, (_, i) => ({
+          avg: getAvg(pt.id, i + 1),
+          fixed: getFixed(pt.id, i + 1),
+          trigger: getTrigger(pt.id, i + 1),
+        })),
+        yearAvg: getYearAvg(pt.id),
+      }));
+      const n = await exportQuotationSummaryToExcel({ year, triggerDays, fixedDay, rows });
+      toast.success(`Файл готов: ${n} продуктов`);
+    } catch (e) {
+      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Загрузка...</p>;
 
   return (
@@ -163,6 +192,10 @@ export function QuotationSummary() {
           <Label className="text-[12px]">Тригер дней:</Label>
           <Input type="number" min={1} max={90} value={triggerDays} onChange={(e) => setTriggerDays(Number(e.target.value))} className="w-16 h-8 text-[13px]" />
         </div>
+        <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} className="ml-auto" title="Экспорт свода в Excel">
+          {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+          Excel
+        </Button>
       </div>
 
       {productTypes.length === 0 ? (

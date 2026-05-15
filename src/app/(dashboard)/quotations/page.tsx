@@ -169,6 +169,25 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
   function prevMonth() { if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1); }
   function nextMonth() { if (month === 12) { setMonth(1); setYear(year + 1); } else setMonth(month + 1); }
 
+  // Excel export — this product's quotations across all dates.
+  const [exporting, setExporting] = useState(false);
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { exportQuotationsToExcel } = await import("@/lib/exports/quotations-excel");
+      const n = await exportQuotationsToExcel({
+        productTypeId: productType.id,
+        productName: productType.name,
+      });
+      toast.success(`Файл готов: ${n} строк`);
+    } catch (e) {
+      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -177,6 +196,10 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
           <h2 className="text-lg font-bold">{productType.name}</h2>
           {productType.sub_name && <p className="text-[12px] text-stone-500">{productType.sub_name}</p>}
         </div>
+        <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} title="Экспорт котировок этой категории в Excel">
+          {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+          Excel
+        </Button>
         <div className="ml-auto flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
           <span className="text-sm font-medium min-w-[130px] text-center capitalize">{MONTHS_RU[month - 1]} {year}</span>
@@ -257,34 +280,14 @@ export default function QuotationsPage() {
   const [activeTab, setActiveTab] = useState<"products" | "summary">("products");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<QuotationProductType | null>(null);
-  const [exporting, setExporting] = useState(false);
   const { data: productTypes, loading: typesLoading, reload: reloadTypes } = useQuotationProductTypes();
   const { isWritable } = useRole();
-
-  async function handleExport() {
-    if (exporting) return;
-    setExporting(true);
-    try {
-      // Dynamic import so exceljs stays out of the initial bundle.
-      const { exportQuotationsToExcel } = await import("@/lib/exports/quotations-excel");
-      const n = await exportQuotationsToExcel({}); // all years
-      toast.success(`Файл готов: ${n} строк`);
-    } catch (e) {
-      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
-    } finally {
-      setExporting(false);
-    }
-  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Котировки</h1>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} title="Экспорт всех котировок в Excel">
-            {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
-            Excel
-          </Button>
           {isWritable && (
             <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
               <Plus className="mr-1 h-3.5 w-3.5" />
