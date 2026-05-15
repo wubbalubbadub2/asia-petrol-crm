@@ -58,18 +58,21 @@ export function PriceCalculator() {
     setCalculating(true);
 
     if (mode === "average_month") {
-      const { data } = await supabase
-        .from("quotation_monthly_averages")
-        .select("avg_price")
-        .eq("product_type_id", selectedType)
-        .eq("year", year)
-        .eq("month", month)
-        .single();
+      // Use the compute_monthly_quotation_avg RPC (migration 00067)
+      // which averages the raw `quotations` table on demand. The
+      // `quotation_monthly_averages` cache is not auto-refreshed by
+      // any trigger and was returning null for months the user
+      // edited after the last manual refresh.
+      const { data } = await supabase.rpc(
+        "compute_monthly_quotation_avg" as never,
+        { p_product_type_id: selectedType, p_year: year, p_month: month } as never,
+      );
+      const avg = typeof data === "number" ? data : null;
 
       const result = calculatePrice({
         mode,
         discount,
-        monthlyAverage: data?.avg_price ?? null,
+        monthlyAverage: avg,
       });
       setQuotation(result.quotation);
       setPrice(result.price);

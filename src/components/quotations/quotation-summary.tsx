@@ -1,18 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type ProductType = { id: string; name: string; sub_name: string | null };
-type MonthlyAvg = {
-  product_type_id: string;
-  year: number;
-  month: number;
-  avg_price: number | null;
-};
 type DailyQuotation = {
   product_type_id: string;
   date: string;
@@ -28,56 +22,81 @@ export function QuotationSummary() {
   const [triggerDays, setTriggerDays] = useState(35);
   const [fixedDay, setFixedDay] = useState(15);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
-  const [averages, setAverages] = useState<MonthlyAvg[]>([]);
   const [dailyQuotes, setDailyQuotes] = useState<DailyQuotation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const [{ data: types }, { data: avgs }, { data: daily }] = await Promise.all([
-        sbRef.current
-          .from("quotation_product_types")
-          .select("id, name, sub_name")
-          .eq("is_active", true)
-          .order("sort_order"),
-        sbRef.current
-          .from("quotation_monthly_averages")
-          .select("product_type_id, year, month, avg_price")
-          .eq("year", year)
-          .order("month"),
-        sbRef.current
-          .from("quotations")
-          .select("product_type_id, date, price, price_fob_med, price_fob_rotterdam, price_cif_nwe")
-          .gte("date", `${year}-01-01`)
-          .lte("date", `${year}-12-31`)
-          .order("date"),
+      // Fetch product types (small).
+      const typesPromise = sbRef.current
+        .from("quotation_product_types")
+        .select("id, name, sub_name")
+        .eq("is_active", true)
+        .order("sort_order");
+      // Fetch ALL daily quotations for the year via pagination.
+      // PostgREST's Max-Rows default is 1000 — a single .select() silently
+      // truncates the tail months once we exceed that, which is exactly
+      // why April/May were missing from the summary. We page through
+      // .range(from, from+999) until a short page tells us we're done.
+      // The monthly-averages cache (quotation_monthly_averages) is NOT
+      // queried anymore: it has no INSERT/UPDATE trigger so it's stale
+      // for any month the user edited after the last manual refresh.
+      // Computing from the daily rows is always accurate.
+      async function fetchAllQuotations(): Promise<DailyQuotation[]> {
+        const all: DailyQuotation[] = [];
+        const pageSize = 1000;
+        let from = 0;
+        for (;;) {
+          const { data, error } = await sbRef.current
+            .from("quotations")
+            .select("product_type_id, date, price, price_fob_med, price_fob_rotterdam, price_cif_nwe")
+            .gte("date", `${year}-01-01`)
+            .lte("date", `${year}-12-31`)
+            .order("date")
+            .range(from, from + pageSize - 1);
+          if (error || !data) break;
+          all.push(...(data as DailyQuotation[]));
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+        return all;
+      }
+      const [{ data: types }, daily] = await Promise.all([
+        typesPromise,
+        fetchAllQuotations(),
       ]);
       setProductTypes((types ?? []) as ProductType[]);
-      setAverages((avgs ?? []) as MonthlyAvg[]);
-      setDailyQuotes((daily ?? []) as DailyQuotation[]);
+      setDailyQuotes(daily);
       setLoading(false);
     }
     load();
   }, [year]);
 
-  // Monthly average computed from daily quotations (not pre-computed cache)
+  // Pre-index daily quotations by (product_type_id, month) so getAvg /
+  // getFixed / getTrigger don't re-scan the whole list on every render.
+  // With ~7000 rows per year × 20 products × 12 months × 3 functions,
+  // O(N) per call thrashes during keystrokes on year/triggerDays.
+  const monthlyAvgIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    const sums = new Map<string, { sum: number; n: number }>();
+    for (const d of dailyQuotes) {
+      const m = parseInt(d.date.slice(5, 7), 10);
+      const v = d.price ?? d.price_cif_nwe ?? d.price_fob_rotterdam ?? d.price_fob_med;
+      if (v == null) continue;
+      const key = `${d.product_type_id}:${m}`;
+      const cur = sums.get(key) ?? { sum: 0, n: 0 };
+      cur.sum += v; cur.n += 1;
+      sums.set(key, cur);
+    }
+    for (const [k, { sum, n }] of sums) map.set(k, sum / n);
+    return map;
+  }, [dailyQuotes]);
+
+  // Monthly average computed from daily quotations (no cache).
   const getAvg = useCallback((ptId: string, month: number): number | null => {
-    // First try pre-computed cache
-    const cached = averages.find((a) => a.product_type_id === ptId && a.month === month)?.avg_price;
-    if (cached != null) return cached;
-    // Fallback: compute from daily quotations
-    const startStr = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endMonth = month === 12 ? 1 : month + 1;
-    const endYear = month === 12 ? year + 1 : year;
-    const endStr = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
-    const prices = dailyQuotes
-      .filter((d) => d.product_type_id === ptId && d.date >= startStr && d.date < endStr)
-      .map((d) => d.price ?? d.price_cif_nwe ?? d.price_fob_rotterdam ?? d.price_fob_med)
-      .filter((p): p is number => p != null);
-    if (prices.length === 0) return null;
-    return prices.reduce((a, b) => a + b, 0) / prices.length;
-  }, [averages, dailyQuotes, year]);
+    return monthlyAvgIndex.get(`${ptId}:${month}`) ?? null;
+  }, [monthlyAvgIndex]);
 
   // Fixed date price: quotation on the fixedDay of the month
   const getFixed = useCallback((ptId: string, month: number): number | null => {
