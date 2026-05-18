@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesInsert } from "@/lib/types/database";
 import { toast } from "sonner";
 
@@ -136,22 +137,22 @@ export function useDeals(filters?: {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let query = supabaseRef.current.from("deals").select(DEAL_SELECT);
-
-    // Always filter out drafts
-    query = query.or("is_draft.is.null,is_draft.eq.false");
-    if (filters?.dealType) query = query.eq("deal_type", filters.dealType);
-    if (filters?.year) query = query.eq("year", filters.year);
-    if (filters?.month) query = query.eq("month", filters.month);
-    if (filters?.isArchived !== undefined) query = query.eq("is_archived", filters.isArchived);
-
-    query = query.order("deal_number", { ascending: true });
-
-    const { data, error } = await query;
+    // Paginate to bypass PostgREST's default Max-Rows=1000. Without this
+    // the passport silently dropped older deals once a single tab year
+    // crossed the cap.
+    const { data, error } = await fetchAllPaginated<WithLines>((from, to) => {
+      let q = supabaseRef.current.from("deals").select(DEAL_SELECT);
+      q = q.or("is_draft.is.null,is_draft.eq.false");
+      if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
+      if (filters?.year) q = q.eq("year", filters.year);
+      if (filters?.month) q = q.eq("month", filters.month);
+      if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
+      return q.order("deal_number", { ascending: true }).range(from, to);
+    });
     if (error) {
       toast.error(`Ошибка загрузки сделок: ${error.message}`);
     } else {
-      setData(annotateLineCounts((data ?? []) as unknown as WithLines[]) as unknown as Deal[]);
+      setData(annotateLineCounts(data) as unknown as Deal[]);
     }
     setLoading(false);
   }, [filters?.dealType, filters?.year, filters?.month, filters?.isArchived]);

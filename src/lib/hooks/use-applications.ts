@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesInsert, TablesUpdate } from "@/lib/types/database";
 import { toast } from "sonner";
 
@@ -43,15 +44,20 @@ export function useApplications() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("applications")
-      .select(APP_SELECT)
-      .order("date", { ascending: false });
+    // Paginate around PostgREST Max-Rows=1000. Applications table grows
+    // unbounded over time and the page renders the full historical list.
+    const { data, error } = await fetchAllPaginated((from, to) =>
+      supabase
+        .from("applications")
+        .select(APP_SELECT)
+        .order("date", { ascending: false })
+        .range(from, to),
+    );
 
     if (error) {
       toast.error(`Ошибка загрузки заявок: ${error.message}`);
     } else {
-      setData((data ?? []) as Application[]);
+      setData(data as unknown as Application[]);
     }
     setLoading(false);
   }, [supabase]);

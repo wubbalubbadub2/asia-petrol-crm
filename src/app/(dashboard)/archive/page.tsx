@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import { useRole } from "@/lib/hooks/use-role";
 import { toast } from "sonner";
 
@@ -46,9 +47,14 @@ export default function ArchivePage() {
 
   async function loadData() {
     setLoading(true);
+    // deals has no filter here — full history is scanned to count by
+    // year. Paginate so the archive page shows accurate totals once
+    // the company crosses the PostgREST Max-Rows=1000 line.
     const [{ data: archiveData }, { data: deals }] = await Promise.all([
       supabase.from("archive_years").select("*").order("year", { ascending: false }),
-      supabase.from("deals").select("year, is_archived"),
+      fetchAllPaginated<{ year: number; is_archived: boolean | null }>((from, to) =>
+        supabase.from("deals").select("year, is_archived").range(from, to),
+      ),
     ]);
 
     setArchives((archiveData ?? []) as ArchiveYear[]);

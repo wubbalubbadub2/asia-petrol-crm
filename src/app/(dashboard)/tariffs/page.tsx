@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
 
 type Station = { id: string; name: string };
@@ -364,35 +365,41 @@ export default function TariffsPage() {
   async function loadTariffs() {
     setLoading(true);
     const sb = createClient();
-    const { data, error } = await sb
-      .from("tariffs")
-      .select(
-        `id,
-         destination_station_id,
-         departure_station_id,
-         forwarder_id,
-         fuel_type_id,
-         month,
-         year,
-         planned_tariff,
-         factory_id,
-         norm_days,
-         destination_station:stations!destination_station_id(name),
-         departure_station:stations!departure_station_id(name),
-         forwarder:forwarders(name),
-         fuel_type:fuel_types(name, color),
-         factory:factories(name)`
-      )
-      .eq("year", yearFilter)
-      .order("month")
-      .order("planned_tariff");
+    // Paginate — a single year can easily exceed PostgREST's
+    // Max-Rows=1000 across all (forwarder × route × fuel × month)
+    // combinations, especially as fuel types and forwarders grow.
+    const { data, error } = await fetchAllPaginated((from, to) =>
+      sb
+        .from("tariffs")
+        .select(
+          `id,
+           destination_station_id,
+           departure_station_id,
+           forwarder_id,
+           fuel_type_id,
+           month,
+           year,
+           planned_tariff,
+           factory_id,
+           norm_days,
+           destination_station:stations!destination_station_id(name),
+           departure_station:stations!departure_station_id(name),
+           forwarder:forwarders(name),
+           fuel_type:fuel_types(name, color),
+           factory:factories(name)`
+        )
+        .eq("year", yearFilter)
+        .order("month")
+        .order("planned_tariff")
+        .range(from, to),
+    );
 
     setLoading(false);
     if (error) {
       toast.error("Ошибка загрузки тарифов");
       return;
     }
-    setTariffs((data ?? []) as unknown as Tariff[]);
+    setTariffs(data as unknown as Tariff[]);
   }
 
   useEffect(() => {

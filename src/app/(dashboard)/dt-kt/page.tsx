@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
 
 type DtKtRecord = {
@@ -214,14 +215,23 @@ export default function DtKtPage() {
 
   async function load() {
     setLoading(true);
+    // dt_kt_payments has no year filter at all (history across all
+    // forwarders × years lives in one bucket), so it WILL hit the
+    // PostgREST Max-Rows=1000 cap once the client has ≥3 active years.
+    // Paginate to keep the full history visible.
     const [{ data: recs }, { data: regData }, { data: payData }] = await Promise.all([
       sb.current.from("dt_kt_logistics")
         .select("id, forwarder_id, company_group_id, year, opening_balance, payment, refund, fines, surcharge_preliminary, ogem, forwarder:forwarders(name), company_group:company_groups(name)")
         .eq("year", yearFilter).order("forwarder_id"),
       // Placeholder — registry sums computed below
       Promise.resolve({ data: null }),
-      // Load all payments for these records
-      sb.current.from("dt_kt_payments").select("id, dt_kt_id, payment_date, amount, description, currency").order("payment_date"),
+      // Load all payments for these records — paginated.
+      fetchAllPaginated((from, to) =>
+        sb.current.from("dt_kt_payments")
+          .select("id, dt_kt_id, payment_date, amount, description, currency")
+          .order("payment_date")
+          .range(from, to),
+      ),
     ]);
     setRecords((recs ?? []) as unknown as DtKtRecord[]);
     // Registry sums grouped by (forwarder_id, company_group_id). Each
@@ -230,9 +240,15 @@ export default function DtKtPage() {
     // collapsed. Amount comes from shipped_tonnage_amount (populated by
     // trigger 00031) so registry / DT-KT / dashboard all show the same number.
     if (!regData) {
-      const { data: fallback } = await sb.current.from("shipment_registry")
-        .select("forwarder_id, company_group_id, shipment_volume, shipped_tonnage_amount")
-        .gte("date", `${yearFilter}-01-01`).lte("date", `${yearFilter}-12-31`);
+      // A single year can easily exceed 1000 shipments (Beken's KG side
+      // does already). Paginate so the DT-KT registry-sum column is
+      // accurate for high-volume years.
+      const { data: fallback } = await fetchAllPaginated((from, to) =>
+        sb.current.from("shipment_registry")
+          .select("forwarder_id, company_group_id, shipment_volume, shipped_tonnage_amount")
+          .gte("date", `${yearFilter}-01-01`).lte("date", `${yearFilter}-12-31`)
+          .range(from, to),
+      );
       if (fallback) {
         const sums = new Map<string, RegistrySums>();
         for (const r of fallback as { forwarder_id: string | null; company_group_id: string | null; shipment_volume: number | null; shipped_tonnage_amount: number | null }[]) {
