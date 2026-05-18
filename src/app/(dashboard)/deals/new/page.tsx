@@ -123,29 +123,39 @@ export default function NewDealPage() {
   // этот месяц, а не за месяц создания сделки (migration 00069).
   const [logisticsShipmentMonth, setLogisticsShipmentMonth] = useState("");
 
-  // Auto-lookup tariff. Driven by the buyer's default variant's destination
-  // station (variant 0). Per-variant tariff lookup isn't a thing yet —
-  // logistics tariff is one row on the deal.
+  // Auto-lookup tariff. Driven by the supplier→buyer route (variant 0
+  // on each side). The tariffs table has both departure_station_id
+  // and destination_station_id — matching only destination used to
+  // pick a wrong row when several routes shared the same destination
+  // (e.g. Карабалта as buyer station with two different departures).
+  //
+  // The previous version also had a `&& !plannedTariff` guard that
+  // pinned the first match and refused to refresh when the user
+  // later picked «Месяц отгрузки» — so the field kept showing the
+  // tariff for the deal creation month even after the override was
+  // set. We now re-fire on every dependency change.
   useEffect(() => {
-    const buyerDefaultStationId = buyerVariants[0]?.stationId || "";
+    const supplierDepartureStationId = supplierVariants[0]?.stationId || "";
+    const buyerDestinationStationId = buyerVariants[0]?.stationId || "";
     const lookupMonth = logisticsShipmentMonth || month;
-    if (!forwarderId || !buyerDefaultStationId || !lookupMonth || !fuelTypeId) return;
+    if (!forwarderId || !buyerDestinationStationId || !lookupMonth || !fuelTypeId) return;
     const supabase = createClient();
-    supabase.from("tariffs")
+    let q = supabase.from("tariffs")
       .select("planned_tariff")
       .eq("forwarder_id", forwarderId)
-      .eq("destination_station_id", buyerDefaultStationId)
+      .eq("destination_station_id", buyerDestinationStationId)
       .eq("fuel_type_id", fuelTypeId)
       .eq("month", lookupMonth)
-      .eq("year", year)
-      .limit(1)
-      .single()
-      .then(({ data }) => {
-        if (data?.planned_tariff && !plannedTariff) {
-          setPlannedTariff(String(data.planned_tariff));
-        }
-      });
-  }, [forwarderId, buyerVariants, month, fuelTypeId, year, logisticsShipmentMonth]);
+      .eq("year", year);
+    if (supplierDepartureStationId) {
+      q = q.eq("departure_station_id", supplierDepartureStationId);
+    }
+    q.limit(1).maybeSingle().then(({ data }) => {
+      if (data?.planned_tariff != null) {
+        setPlannedTariff(String(data.planned_tariff));
+      }
+    });
+  }, [forwarderId, supplierVariants, buyerVariants, month, fuelTypeId, year, logisticsShipmentMonth]);
 
   // Managers
   const [supplierManagerId, setSupplierManagerId] = useState("");
