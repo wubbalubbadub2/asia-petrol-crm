@@ -68,19 +68,37 @@ export function useRegistry(type: "KG" | "KZ") {
   const supabase = createClient();
 
   const load = useCallback(async () => {
+    // PostgREST's default Max-Rows is 1000 and a hard `.limit(500)` here
+    // was silently dropping every shipment past the 500th most-recent
+    // date — entire deals would disappear from the table once the
+    // registry crossed that threshold. Page through `.range()` until a
+    // short page tells us we're done. Same fix as the quotation summary.
     setLoading(true);
-    const { data, error } = await supabase
-      .from("shipment_registry")
-      .select(REG_SELECT)
-      .eq("registry_type", type)
-      .order("date", { ascending: false })
-      .limit(500);
-
-    if (error) {
-      toast.error(`Ошибка загрузки реестра: ${error.message}`);
-    } else {
-      setData((data ?? []) as ShipmentRecord[]);
+    const all: ShipmentRecord[] = [];
+    const pageSize = 1000;
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from("shipment_registry")
+        .select(REG_SELECT)
+        .eq("registry_type", type)
+        // Default null ordering for DESC in Postgres is NULLS FIRST,
+        // so freshly created shipments without a date appear at the top
+        // until the user fills the date in. The secondary sort on
+        // created_at keeps that group itself in newest-first order.
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) {
+        toast.error(`Ошибка загрузки реестра: ${error.message}`);
+        break;
+      }
+      const rows = (data ?? []) as ShipmentRecord[];
+      all.push(...rows);
+      if (rows.length < pageSize) break;
+      from += pageSize;
     }
+    setData(all);
     setLoading(false);
   }, [supabase, type]);
 
