@@ -125,24 +125,18 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
   type Col = { header: string; width: number; numFmt?: string; key: keyof FullRow };
   type FullRow = {
     date: Date;
-    year: number;
-    month: number;
-    product: string;
-    sub_name: string;
-    basis: string;
     cif_nwe: number | null;
     fob_med: number | null;
     fob_rotterdam: number | null;
     average: number | null;
     comment: string;
   };
+  // Per-client request: only the columns the user sees on screen — no
+  // derived/redundant ones. Year/month/product/subtype/basis were
+  // stripped because the sheet name + the user's eye already convey
+  // them (the export is always scoped to a single product anyway).
   const cols: Col[] = [
     { header: "Дата",              width: 12, key: "date",          numFmt: NUM_FMT_DATE },
-    { header: "Год",               width: 7,  key: "year" },
-    { header: "Месяц",             width: 7,  key: "month" },
-    { header: "Тип котировки",     width: 28, key: "product" },
-    { header: "Подтип",            width: 18, key: "sub_name" },
-    { header: "Базис",             width: 18, key: "basis" },
     { header: "CIF NWE / Basis ARA", width: 14, key: "cif_nwe",      numFmt: NUM_FMT_PRICE },
     { header: "FOB MED",           width: 12, key: "fob_med",       numFmt: NUM_FMT_PRICE },
     { header: "FOB Rotterdam",     width: 14, key: "fob_rotterdam", numFmt: NUM_FMT_PRICE },
@@ -180,19 +174,12 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
 
   // ── Data rows ─────────────────────────────────────────
   rows.forEach((q, rowIdx) => {
-    const p = productById.get(q.product_type_id)!;
     const r = rowIdx + 3;
     const row = ws.getRow(r);
     row.height = 18;
     const isZebra = rowIdx % 2 === 1;
-    const [y, m] = q.date.split("-");
     const cells: Record<keyof FullRow, string | number | Date | null> = {
       date: q.date ? new Date(q.date + "T00:00:00Z") : null,
-      year: parseInt(y, 10),
-      month: parseInt(m, 10),
-      product: p.name,
-      sub_name: p.sub_name ?? "",
-      basis: p.basis ?? "",
       cif_nwe: q.price_cif_nwe,
       fob_med: q.price_fob_med,
       fob_rotterdam: q.price_fob_rotterdam,
