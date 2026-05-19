@@ -16,6 +16,7 @@ export const DEAL_TYPE_CURRENCY: Record<DealType, string> = {
 // Flat list of underlying enum values (kept for type safety + DB selects).
 export const PRICE_CONDITIONS = [
   { value: "manual", label: "Фикс / Вручную" },
+  { value: "manual_formula", label: "Формульная вручную" },
   { value: "average_month", label: "Формула: Средний месяц" },
   { value: "fixed", label: "Формула: Фикс цена на дату" },
   { value: "trigger", label: "Формула: Триггер" },
@@ -34,13 +35,15 @@ export const PRICE_CONDITIONS = [
 //   • Формула: Фикс цена на дату        → snapshot quotation on a specific date
 export type PriceMode =
   | "manual"
+  | "manual_formula"
   | "fixed"
   | "average_month"
   | "trigger_shipment"
   | "trigger_border";
 
-export const PRICE_MODES: { value: PriceMode; label: string; group: "manual" | "formula" }[] = [
+export const PRICE_MODES: { value: PriceMode; label: string; group: "manual" | "manual_formula" | "formula" }[] = [
   { value: "manual",            label: "Фикс / Вручную",                              group: "manual" },
+  { value: "manual_formula",    label: "Формульная вручную",                          group: "manual_formula" },
   { value: "average_month",     label: "Формула: Средний месяц",                       group: "formula" },
   { value: "fixed",             label: "Формула: Фикс цена на дату",                   group: "formula" },
   { value: "trigger_shipment",  label: "Формула: Триггер — по дате отгрузки (30-44 дн)", group: "formula" },
@@ -53,18 +56,21 @@ export const PRICE_MODES: { value: PriceMode; label: string; group: "manual" | "
 // subtype. We keep PRICE_MODES as the authoritative flat list and
 // expose helpers below for pickers that want the hierarchical UI.
 
-export type PriceTier = "manual" | "formula";
+export type PriceTier = "manual" | "manual_formula" | "formula";
 
 // Display label for the tier-1 picker.
 export const PRICE_TIER_LABELS: Record<PriceTier, string> = {
   manual: "Фикс / Вручную",
+  manual_formula: "Формульная вручную",
   formula: "Формульная",
 };
 
 // Map a PriceMode back to its tier. Useful when seeding the tier
 // picker from a persisted line.
 export function priceTierOf(mode: PriceMode): PriceTier {
-  return mode === "manual" ? "manual" : "formula";
+  if (mode === "manual") return "manual";
+  if (mode === "manual_formula") return "manual_formula";
+  return "formula";
 }
 
 // Default subtype to land on when switching INTO the formula tier
@@ -90,23 +96,29 @@ export function encodePriceMode(
   if (condition === "trigger") {
     return basis === "border_crossing_date" ? "trigger_border" : "trigger_shipment";
   }
-  if (condition === "fixed" || condition === "average_month" || condition === "manual") {
+  if (
+    condition === "fixed" ||
+    condition === "average_month" ||
+    condition === "manual" ||
+    condition === "manual_formula"
+  ) {
     return condition;
   }
   return "manual";
 }
 
 export function decodePriceMode(mode: PriceMode): {
-  price_condition: "manual" | "fixed" | "average_month" | "trigger";
+  price_condition: "manual" | "manual_formula" | "fixed" | "average_month" | "trigger";
   trigger_basis: TriggerBasisLite | null;
   trigger_days_default: number | null;
 } {
   switch (mode) {
-    case "manual":           return { price_condition: "manual",        trigger_basis: null, trigger_days_default: null };
-    case "average_month":    return { price_condition: "average_month", trigger_basis: null, trigger_days_default: null };
-    case "fixed":            return { price_condition: "fixed",         trigger_basis: null, trigger_days_default: null };
-    case "trigger_shipment": return { price_condition: "trigger",       trigger_basis: "shipment_date",        trigger_days_default: 37 };
-    case "trigger_border":   return { price_condition: "trigger",       trigger_basis: "border_crossing_date", trigger_days_default: 37 };
+    case "manual":           return { price_condition: "manual",         trigger_basis: null, trigger_days_default: null };
+    case "manual_formula":   return { price_condition: "manual_formula", trigger_basis: null, trigger_days_default: null };
+    case "average_month":    return { price_condition: "average_month",  trigger_basis: null, trigger_days_default: null };
+    case "fixed":            return { price_condition: "fixed",          trigger_basis: null, trigger_days_default: null };
+    case "trigger_shipment": return { price_condition: "trigger",        trigger_basis: "shipment_date",        trigger_days_default: 37 };
+    case "trigger_border":   return { price_condition: "trigger",        trigger_basis: "border_crossing_date", trigger_days_default: 37 };
   }
 }
 

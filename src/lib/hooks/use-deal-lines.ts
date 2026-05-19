@@ -14,6 +14,12 @@ type LineStageFields = {
   preliminary_set_at?: string | null;
   // Custom month override for average_month mode (defaults to deal.month).
   selected_month?: string | null;
+  // Migration 00071 — manual_formula pricing (quotation - discount) * fx_rate.
+  // fx_rate is line-level so different variants can carry different rates.
+  // preliminary_fx_rate is the snapshot taken on finalize, mirroring
+  // preliminary_quotation / preliminary_price.
+  fx_rate?: number | null;
+  preliminary_fx_rate?: number | null;
 };
 
 export type DealSupplierLine = {
@@ -21,7 +27,7 @@ export type DealSupplierLine = {
   deal_id: string;
   position: number;
   is_default: boolean;
-  price_condition: "average_month" | "fixed" | "trigger" | "manual" | null;
+  price_condition: "average_month" | "fixed" | "trigger" | "manual" | "manual_formula" | null;
   // Migration 00064 — per-line trigger config. Optional until the
   // generated database.ts is regenerated (they live as `?` here so the
   // SELECT * still types cleanly when the columns exist on the row).
@@ -44,7 +50,7 @@ export type DealBuyerLine = {
   deal_id: string;
   position: number;
   is_default: boolean;
-  price_condition: "average_month" | "fixed" | "trigger" | "manual" | null;
+  price_condition: "average_month" | "fixed" | "trigger" | "manual" | "manual_formula" | null;
   // Migration 00064 — per-line trigger config. Optional until the
   // generated database.ts is regenerated (they live as `?` here so the
   // SELECT * still types cleanly when the columns exist on the row).

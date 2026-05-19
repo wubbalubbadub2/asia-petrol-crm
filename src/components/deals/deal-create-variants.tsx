@@ -71,7 +71,7 @@ export const EMPTY_VARIANT: VariantDraft = {
 // Helper used by the deal-creation page when persisting a variant: turn
 // VariantDraft into a column patch for deal_supplier_lines / deal_buyer_lines.
 export function variantDraftToLinePatch(v: VariantDraft): {
-  price_condition: "manual" | "fixed" | "average_month" | "trigger";
+  price_condition: "manual" | "manual_formula" | "fixed" | "average_month" | "trigger";
   trigger_basis: TriggerBasisLite | null;
   trigger_days: number | null;
   selected_month: string | null;
@@ -87,6 +87,8 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     selected_month:  decoded.price_condition === "average_month"
                        ? (v.selectedMonth || null)
                        : null,
+    // Stage applies to all formula modes (auto and manual_formula);
+    // pure-manual stays at preliminary because there's no recompute.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
   };
 }

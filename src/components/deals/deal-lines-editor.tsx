@@ -146,6 +146,8 @@ export function SupplierLinesEditor({
         preliminary_price: l.preliminary_price ?? null,
         preliminary_set_at: l.preliminary_set_at ?? null,
         selected_month: l.selected_month ?? null,
+        fx_rate: l.fx_rate ?? null,
+        preliminary_fx_rate: l.preliminary_fx_rate ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -160,23 +162,50 @@ export function SupplierLinesEditor({
   );
 }
 
-// Adds patch.price = quotation - discount when the user edits one of those
-// two without also touching price. Caller passes the current line so we
-// can read the field that wasn't part of this patch. If the resulting
-// quotation is non-numeric we leave price untouched.
+// Auto-recompute patch.price when the user edits any of the formula
+// inputs (quotation / discount / fx_rate) without explicitly touching
+// price. Caller passes the current line so we can read the inputs that
+// weren't part of this patch.
+//
+// For manual_formula lines: price = (quotation − discount) × fx_rate
+//                           — all three inputs are line-level.
+// For other modes:          price = quotation − discount
+//                           — fx_rate is irrelevant.
+//
+// Explicit `price` in the patch always wins. Missing inputs leave
+// price untouched.
 function applyPriceFormulaPatch(
   patch: Record<string, unknown>,
-  line: { quotation: number | null; discount: number | null; price: number | null } | undefined,
+  line:
+    | {
+        quotation: number | null;
+        discount: number | null;
+        price: number | null;
+        price_condition?: string | null;
+        fx_rate?: number | null;
+      }
+    | undefined,
 ): Record<string, unknown> {
   if (!line) return patch;
   const touchedQuotation = "quotation" in patch;
   const touchedDiscount  = "discount" in patch;
-  const touchedPrice     = "price" in patch;
-  if (touchedPrice) return patch;       // explicit price — keep as is
-  if (!touchedQuotation && !touchedDiscount) return patch;
-  const q = touchedQuotation ? (patch.quotation as number | null) : line.quotation;
+  const touchedFx        = "fx_rate"  in patch;
+  const touchedPrice     = "price"    in patch;
+  if (touchedPrice) return patch;
+  if (!touchedQuotation && !touchedDiscount && !touchedFx) return patch;
+
+  const q   = touchedQuotation ? (patch.quotation as number | null) : line.quotation;
+  const d   = touchedDiscount  ? (patch.discount  as number | null) : line.discount;
+  const fx  = touchedFx        ? (patch.fx_rate   as number | null) : line.fx_rate ?? null;
+
+  // Effective condition after this patch — patch.price_condition wins.
+  const cond = (patch.price_condition as string | null | undefined) ?? line.price_condition;
+
   if (q == null) return patch;
-  const d = touchedDiscount ? (patch.discount as number | null) : line.discount;
+  if (cond === "manual_formula") {
+    if (fx == null) return patch;
+    return { ...patch, price: (q - (d ?? 0)) * fx };
+  }
   return { ...patch, price: q - (d ?? 0) };
 }
 
@@ -268,6 +297,8 @@ export function BuyerLinesEditor({
         preliminary_price: l.preliminary_price ?? null,
         preliminary_set_at: l.preliminary_set_at ?? null,
         selected_month: l.selected_month ?? null,
+        fx_rate: l.fx_rate ?? null,
+        preliminary_fx_rate: l.preliminary_fx_rate ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -309,6 +340,11 @@ type LineVM = {
   preliminary_price: number | null;
   preliminary_set_at: string | null;
   selected_month: string | null;
+  // Manual-formula inputs (migration 00071). fx_rate is the
+  // multiplier in (quotation − discount) × fx_rate; preliminary_fx_rate
+  // snapshots the value at the moment of finalize.
+  fx_rate: number | null;
+  preliminary_fx_rate: number | null;
 };
 
 function LinesEditorView({
@@ -366,8 +402,9 @@ function LinesEditorView({
             const isTrigger = mode === "trigger_shipment" || mode === "trigger_border";
             const daysHint = "обычно 35-40";
             const tierOptions: Option[] = [
-              { value: "manual",  label: PRICE_TIER_LABELS.manual },
-              { value: "formula", label: PRICE_TIER_LABELS.formula },
+              { value: "manual",         label: PRICE_TIER_LABELS.manual },
+              { value: "manual_formula", label: PRICE_TIER_LABELS.manual_formula },
+              { value: "formula",        label: PRICE_TIER_LABELS.formula },
             ];
             return (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
@@ -386,6 +423,12 @@ function LinesEditorView({
                 if (nextTier === "manual") {
                   onUpdate(l.id, {
                     price_condition: "manual",
+                    trigger_basis:   null,
+                    trigger_days:    null,
+                  });
+                } else if (nextTier === "manual_formula") {
+                  onUpdate(l.id, {
+                    price_condition: "manual_formula",
                     trigger_basis:   null,
                     trigger_days:    null,
                   });
@@ -423,15 +466,29 @@ function LinesEditorView({
               />
             )}
 
-            {/* Стадия — only for formula modes. Segmented control:
-                Предварительная (default) → Окончательная. Flipping to
-                final triggers a confirmation + recompute of all
-                existing shipments under this variant.  */}
-            {tier === "formula" && (
+            {/* Стадия — for both formula tiers (auto-quotation and
+                manual-formula). Same UX: Предварительная (default) →
+                Окончательная. Flipping to final triggers a confirm +
+                recompute of all existing shipments under this variant
+                (the RPC handles both modes via migration 00071). */}
+            {(tier === "formula" || tier === "manual_formula") && (
               <StageCell
                 value={l.price_stage}
                 editing={editing}
                 onChange={(next) => onUpdate(l.id, { price_stage: next })}
+              />
+            )}
+
+            {/* Курс валют — only for manual_formula. Combined with
+                quotation + discount, gives price = (q − d) × fx_rate.
+                applyPriceFormulaPatch recalculates price on every
+                edit; explicit `price` edits still win. */}
+            {tier === "manual_formula" && (
+              <NumberCell
+                label="Курс валют"
+                value={l.fx_rate}
+                editing={editing}
+                onChange={(v) => onUpdate(l.id, { fx_rate: v })}
               />
             )}
 
@@ -489,6 +546,11 @@ function LinesEditorView({
                   <span className="font-mono tabular-nums text-[12px] font-medium text-amber-900">
                     {l.preliminary_price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}
                   </span>
+                  {tier === "manual_formula" && l.preliminary_fx_rate != null && (
+                    <span className="text-[10px] text-amber-700/80">
+                      · курс {l.preliminary_fx_rate.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}
+                    </span>
+                  )}
                   {l.preliminary_set_at && (
                     <span className="text-[10px] text-amber-700/80">
                       · зафикс. {new Date(l.preliminary_set_at).toLocaleDateString("ru-RU")}

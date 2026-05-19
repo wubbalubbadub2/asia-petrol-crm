@@ -240,9 +240,12 @@ export default function NewDealPage() {
       // Update the draft deal with real data and generate a deal number
       const { data: numData } = await supabase.rpc("generate_deal_number", { p_type: dealType, p_year: year });
       const dealNumber = numData as number ?? 1;
+      // Cast — generated database.ts hasn't been refreshed for the
+      // manual_formula enum value yet (migration 00071). The Postgres
+      // type accepts it; the strict TS shape doesn't.
       const { data, error } = await supabase
         .from("deals")
-        .update({ ...dealData, deal_number: dealNumber, is_draft: false })
+        .update({ ...dealData, deal_number: dealNumber, is_draft: false } as never)
         .eq("id", draftDealId)
         .select()
         .single();
@@ -252,7 +255,8 @@ export default function NewDealPage() {
         `Сделка ${dealType}/${String(year % 100).padStart(2, "0")}/${String(dealNumber).padStart(3, "0")} создана`,
       );
     } else {
-      deal = await createDeal(dealData);
+      // Same cast rationale — manual_formula not yet in generated types.
+      deal = await createDeal(dealData as Parameters<typeof createDeal>[0]);
     }
 
     // Replace pricing variants with the form's set. Drops the auto-seeded
@@ -260,6 +264,8 @@ export default function NewDealPage() {
     // user-entered variants. The line→deals sync trigger keeps deals.scalars
     // mirrored from the new default (variant 0).
     if (deal) {
+      // `as never[]` — generated types still narrow price_condition to
+      // the pre-00071 union; the DB accepts manual_formula fine.
       await supabase.from("deal_supplier_lines").delete().eq("deal_id", deal.id);
       await supabase.from("deal_supplier_lines").insert(
         supplierVariants.map((v, i) => ({
@@ -274,7 +280,7 @@ export default function NewDealPage() {
           price: v.price ? parseFloat(v.price) : null,
           delivery_basis: v.deliveryBasis || null,
           departure_station_id: v.stationId || null,
-        }))
+        })) as never[]
       );
 
       await supabase.from("deal_buyer_lines").delete().eq("deal_id", deal.id);
@@ -291,7 +297,7 @@ export default function NewDealPage() {
           price: v.price ? parseFloat(v.price) : null,
           delivery_basis: v.deliveryBasis || null,
           destination_station_id: v.stationId || null,
-        }))
+        })) as never[]
       );
     }
 
