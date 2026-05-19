@@ -129,16 +129,29 @@ export default function NewDealPage() {
   // pick a wrong row when several routes shared the same destination
   // (e.g. Карабалта as buyer station with two different departures).
   //
-  // The previous version also had a `&& !plannedTariff` guard that
-  // pinned the first match and refused to refresh when the user
-  // later picked «Месяц отгрузки» — so the field kept showing the
-  // tariff for the deal creation month even after the override was
-  // set. We now re-fire on every dependency change.
+  // Year heuristic — tariffs are keyed by (month, year). If the
+  // operator picked «Месяц отгрузки» that's earlier in the calendar
+  // than the deal-formation month, the shipment is in the NEXT
+  // calendar year. Example: formation декабрь 2025 + shipment январь
+  // → tariff stored under year=2026. Without this adjustment the
+  // lookup misses entirely and the field shows the previously
+  // auto-filled formation-month tariff instead.
+  //
+  // We also clear plannedTariff on every effect run before refetching:
+  // on no-match the previous tariff was sticking around and the user
+  // assumed the lookup was still using the formation month.
   useEffect(() => {
     const supplierDepartureStationId = supplierVariants[0]?.stationId || "";
     const buyerDestinationStationId = buyerVariants[0]?.stationId || "";
     const lookupMonth = logisticsShipmentMonth || month;
     if (!forwarderId || !buyerDestinationStationId || !lookupMonth || !fuelTypeId) return;
+    // Resolve the shipment year by comparing month indices in the
+    // canonical MONTHS_RU order. Falls back to `year` if either
+    // month isn't in the canonical list (shouldn't happen, but safe).
+    const fIdx = MONTHS_RU.indexOf(month as (typeof MONTHS_RU)[number]);
+    const sIdx = MONTHS_RU.indexOf(lookupMonth as (typeof MONTHS_RU)[number]);
+    const shipmentYear =
+      fIdx >= 0 && sIdx >= 0 && sIdx < fIdx ? year + 1 : year;
     const supabase = createClient();
     let q = supabase.from("tariffs")
       .select("planned_tariff")
@@ -146,14 +159,12 @@ export default function NewDealPage() {
       .eq("destination_station_id", buyerDestinationStationId)
       .eq("fuel_type_id", fuelTypeId)
       .eq("month", lookupMonth)
-      .eq("year", year);
+      .eq("year", shipmentYear);
     if (supplierDepartureStationId) {
       q = q.eq("departure_station_id", supplierDepartureStationId);
     }
     q.limit(1).maybeSingle().then(({ data }) => {
-      if (data?.planned_tariff != null) {
-        setPlannedTariff(String(data.planned_tariff));
-      }
+      setPlannedTariff(data?.planned_tariff != null ? String(data.planned_tariff) : "");
     });
   }, [forwarderId, supplierVariants, buyerVariants, month, fuelTypeId, year, logisticsShipmentMonth]);
 
