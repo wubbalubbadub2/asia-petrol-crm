@@ -148,6 +148,7 @@ export function SupplierLinesEditor({
         selected_month: l.selected_month ?? null,
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
+        appendix: l.appendix ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -299,6 +300,7 @@ export function BuyerLinesEditor({
         selected_month: l.selected_month ?? null,
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
+        appendix: l.appendix ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -345,6 +347,8 @@ type LineVM = {
   // snapshots the value at the moment of finalize.
   fx_rate: number | null;
   preliminary_fx_rate: number | null;
+  // Migration 00072 — free-text appendix label.
+  appendix: string | null;
 };
 
 function LinesEditorView({
@@ -625,6 +629,17 @@ function LinesEditorView({
               editing={editing}
               options={stations}
               onChange={(v) => onUpdate(l.id, { [l.stationField]: v || null })}
+            />
+
+            {/* Приложение — free-text label («Прил. 1», «Прил. 2», …).
+                The registry add form uses this to auto-resolve which
+                variant a shipment ties to when the operator picks an
+                appendix value. Independent on each side. */}
+            <TextCell
+              label="Приложение"
+              value={l.appendix}
+              editing={editing}
+              onChange={(v) => onUpdate(l.id, { appendix: v })}
             />
           </div>
             );

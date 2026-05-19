@@ -46,6 +46,9 @@ export type VariantDraft = {
   // deal_*_lines.fx_rate. Used only when priceMode === 'manual_formula'
   // — price = (quotation − discount) × fxRate.
   fxRate: string;
+  // Migration 00072 — free-text appendix label («Прил. 1», «Прил. 2», etc).
+  // Registry add form uses this to auto-resolve the variant.
+  appendix: string;
   // ── Form-only helpers, not persisted on the line ──────────────
   fixDate: string;
   triggerStart: string;
@@ -70,6 +73,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   selectedMonth: "",
   priceStage: "preliminary",
   fxRate: "",
+  appendix: "",
   quotationManualEdited: false,
   priceManualEdited: false,
 };
@@ -518,7 +522,19 @@ function VariantRow({
           </select>
         </div>
 
-        <div className="md:col-span-3">
+        {/* Приложение + Комментарий — bottom row. Appendix is a free-text
+            label (e.g. «Прил. 1»); the registry add form uses it to
+            auto-resolve the variant when a shipment is registered. */}
+        <div>
+          <Label className="text-[12px] text-stone-500">Приложение</Label>
+          <Input
+            value={v.appendix}
+            onChange={(e) => onChange({ appendix: e.target.value })}
+            placeholder="Прил. 1"
+            className="h-8 text-[13px]"
+          />
+        </div>
+        <div className="md:col-span-2">
           <Label className="text-[12px] text-stone-500">Комментарий котировки</Label>
           <Input value={v.quotationComment} onChange={(e) => onChange({ quotationComment: e.target.value })} className="h-8 text-[13px]" />
         </div>

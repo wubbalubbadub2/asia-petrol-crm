@@ -280,6 +280,7 @@ export default function NewDealPage() {
           discount: v.discount ? parseFloat(v.discount) : null,
           price: v.price ? parseFloat(v.price) : null,
           fx_rate: v.priceMode === "manual_formula" && v.fxRate ? parseFloat(v.fxRate) : null,
+          appendix: v.appendix || null,
           delivery_basis: v.deliveryBasis || null,
           departure_station_id: v.stationId || null,
         })) as never[]
@@ -298,6 +299,7 @@ export default function NewDealPage() {
           discount: v.discount ? parseFloat(v.discount) : null,
           price: v.price ? parseFloat(v.price) : null,
           fx_rate: v.priceMode === "manual_formula" && v.fxRate ? parseFloat(v.fxRate) : null,
+          appendix: v.appendix || null,
           delivery_basis: v.deliveryBasis || null,
           destination_station_id: v.stationId || null,
         })) as never[]

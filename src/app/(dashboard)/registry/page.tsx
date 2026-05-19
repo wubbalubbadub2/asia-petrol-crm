@@ -444,8 +444,8 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   // Multi-line variant selection. Loaded for the selected deal; auto-picks
   // the default line. User can switch to another variant and we mirror the
   // line's station onto the per-row station state.
-  type SupLine = { id: string; is_default: boolean; position: number; price: number | null; departure_station_id: string | null; departure_station: { name: string } | null };
-  type BuyLine = { id: string; is_default: boolean; position: number; price: number | null; destination_station_id: string | null; destination_station: { name: string } | null };
+  type SupLine = { id: string; is_default: boolean; position: number; price: number | null; appendix: string | null; departure_station_id: string | null; departure_station: { name: string } | null };
+  type BuyLine = { id: string; is_default: boolean; position: number; price: number | null; appendix: string | null; destination_station_id: string | null; destination_station: { name: string } | null };
   const [supplierLines, setSupplierLines] = useState<SupLine[]>([]);
   const [buyerLines, setBuyerLines]       = useState<BuyLine[]>([]);
   const [supplierLineId, setSupplierLineId] = useState("");
@@ -495,11 +495,11 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     }
     Promise.all([
       sb.current.from("deal_supplier_lines")
-        .select("id, is_default, position, price, departure_station_id, departure_station:stations!departure_station_id(name)")
+        .select("id, is_default, position, price, appendix, departure_station_id, departure_station:stations!departure_station_id(name)")
         .eq("deal_id", dealId)
         .order("is_default", { ascending: false }).order("position"),
       sb.current.from("deal_buyer_lines")
-        .select("id, is_default, position, price, destination_station_id, destination_station:stations!destination_station_id(name)")
+        .select("id, is_default, position, price, appendix, destination_station_id, destination_station:stations!destination_station_id(name)")
         .eq("deal_id", dealId)
         .order("is_default", { ascending: false }).order("position"),
     ]).then(([s, b]) => {
@@ -588,6 +588,8 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
       waybill_number: p.waybill || null,
       supplier_line_id: supplierLineId || null,
       buyer_line_id: buyerLineId || null,
+      supplier_appendix: supplierLines.find((x) => x.id === supplierLineId)?.appendix ?? null,
+      buyer_appendix:    buyerLines.find((x)    => x.id === buyerLineId)?.appendix    ?? null,
     }));
     const result = await bulkInsertRegistry(rows);
     setSaving(false);
@@ -632,7 +634,14 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
               <Sel l="Ст. отправления" v={depId} fn={setDepId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
 
-              {/* Variant pickers — only shown when the deal has >1 line on a side */}
+              {/* Variant pickers — only shown when the deal has >1 line
+                  on a side. Below each, a sibling «Приложение» picker
+                  (always shown if at least one variant has an appendix
+                  set) lets the operator switch variants by their
+                  contractual appendix label instead of the variant
+                  index. Picking an appendix auto-selects the line.
+                  Selecting the variant keeps the picker in sync via
+                  the derived `supplier_appendix` value. */}
               {supplierLines.length > 1 && (
                 <div>
                   <Label className="text-[10px] text-stone-500">Вариант поставщика</Label>
@@ -643,9 +652,29 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
                   >
                     {supplierLines.map((l, idx) => (
                       <option key={l.id} value={l.id}>
+                        {l.appendix ? `${l.appendix} · ` : ""}
                         {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
                         {l.departure_station?.name ? ` — ${l.departure_station.name}` : ""}
                         {l.price != null ? ` · ${l.price}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {supplierLines.some((l) => l.appendix) && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Прилож. поставщика</Label>
+                  <select
+                    value={supplierLines.find((l) => l.id === supplierLineId)?.appendix ?? ""}
+                    onChange={(e) => {
+                      const match = supplierLines.find((l) => (l.appendix ?? "") === e.target.value);
+                      if (match) setSupplierLineId(match.id);
+                    }}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    {supplierLines.map((l) => (
+                      <option key={l.id} value={l.appendix ?? ""}>
+                        {l.appendix || "(без приложения)"}
                       </option>
                     ))}
                   </select>
@@ -661,9 +690,29 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
                   >
                     {buyerLines.map((l, idx) => (
                       <option key={l.id} value={l.id}>
+                        {l.appendix ? `${l.appendix} · ` : ""}
                         {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
                         {l.destination_station?.name ? ` — ${l.destination_station.name}` : ""}
                         {l.price != null ? ` · ${l.price}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {buyerLines.some((l) => l.appendix) && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Прилож. покупателя</Label>
+                  <select
+                    value={buyerLines.find((l) => l.id === buyerLineId)?.appendix ?? ""}
+                    onChange={(e) => {
+                      const match = buyerLines.find((l) => (l.appendix ?? "") === e.target.value);
+                      if (match) setBuyerLineId(match.id);
+                    }}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    {buyerLines.map((l) => (
+                      <option key={l.id} value={l.appendix ?? ""}>
+                        {l.appendix || "(без приложения)"}
                       </option>
                     ))}
                   </select>

@@ -40,6 +40,9 @@ export type DealSupplierLine = {
   price: number | null;
   delivery_basis: string | null;
   departure_station_id: string | null;
+  // Migration 00072 — free-text appendix label. Used by the registry
+  // add form to auto-resolve which variant a shipment ties to.
+  appendix?: string | null;
   // joined
   quotation_type?: { name: string } | null;
   departure_station?: { name: string } | null;
@@ -63,6 +66,8 @@ export type DealBuyerLine = {
   price: number | null;
   delivery_basis: string | null;
   destination_station_id: string | null;
+  // Migration 00072 — see DealSupplierLine.
+  appendix?: string | null;
   // joined
   quotation_type?: { name: string } | null;
   destination_station?: { name: string } | null;

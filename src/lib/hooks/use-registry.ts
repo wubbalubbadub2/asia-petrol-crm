@@ -30,6 +30,11 @@ export type ShipmentRecord = {
   shipped_tonnage_amount_override?: boolean | null;
   // Migration 00061 — manual override for the rolled-up volume («округл»)
   rounded_volume_override?: number | null;
+  // Migration 00072 — appendix labels per side. Free-text;
+  // auto-resolves supplier_line_id / buyer_line_id when the registry
+  // form matches them against the deal's variants.
+  supplier_appendix?: string | null;
+  buyer_appendix?: string | null;
   invoice_number: string | null;
   comment: string | null;
   loading_volume: number | null;
