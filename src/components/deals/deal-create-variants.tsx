@@ -272,8 +272,8 @@ function VariantRow({
             className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
           >
             <option value="manual">{PRICE_TIER_LABELS.manual}</option>
-            <option value="manual_formula">{PRICE_TIER_LABELS.manual_formula}</option>
             <option value="formula">{PRICE_TIER_LABELS.formula}</option>
+            <option value="manual_formula">{PRICE_TIER_LABELS.manual_formula}</option>
           </select>
         </div>
 

@@ -403,8 +403,8 @@ function LinesEditorView({
             const daysHint = "обычно 35-40";
             const tierOptions: Option[] = [
               { value: "manual",         label: PRICE_TIER_LABELS.manual },
-              { value: "manual_formula", label: PRICE_TIER_LABELS.manual_formula },
               { value: "formula",        label: PRICE_TIER_LABELS.formula },
+              { value: "manual_formula", label: PRICE_TIER_LABELS.manual_formula },
             ];
             return (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
