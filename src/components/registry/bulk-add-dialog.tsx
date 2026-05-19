@@ -70,6 +70,13 @@ export function BulkAddDialog({
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceNum, setInvoiceNum] = useState("");
   const [bulkComment, setBulkComment] = useState("");
+  // Variant appendix labels for the chosen deal. Picking one auto-
+  // resolves supplier_line_id + buyer_line_id at save time. Identical
+  // mechanic to /registry InlineAdd; see migration 00072.
+  type ApxLine = { id: string; appendix: string | null };
+  const [supLines, setSupLines] = useState<ApxLine[]>([]);
+  const [buyLinesArr, setBuyLines] = useState<ApxLine[]>([]);
+  const [apx, setApx] = useState("");
 
   // Paste + preview
   const [pasted, setPasted] = useState("");
@@ -130,7 +137,30 @@ export function BulkAddDialog({
     setInvoiceNum("");
     setBulkComment("");
     setVolumeTarget("ship");
+    setApx("");
   }, [open, context]);
+
+  // Load variant appendix labels for both sides whenever the dialog
+  // opens with a deal selected. Cast through unknown — generated
+  // database.ts pre-dates the appendix column.
+  useEffect(() => {
+    if (!open || !context?.dealId) { setSupLines([]); setBuyLines([]); return; }
+    const sb = createClient();
+    Promise.all([
+      sb.from("deal_supplier_lines").select("id, appendix").eq("deal_id", context.dealId),
+      sb.from("deal_buyer_lines").select("id, appendix").eq("deal_id", context.dealId),
+    ]).then(([s, b]) => {
+      setSupLines(((s.data as unknown) ?? []) as ApxLine[]);
+      setBuyLines(((b.data as unknown) ?? []) as ApxLine[]);
+    });
+  }, [open, context?.dealId]);
+
+  const apxOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const l of supLines) if (l.appendix) s.add(l.appendix);
+    for (const l of buyLinesArr) if (l.appendix) s.add(l.appendix);
+    return [...s].sort();
+  }, [supLines, buyLinesArr]);
 
   // Auto-tariff lookup: tariffs are keyed by SHIPMENT month + year, not the
   // deal's "месяц формирования". When the existing group has no tariff yet
@@ -165,6 +195,8 @@ export function BulkAddDialog({
     setSaving(true);
 
     const tariffNum = tariff ? parseFloat(tariff) : null;
+    const supLineMatch = apx ? supLines.find((l) => l.appendix === apx) : null;
+    const buyLineMatch = apx ? buyLinesArr.find((l) => l.appendix === apx) : null;
     const rows = validRows.map((p) => ({
       registry_type: regType,
       deal_id: dealId,
@@ -187,6 +219,10 @@ export function BulkAddDialog({
       waybill_number: p.waybill || null,
       invoice_number: invoiceNum || null,
       comment: bulkComment || null,
+      supplier_line_id: supLineMatch?.id ?? null,
+      buyer_line_id: buyLineMatch?.id ?? null,
+      supplier_appendix: supLineMatch?.appendix ?? null,
+      buyer_appendix: buyLineMatch?.appendix ?? null,
     }));
 
     const result = await bulkInsertRegistry(rows);
@@ -260,6 +296,19 @@ export function BulkAddDialog({
                 <Label className="text-[10px] text-stone-500">№ СФ (если общий)</Label>
                 <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-8 text-[12px]" placeholder="Необязательно" />
               </div>
+              {apxOptions.length > 0 && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Приложение</Label>
+                  <select
+                    value={apx}
+                    onChange={(e) => setApx(e.target.value)}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">—</option>
+                    {apxOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="md:col-span-3">
                 <Label className="text-[10px] text-stone-500">Коммент.</Label>
                 <Input value={bulkComment} onChange={(e) => setBulkComment(e.target.value)} className="h-8 text-[12px]" />

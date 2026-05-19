@@ -114,12 +114,20 @@ export function useRegistry(type: "KG" | "KZ") {
 
 import type { TablesInsert, TablesUpdate } from "@/lib/types/database";
 
-type RegistryInsert = TablesInsert<"shipment_registry">;
+// Migration 00072 added supplier_appendix / buyer_appendix on
+// shipment_registry. Until the generated database.ts is regenerated,
+// the optional override here keeps inserts/updates type-clean.
+type RegistryInsert = TablesInsert<"shipment_registry"> & {
+  supplier_appendix?: string | null;
+  buyer_appendix?: string | null;
+};
 // Override field is post-migration-00050; types here may run ahead of the
 // generated database.ts until `npm run types:db` is rerun.
 export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   shipped_tonnage_amount_override?: boolean | null;
   rounded_volume_override?: number | null;
+  supplier_appendix?: string | null;
+  buyer_appendix?: string | null;
 };
 
 export async function createRegistryEntry(values: RegistryInsert) {

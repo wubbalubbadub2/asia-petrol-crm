@@ -296,6 +296,14 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   const [tariffVal, setTariffVal] = useState<number | null>(group.tariff);
   const [curOverride, setCurOverride] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  // Appendix-based variant resolution. Fetched per deal; if the deal
+  // has appendices set on its variants, the operator can pick one and
+  // we resolve supplier_line_id / buyer_line_id by matching label on
+  // each side independently.
+  type ApxLine = { id: string; appendix: string | null };
+  const [supLines, setSupLines] = useState<ApxLine[]>([]);
+  const [buyLinesArr, setBuyLines] = useState<ApxLine[]>([]);
+  const [apx, setApx] = useState("");
 
   // Fetch deal data to get all fields
   useEffect(() => {
@@ -304,7 +312,29 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       .select("id, deal_code, year, month, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), factory:factories(name), fuel_type:fuel_types(name, color), forwarder:forwarders(name)")
       .eq("id", dealId).single()
       .then(({ data }) => { if (data) setDeal(data as unknown as DRef); });
+    // Load variant appendix labels for both sides so the operator can
+    // pick «Прил. 1» / etc. and we resolve supplier_line_id +
+    // buyer_line_id at save time.
+    // Cast through unknown — generated database.ts pre-dates migration
+    // 00072 and doesn't know about the appendix column yet. Postgres
+    // returns it fine.
+    Promise.all([
+      sb.current.from("deal_supplier_lines").select("id, appendix").eq("deal_id", dealId),
+      sb.current.from("deal_buyer_lines").select("id, appendix").eq("deal_id", dealId),
+    ]).then(([s, b]) => {
+      setSupLines(((s.data as unknown) ?? []) as ApxLine[]);
+      setBuyLines(((b.data as unknown) ?? []) as ApxLine[]);
+    });
   }, [dealId]);
+
+  // Distinct appendix values across both sides, sorted; empty values
+  // hidden — the operator only sees real labels, blank = leave default.
+  const apxOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const l of supLines) if (l.appendix) s.add(l.appendix);
+    for (const l of buyLinesArr) if (l.appendix) s.add(l.appendix);
+    return [...s].sort();
+  }, [supLines, buyLinesArr]);
 
   // Auto-lookup tariff. The tariffs table is keyed by (dep, dest, fuel,
   // forwarder, month, year) — every dimension is required, otherwise
@@ -339,6 +369,11 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   async function add() {
     if (!w || !v) return;
     setSaving(true);
+    // Match appendix on each side independently. Unset → leaves
+    // supplier_line_id/buyer_line_id null and the autoprice trigger
+    // falls back to is_default = true.
+    const supLineMatch = apx ? supLines.find((l) => l.appendix === apx) : null;
+    const buyLineMatch = apx ? buyLinesArr.find((l) => l.appendix === apx) : null;
     await createRegistryEntry({
       registry_type: regType, deal_id: dealId,
       month: deal?.month || group.month || null,
@@ -354,8 +389,12 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       wagon_number: w, shipment_volume: parseFloat(v),
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
       currency: curOverride || null, comment: cm || null,
+      supplier_line_id: supLineMatch?.id ?? null,
+      buyer_line_id: buyLineMatch?.id ?? null,
+      supplier_appendix: supLineMatch?.appendix ?? null,
+      buyer_appendix: buyLineMatch?.appendix ?? null,
     });
-    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); setCm(""); onDone();
+    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); setCm(""); setApx(""); onDone();
   }
 
   // Show deal info in the row (from fetched deal or group)
@@ -406,6 +445,20 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       </td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.destStation}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-400">{group.depStation}</td>
+      <td className="border-r px-1 py-1">
+        {/* Приложение — если у сделки есть варианты с приложениями,
+            показываем компактный select. Иначе ячейка пустая. */}
+        {apxOptions.length > 0 ? (
+          <select
+            value={apx}
+            onChange={(e) => setApx(e.target.value)}
+            className="w-full h-6 text-[10px] border border-green-300 rounded px-0.5 bg-green-50 cursor-pointer focus:outline-none"
+          >
+            <option value="">—</option>
+            {apxOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        ) : null}
+      </td>
       <td className="border-r px-1 py-1">
         <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
       </td>
@@ -1051,6 +1104,7 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">валюта</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. назн.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. отпр.</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">прил.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
                           <th className="px-2 py-1 text-left font-medium min-w-[130px]">коммент.</th>
                           <th className="px-1 py-1 w-[25px]"></th>
@@ -1109,6 +1163,20 @@ export default function RegistryPage() {
                               </td>
                               <td className="border-r px-1 py-0.5"><ES value={r.destination_station_id} displayLabel={r.destination_station?.name ?? ""} recId={r.id} field="destination_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.departure_station_id} displayLabel={r.departure_station?.name ?? ""} recId={r.id} field="departure_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5">
+                                {/* Прил. — supplier-side label; buyer-side
+                                    appears as a subscript when it differs.
+                                    Inline edit hits supplier_appendix only;
+                                    buyer side edits via the add dialog. */}
+                                <div className="flex flex-col">
+                                  <EC value={r.supplier_appendix} recId={r.id} field="supplier_appendix" onSaved={reload} cls="text-[10px]" />
+                                  {r.buyer_appendix && r.buyer_appendix !== r.supplier_appendix && (
+                                    <span className="text-[9px] text-stone-400 px-1" title="Приложение покупателя">
+                                      пк: {r.buyer_appendix}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="border-r px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="px-1 py-0.5"><EC value={r.comment} recId={r.id} field="comment" onSaved={reload} /></td>
                               <td className="px-1 py-0.5">
