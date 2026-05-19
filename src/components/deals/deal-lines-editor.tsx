@@ -479,19 +479,6 @@ function LinesEditorView({
               />
             )}
 
-            {/* Курс валют — only for manual_formula. Combined with
-                quotation + discount, gives price = (q − d) × fx_rate.
-                applyPriceFormulaPatch recalculates price on every
-                edit; explicit `price` edits still win. */}
-            {tier === "manual_formula" && (
-              <NumberCell
-                label="Курс валют"
-                value={l.fx_rate}
-                editing={editing}
-                onChange={(v) => onUpdate(l.id, { fx_rate: v })}
-              />
-            )}
-
             {/* Месяц расчёта — only for «Средний месяц». Lets the
                 manager pick a specific month for the monthly-avg
                 lookup; null falls back to the deal's own month. */}
@@ -506,15 +493,47 @@ function LinesEditorView({
               />
             )}
 
-            {/* Котировка */}
-            <SelectCell
-              label="Котировка"
-              value={l.quotation_type_id}
-              displayValue={l.quotation_type_label ?? "—"}
-              editing={editing}
-              options={quotationTypes}
-              onChange={(v) => onUpdate(l.id, { quotation_type_id: v || null })}
-            />
+            {/* «Котировка» (тип из таблицы) — only for auto-formula.
+                Hidden for manual_formula since the manager types the
+                quotation value directly without referencing a type. */}
+            {tier !== "manual_formula" && (
+              <SelectCell
+                label="Котировка"
+                value={l.quotation_type_id}
+                displayValue={l.quotation_type_label ?? "—"}
+                editing={editing}
+                options={quotationTypes}
+                onChange={(v) => onUpdate(l.id, { quotation_type_id: v || null })}
+              />
+            )}
+
+            {/* ───── Manual-formula trio ─────
+                Wrapped in md:col-span-3 so Котировка значение / Скидка /
+                Курс валют land on a single dedicated row right under
+                the type picker + stage. Replaces the default Котировка
+                значение and Скидка cells for this tier. */}
+            {tier === "manual_formula" && (
+              <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2">
+                <NumberCell
+                  label="Котировка значение"
+                  value={l.quotation}
+                  editing={editing}
+                  onChange={(v) => onUpdate(l.id, { quotation: v })}
+                />
+                <NumberCell
+                  label="Скидка"
+                  value={l.discount}
+                  editing={editing}
+                  onChange={(v) => onUpdate(l.id, { discount: v })}
+                />
+                <NumberCell
+                  label="Курс валют"
+                  value={l.fx_rate}
+                  editing={editing}
+                  onChange={(v) => onUpdate(l.id, { fx_rate: v })}
+                />
+              </div>
+            )}
 
             {/* Дни триггера — only when this variant uses a trigger */}
             {isTrigger && (
@@ -560,21 +579,27 @@ function LinesEditorView({
               )}
             </div>
 
-            {/* Котировка значение */}
-            <NumberCell
-              label="Котировка значение"
-              value={l.quotation}
-              editing={editing}
-              onChange={(v) => onUpdate(l.id, { quotation: v })}
-            />
+            {/* Котировка значение + Скидка — default placement for
+                tiers other than manual_formula. manual_formula renders
+                its own dedicated row (Котировка значение / Скидка /
+                Курс валют) right under the picker. */}
+            {tier !== "manual_formula" && (
+              <>
+                <NumberCell
+                  label="Котировка значение"
+                  value={l.quotation}
+                  editing={editing}
+                  onChange={(v) => onUpdate(l.id, { quotation: v })}
+                />
 
-            {/* Скидка */}
-            <NumberCell
-              label="Скидка"
-              value={l.discount}
-              editing={editing}
-              onChange={(v) => onUpdate(l.id, { discount: v })}
-            />
+                <NumberCell
+                  label="Скидка"
+                  value={l.discount}
+                  editing={editing}
+                  onChange={(v) => onUpdate(l.id, { discount: v })}
+                />
+              </>
+            )}
 
             {/* Комментарий котировки */}
             <TextCell

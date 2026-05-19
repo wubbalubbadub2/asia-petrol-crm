@@ -265,7 +265,8 @@ export default function NewDealPage() {
     // mirrored from the new default (variant 0).
     if (deal) {
       // `as never[]` — generated types still narrow price_condition to
-      // the pre-00071 union; the DB accepts manual_formula fine.
+      // the pre-00071 union and don't know about fx_rate; the DB
+      // accepts manual_formula + fx_rate fine.
       await supabase.from("deal_supplier_lines").delete().eq("deal_id", deal.id);
       await supabase.from("deal_supplier_lines").insert(
         supplierVariants.map((v, i) => ({
@@ -278,6 +279,7 @@ export default function NewDealPage() {
           quotation_comment: v.quotationComment || null,
           discount: v.discount ? parseFloat(v.discount) : null,
           price: v.price ? parseFloat(v.price) : null,
+          fx_rate: v.priceMode === "manual_formula" && v.fxRate ? parseFloat(v.fxRate) : null,
           delivery_basis: v.deliveryBasis || null,
           departure_station_id: v.stationId || null,
         })) as never[]
@@ -295,6 +297,7 @@ export default function NewDealPage() {
           quotation_comment: v.quotationComment || null,
           discount: v.discount ? parseFloat(v.discount) : null,
           price: v.price ? parseFloat(v.price) : null,
+          fx_rate: v.priceMode === "manual_formula" && v.fxRate ? parseFloat(v.fxRate) : null,
           delivery_basis: v.deliveryBasis || null,
           destination_station_id: v.stationId || null,
         })) as never[]

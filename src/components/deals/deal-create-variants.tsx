@@ -20,9 +20,10 @@ import { createClient } from "@/lib/supabase/client";
 
 export type VariantDraft = {
   // ── Persisted on the line ─────────────────────────────────────
-  // priceMode is the UI-level mode (manual / average_month / fixed /
-  // trigger_shipment / trigger_border). It encodes both
-  // price_condition and trigger_basis — see decodePriceMode at save.
+  // priceMode is the UI-level mode (manual / manual_formula /
+  // average_month / fixed / trigger_shipment / trigger_border). It
+  // encodes price_condition + trigger_basis — see decodePriceMode at
+  // save.
   priceMode: PriceMode;
   quotationTypeId: string;
   quotation: string;          // numeric quotation value (auto from quotations table; manual override allowed)
@@ -41,6 +42,10 @@ export type VariantDraft = {
   // 'preliminary' at deal-signing — all shipments use line.price. Manager
   // can flip to 'final' later from the deal detail page.
   priceStage: "preliminary" | "final";
+  // Manual-formula FX multiplier (migration 00071). Persisted as
+  // deal_*_lines.fx_rate. Used only when priceMode === 'manual_formula'
+  // — price = (quotation − discount) × fxRate.
+  fxRate: string;
   // ── Form-only helpers, not persisted on the line ──────────────
   fixDate: string;
   triggerStart: string;
@@ -64,6 +69,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   triggerDays: "37",
   selectedMonth: "",
   priceStage: "preliminary",
+  fxRate: "",
   quotationManualEdited: false,
   priceManualEdited: false,
 };
@@ -188,17 +194,27 @@ function VariantRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v.priceMode, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
 
-  // Auto-compute price = quotation − discount whenever either input
-  // changes. Skips when the user has explicitly entered a price value.
+  // Auto-compute price whenever an input changes:
+  //   • manual_formula: price = (quotation − discount) × fxRate
+  //   • all others:     price = quotation − discount
+  // Skips when the user has explicitly entered a price value.
   useEffect(() => {
     if (v.priceManualEdited) return;
     const q = v.quotation ? parseFloat(v.quotation.replace(",", ".")) : NaN;
     if (!Number.isFinite(q)) return;
     const d = v.discount ? parseFloat(v.discount.replace(",", ".")) : 0;
-    const next = String(Math.round((q - (Number.isFinite(d) ? d : 0)) * 100) / 100);
+    const dNum = Number.isFinite(d) ? d : 0;
+    let next: string;
+    if (v.priceMode === "manual_formula") {
+      const fx = v.fxRate ? parseFloat(v.fxRate.replace(",", ".")) : NaN;
+      if (!Number.isFinite(fx)) return;
+      next = String(Math.round((q - dNum) * fx * 100) / 100);
+    } else {
+      next = String(Math.round((q - dNum) * 100) / 100);
+    }
     if (next !== v.price) onChange({ price: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.quotation, v.discount, v.priceManualEdited]);
+  }, [v.quotation, v.discount, v.fxRate, v.priceMode, v.priceManualEdited]);
 
   return (
     <div className={`rounded-md border p-3 ${isDefault ? "border-amber-200 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}>
@@ -227,10 +243,16 @@ function VariantRow({
             onChange={(e) => {
               const tier = e.target.value as PriceTier;
               if (tier === "manual") {
-                // Drop quotation/formula state — manual entry has none of it.
                 onChange({
                   priceMode: "manual",
+                  quotation: "", price: "", fxRate: "",
+                  quotationManualEdited: false, priceManualEdited: false,
+                });
+              } else if (tier === "manual_formula") {
+                onChange({
+                  priceMode: "manual_formula",
                   quotation: "", price: "",
+                  // fxRate kept — manager may want to reuse the same rate
                   quotationManualEdited: false, priceManualEdited: false,
                 });
               } else {
@@ -239,7 +261,7 @@ function VariantRow({
                 const dec = decodePriceMode(DEFAULT_FORMULA_MODE);
                 onChange({
                   priceMode: DEFAULT_FORMULA_MODE,
-                  quotation: "", price: "",
+                  quotation: "", price: "", fxRate: "",
                   quotationManualEdited: false, priceManualEdited: false,
                   triggerDays: dec.price_condition === "trigger"
                     ? String(dec.trigger_days_default ?? 35)
@@ -250,6 +272,7 @@ function VariantRow({
             className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
           >
             <option value="manual">{PRICE_TIER_LABELS.manual}</option>
+            <option value="manual_formula">{PRICE_TIER_LABELS.manual_formula}</option>
             <option value="formula">{PRICE_TIER_LABELS.formula}</option>
           </select>
         </div>
@@ -281,10 +304,11 @@ function VariantRow({
           </div>
         )}
 
-        {/* Стадия цены — segmented control. Default 'preliminary' at
-            deal creation; manager flips to 'final' later from the deal
-            page once the quotation period closes. */}
-        {priceTierOf(v.priceMode) === "formula" && (
+        {/* Стадия цены — for both formula tiers (auto and manual).
+            Default 'preliminary' at deal creation; manager flips to
+            'final' later from the deal page once the quotation period
+            closes (or after the manual values are confirmed). */}
+        {(priceTierOf(v.priceMode) === "formula" || priceTierOf(v.priceMode) === "manual_formula") && (
           <div>
             <Label className="text-[12px] text-stone-500">Стадия цены</Label>
             <div className="inline-flex h-8 rounded-md border border-stone-200 bg-white p-0.5 w-full">
@@ -314,7 +338,10 @@ function VariantRow({
           </div>
         )}
 
-        {decoded.price_condition !== "manual" && (
+        {/* «Котировка» (тип из таблицы) — only for auto-formula. Manual
+            entry tier doesn't need it, and manual_formula gets its
+            quotation value typed by hand. */}
+        {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && (
           <div>
             <Label className="text-[12px] text-stone-500">Котировка</Label>
             <select
@@ -329,6 +356,49 @@ function VariantRow({
               <option value="">Выбрать котировку...</option>
               {quotationTypes.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
             </select>
+          </div>
+        )}
+
+        {/* ───── Manual-formula trio ─────
+            Wrapped in a md:col-span-3 sub-grid so the three inputs land
+            together on a single row directly under the type picker, no
+            matter how the outer grid has flowed so far. Replaces the
+            default Котировка значение / Скидка cells for this tier
+            (price cell is still rendered below). */}
+        {v.priceMode === "manual_formula" && (
+          <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-[12px] text-stone-500">Котировка значение</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                value={v.quotation}
+                onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
+                placeholder="вручную"
+                className="h-8 text-[13px] font-mono"
+              />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Скидка</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                value={v.discount}
+                onChange={(e) => onChange({ discount: e.target.value })}
+                className="h-8 text-[13px] font-mono"
+              />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Курс валют</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                value={v.fxRate}
+                onChange={(e) => onChange({ fxRate: e.target.value })}
+                placeholder="(котировка − скидка) × курс"
+                className="h-8 text-[13px] font-mono"
+              />
+            </div>
           </div>
         )}
 
@@ -377,38 +447,41 @@ function VariantRow({
           </>
         )}
 
-        {/* Котировка значение — auto-fetched from quotations table when
-            condition + type + dates are set; manually overridable. This
-            is the «Предварительная цена» — the working number until the
-            окончательная formula resolves with real shipment dates. */}
-        <div>
-          <Label className="text-[12px] text-stone-500">
-            Котировка значение {decoded.price_condition !== "manual" && v.quotationTypeId ? (
-              v.quotationManualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
-                : v.quotation ? <span className="text-[10px] text-green-600">(из таблицы)</span>
-                : <span className="text-[10px] text-red-500">(нет данных)</span>
-            ) : ""}
-          </Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={v.quotation}
-            onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
-            placeholder={decoded.price_condition !== "manual" ? "авто или вручную" : "вручную"}
-            className="h-8 text-[13px] font-mono"
-          />
-        </div>
+        {/* Котировка значение + Скидка — default placement for the
+            non-manual_formula tiers. manual_formula renders these
+            (plus Курс валют) in a dedicated row above. */}
+        {v.priceMode !== "manual_formula" && (
+          <>
+            <div>
+              <Label className="text-[12px] text-stone-500">
+                Котировка значение {decoded.price_condition !== "manual" && v.quotationTypeId ? (
+                  v.quotationManualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
+                    : v.quotation ? <span className="text-[10px] text-green-600">(из таблицы)</span>
+                    : <span className="text-[10px] text-red-500">(нет данных)</span>
+                ) : ""}
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={v.quotation}
+                onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
+                placeholder={decoded.price_condition !== "manual" ? "авто или вручную" : "вручную"}
+                className="h-8 text-[13px] font-mono"
+              />
+            </div>
 
-        <div>
-          <Label className="text-[12px] text-stone-500">Скидка</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={v.discount}
-            onChange={(e) => onChange({ discount: e.target.value })}
-            className="h-8 text-[13px] font-mono"
-          />
-        </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Скидка</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={v.discount}
+                onChange={(e) => onChange({ discount: e.target.value })}
+                className="h-8 text-[13px] font-mono"
+              />
+            </div>
+          </>
+        )}
 
         {/* Цена — авто = котировка − скидка, можно перебить руками. */}
         <div>
