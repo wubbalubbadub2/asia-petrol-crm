@@ -649,12 +649,12 @@ export type Database = {
           preliminary_set_at: string | null
           price: number | null
           price_condition: Database["public"]["Enums"]["price_condition"] | null
+          price_source: string | null
           price_stage: string
           quotation: number | null
           quotation_comment: string | null
           quotation_type_id: string | null
           selected_month: string | null
-          sub_quotation_id: string | null
           trigger_basis: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days: number | null
           updated_at: string | null
@@ -678,12 +678,12 @@ export type Database = {
           price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
+          price_source?: string | null
           price_stage?: string
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
           selected_month?: string | null
-          sub_quotation_id?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
           updated_at?: string | null
@@ -707,12 +707,12 @@ export type Database = {
           price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
+          price_source?: string | null
           price_stage?: string
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
           selected_month?: string | null
-          sub_quotation_id?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
           updated_at?: string | null
@@ -737,13 +737,6 @@ export type Database = {
             columns: ["quotation_type_id"]
             isOneToOne: false
             referencedRelation: "quotation_product_types"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "deal_buyer_lines_sub_quotation_id_fkey"
-            columns: ["sub_quotation_id"]
-            isOneToOne: false
-            referencedRelation: "product_subtypes"
             referencedColumns: ["id"]
           },
         ]
@@ -981,12 +974,12 @@ export type Database = {
           preliminary_set_at: string | null
           price: number | null
           price_condition: Database["public"]["Enums"]["price_condition"] | null
+          price_source: string | null
           price_stage: string
           quotation: number | null
           quotation_comment: string | null
           quotation_type_id: string | null
           selected_month: string | null
-          sub_quotation_id: string | null
           trigger_basis: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days: number | null
           updated_at: string | null
@@ -1010,12 +1003,12 @@ export type Database = {
           price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
+          price_source?: string | null
           price_stage?: string
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
           selected_month?: string | null
-          sub_quotation_id?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
           updated_at?: string | null
@@ -1039,12 +1032,12 @@ export type Database = {
           price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
+          price_source?: string | null
           price_stage?: string
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
           selected_month?: string | null
-          sub_quotation_id?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
           updated_at?: string | null
@@ -1069,13 +1062,6 @@ export type Database = {
             columns: ["quotation_type_id"]
             isOneToOne: false
             referencedRelation: "quotation_product_types"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "deal_supplier_lines_sub_quotation_id_fkey"
-            columns: ["sub_quotation_id"]
-            isOneToOne: false
-            referencedRelation: "product_subtypes"
             referencedColumns: ["id"]
           },
         ]
@@ -2429,38 +2415,6 @@ export type Database = {
           },
         ]
       }
-      product_subtypes: {
-        Row: {
-          created_at: string
-          display_order: number
-          id: string
-          name: string
-          product_type_id: string
-        }
-        Insert: {
-          created_at?: string
-          display_order?: number
-          id?: string
-          name: string
-          product_type_id: string
-        }
-        Update: {
-          created_at?: string
-          display_order?: number
-          id?: string
-          name?: string
-          product_type_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "product_subtypes_product_type_id_fkey"
-            columns: ["product_type_id"]
-            isOneToOne: false
-            referencedRelation: "quotation_product_types"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       products: {
         Row: {
           category: string | null
@@ -2732,44 +2686,6 @@ export type Database = {
           },
         ]
       }
-      quotation_values: {
-        Row: {
-          comment: string | null
-          created_at: string
-          date: string
-          id: string
-          sub_quotation_id: string
-          updated_at: string
-          value: number
-        }
-        Insert: {
-          comment?: string | null
-          created_at?: string
-          date: string
-          id?: string
-          sub_quotation_id: string
-          updated_at?: string
-          value: number
-        }
-        Update: {
-          comment?: string | null
-          created_at?: string
-          date?: string
-          id?: string
-          sub_quotation_id?: string
-          updated_at?: string
-          value?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "quotation_values_sub_quotation_id_fkey"
-            columns: ["sub_quotation_id"]
-            isOneToOne: false
-            referencedRelation: "product_subtypes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       quotations: {
         Row: {
           comment: string | null
@@ -2996,6 +2912,7 @@ export type Database = {
           invoice_number: string | null
           loading_volume: number | null
           month: string | null
+          price_source: string | null
           quarter: string | null
           railway_tariff: number | null
           registry_type: Database["public"]["Enums"]["deal_type"]
@@ -3006,7 +2923,6 @@ export type Database = {
           shipment_volume: number | null
           shipped_tonnage_amount: number | null
           shipped_tonnage_amount_override: boolean
-          sub_quotation_id: string | null
           supplier_appendix: string | null
           supplier_id: string | null
           supplier_line_id: string | null
@@ -3035,6 +2951,7 @@ export type Database = {
           invoice_number?: string | null
           loading_volume?: number | null
           month?: string | null
+          price_source?: string | null
           quarter?: string | null
           railway_tariff?: number | null
           registry_type: Database["public"]["Enums"]["deal_type"]
@@ -3045,7 +2962,6 @@ export type Database = {
           shipment_volume?: number | null
           shipped_tonnage_amount?: number | null
           shipped_tonnage_amount_override?: boolean
-          sub_quotation_id?: string | null
           supplier_appendix?: string | null
           supplier_id?: string | null
           supplier_line_id?: string | null
@@ -3074,6 +2990,7 @@ export type Database = {
           invoice_number?: string | null
           loading_volume?: number | null
           month?: string | null
+          price_source?: string | null
           quarter?: string | null
           railway_tariff?: number | null
           registry_type?: Database["public"]["Enums"]["deal_type"]
@@ -3084,7 +3001,6 @@ export type Database = {
           shipment_volume?: number | null
           shipped_tonnage_amount?: number | null
           shipped_tonnage_amount_override?: boolean
-          sub_quotation_id?: string | null
           supplier_appendix?: string | null
           supplier_id?: string | null
           supplier_line_id?: string | null
@@ -3161,13 +3077,6 @@ export type Database = {
             columns: ["fuel_type_id"]
             isOneToOne: false
             referencedRelation: "fuel_types"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shipment_registry_sub_quotation_id_fkey"
-            columns: ["sub_quotation_id"]
-            isOneToOne: false
-            referencedRelation: "product_subtypes"
             referencedColumns: ["id"]
           },
           {
@@ -3688,8 +3597,13 @@ export type Database = {
         Args: { p_month: number; p_product_type_id: string; p_year: number }
         Returns: number
       }
-      compute_subquotation_price: {
-        Args: { p_mode: string; p_params: Json; p_sub_quotation_id: string }
+      compute_quotation_value: {
+        Args: {
+          p_mode: string
+          p_params: Json
+          p_price_source: string
+          p_product_type_id: string
+        }
         Returns: number
       }
       detect_price_drops: {
@@ -3809,6 +3723,7 @@ export type Database = {
         | "manual"
         | "manual_formula"
         | "avg_to_date"
+        | "manual_in_formula"
       trigger_basis: "shipment_date" | "border_crossing_date"
       user_role: "admin" | "manager" | "logistics" | "accounting" | "readonly"
     }
@@ -3946,6 +3861,7 @@ export const Constants = {
         "manual",
         "manual_formula",
         "avg_to_date",
+        "manual_in_formula",
       ],
       trigger_basis: ["shipment_date", "border_crossing_date"],
       user_role: ["admin", "manager", "logistics", "accounting", "readonly"],
