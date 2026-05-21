@@ -634,6 +634,7 @@ export type Database = {
       deal_buyer_lines: {
         Row: {
           appendix: string | null
+          calc_mode: string
           created_at: string | null
           deal_id: string
           delivery_basis: string | null
@@ -661,6 +662,7 @@ export type Database = {
         }
         Insert: {
           appendix?: string | null
+          calc_mode?: string
           created_at?: string | null
           deal_id: string
           delivery_basis?: string | null
@@ -690,6 +692,7 @@ export type Database = {
         }
         Update: {
           appendix?: string | null
+          calc_mode?: string
           created_at?: string | null
           deal_id?: string
           delivery_basis?: string | null
@@ -959,6 +962,7 @@ export type Database = {
       deal_supplier_lines: {
         Row: {
           appendix: string | null
+          calc_mode: string
           created_at: string | null
           deal_id: string
           delivery_basis: string | null
@@ -986,6 +990,7 @@ export type Database = {
         }
         Insert: {
           appendix?: string | null
+          calc_mode?: string
           created_at?: string | null
           deal_id: string
           delivery_basis?: string | null
@@ -1015,6 +1020,7 @@ export type Database = {
         }
         Update: {
           appendix?: string | null
+          calc_mode?: string
           created_at?: string | null
           deal_id?: string
           delivery_basis?: string | null
@@ -3599,10 +3605,10 @@ export type Database = {
       }
       compute_quotation_value: {
         Args: {
-          p_mode: string
-          p_params: Json
+          p_calc_mode: string
           p_price_source: string
           p_product_type_id: string
+          p_target_date: string
         }
         Returns: number
       }

@@ -114,7 +114,11 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     trigger_days:    decoded.price_condition === "trigger"
                        ? (parseInt(v.triggerDays || String(decoded.trigger_days_default ?? 35), 10) || decoded.trigger_days_default || 35)
                        : null,
-    selected_month:  decoded.price_condition === "average_month"
+    // Persisted whenever the manager picks an explicit month under
+    // «Средний месяц» (calc_mode = 'avg_month'). The legacy
+    // price_condition='average_month' path is no longer reachable through
+    // the new orthogonal UI, so calc_mode is the only gate.
+    selected_month:  v.calcMode === "avg_month"
                        ? (v.selectedMonth || null)
                        : null,
     // Stage applies to all formula modes (auto, manual_formula, and
@@ -220,20 +224,30 @@ function VariantRow({
     const sub = decoded.price_condition;
     // Only the new orthogonal-model subtypes drive the RPC path.
     if (sub !== "fixed" && sub !== "trigger") return;
-    if (!v.triggerStart) return;
-    const days = sub === "trigger" ? parseInt(v.triggerDays, 10) : 0;
-    if (sub === "trigger" && !Number.isFinite(days)) return;
 
-    if (v.priceSource) {
+    // Resolve target_date. When the manager picked an explicit month under
+    // «Средний месяц», that overrides the anchor+days calculation — any
+    // day inside the chosen month is fine since the RPC averages over the
+    // whole calendar month.
+    let p_target_date: string | null = null;
+    if (v.calcMode === "avg_month" && v.selectedMonth) {
+      p_target_date = `${v.selectedMonth}-15`;
+    } else {
+      if (!v.triggerStart) return;
+      const days = sub === "trigger" ? parseInt(v.triggerDays, 10) : 0;
+      if (sub === "trigger" && !Number.isFinite(days)) return;
       const targetDate = new Date(v.triggerStart);
       targetDate.setUTCDate(targetDate.getUTCDate() + days);
-      const p_target_date = targetDate.toISOString().slice(0, 10);
+      p_target_date = targetDate.toISOString().slice(0, 10);
+    }
+
+    if (v.priceSource) {
       supabase.current.rpc("compute_quotation_value", {
         p_product_type_id: v.quotationTypeId,
         p_price_source: v.priceSource,
         p_target_date,
         p_calc_mode: v.calcMode,
-      } as never).then(({ data, error }: { data: number | null; error: unknown }) => {
+      }).then(({ data, error }) => {
         if (error || data == null) return;
         if (!v.quotationManualEdited) {
           onChange({ quotation: String(Math.round(data * 100) / 100) });
@@ -255,7 +269,7 @@ function VariantRow({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceMode, v.calcMode, v.quotationTypeId, v.priceSource, v.triggerStart, v.triggerDays]);
+  }, [v.priceMode, v.calcMode, v.quotationTypeId, v.priceSource, v.triggerStart, v.triggerDays, v.selectedMonth]);
 
   // Auto-compute price whenever an input changes:
   //   • manual_formula:    price = (quotation − discount) × fxRate
@@ -497,11 +511,36 @@ function VariantRow({
             <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
             <select
               value={v.calcMode}
-              onChange={(e) => onChange({ calcMode: e.target.value as CalcMode })}
+              onChange={(e) => onChange({
+                calcMode: e.target.value as CalcMode,
+                // Drop the manual month override when switching back to
+                // on_date so the auto-fetch reverts to anchor+days.
+                selectedMonth: e.target.value === "avg_month" ? v.selectedMonth : "",
+              })}
               className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
             >
               {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
+          </div>
+        )}
+
+        {/* «Месяц котировки» — appears only with avg_month. Manual
+            override of the month the RPC averages over; when empty the
+            auto-fetch falls back to the month of (anchor + days). */}
+        {priceTierOf(v.priceMode) === "formula" && v.calcMode === "avg_month" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">
+              Месяц котировки <span className="text-[10px] text-stone-400">(опц.)</span>
+            </Label>
+            <Input
+              type="month"
+              value={v.selectedMonth}
+              onChange={(e) => onChange({
+                selectedMonth: e.target.value,
+                quotationManualEdited: false,
+              })}
+              className="h-8 text-[13px]"
+            />
           </div>
         )}
 
@@ -569,9 +608,7 @@ function VariantRow({
             {isTriggerMode && (
               <div>
                 <Label className="text-[12px] text-stone-500">
-                  Кол-во дней <span className="text-[10px] text-stone-400">
-                    {triggerBasis === "border_crossing_date" ? "(обычно 30-44)" : "(обычно 35-40)"}
-                  </span>
+                  Кол-во дней <span className="text-[10px] text-stone-400">(обычно 35-40)</span>
                 </Label>
                 <Input
                   type="number"
