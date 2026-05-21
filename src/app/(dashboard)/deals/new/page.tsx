@@ -478,7 +478,9 @@ export default function NewDealPage() {
               <VariantsCard
                 side="supplier"
                 variants={supplierVariants}
-                setVariants={(v) => { setSupplierVariants(v); markChanged(); }}
+                onUpdate={(idx, patch) => { setSupplierVariants(prev => prev.map((v, i) => i === idx ? { ...v, ...patch } : v)); markChanged(); }}
+                onAdd={() => { setSupplierVariants(prev => [...prev, { ...EMPTY_VARIANT }]); markChanged(); }}
+                onRemove={(idx) => { setSupplierVariants(prev => prev.filter((_, i) => i !== idx)); markChanged(); }}
                 month={month}
                 year={year}
                 quotationTypes={quotationTypes}
@@ -515,7 +517,9 @@ export default function NewDealPage() {
               <VariantsCard
                 side="buyer"
                 variants={buyerVariants}
-                setVariants={(v) => { setBuyerVariants(v); markChanged(); }}
+                onUpdate={(idx, patch) => { setBuyerVariants(prev => prev.map((v, i) => i === idx ? { ...v, ...patch } : v)); markChanged(); }}
+                onAdd={() => { setBuyerVariants(prev => [...prev, { ...EMPTY_VARIANT }]); markChanged(); }}
+                onRemove={(idx) => { setBuyerVariants(prev => prev.filter((_, i) => i !== idx)); markChanged(); }}
                 month={month}
                 year={year}
                 quotationTypes={quotationTypes}

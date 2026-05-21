@@ -106,27 +106,19 @@ export function variantDraftToLinePatch(v: VariantDraft): {
 type RefOption = { id: string; name: string };
 
 export function VariantsCard({
-  side, variants, setVariants, month, year, quotationTypes, stations,
+  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, stations,
 }: {
   side: "supplier" | "buyer";
   variants: VariantDraft[];
-  setVariants: (v: VariantDraft[]) => void;
+  onUpdate: (idx: number, patch: Partial<VariantDraft>) => void;
+  onAdd: () => void;
+  onRemove: (idx: number) => void;
   month: string;
   year: number;
   quotationTypes: RefOption[];
   stations: RefOption[];
 }) {
   const stationLabel = side === "supplier" ? "Ст. отправления" : "Ст. назначения";
-
-  function update(idx: number, patch: Partial<VariantDraft>) {
-    setVariants(variants.map((v, i) => i === idx ? { ...v, ...patch } : v));
-  }
-  function add() {
-    setVariants([...variants, { ...EMPTY_VARIANT }]);
-  }
-  function remove(idx: number) {
-    setVariants(variants.filter((_, i) => i !== idx));
-  }
 
   return (
     <div className="space-y-2">
@@ -136,8 +128,8 @@ export function VariantsCard({
           idx={idx}
           variant={v}
           isDefault={idx === 0}
-          onChange={(patch) => update(idx, patch)}
-          onRemove={() => remove(idx)}
+          onChange={(patch) => onUpdate(idx, patch)}
+          onRemove={() => onRemove(idx)}
           month={month}
           year={year}
           quotationTypes={quotationTypes}
@@ -145,7 +137,7 @@ export function VariantsCard({
           stationLabel={stationLabel}
         />
       ))}
-      <Button type="button" size="sm" variant="outline" onClick={add} className="w-full">
+      <Button type="button" size="sm" variant="outline" onClick={onAdd} className="w-full">
         <Plus className="mr-1 h-3.5 w-3.5" /> Добавить вариант
       </Button>
     </div>
