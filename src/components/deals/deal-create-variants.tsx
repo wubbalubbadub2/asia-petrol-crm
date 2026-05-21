@@ -16,8 +16,8 @@ import {
   type TriggerBasisLite,
 } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { createClient } from "@/lib/supabase/client";
-import type { Json } from "@/lib/types/database";
 
 export type VariantDraft = {
   // ── Persisted on the line ─────────────────────────────────────
@@ -27,9 +27,11 @@ export type VariantDraft = {
   // save.
   priceMode: PriceMode;
   quotationTypeId: string;
-  // Migration 00073 — sub-quotation picked under the parent quotation.
-  // Empty string means: use legacy wide-column lookup (back-compat for old data).
-  subQuotationId: string;
+  // Migration 00077 — which wide column of `quotations` to read for
+  // this variant (one of: price / price_cif_nwe / price_fob_med /
+  // price_fob_rotterdam / price_cif_nwe_standalone). Empty string =
+  // legacy fallback via fetchQuotationPrice.
+  priceSource: string;
   quotation: string;          // numeric quotation value (auto from quotations table; manual override allowed)
   quotationComment: string;
   discount: string;
@@ -65,7 +67,7 @@ export type VariantDraft = {
 export const EMPTY_VARIANT: VariantDraft = {
   priceMode: "average_month",
   quotationTypeId: "",
-  subQuotationId: "",
+  priceSource: "",
   quotation: "",
   quotationComment: "",
   discount: "",
@@ -91,7 +93,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   trigger_days: number | null;
   selected_month: string | null;
   price_stage: "preliminary" | "final";
-  sub_quotation_id: string | null;
+  price_source: string | null;
 } {
   const decoded = decodePriceMode(v.priceMode);
   return {
@@ -106,15 +108,14 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     // Stage applies to all formula modes (auto and manual_formula);
     // pure-manual stays at preliminary because there's no recompute.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
-    sub_quotation_id: v.subQuotationId || null,
+    price_source:    v.priceSource || null,
   };
 }
 
 type RefOption = { id: string; name: string };
-type SubQuotationOption = { id: string; name: string; product_type_id: string; display_order: number };
 
 export function VariantsCard({
-  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, subQuotations, stations,
+  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, stations,
 }: {
   side: "supplier" | "buyer";
   variants: VariantDraft[];
@@ -124,7 +125,6 @@ export function VariantsCard({
   month: string;
   year: number;
   quotationTypes: RefOption[];
-  subQuotations: SubQuotationOption[];
   stations: RefOption[];
 }) {
   const stationLabel = side === "supplier" ? "Ст. отправления" : "Ст. назначения";
@@ -142,7 +142,6 @@ export function VariantsCard({
           month={month}
           year={year}
           quotationTypes={quotationTypes}
-          subQuotations={subQuotations}
           stations={stations}
           stationLabel={stationLabel}
         />
@@ -156,7 +155,7 @@ export function VariantsCard({
 
 function VariantRow({
   idx, variant: v, isDefault, onChange, onRemove,
-  month, year, quotationTypes, subQuotations, stations, stationLabel,
+  month, year, quotationTypes, stations, stationLabel,
 }: {
   idx: number;
   variant: VariantDraft;
@@ -166,7 +165,6 @@ function VariantRow({
   month: string;
   year: number;
   quotationTypes: RefOption[];
-  subQuotations: SubQuotationOption[];
   stations: RefOption[];
   stationLabel: string;
 }) {
@@ -181,10 +179,10 @@ function VariantRow({
   // effect below (price = quotation - discount). Hands off if the user
   // has manually entered something in the quotation field.
   //
-  // When the variant has a sub_quotation_id picked (migration 00073),
-  // delegate to the `compute_subquotation_price` RPC which works off
-  // the long-format `quotation_values` table. When it's empty, fall
-  // back to the legacy wide-column lookup so existing deals keep
+  // When the variant has a priceSource picked (migration 00077), delegate
+  // to the `compute_quotation_value` RPC which averages the picked wide
+  // column from `quotations` over the requested window. When it's empty,
+  // fall back to the legacy wide-column ?? lookup so existing deals keep
   // working untouched.
   useEffect(() => {
     if (decoded.price_condition === "manual" || decoded.price_condition === "manual_formula") return;
@@ -197,9 +195,9 @@ function VariantRow({
       ? v.selectedMonth
       : month;
 
-    if (v.subQuotationId) {
+    if (v.priceSource) {
       let p_mode: string | null = null;
-      let p_params: Json | null = null;
+      let p_params: Record<string, unknown> | null = null;
       if (decoded.price_condition === "average_month") {
         const monthIdx = MONTHS_RU.indexOf(lookupMonth as (typeof MONTHS_RU)[number]) + 1;
         if (monthIdx <= 0) return;
@@ -220,11 +218,13 @@ function VariantRow({
         p_params = { start_date: v.triggerStart, days };
       }
       if (!p_mode || p_params == null) return;
-      supabase.current.rpc("compute_subquotation_price", {
-        p_sub_quotation_id: v.subQuotationId,
+      // Migration 00077 — types regenerated by user
+      supabase.current.rpc("compute_quotation_value" as never, {
+        p_product_type_id: v.quotationTypeId,
+        p_price_source: v.priceSource,
         p_mode,
         p_params,
-      }).then(({ data, error }) => {
+      } as never).then(({ data, error }: { data: unknown; error: unknown }) => {
         if (error || data == null) return;
         if (!v.quotationManualEdited) {
           onChange({ quotation: String(Math.round((data as number) * 100) / 100) });
@@ -233,7 +233,7 @@ function VariantRow({
       return;
     }
 
-    // Legacy fallback when no sub-quotation set.
+    // Legacy fallback when no price_source set.
     fetchQuotationPrice(
       supabase.current,
       decoded.price_condition, v.quotationTypeId, lookupMonth, year,
@@ -244,7 +244,7 @@ function VariantRow({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceMode, v.quotationTypeId, v.subQuotationId, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
+  }, [v.priceMode, v.quotationTypeId, v.priceSource, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
 
   // Auto-compute price whenever an input changes:
   //   • manual_formula: price = (quotation − discount) × fxRate
@@ -298,14 +298,14 @@ function VariantRow({
                 onChange({
                   priceMode: "manual",
                   quotation: "", price: "", fxRate: "",
-                  subQuotationId: "",
+                  priceSource: "",
                   quotationManualEdited: false, priceManualEdited: false,
                 });
               } else if (tier === "manual_formula") {
                 onChange({
                   priceMode: "manual_formula",
                   quotation: "", price: "",
-                  subQuotationId: "",
+                  priceSource: "",
                   // fxRate kept — manager may want to reuse the same rate
                   quotationManualEdited: false, priceManualEdited: false,
                 });
@@ -316,7 +316,7 @@ function VariantRow({
                 onChange({
                   priceMode: DEFAULT_FORMULA_MODE,
                   quotation: "", price: "", fxRate: "",
-                  subQuotationId: "",
+                  priceSource: "",
                   quotationManualEdited: false, priceManualEdited: false,
                   triggerDays: dec.price_condition === "trigger"
                     ? String(dec.trigger_days_default ?? 35)
@@ -401,12 +401,22 @@ function VariantRow({
             <Label className="text-[12px] text-stone-500">Котировка</Label>
             <select
               value={v.quotationTypeId}
-              onChange={(e) => onChange({
-                quotationTypeId: e.target.value,
-                subQuotationId: "",
-                quotation: "", price: "",
-                quotationManualEdited: false, priceManualEdited: false,
-              })}
+              onChange={(e) => {
+                const nextId = e.target.value;
+                // If the newly-picked parent has a single price column,
+                // auto-seed priceSource so the auto-fetch effect can fire
+                // without an explicit «Подкотировка» pick.
+                const parent = quotationTypes.find((q) => q.id === nextId);
+                const cols = parent
+                  ? getColumnsForProduct(parent.name).filter((c) => c.key !== "comment")
+                  : [];
+                onChange({
+                  quotationTypeId: nextId,
+                  priceSource: cols.length === 1 ? cols[0].key : "",
+                  quotation: "", price: "",
+                  quotationManualEdited: false, priceManualEdited: false,
+                });
+              }}
               className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
             >
               <option value="">Выбрать котировку...</option>
@@ -416,25 +426,36 @@ function VariantRow({
         )}
 
         {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && (() => {
-          const filtered = subQuotations
-            .filter((s) => s.product_type_id === v.quotationTypeId)
-            .sort((a, b) => a.display_order - b.display_order);
-          const disabled = !v.quotationTypeId || filtered.length === 0;
+          // Derive the column options from quotation-columns.ts using the
+          // parent quotation's name. Each editable column (and the
+          // formula-averaged column) of the wide `quotations` layout is
+          // a sub-quotation; drop the «Комментарии» text column.
+          const parent = quotationTypes.find((q) => q.id === v.quotationTypeId);
+          const cols = parent
+            ? getColumnsForProduct(parent.name).filter((c) => c.key !== "comment")
+            : [];
+          const hasParent = !!parent;
+          const onlyOne = cols.length === 1;
+          // When there's only one column, pre-select & disable. When
+          // there's no parent yet, render a disabled placeholder picker.
+          const effectiveValue = onlyOne ? cols[0].key : v.priceSource;
+          const disabled = !hasParent || onlyOne;
           return (
             <div>
               <Label className="text-[12px] text-stone-500">Подкотировка</Label>
               <select
-                value={v.subQuotationId}
+                value={effectiveValue}
                 disabled={disabled}
                 onChange={(e) => onChange({
-                  subQuotationId: e.target.value,
+                  priceSource: e.target.value,
                   quotation: "", price: "",
                   quotationManualEdited: false, priceManualEdited: false,
                 })}
                 className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
               >
-                <option value="">{disabled ? "— нет подкотировок —" : "Выбрать подкотировку..."}</option>
-                {filtered.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {!hasParent && <option value="">— выберите котировку —</option>}
+                {hasParent && !onlyOne && <option value="">Выбрать подкотировку...</option>}
+                {cols.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
             </div>
           );
