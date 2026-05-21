@@ -346,11 +346,41 @@ function VariantRow({
           </select>
         </div>
 
-        {/* Stage cell rendered out-of-order so that, in the formula tier,
-            the «Режим расчёта» + «Подтип формулы» pair lands directly
-            beneath the Котировка + Подкотировка pair. For manual_formula
-            the stage cell stays right next to the tier picker (current
-            behavior unchanged for that tier — see below). */}
+        {/* «Подтип формулы» — sits directly after «Тип цены» per Beken
+            2026-05-21. Holds the three non-averaging modes: «Фикс цена»
+            (manual entry inside the formula tier) and the two trigger
+            basis variants. The mutually-exclusive partner — «Режим
+            расчёта» (CALC_MODES) — stays further down next to the
+            Котировка / Подкотировка cluster. Empty value means the
+            current priceMode is from CALC_MODES instead. */}
+        {priceTierOf(v.priceMode) === "formula" && (() => {
+          const inSub = FORMULA_SUBMODES.some((m) => m.value === v.priceMode);
+          return (
+            <div>
+              <Label className="text-[12px] text-stone-500">Подтип формулы</Label>
+              <select
+                value={inSub ? v.priceMode : ""}
+                onChange={(e) => {
+                  const next = e.target.value as PriceMode;
+                  if (!next) return;
+                  const dec = decodePriceMode(next);
+                  onChange({
+                    priceMode: next,
+                    quotation: "", price: "",
+                    quotationManualEdited: false, priceManualEdited: false,
+                    triggerDays: dec.price_condition === "trigger"
+                      ? String(dec.trigger_days_default ?? 37)
+                      : v.triggerDays,
+                  });
+                }}
+                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+              >
+                {!inSub && <option value="">— (не выбрано)</option>}
+                {FORMULA_SUBMODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+          );
+        })()}
 
         {/* Стадия цены — for both formula tiers (auto and manual).
             Default 'preliminary' at deal creation; manager flips to
@@ -454,69 +484,32 @@ function VariantRow({
           );
         })()}
 
-        {/* ─────────────────────────────────────────────────────────────
-            Mutually-exclusive mode selectors (per Beken 2026-05-21).
-            «Режим расчёта» (CALC_MODES) covers the three averaging /
-            on-date lookups. «Подтип формулы» (FORMULA_SUBMODES) covers
-            «Фикс цена» (manual entry inside the formula tier) and the
-            two trigger basis variants. Picking an option in one resets
-            the other to "— (не выбрано)". The shared field is priceMode:
-            since each option lives in exactly one of the two arrays,
-            checking which array contains the current value tells us
-            which select should display it.
-            ───────────────────────────────────────────────────────── */}
+        {/* «Режим расчёта» — partner of «Подтип формулы» (rendered above
+            next to «Тип цены»). Mutually exclusive: picking here resets
+            the priceMode to one of CALC_MODES, so the Подтип-формулы
+            select renders "— (не выбрано)" until the manager flips back. */}
         {priceTierOf(v.priceMode) === "formula" && (() => {
           const inCalc = CALC_MODES.some((m) => m.value === v.priceMode);
-          const inSub = FORMULA_SUBMODES.some((m) => m.value === v.priceMode);
           return (
-            <>
-              <div>
-                <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
-                <select
-                  value={inCalc ? v.priceMode : ""}
-                  onChange={(e) => {
-                    const next = e.target.value as PriceMode;
-                    if (!next) return;
-                    onChange({
-                      priceMode: next,
-                      quotation: "", price: "",
-                      quotationManualEdited: false, priceManualEdited: false,
-                    });
-                  }}
-                  className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-                >
-                  {!inCalc && <option value="">— (не выбрано)</option>}
-                  {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <Label className="text-[12px] text-stone-500">Подтип формулы</Label>
-                <select
-                  value={inSub ? v.priceMode : ""}
-                  onChange={(e) => {
-                    const next = e.target.value as PriceMode;
-                    if (!next) return;
-                    const dec = decodePriceMode(next);
-                    onChange({
-                      priceMode: next,
-                      quotation: "", price: "",
-                      quotationManualEdited: false, priceManualEdited: false,
-                      // When switching INTO a trigger subtype, seed days
-                      // from the basis-specific default (37 by spec). User
-                      // can edit further within 30-44 / 35-40.
-                      triggerDays: dec.price_condition === "trigger"
-                        ? String(dec.trigger_days_default ?? 37)
-                        : v.triggerDays,
-                    });
-                  }}
-                  className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-                >
-                  {!inSub && <option value="">— (не выбрано)</option>}
-                  {FORMULA_SUBMODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-              </div>
-            </>
+            <div>
+              <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
+              <select
+                value={inCalc ? v.priceMode : ""}
+                onChange={(e) => {
+                  const next = e.target.value as PriceMode;
+                  if (!next) return;
+                  onChange({
+                    priceMode: next,
+                    quotation: "", price: "",
+                    quotationManualEdited: false, priceManualEdited: false,
+                  });
+                }}
+                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+              >
+                {!inCalc && <option value="">— (не выбрано)</option>}
+                {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
           );
         })()}
 
