@@ -585,40 +585,42 @@ function VariantRow({
           </div>
         )}
 
-        {/* Anchor date + (for triggers) day shift. Both inputs hide under
-            «Средний месяц» — that calc-mode is driven exclusively by the
-            «Месяц котировки» picker above, so anchor+days carry no info.
-            Trigger basis only changes the label, the storage column
-            stays the same. */}
+        {/* Anchor date — only under «на Дату». Under «Средний месяц» the
+            target is the month picked in «Месяц котировки», so the anchor
+            carries no info. Trigger basis only changes the label, the
+            storage column stays the same. */}
         {(decoded.price_condition === "fixed" || isTriggerMode) && v.calcMode === "on_date" && (
-          <>
-            <div>
-              <Label className="text-[12px] text-stone-500">
-                {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата"}
-              </Label>
-              <Input
-                type="date"
-                value={v.triggerStart}
-                onChange={(e) => onChange({ triggerStart: e.target.value })}
-                className="h-8 text-[13px]"
-              />
-            </div>
-            {isTriggerMode && (
-              <div>
-                <Label className="text-[12px] text-stone-500">
-                  Кол-во дней <span className="text-[10px] text-stone-400">(обычно 35-40)</span>
-                </Label>
-                <Input
-                  type="number"
-                  value={v.triggerDays}
-                  onChange={(e) => onChange({ triggerDays: e.target.value })}
-                  className="h-8 text-[13px]"
-                  min="1"
-                  max="90"
-                />
-              </div>
-            )}
-          </>
+          <div>
+            <Label className="text-[12px] text-stone-500">
+              {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата"}
+            </Label>
+            <Input
+              type="date"
+              value={v.triggerStart}
+              onChange={(e) => onChange({ triggerStart: e.target.value })}
+              className="h-8 text-[13px]"
+            />
+          </div>
+        )}
+
+        {/* Day-count — shown for ANY trigger subtype, regardless of
+            calc_mode. Under «на Дату» it shifts the anchor date; under
+            «Средний месяц» it's still persisted on the line for record
+            (contract typically still cites the trigger window). */}
+        {isTriggerMode && (
+          <div>
+            <Label className="text-[12px] text-stone-500">
+              Кол-во дней <span className="text-[10px] text-stone-400">(обычно 35-40)</span>
+            </Label>
+            <Input
+              type="number"
+              value={v.triggerDays}
+              onChange={(e) => onChange({ triggerDays: e.target.value })}
+              className="h-8 text-[13px]"
+              min="1"
+              max="90"
+            />
+          </div>
         )}
 
         {/* Котировка значение + Скидка — default placement for the
