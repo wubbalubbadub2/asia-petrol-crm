@@ -18,6 +18,7 @@ export const PRICE_CONDITIONS = [
   { value: "manual", label: "Фикс / Вручную" },
   { value: "manual_formula", label: "Формульная вручную" },
   { value: "average_month", label: "Формула: Средний месяц" },
+  { value: "avg_to_date", label: "Формула: Средний на дату" },
   { value: "fixed", label: "Формула: Фикс цена на дату" },
   { value: "trigger", label: "Формула: Триггер" },
 ] as const;
@@ -38,6 +39,7 @@ export type PriceMode =
   | "manual_formula"
   | "fixed"
   | "average_month"
+  | "avg_to_date"
   | "trigger_shipment"
   | "trigger_border";
 
@@ -45,6 +47,7 @@ export const PRICE_MODES: { value: PriceMode; label: string; group: "manual" | "
   { value: "manual",            label: "Фикс / Вручную",                              group: "manual" },
   { value: "manual_formula",    label: "Формульная вручную",                          group: "manual_formula" },
   { value: "average_month",     label: "Формула: Средний месяц",                       group: "formula" },
+  { value: "avg_to_date",       label: "Формула: Средний на дату",                     group: "formula" },
   { value: "fixed",             label: "Формула: Фикс цена на дату",                   group: "formula" },
   { value: "trigger_shipment",  label: "Формула: Триггер — по дате отгрузки (30-44 дн)", group: "formula" },
   { value: "trigger_border",    label: "Формула: Триггер — с пересечения границы (35-40 дн)", group: "formula" },
@@ -82,6 +85,7 @@ export const DEFAULT_FORMULA_MODE: PriceMode = "average_month";
 // the tier label already conveys that context.
 export const FORMULA_SUBMODES: { value: PriceMode; label: string }[] = [
   { value: "average_month",    label: "Средний месяц" },
+  { value: "avg_to_date",      label: "Средний на дату" },
   { value: "fixed",            label: "Фикс цена на дату" },
   { value: "trigger_shipment", label: "Триггер — по дате отгрузки (35-40 дн)" },
   { value: "trigger_border",   label: "Триггер — с пересечения границы (35-40 дн)" },
@@ -99,6 +103,7 @@ export function encodePriceMode(
   if (
     condition === "fixed" ||
     condition === "average_month" ||
+    condition === "avg_to_date" ||
     condition === "manual" ||
     condition === "manual_formula"
   ) {
@@ -108,7 +113,7 @@ export function encodePriceMode(
 }
 
 export function decodePriceMode(mode: PriceMode): {
-  price_condition: "manual" | "manual_formula" | "fixed" | "average_month" | "trigger";
+  price_condition: "manual" | "manual_formula" | "fixed" | "average_month" | "avg_to_date" | "trigger";
   trigger_basis: TriggerBasisLite | null;
   trigger_days_default: number | null;
 } {
@@ -116,6 +121,7 @@ export function decodePriceMode(mode: PriceMode): {
     case "manual":           return { price_condition: "manual",         trigger_basis: null, trigger_days_default: null };
     case "manual_formula":   return { price_condition: "manual_formula", trigger_basis: null, trigger_days_default: null };
     case "average_month":    return { price_condition: "average_month",  trigger_basis: null, trigger_days_default: null };
+    case "avg_to_date":      return { price_condition: "avg_to_date",    trigger_basis: null, trigger_days_default: null };
     case "fixed":            return { price_condition: "fixed",          trigger_basis: null, trigger_days_default: null };
     case "trigger_shipment": return { price_condition: "trigger",        trigger_basis: "shipment_date",        trigger_days_default: 37 };
     case "trigger_border":   return { price_condition: "trigger",        trigger_basis: "border_crossing_date", trigger_days_default: 37 };

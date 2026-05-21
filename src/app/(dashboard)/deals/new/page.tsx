@@ -81,6 +81,7 @@ export default function NewDealPage() {
 
   // Quotation types for price linking
   const [quotationTypes, setQuotationTypes] = useState<RefOption[]>([]);
+  const [subQuotations, setSubQuotations] = useState<{ id: string; name: string; product_type_id: string; display_order: number }[]>([]);
 
   // Supplier scalars (one per side)
   const [supplierId, setSupplierId] = useState("");
@@ -184,7 +185,8 @@ export default function NewDealPage() {
       supabase.from("stations").select("id, name").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
       supabase.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
-    ]).then(([f, ft, s, b, fw, cg, st, m, qt]) => {
+      supabase.from("product_subtypes").select("id, name, product_type_id, display_order").order("display_order"),
+    ]).then(([f, ft, s, b, fw, cg, st, m, qt, ps]) => {
       setFactories((f.data ?? []) as RefOption[]);
       setFuelTypes((ft.data ?? []) as RefOption[]);
       setSuppliers((s.data ?? []) as CounterpartyOption[]);
@@ -194,6 +196,7 @@ export default function NewDealPage() {
       setStations((st.data ?? []) as RefOption[]);
       setManagers((m.data ?? []) as ProfileOption[]);
       setQuotationTypes((qt.data ?? []) as RefOption[]);
+      setSubQuotations(ps.data ?? []);
     });
   }, [supabase]);
 
@@ -275,9 +278,6 @@ export default function NewDealPage() {
     // user-entered variants. The line→deals sync trigger keeps deals.scalars
     // mirrored from the new default (variant 0).
     if (deal) {
-      // `as never[]` — generated types still narrow price_condition to
-      // the pre-00071 union and don't know about fx_rate; the DB
-      // accepts manual_formula + fx_rate fine.
       await supabase.from("deal_supplier_lines").delete().eq("deal_id", deal.id);
       await supabase.from("deal_supplier_lines").insert(
         supplierVariants.map((v, i) => ({
@@ -294,7 +294,7 @@ export default function NewDealPage() {
           appendix: v.appendix || null,
           delivery_basis: v.deliveryBasis || null,
           departure_station_id: v.stationId || null,
-        })) as never[]
+        }))
       );
 
       await supabase.from("deal_buyer_lines").delete().eq("deal_id", deal.id);
@@ -313,7 +313,7 @@ export default function NewDealPage() {
           appendix: v.appendix || null,
           delivery_basis: v.deliveryBasis || null,
           destination_station_id: v.stationId || null,
-        })) as never[]
+        }))
       );
     }
 
@@ -484,6 +484,7 @@ export default function NewDealPage() {
                 month={month}
                 year={year}
                 quotationTypes={quotationTypes}
+                subQuotations={subQuotations}
                 stations={stations}
               />
             </div>
@@ -523,6 +524,7 @@ export default function NewDealPage() {
                 month={month}
                 year={year}
                 quotationTypes={quotationTypes}
+                subQuotations={subQuotations}
                 stations={stations}
               />
             </div>

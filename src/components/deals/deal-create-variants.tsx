@@ -17,6 +17,7 @@ import {
 } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { createClient } from "@/lib/supabase/client";
+import type { Json } from "@/lib/types/database";
 
 export type VariantDraft = {
   // ── Persisted on the line ─────────────────────────────────────
@@ -26,6 +27,9 @@ export type VariantDraft = {
   // save.
   priceMode: PriceMode;
   quotationTypeId: string;
+  // Migration 00073 — sub-quotation picked under the parent quotation.
+  // Empty string means: use legacy wide-column lookup (back-compat for old data).
+  subQuotationId: string;
   quotation: string;          // numeric quotation value (auto from quotations table; manual override allowed)
   quotationComment: string;
   discount: string;
@@ -61,6 +65,7 @@ export type VariantDraft = {
 export const EMPTY_VARIANT: VariantDraft = {
   priceMode: "average_month",
   quotationTypeId: "",
+  subQuotationId: "",
   quotation: "",
   quotationComment: "",
   discount: "",
@@ -81,11 +86,12 @@ export const EMPTY_VARIANT: VariantDraft = {
 // Helper used by the deal-creation page when persisting a variant: turn
 // VariantDraft into a column patch for deal_supplier_lines / deal_buyer_lines.
 export function variantDraftToLinePatch(v: VariantDraft): {
-  price_condition: "manual" | "manual_formula" | "fixed" | "average_month" | "trigger";
+  price_condition: "manual" | "manual_formula" | "fixed" | "average_month" | "avg_to_date" | "trigger";
   trigger_basis: TriggerBasisLite | null;
   trigger_days: number | null;
   selected_month: string | null;
   price_stage: "preliminary" | "final";
+  sub_quotation_id: string | null;
 } {
   const decoded = decodePriceMode(v.priceMode);
   return {
@@ -100,13 +106,15 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     // Stage applies to all formula modes (auto and manual_formula);
     // pure-manual stays at preliminary because there's no recompute.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
+    sub_quotation_id: v.subQuotationId || null,
   };
 }
 
 type RefOption = { id: string; name: string };
+type SubQuotationOption = { id: string; name: string; product_type_id: string; display_order: number };
 
 export function VariantsCard({
-  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, stations,
+  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, subQuotations, stations,
 }: {
   side: "supplier" | "buyer";
   variants: VariantDraft[];
@@ -116,6 +124,7 @@ export function VariantsCard({
   month: string;
   year: number;
   quotationTypes: RefOption[];
+  subQuotations: SubQuotationOption[];
   stations: RefOption[];
 }) {
   const stationLabel = side === "supplier" ? "Ст. отправления" : "Ст. назначения";
@@ -133,6 +142,7 @@ export function VariantsCard({
           month={month}
           year={year}
           quotationTypes={quotationTypes}
+          subQuotations={subQuotations}
           stations={stations}
           stationLabel={stationLabel}
         />
@@ -146,7 +156,7 @@ export function VariantsCard({
 
 function VariantRow({
   idx, variant: v, isDefault, onChange, onRemove,
-  month, year, quotationTypes, stations, stationLabel,
+  month, year, quotationTypes, subQuotations, stations, stationLabel,
 }: {
   idx: number;
   variant: VariantDraft;
@@ -156,6 +166,7 @@ function VariantRow({
   month: string;
   year: number;
   quotationTypes: RefOption[];
+  subQuotations: SubQuotationOption[];
   stations: RefOption[];
   stationLabel: string;
 }) {
@@ -169,8 +180,15 @@ function VariantRow({
   // dates change. The price is derived from the quotation by the next
   // effect below (price = quotation - discount). Hands off if the user
   // has manually entered something in the quotation field.
+  //
+  // When the variant has a sub_quotation_id picked (migration 00073),
+  // delegate to the `compute_subquotation_price` RPC which works off
+  // the long-format `quotation_values` table. When it's empty, fall
+  // back to the legacy wide-column lookup so existing deals keep
+  // working untouched.
   useEffect(() => {
-    if (decoded.price_condition === "manual" || !v.quotationTypeId) return;
+    if (decoded.price_condition === "manual" || decoded.price_condition === "manual_formula") return;
+    if (!v.quotationTypeId) return;
     if (v.quotationManualEdited) return;
     // For «Средний месяц» the lookup month can be overridden by the
     // user via the selectedMonth field; otherwise default to the
@@ -178,6 +196,44 @@ function VariantRow({
     const lookupMonth = (decoded.price_condition === "average_month" && v.selectedMonth)
       ? v.selectedMonth
       : month;
+
+    if (v.subQuotationId) {
+      let p_mode: string | null = null;
+      let p_params: Json | null = null;
+      if (decoded.price_condition === "average_month") {
+        const monthIdx = MONTHS_RU.indexOf(lookupMonth as (typeof MONTHS_RU)[number]) + 1;
+        if (monthIdx <= 0) return;
+        p_mode = "avg_month";
+        p_params = { year, month: monthIdx };
+      } else if (decoded.price_condition === "avg_to_date") {
+        if (!v.fixDate) return;
+        p_mode = "avg_to_date";
+        p_params = { date: v.fixDate };
+      } else if (decoded.price_condition === "fixed") {
+        if (!v.fixDate) return;
+        p_mode = "on_date";
+        p_params = { date: v.fixDate };
+      } else if (decoded.price_condition === "trigger") {
+        const days = parseInt(v.triggerDays, 10);
+        if (!v.triggerStart || !Number.isFinite(days)) return;
+        p_mode = "trigger";
+        p_params = { start_date: v.triggerStart, days };
+      }
+      if (!p_mode || p_params == null) return;
+      supabase.current.rpc("compute_subquotation_price", {
+        p_sub_quotation_id: v.subQuotationId,
+        p_mode,
+        p_params,
+      }).then(({ data, error }) => {
+        if (error || data == null) return;
+        if (!v.quotationManualEdited) {
+          onChange({ quotation: String(Math.round((data as number) * 100) / 100) });
+        }
+      });
+      return;
+    }
+
+    // Legacy fallback when no sub-quotation set.
     fetchQuotationPrice(
       supabase.current,
       decoded.price_condition, v.quotationTypeId, lookupMonth, year,
@@ -188,7 +244,7 @@ function VariantRow({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceMode, v.quotationTypeId, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
+  }, [v.priceMode, v.quotationTypeId, v.subQuotationId, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
 
   // Auto-compute price whenever an input changes:
   //   • manual_formula: price = (quotation − discount) × fxRate
@@ -242,12 +298,14 @@ function VariantRow({
                 onChange({
                   priceMode: "manual",
                   quotation: "", price: "", fxRate: "",
+                  subQuotationId: "",
                   quotationManualEdited: false, priceManualEdited: false,
                 });
               } else if (tier === "manual_formula") {
                 onChange({
                   priceMode: "manual_formula",
                   quotation: "", price: "",
+                  subQuotationId: "",
                   // fxRate kept — manager may want to reuse the same rate
                   quotationManualEdited: false, priceManualEdited: false,
                 });
@@ -258,6 +316,7 @@ function VariantRow({
                 onChange({
                   priceMode: DEFAULT_FORMULA_MODE,
                   quotation: "", price: "", fxRate: "",
+                  subQuotationId: "",
                   quotationManualEdited: false, priceManualEdited: false,
                   triggerDays: dec.price_condition === "trigger"
                     ? String(dec.trigger_days_default ?? 35)
@@ -344,6 +403,7 @@ function VariantRow({
               value={v.quotationTypeId}
               onChange={(e) => onChange({
                 quotationTypeId: e.target.value,
+                subQuotationId: "",
                 quotation: "", price: "",
                 quotationManualEdited: false, priceManualEdited: false,
               })}
@@ -354,6 +414,31 @@ function VariantRow({
             </select>
           </div>
         )}
+
+        {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && (() => {
+          const filtered = subQuotations
+            .filter((s) => s.product_type_id === v.quotationTypeId)
+            .sort((a, b) => a.display_order - b.display_order);
+          const disabled = !v.quotationTypeId || filtered.length === 0;
+          return (
+            <div>
+              <Label className="text-[12px] text-stone-500">Подкотировка</Label>
+              <select
+                value={v.subQuotationId}
+                disabled={disabled}
+                onChange={(e) => onChange({
+                  subQuotationId: e.target.value,
+                  quotation: "", price: "",
+                  quotationManualEdited: false, priceManualEdited: false,
+                })}
+                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
+              >
+                <option value="">{disabled ? "— нет подкотировок —" : "Выбрать подкотировку..."}</option>
+                {filtered.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          );
+        })()}
 
         {/* ───── Manual-formula trio ─────
             Wrapped in a md:col-span-3 sub-grid so the three inputs land
@@ -401,6 +486,15 @@ function VariantRow({
         {decoded.price_condition === "fixed" && (
           <div>
             <Label className="text-[12px] text-stone-500">Дата фиксации</Label>
+            <Input type="date" value={v.fixDate} onChange={(e) => onChange({ fixDate: e.target.value })} className="h-8 text-[13px]" />
+          </div>
+        )}
+
+        {decoded.price_condition === "avg_to_date" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">
+              Дата <span className="text-[10px] text-stone-400">(среднее с 1-го числа)</span>
+            </Label>
             <Input type="date" value={v.fixDate} onChange={(e) => onChange({ fixDate: e.target.value })} className="h-8 text-[13px]" />
           </div>
         )}
