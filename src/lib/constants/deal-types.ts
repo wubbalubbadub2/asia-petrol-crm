@@ -100,7 +100,7 @@ export const DEFAULT_FORMULA_MODE: PriceMode = "fixed";
 export type CalcMode = "on_date" | "avg_month";
 
 export const CALC_MODES: { value: CalcMode; label: string }[] = [
-  { value: "on_date",   label: "Средняя по дате" },
+  { value: "on_date",   label: "на Дату" },
   { value: "avg_month", label: "Средний месяц" },
 ];
 

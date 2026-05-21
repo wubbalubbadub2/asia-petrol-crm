@@ -529,9 +529,7 @@ function VariantRow({
             auto-fetch falls back to the month of (anchor + days). */}
         {priceTierOf(v.priceMode) === "formula" && v.calcMode === "avg_month" && (
           <div>
-            <Label className="text-[12px] text-stone-500">
-              Месяц котировки <span className="text-[10px] text-stone-400">(опц.)</span>
-            </Label>
+            <Label className="text-[12px] text-stone-500">Месяц котировки</Label>
             <Input
               type="month"
               value={v.selectedMonth}
@@ -587,16 +585,16 @@ function VariantRow({
           </div>
         )}
 
-        {/* Anchor date + (for triggers) day shift. All three subtypes
-            of the «Подтип формулы» dimension use v.triggerStart as the
-            anchor; «Фикс цена» pins the days input to 0 (hidden) so the
-            target date IS the anchor. Trigger basis only changes the
-            label, the storage column stays the same. */}
-        {(decoded.price_condition === "fixed" || isTriggerMode) && (
+        {/* Anchor date + (for triggers) day shift. Both inputs hide under
+            «Средний месяц» — that calc-mode is driven exclusively by the
+            «Месяц котировки» picker above, so anchor+days carry no info.
+            Trigger basis only changes the label, the storage column
+            stays the same. */}
+        {(decoded.price_condition === "fixed" || isTriggerMode) && v.calcMode === "on_date" && (
           <>
             <div>
               <Label className="text-[12px] text-stone-500">
-                {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата отгрузки"}
+                {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата"}
               </Label>
               <Input
                 type="date"
