@@ -12,6 +12,7 @@ import {
   PRICE_TIER_LABELS,
   decodePriceMode,
   priceTierOf,
+  type CalcMode,
   type PriceMode,
   type PriceTier,
   type TriggerBasisLite,
@@ -23,10 +24,14 @@ import { createClient } from "@/lib/supabase/client";
 export type VariantDraft = {
   // ── Persisted on the line ─────────────────────────────────────
   // priceMode is the UI-level mode (manual / manual_formula /
-  // average_month / fixed / trigger_shipment / trigger_border). It
-  // encodes price_condition + trigger_basis — see decodePriceMode at
-  // save.
+  // fixed / trigger_shipment / trigger_border). It encodes
+  // price_condition + trigger_basis — see decodePriceMode at save.
   priceMode: PriceMode;
+  // Migration 00079 — «Режим расчёта», orthogonal to priceMode.
+  // 'on_date'   → quotation value ON the computed target date
+  // 'avg_month' → AVG over the calendar month of the target date
+  // Only meaningful when tier=formula; defaults to 'on_date'.
+  calcMode: CalcMode;
   quotationTypeId: string;
   // Migration 00077 — which wide column of `quotations` to read for
   // this variant (one of: price / price_cif_nwe / price_fob_med /
@@ -66,7 +71,8 @@ export type VariantDraft = {
 };
 
 export const EMPTY_VARIANT: VariantDraft = {
-  priceMode: "average_month",
+  priceMode: "fixed",
+  calcMode: "on_date",
   quotationTypeId: "",
   priceSource: "",
   quotation: "",
@@ -77,7 +83,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   stationId: "",
   fixDate: "",
   triggerStart: "",
-  triggerDays: "37",
+  triggerDays: "0",
   selectedMonth: "",
   priceStage: "preliminary",
   fxRate: "",
@@ -99,6 +105,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   selected_month: string | null;
   price_stage: "preliminary" | "final";
   price_source: string | null;
+  calc_mode: CalcMode;
 } {
   const decoded = decodePriceMode(v.priceMode);
   return {
@@ -115,6 +122,10 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     // no recompute to do.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
     price_source:    v.priceSource || null,
+    // Migration 00079 — orthogonal calc_mode; always persisted (DB CHECK
+    // enforces 'on_date' | 'avg_month'). For non-formula tiers the value
+    // is ignored at recompute time but kept stable.
+    calc_mode:       v.calcMode,
   };
 }
 
@@ -180,20 +191,24 @@ function VariantRow({
   const isTriggerMode = decoded.price_condition === "trigger";
   const triggerBasis: TriggerBasisLite | null = decoded.trigger_basis;
 
-  // Auto-fetch the quotation VALUE (not price) whenever condition / type /
-  // dates change. The price is derived from the quotation by the next
-  // effect below (price = quotation - discount). Hands off if the user
-  // has manually entered something in the quotation field.
+  // Auto-fetch the quotation VALUE (not price) whenever subtype / calc
+  // mode / type / dates change. The price is derived from the quotation
+  // by the next effect below (price = quotation - discount). Hands off
+  // if the user has manually entered something in the quotation field.
   //
-  // When the variant has a priceSource picked (migration 00077), delegate
-  // to the `compute_quotation_value` RPC which averages the picked wide
-  // column from `quotations` over the requested window. When it's empty,
-  // fall back to the legacy wide-column ?? lookup so existing deals keep
-  // working untouched.
+  // Migration 00079 — the manager now picks two orthogonal dimensions
+  // when tier=formula:
+  //   • Подтип формулы (fixed / trigger_shipment / trigger_border) —
+  //     defines the «target date» (anchor + days).
+  //   • Режим расчёта (on_date / avg_month) — defines how to extract a
+  //     price from that target date.
+  // We compute target_date = v.triggerStart + days here, then delegate
+  // to compute_quotation_value(product_type_id, price_source,
+  // target_date, calc_mode). When priceSource is empty, fall back to
+  // the legacy wide-column lookup so existing deals keep working.
   useEffect(() => {
-    // Migration 00078 — manual_in_formula picks a quotation + sub-quotation
-    // for the audit trail but the manager types the price by hand, so we
-    // must NOT auto-fetch over those references.
+    // Manual tiers + the legacy «manual_in_formula» picks a quotation
+    // for audit but skip auto-fetch — price is typed by hand.
     if (
       decoded.price_condition === "manual" ||
       decoded.price_condition === "manual_formula" ||
@@ -201,42 +216,24 @@ function VariantRow({
     ) return;
     if (!v.quotationTypeId) return;
     if (v.quotationManualEdited) return;
-    // For «Средний месяц» the lookup month can be overridden by the
-    // user via the selectedMonth field; otherwise default to the
-    // deal's own month.
-    const lookupMonth = (decoded.price_condition === "average_month" && v.selectedMonth)
-      ? v.selectedMonth
-      : month;
+
+    const sub = decoded.price_condition;
+    // Only the new orthogonal-model subtypes drive the RPC path.
+    if (sub !== "fixed" && sub !== "trigger") return;
+    if (!v.triggerStart) return;
+    const days = sub === "trigger" ? parseInt(v.triggerDays, 10) : 0;
+    if (sub === "trigger" && !Number.isFinite(days)) return;
 
     if (v.priceSource) {
-      let p_mode: string | null = null;
-      let p_params: Record<string, string | number> | null = null;
-      if (decoded.price_condition === "average_month") {
-        const monthIdx = MONTHS_RU.indexOf(lookupMonth as (typeof MONTHS_RU)[number]) + 1;
-        if (monthIdx <= 0) return;
-        p_mode = "avg_month";
-        p_params = { year, month: monthIdx };
-      } else if (decoded.price_condition === "avg_to_date") {
-        if (!v.fixDate) return;
-        p_mode = "avg_to_date";
-        p_params = { date: v.fixDate };
-      } else if (decoded.price_condition === "fixed") {
-        if (!v.fixDate) return;
-        p_mode = "on_date";
-        p_params = { date: v.fixDate };
-      } else if (decoded.price_condition === "trigger") {
-        const days = parseInt(v.triggerDays, 10);
-        if (!v.triggerStart || !Number.isFinite(days)) return;
-        p_mode = "trigger";
-        p_params = { start_date: v.triggerStart, days };
-      }
-      if (!p_mode || p_params == null) return;
+      const targetDate = new Date(v.triggerStart);
+      targetDate.setUTCDate(targetDate.getUTCDate() + days);
+      const p_target_date = targetDate.toISOString().slice(0, 10);
       supabase.current.rpc("compute_quotation_value", {
         p_product_type_id: v.quotationTypeId,
         p_price_source: v.priceSource,
-        p_mode,
-        p_params,
-      }).then(({ data, error }) => {
+        p_target_date,
+        p_calc_mode: v.calcMode,
+      } as never).then(({ data, error }: { data: number | null; error: unknown }) => {
         if (error || data == null) return;
         if (!v.quotationManualEdited) {
           onChange({ quotation: String(Math.round(data * 100) / 100) });
@@ -245,18 +242,20 @@ function VariantRow({
       return;
     }
 
-    // Legacy fallback when no price_source set.
+    // Legacy fallback when no price_source set — pre-00077 deals.
+    // Uses the deal's month for any auto-month lookup; the wide column
+    // is resolved by coalescing the first non-null price field.
     fetchQuotationPrice(
       supabase.current,
-      decoded.price_condition, v.quotationTypeId, lookupMonth, year,
-      v.fixDate, v.triggerStart, v.triggerDays,
+      sub, v.quotationTypeId, month, year,
+      sub === "fixed" ? v.triggerStart : "", v.triggerStart, v.triggerDays,
     ).then((q) => {
       if (q != null && !v.quotationManualEdited) {
         onChange({ quotation: String(Math.round(q * 100) / 100) });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceMode, v.quotationTypeId, v.priceSource, month, year, v.fixDate, v.triggerStart, v.triggerDays, v.selectedMonth]);
+  }, [v.priceMode, v.calcMode, v.quotationTypeId, v.priceSource, v.triggerStart, v.triggerDays]);
 
   // Auto-compute price whenever an input changes:
   //   • manual_formula:    price = (quotation − discount) × fxRate
@@ -347,12 +346,13 @@ function VariantRow({
         </div>
 
         {/* «Подтип формулы» — sits directly after «Тип цены» per Beken
-            2026-05-21. Holds the three non-averaging modes: «Фикс цена»
-            (manual entry inside the formula tier) and the two trigger
-            basis variants. The mutually-exclusive partner — «Режим
-            расчёта» (CALC_MODES) — stays further down next to the
-            Котировка / Подкотировка cluster. Empty value means the
-            current priceMode is from CALC_MODES instead. */}
+            2026-05-21 (commit 8f78bbe). Defines the «target date» — one
+            of fixed (anchor = shipment date, 0-day shift), trigger_shipment
+            (shipment + N days), trigger_border (border crossing + N days).
+            Partnered with the «Режим расчёта» selector below; both are
+            required when tier=formula and stay active simultaneously
+            (NO mutual exclusion — that was the prior misread of Beken's
+            spec). */}
         {priceTierOf(v.priceMode) === "formula" && (() => {
           const inSub = FORMULA_SUBMODES.some((m) => m.value === v.priceMode);
           return (
@@ -368,9 +368,11 @@ function VariantRow({
                     priceMode: next,
                     quotation: "", price: "",
                     quotationManualEdited: false, priceManualEdited: false,
+                    // Seed triggerDays from the basis default when entering
+                    // a trigger; for «Фикс цена» the shift is always 0.
                     triggerDays: dec.price_condition === "trigger"
                       ? String(dec.trigger_days_default ?? 37)
-                      : v.triggerDays,
+                      : "0",
                   });
                 }}
                 className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
@@ -484,34 +486,24 @@ function VariantRow({
           );
         })()}
 
-        {/* «Режим расчёта» — partner of «Подтип формулы» (rendered above
-            next to «Тип цены»). Mutually exclusive: picking here resets
-            the priceMode to one of CALC_MODES, so the Подтип-формулы
-            select renders "— (не выбрано)" until the manager flips back. */}
-        {priceTierOf(v.priceMode) === "formula" && (() => {
-          const inCalc = CALC_MODES.some((m) => m.value === v.priceMode);
-          return (
-            <div>
-              <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
-              <select
-                value={inCalc ? v.priceMode : ""}
-                onChange={(e) => {
-                  const next = e.target.value as PriceMode;
-                  if (!next) return;
-                  onChange({
-                    priceMode: next,
-                    quotation: "", price: "",
-                    quotationManualEdited: false, priceManualEdited: false,
-                  });
-                }}
-                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-              >
-                {!inCalc && <option value="">— (не выбрано)</option>}
-                {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
-            </div>
-          );
-        })()}
+        {/* «Режим расчёта» — orthogonal partner of «Подтип формулы».
+            Defines how to extract a price from the target date:
+            on_date = quotation value ON that date, avg_month = AVG over
+            the calendar month of that date. Always active when tier=
+            formula; no mutual exclusion with the Подтип селектор. The
+            auto-fetch effect recomputes the quotation on every change. */}
+        {priceTierOf(v.priceMode) === "formula" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
+            <select
+              value={v.calcMode}
+              onChange={(e) => onChange({ calcMode: e.target.value as CalcMode })}
+              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            >
+              {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+        )}
 
         {/* ───── Manual-formula trio ─────
             Wrapped in a md:col-span-3 sub-grid so the three inputs land
@@ -556,57 +548,41 @@ function VariantRow({
           </div>
         )}
 
-        {decoded.price_condition === "fixed" && (
-          <div>
-            <Label className="text-[12px] text-stone-500">Дата фиксации</Label>
-            <Input type="date" value={v.fixDate} onChange={(e) => onChange({ fixDate: e.target.value })} className="h-8 text-[13px]" />
-          </div>
-        )}
-
-        {decoded.price_condition === "avg_to_date" && (
-          <div>
-            <Label className="text-[12px] text-stone-500">
-              Дата <span className="text-[10px] text-stone-400">(среднее с 1-го числа)</span>
-            </Label>
-            <Input type="date" value={v.fixDate} onChange={(e) => onChange({ fixDate: e.target.value })} className="h-8 text-[13px]" />
-          </div>
-        )}
-
-        {/* Месяц расчёта для «Средний месяц» — null/«» = месяц сделки */}
-        {decoded.price_condition === "average_month" && (
-          <div>
-            <Label className="text-[12px] text-stone-500">
-              Месяц расчёта <span className="text-[10px] text-stone-400">(по умолч. — месяц сделки)</span>
-            </Label>
-            <select
-              value={v.selectedMonth}
-              onChange={(e) => onChange({
-                selectedMonth: e.target.value,
-                quotation: "", price: "",
-                quotationManualEdited: false, priceManualEdited: false,
-              })}
-              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-            >
-              <option value="">— (месяц сделки)</option>
-              {MONTHS_RU.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-        )}
-
-        {isTriggerMode && (
+        {/* Anchor date + (for triggers) day shift. All three subtypes
+            of the «Подтип формулы» dimension use v.triggerStart as the
+            anchor; «Фикс цена» pins the days input to 0 (hidden) so the
+            target date IS the anchor. Trigger basis only changes the
+            label, the storage column stays the same. */}
+        {(decoded.price_condition === "fixed" || isTriggerMode) && (
           <>
             <div>
               <Label className="text-[12px] text-stone-500">
                 {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата отгрузки"}
               </Label>
-              <Input type="date" value={v.triggerStart} onChange={(e) => onChange({ triggerStart: e.target.value })} className="h-8 text-[13px]" />
+              <Input
+                type="date"
+                value={v.triggerStart}
+                onChange={(e) => onChange({ triggerStart: e.target.value })}
+                className="h-8 text-[13px]"
+              />
             </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">
-                Кол-во дней <span className="text-[10px] text-stone-400">(обычно 35-40)</span>
-              </Label>
-              <Input type="number" value={v.triggerDays} onChange={(e) => onChange({ triggerDays: e.target.value })} className="h-8 text-[13px]" min="1" max="90" />
-            </div>
+            {isTriggerMode && (
+              <div>
+                <Label className="text-[12px] text-stone-500">
+                  Кол-во дней <span className="text-[10px] text-stone-400">
+                    {triggerBasis === "border_crossing_date" ? "(обычно 30-44)" : "(обычно 35-40)"}
+                  </span>
+                </Label>
+                <Input
+                  type="number"
+                  value={v.triggerDays}
+                  onChange={(e) => onChange({ triggerDays: e.target.value })}
+                  className="h-8 text-[13px]"
+                  min="1"
+                  max="90"
+                />
+              </div>
+            )}
           </>
         )}
 

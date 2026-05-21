@@ -84,28 +84,35 @@ export function priceTierOf(mode: PriceMode): PriceTier {
   return "formula";
 }
 
-// Default subtype to land on when switching INTO the formula tier
-// from manual. «Средний месяц» is the most common formula in practice.
-export const DEFAULT_FORMULA_MODE: PriceMode = "average_month";
+// Default subtype to land on when switching INTO the formula tier from
+// manual. Lands on «Фикс цена» — anchor = shipment date, 0-day shift —
+// which combined with the default calc_mode «Средняя по дате» reproduces
+// the single-day auto-lookup behaviour managers had as the old «На дату».
+export const DEFAULT_FORMULA_MODE: PriceMode = "fixed";
 
-// «Режим расчёта» — the LEFT mode selector that sits beside «Подтип формулы»
-// after Подкотировка. Three averaging modes; picking one here resets the
-// «Подтип формулы» picker to "— (не выбрано)". Mutual exclusion is enforced
-// by both selectors reading from the same `priceMode` field.
-export const CALC_MODES: { value: PriceMode; label: string }[] = [
-  { value: "average_month", label: "Средний месяц" },
-  { value: "avg_to_date",   label: "Среднее на дату" },
-  { value: "fixed",         label: "На дату" },
+// «Режим расчёта» — second of TWO orthogonal dimensions filled by the
+// manager when tier=formula (per Beken 2026-05-21, migration 00079).
+// Defines HOW to extract a price once the target date is known:
+//   • on_date   — quotation value ON the target date
+//   • avg_month — AVG of the calendar month containing the target date
+// This is NOT a PriceMode — it's a separate axis. Both selectors stay
+// active simultaneously; there is no mutual exclusion.
+export type CalcMode = "on_date" | "avg_month";
+
+export const CALC_MODES: { value: CalcMode; label: string }[] = [
+  { value: "on_date",   label: "Средняя по дате" },
+  { value: "avg_month", label: "Средний месяц" },
 ];
 
-// «Подтип формулы» — the RIGHT mode selector. Three options: «Фикс цена»
-// (manual price inside the formula tier, distinct from auto «На дату»),
-// and the two trigger basis variants. Picking one resets «Режим расчёта»
-// to "— (не выбрано)".
+// «Подтип формулы» — first of the two orthogonal dimensions. Defines
+// the «target date» from which the chosen calc_mode reads:
+//   • fixed            — target = anchor (shipment date, 0-day shift)
+//   • trigger_shipment — target = shipment_date + N days
+//   • trigger_border   — target = border_crossing_date + N days
 export const FORMULA_SUBMODES: { value: PriceMode; label: string }[] = [
-  { value: "manual_in_formula", label: "Фикс цена" },
-  { value: "trigger_shipment",  label: "Триггер — по дате отгрузки (35-40 дн)" },
-  { value: "trigger_border",    label: "Триггер — по дате пересечения границы (30-44 дн)" },
+  { value: "fixed",            label: "Фикс цена" },
+  { value: "trigger_shipment", label: "Триггер — по дате отгрузки (35-40 дн)" },
+  { value: "trigger_border",   label: "Триггер — по дате пересечения границы (30-44 дн)" },
 ];
 
 export type TriggerBasisLite = "shipment_date" | "border_crossing_date";
