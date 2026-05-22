@@ -83,7 +83,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   stationId: "",
   fixDate: "",
   triggerStart: "",
-  triggerDays: "0",
+  triggerDays: "",
   selectedMonth: "",
   priceStage: "preliminary",
   fxRate: "",
@@ -111,8 +111,10 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   return {
     price_condition: decoded.price_condition,
     trigger_basis:   decoded.trigger_basis,
+    // Empty input ⇒ 0 (per Beken: «Кол-во дней» is optional; missing means
+    // no day-shift). Was previously coerced to trigger_days_default (37/35).
     trigger_days:    decoded.price_condition === "trigger"
-                       ? (parseInt(v.triggerDays || String(decoded.trigger_days_default ?? 35), 10) || decoded.trigger_days_default || 35)
+                       ? (parseInt(v.triggerDays, 10) || 0)
                        : null,
     // Persisted whenever the manager picks an explicit month under
     // «Средний месяц» (calc_mode = 'avg_month'). The legacy
@@ -234,8 +236,8 @@ function VariantRow({
       p_target_date = `${v.selectedMonth}-15`;
     } else {
       if (!v.triggerStart) return;
-      const days = sub === "trigger" ? parseInt(v.triggerDays, 10) : 0;
-      if (sub === "trigger" && !Number.isFinite(days)) return;
+      // Empty day-count ⇒ 0 (no shift); same default as variantDraftToLinePatch.
+      const days = sub === "trigger" ? (parseInt(v.triggerDays, 10) || 0) : 0;
       const targetDate = new Date(v.triggerStart);
       targetDate.setUTCDate(targetDate.getUTCDate() + days);
       p_target_date = targetDate.toISOString().slice(0, 10);
@@ -377,16 +379,13 @@ function VariantRow({
                 onChange={(e) => {
                   const next = e.target.value as PriceMode;
                   if (!next) return;
-                  const dec = decodePriceMode(next);
                   onChange({
                     priceMode: next,
                     quotation: "", price: "",
                     quotationManualEdited: false, priceManualEdited: false,
-                    // Seed triggerDays from the basis default when entering
-                    // a trigger; for «Фикс цена» the shift is always 0.
-                    triggerDays: dec.price_condition === "trigger"
-                      ? String(dec.trigger_days_default ?? 37)
-                      : "0",
+                    // Days are optional now — empty ⇒ 0. Reset so the
+                    // field shows its «0» placeholder, not 37/35.
+                    triggerDays: "",
                   });
                 }}
                 className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
@@ -617,8 +616,9 @@ function VariantRow({
               value={v.triggerDays}
               onChange={(e) => onChange({ triggerDays: e.target.value })}
               className="h-8 text-[13px]"
-              min="1"
+              min="0"
               max="90"
+              placeholder="0"
             />
           </div>
         )}
