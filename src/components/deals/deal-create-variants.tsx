@@ -116,11 +116,11 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     trigger_days:    decoded.price_condition === "trigger"
                        ? (parseInt(v.triggerDays, 10) || 0)
                        : null,
-    // Persisted whenever the manager picks an explicit month under
-    // «Средний месяц» (calc_mode = 'avg_month'). The legacy
-    // price_condition='average_month' path is no longer reachable through
-    // the new orthogonal UI, so calc_mode is the only gate.
-    selected_month:  v.calcMode === "avg_month"
+    // Persisted whenever the manager picks an explicit month — either
+    // via calc_mode='avg_month' on a fixed/trigger subtype, or via the
+    // «Средний месяц» subtype itself (which forces calc_mode='avg_month'
+    // and exposes only the month picker).
+    selected_month:  (v.priceMode === "average_month" || v.calcMode === "avg_month")
                        ? (v.selectedMonth || null)
                        : null,
     // Stage applies to all formula modes (auto, manual_formula, and
@@ -128,10 +128,11 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     // no recompute to do.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
     price_source:    v.priceSource || null,
-    // Migration 00079 — orthogonal calc_mode; always persisted (DB CHECK
-    // enforces 'on_date' | 'avg_month'). For non-formula tiers the value
-    // is ignored at recompute time but kept stable.
-    calc_mode:       v.calcMode,
+    // Migration 00079 — calc_mode is persisted (DB CHECK enforces
+    // 'on_date' | 'avg_month'). The «Средний месяц» subtype forces
+    // calc_mode='avg_month' since the subtype itself already implies
+    // a monthly average — the UI hides the selector in that case.
+    calc_mode:       v.priceMode === "average_month" ? "avg_month" : v.calcMode,
   };
 }
 
@@ -195,7 +196,6 @@ function VariantRow({
 
   const decoded = decodePriceMode(v.priceMode);
   const isTriggerMode = decoded.price_condition === "trigger";
-  const triggerBasis: TriggerBasisLite | null = decoded.trigger_basis;
 
   // Auto-fetch the quotation VALUE (not price) whenever subtype / calc
   // mode / type / dates change. The price is derived from the quotation
@@ -204,14 +204,15 @@ function VariantRow({
   //
   // Migration 00079 — the manager now picks two orthogonal dimensions
   // when tier=formula:
-  //   • Подтип формулы (fixed / trigger_shipment / trigger_border) —
-  //     defines the «target date» (anchor + days).
+  //   • Подтип формулы (fixed / trigger_shipment / average_month) —
+  //     defines how the «target date» is derived.
   //   • Режим расчёта (on_date / avg_month) — defines how to extract a
-  //     price from that target date.
-  // We compute target_date = v.triggerStart + days here, then delegate
-  // to compute_quotation_value(product_type_id, price_source,
-  // target_date, calc_mode). When priceSource is empty, fall back to
-  // the legacy wide-column lookup so existing deals keep working.
+  //     price from that target date. Hidden for average_month subtype,
+  //     where it's forced to avg_month.
+  // We compute target_date here, then delegate to
+  // compute_quotation_value(product_type_id, price_source, target_date,
+  // calc_mode). When priceSource is empty, fall back to the legacy
+  // wide-column lookup so existing deals keep working.
   useEffect(() => {
     // Manual tiers + the legacy «manual_in_formula» picks a quotation
     // for audit but skip auto-fetch — price is typed by hand.
@@ -224,19 +225,22 @@ function VariantRow({
     if (v.quotationManualEdited) return;
 
     const sub = decoded.price_condition;
-    // Only the new orthogonal-model subtypes drive the RPC path.
-    if (sub !== "fixed" && sub !== "trigger") return;
+    if (sub !== "fixed" && sub !== "trigger" && sub !== "average_month") return;
 
-    // Resolve target_date. When the manager picked an explicit month under
-    // «Средний месяц», that overrides the anchor+days calculation — any
-    // day inside the chosen month is fine since the RPC averages over the
-    // whole calendar month.
+    // Resolve target_date + effective calc_mode.
+    //   • average_month subtype: target = 15-th of v.selectedMonth, calc = avg_month
+    //   • on_date / fixed / trigger: target = anchor (+ days), calc = v.calcMode
+    //   • avg_month calc + manual month override: target = 15-th of v.selectedMonth
     let p_target_date: string | null = null;
-    if (v.calcMode === "avg_month" && v.selectedMonth) {
+    let effectiveCalcMode: CalcMode = v.calcMode;
+    if (sub === "average_month") {
+      if (!v.selectedMonth) return;
+      p_target_date = `${v.selectedMonth}-15`;
+      effectiveCalcMode = "avg_month";
+    } else if (v.calcMode === "avg_month" && v.selectedMonth) {
       p_target_date = `${v.selectedMonth}-15`;
     } else {
       if (!v.triggerStart) return;
-      // Empty day-count ⇒ 0 (no shift); same default as variantDraftToLinePatch.
       const days = sub === "trigger" ? (parseInt(v.triggerDays, 10) || 0) : 0;
       const targetDate = new Date(v.triggerStart);
       targetDate.setUTCDate(targetDate.getUTCDate() + days);
@@ -248,7 +252,7 @@ function VariantRow({
         p_product_type_id: v.quotationTypeId,
         p_price_source: v.priceSource,
         p_target_date,
-        p_calc_mode: v.calcMode,
+        p_calc_mode: effectiveCalcMode,
       }).then(({ data, error }) => {
         if (error || data == null) return;
         if (!v.quotationManualEdited) {
@@ -260,7 +264,10 @@ function VariantRow({
 
     // Legacy fallback when no price_source set — pre-00077 deals.
     // Uses the deal's month for any auto-month lookup; the wide column
-    // is resolved by coalescing the first non-null price field.
+    // is resolved by coalescing the first non-null price field. The new
+    // «average_month» subtype is only reachable in the new RPC path
+    // (needs a priceSource), so we skip the legacy fallback here.
+    if (sub === "average_month") return;
     fetchQuotationPrice(
       supabase.current,
       sub, v.quotationTypeId, month, year,
@@ -361,14 +368,14 @@ function VariantRow({
           </select>
         </div>
 
-        {/* «Подтип формулы» — sits directly after «Тип цены» per Beken
-            2026-05-21 (commit 8f78bbe). Defines the «target date» — one
-            of fixed (anchor = shipment date, 0-day shift), trigger_shipment
-            (shipment + N days), trigger_border (border crossing + N days).
-            Partnered with the «Режим расчёта» selector below; both are
-            required when tier=formula and stay active simultaneously
-            (NO mutual exclusion — that was the prior misread of Beken's
-            spec). */}
+        {/* «Подтип формулы» — three options per Beken 2026-05-24:
+              • Фикс цена         — target = anchor date
+              • Триггер           — target = anchor + N days (the two
+                                    trigger flavours were merged; basis
+                                    defaults to shipment_date in storage)
+              • Средний месяц     — target = manager-picked calendar
+                                    month; forces calc_mode='avg_month'
+                                    and hides the «Режим расчёта» selector */}
         {priceTierOf(v.priceMode) === "formula" && (() => {
           const inSub = FORMULA_SUBMODES.some((m) => m.value === v.priceMode);
           return (
@@ -379,14 +386,24 @@ function VariantRow({
                 onChange={(e) => {
                   const next = e.target.value as PriceMode;
                   if (!next) return;
-                  onChange({
+                  const patch: Partial<VariantDraft> = {
                     priceMode: next,
                     quotation: "", price: "",
                     quotationManualEdited: false, priceManualEdited: false,
-                    // Days are optional now — empty ⇒ 0. Reset so the
-                    // field shows its «0» placeholder, not 37/35.
+                    // Days are optional — empty ⇒ 0.
                     triggerDays: "",
-                  });
+                  };
+                  if (next === "average_month") {
+                    // Force calc_mode and clear the anchor date — only
+                    // the month picker matters.
+                    patch.calcMode = "avg_month";
+                    patch.triggerStart = "";
+                  } else {
+                    // Leaving avg_month subtype — drop the month
+                    // override so the auto-fetch reverts to anchor+days.
+                    patch.selectedMonth = "";
+                  }
+                  onChange(patch);
                 }}
                 className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
               >
@@ -499,13 +516,10 @@ function VariantRow({
           );
         })()}
 
-        {/* «Режим расчёта» — orthogonal partner of «Подтип формулы».
-            Defines how to extract a price from the target date:
-            on_date = quotation value ON that date, avg_month = AVG over
-            the calendar month of that date. Always active when tier=
-            formula; no mutual exclusion with the Подтип селектор. The
-            auto-fetch effect recomputes the quotation on every change. */}
-        {priceTierOf(v.priceMode) === "formula" && (
+        {/* «Режим расчёта» — visible for Фикс цена / Триггер subtypes.
+            Hidden under «Средний месяц» where it's forced to avg_month
+            (the subtype itself already implies monthly averaging). */}
+        {priceTierOf(v.priceMode) === "formula" && v.priceMode !== "average_month" && (
           <div>
             <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
             <select
@@ -523,10 +537,12 @@ function VariantRow({
           </div>
         )}
 
-        {/* «Месяц котировки» — appears only with avg_month. Manual
-            override of the month the RPC averages over; when empty the
-            auto-fetch falls back to the month of (anchor + days). */}
-        {priceTierOf(v.priceMode) === "formula" && v.calcMode === "avg_month" && (
+        {/* «Месяц котировки» — appears for the «Средний месяц» subtype
+            (required, the only target-date input) or as an override
+            under Фикс/Триггер + Средний месяц calc mode (overrides the
+            month derived from anchor+days). */}
+        {priceTierOf(v.priceMode) === "formula" &&
+         (v.priceMode === "average_month" || v.calcMode === "avg_month") && (
           <div>
             <Label className="text-[12px] text-stone-500">Месяц котировки</Label>
             <Input
@@ -584,15 +600,12 @@ function VariantRow({
           </div>
         )}
 
-        {/* Anchor date — only under «на Дату». Under «Средний месяц» the
-            target is the month picked in «Месяц котировки», so the anchor
-            carries no info. Trigger basis only changes the label, the
-            storage column stays the same. */}
+        {/* Anchor date — only under «на Дату». Under «Средний месяц»
+            (either as subtype or as calc_mode) the target is the picked
+            calendar month, so the anchor carries no info. */}
         {(decoded.price_condition === "fixed" || isTriggerMode) && v.calcMode === "on_date" && (
           <div>
-            <Label className="text-[12px] text-stone-500">
-              {triggerBasis === "border_crossing_date" ? "Дата пересечения границы" : "Дата"}
-            </Label>
+            <Label className="text-[12px] text-stone-500">Дата</Label>
             <Input
               type="date"
               value={v.triggerStart}

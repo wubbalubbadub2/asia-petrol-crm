@@ -104,15 +104,19 @@ export const CALC_MODES: { value: CalcMode; label: string }[] = [
   { value: "avg_month", label: "Средний месяц" },
 ];
 
-// «Подтип формулы» — first of the two orthogonal dimensions. Defines
-// the «target date» from which the chosen calc_mode reads:
-//   • fixed            — target = anchor (shipment date, 0-day shift)
-//   • trigger_shipment — target = shipment_date + N days
-//   • trigger_border   — target = border_crossing_date + N days
+// «Подтип формулы» — first of the two dimensions. Three options
+// (per Beken 2026-05-24, the two trigger flavours were merged):
+//   • fixed            — target = anchor date entered by manager
+//   • trigger_shipment — target = anchor + N days (single «Триггер»;
+//                        trigger_basis stays shipment_date in the DB
+//                        for new variants since the UI no longer
+//                        distinguishes shipment vs border)
+//   • average_month    — target = manager-picked calendar month;
+//                        forces calc_mode='avg_month' on save
 export const FORMULA_SUBMODES: { value: PriceMode; label: string }[] = [
   { value: "fixed",            label: "Фикс цена" },
-  { value: "trigger_shipment", label: "Триггер — по дате отгрузки (35-40 дн)" },
-  { value: "trigger_border",   label: "Триггер — по дате пересечения границы (30-44 дн)" },
+  { value: "trigger_shipment", label: "Триггер" },
+  { value: "average_month",    label: "Средний месяц" },
 ];
 
 export type TriggerBasisLite = "shipment_date" | "border_crossing_date";
