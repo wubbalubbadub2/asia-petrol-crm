@@ -258,36 +258,30 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
 
     // ── Среднее footer block ────────────────────────────
     // Two blank spacer rows, then one row per numeric column with the
-    // label «Среднее <header>» in col A and the month average placed
-    // under that column's own header — so each row visually sits in
-    // the same column as the data it summarizes.
+    // label «Среднее <header>» in col A and the month average always
+    // in col B — flush against the label, no staircase.
     const firstAvgRow = monthRows.length + 3 + 2; // +2 spacer rows
-    const numericCols = sheetCols
-      .map((c, i) => ({ c, colIdx: i + 1 }))
-      .filter(({ c }) => c.key !== "__date" && c.key !== "comment");
+    const numericCols = sheetCols.filter((c) => c.key !== "__date" && c.key !== "comment");
 
-    numericCols.forEach(({ c, colIdx }, idx) => {
+    numericCols.forEach((c, idx) => {
       const r = firstAvgRow + idx;
       const row = ws.getRow(r);
       row.height = 20;
 
       const labelCell = row.getCell(1);
-      labelCell.value = `Среднее ${c.label}`;
+      // Drop a leading «Среднее » in the column label so we don't get
+      // double-prefixed «Среднее Среднее CIF NWE и FOB Rotterdam» for
+      // formula columns whose own header already starts with «Среднее».
+      const cleanLabel = c.label.replace(/^Среднее\s+/i, "");
+      labelCell.value = `Среднее ${cleanLabel}`;
       labelCell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
       labelCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
       labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
 
-      // Fill the cells between the label and the value column with the
-      // same amber background so the row reads as one continuous band.
-      for (let col = 2; col < colIdx; col++) {
-        const filler = row.getCell(col);
-        filler.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
-      }
-
       const vals = monthRows
         .map((q) => cellNumericValue(q, c, productCols))
         .filter((v): v is number => v != null);
-      const valueCell = row.getCell(colIdx);
+      const valueCell = row.getCell(2);
       valueCell.value = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : "";
       valueCell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
       valueCell.alignment = { vertical: "middle", horizontal: "right" };
