@@ -74,16 +74,16 @@ ALTER TABLE deal_attachments DROP CONSTRAINT IF EXISTS deal_attachments_uploaded
 ALTER TABLE deal_attachments ADD CONSTRAINT deal_attachments_uploaded_by_fkey
   FOREIGN KEY (uploaded_by) REFERENCES profiles(id) ON DELETE SET NULL;
 
-ALTER TABLE archive DROP CONSTRAINT IF EXISTS archive_archived_by_fkey;
-ALTER TABLE archive ADD CONSTRAINT archive_archived_by_fkey
+ALTER TABLE archive_years DROP CONSTRAINT IF EXISTS archive_years_archived_by_fkey;
+ALTER TABLE archive_years ADD CONSTRAINT archive_years_archived_by_fkey
   FOREIGN KEY (archived_by) REFERENCES profiles(id) ON DELETE SET NULL;
 
 ALTER TABLE dt_kt_payments DROP CONSTRAINT IF EXISTS dt_kt_payments_created_by_fkey;
 ALTER TABLE dt_kt_payments ADD CONSTRAINT dt_kt_payments_created_by_fkey
   FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL;
 
-ALTER TABLE deal_activity_feed DROP CONSTRAINT IF EXISTS deal_activity_feed_user_id_fkey;
-ALTER TABLE deal_activity_feed ADD CONSTRAINT deal_activity_feed_user_id_fkey
+ALTER TABLE deal_activity DROP CONSTRAINT IF EXISTS deal_activity_user_id_fkey;
+ALTER TABLE deal_activity ADD CONSTRAINT deal_activity_user_id_fkey
   FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE SET NULL;
 
 ALTER TABLE deal_payments DROP CONSTRAINT IF EXISTS deal_payments_created_by_fkey;
