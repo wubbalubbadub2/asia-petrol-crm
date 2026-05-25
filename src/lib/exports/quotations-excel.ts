@@ -256,31 +256,43 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
       });
     });
 
-    // ── Среднее footer row ──────────────────────────────
-    const footerR = monthRows.length + 3;
-    const footerRow = ws.getRow(footerR);
-    footerRow.height = 22;
-    sheetCols.forEach((c, i) => {
-      const cell = footerRow.getCell(i + 1);
-      if (i === 0) {
-        cell.value = "Среднее";
-        cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
-      } else if (c.key === "comment") {
-        cell.value = "";
-      } else {
-        const vals = monthRows
-          .map((q) => cellNumericValue(q, c, productCols))
-          .filter((v): v is number => v != null);
-        cell.value = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : "";
-        cell.alignment = { vertical: "middle", horizontal: "right" };
-        if (c.numFmt) cell.numFmt = c.numFmt;
+    // ── Среднее footer block ────────────────────────────
+    // Two blank spacer rows, then one row per numeric column with the
+    // label «Среднее <header>» in col A and the month average placed
+    // under that column's own header — so each row visually sits in
+    // the same column as the data it summarizes.
+    const firstAvgRow = monthRows.length + 3 + 2; // +2 spacer rows
+    const numericCols = sheetCols
+      .map((c, i) => ({ c, colIdx: i + 1 }))
+      .filter(({ c }) => c.key !== "__date" && c.key !== "comment");
+
+    numericCols.forEach(({ c, colIdx }, idx) => {
+      const r = firstAvgRow + idx;
+      const row = ws.getRow(r);
+      row.height = 20;
+
+      const labelCell = row.getCell(1);
+      labelCell.value = `Среднее ${c.label}`;
+      labelCell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
+      labelCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+      labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
+
+      // Fill the cells between the label and the value column with the
+      // same amber background so the row reads as one continuous band.
+      for (let col = 2; col < colIdx; col++) {
+        const filler = row.getCell(col);
+        filler.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
       }
-      cell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
-      cell.border = {
-        top: { style: "medium", color: { argb: "FFD97706" } },
-        right: { style: "thin", color: { argb: "FFE7E5E4" } },
-      };
+
+      const vals = monthRows
+        .map((q) => cellNumericValue(q, c, productCols))
+        .filter((v): v is number => v != null);
+      const valueCell = row.getCell(colIdx);
+      valueCell.value = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : "";
+      valueCell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
+      valueCell.alignment = { vertical: "middle", horizontal: "right" };
+      valueCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
+      if (c.numFmt) valueCell.numFmt = c.numFmt;
     });
 
     // ── Autofilter on the header (excludes title + footer) ───
