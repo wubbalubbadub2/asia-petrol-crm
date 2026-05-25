@@ -257,17 +257,21 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
     });
 
     // ── Среднее footer block ────────────────────────────
-    // Two blank spacer rows, then one row per numeric column with the
-    // label «Среднее <header>» in col A and the month average always
-    // in col B — flush against the label, no staircase.
+    // Two blank spacer rows, then one row per numeric column. Labels
+    // span cols A-C (merged) so the long «Среднее CIF NWE и FOB
+    // Rotterdam» strings stay readable; the month average sits in
+    // col D right after the merged label.
     const firstAvgRow = monthRows.length + 3 + 2; // +2 spacer rows
     const numericCols = sheetCols.filter((c) => c.key !== "__date" && c.key !== "comment");
+    const LABEL_SPAN_END = 3; // merge cols 1..3
+    const VALUE_COL = 4;
 
     numericCols.forEach((c, idx) => {
       const r = firstAvgRow + idx;
       const row = ws.getRow(r);
       row.height = 20;
 
+      ws.mergeCells(r, 1, r, LABEL_SPAN_END);
       const labelCell = row.getCell(1);
       // Drop a leading «Среднее » in the column label so we don't get
       // double-prefixed «Среднее Среднее CIF NWE и FOB Rotterdam» for
@@ -281,7 +285,7 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
       const vals = monthRows
         .map((q) => cellNumericValue(q, c, productCols))
         .filter((v): v is number => v != null);
-      const valueCell = row.getCell(2);
+      const valueCell = row.getCell(VALUE_COL);
       valueCell.value = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : "";
       valueCell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
       valueCell.alignment = { vertical: "middle", horizontal: "right" };
