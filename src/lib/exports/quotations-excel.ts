@@ -1,17 +1,19 @@
 /**
  * Quotations → Excel export.
  *
- * Single sheet «Котировки» — one row per (date × product) combo.
- * Columns cover every numeric base the `quotations` table stores plus
- * the computed average and free-text comment. Sorted by date ascending,
- * then by product name. Includes header band, autofilter, frozen
- * header row, and zebra rows.
+ * One sheet per calendar month («Январь 2026», …) — within each sheet
+ * one row per day, columns driven by the product's column config
+ * (`getColumnsForProduct`), with a bold «Среднее» footer row holding
+ * the month average for each numeric/formula column. Formula columns
+ * are recomputed from `avgOf` on the fly to match the on-screen
+ * /quotations table exactly.
  *
  * Loaded dynamically from `/quotations` on click so exceljs stays out
  * of the initial bundle.
  */
 
 import { createClient } from "@/lib/supabase/client";
+import { getColumnsForProduct, FULL_PRICE_COLS, type QuotationColumn } from "@/lib/constants/quotation-columns";
 
 type ProductTypeLite = {
   id: string;
@@ -76,6 +78,36 @@ async function fetchAllQuotations(
   return all;
 }
 
+// Lower-case month names matching the page UI; sheet labels capitalize
+// the first letter so «Январь 2026» reads naturally in the tab bar.
+// Shared with the summary export below.
+const MONTHS_RU = [
+  "январь","февраль","март","апрель","май","июнь",
+  "июль","август","сентябрь","октябрь","ноябрь","декабрь",
+];
+
+function capitalizeFirst(s: string): string {
+  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Recompute formula column value for a single quotation row from its
+// `avgOf` source fields — mirrors the /quotations page render exactly
+// (page.tsx:239-243) so the stored `price` value never leaks into the
+// export.
+function computeFormulaValue(q: QuotationRow, col: QuotationColumn, allCols: QuotationColumn[]): number | null {
+  const srcKeys = col.avgOf ?? allCols.filter((c) => c.editable && c.key !== "comment").map((c) => c.key);
+  const vals = srcKeys
+    .map((k) => (q as unknown as Record<string, unknown>)[k] as number | null)
+    .filter((v): v is number => v != null);
+  if (vals.length < 2) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function cellNumericValue(q: QuotationRow, col: QuotationColumn, allCols: QuotationColumn[]): number | null {
+  if (col.formula === "avg") return computeFormulaValue(q, col, allCols);
+  return ((q as unknown as Record<string, unknown>)[col.key] as number | null) ?? null;
+}
+
 export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {}): Promise<number> {
   const sb = createClient();
 
@@ -101,117 +133,162 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
       return pa.sort_order - pb.sort_order;
     });
 
+  // Column config follows the product's on-screen layout. If no product
+  // is pinned (the legacy "export everything" path), fall back to the
+  // full layout so the result is at least readable.
+  const productCols: QuotationColumn[] = filter.productName
+    ? getColumnsForProduct(filter.productName)
+    : FULL_PRICE_COLS;
+
   // ── Build workbook ─────────────────────────────────────
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Asia Petrol CRM";
   wb.created = new Date();
 
-  // Sheet name: «Котировки» / «{Product}» / «{Product} {Year}» — Excel
-  // sheet names are capped at 31 chars and forbid \\/:*?[]
-  const safe = (s: string) => s.replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
-  const sheetName = filter.productName && filter.year
-    ? safe(`${filter.productName} ${filter.year}`)
-    : filter.productName
-      ? safe(filter.productName)
-      : filter.year
-        ? `Котировки ${filter.year}`
-        : "Котировки";
-  const ws = wb.addWorksheet(sheetName, {
-    views: [{ state: "frozen", ySplit: 2 }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-  });
+  // Group rows by YYYY-MM. Object.keys insertion order matches first-
+  // seen, but rows are already date-asc sorted above so keys come out
+  // ascending naturally.
+  const byMonth = new Map<string, QuotationRow[]>();
+  for (const q of rows) {
+    const ym = q.date.slice(0, 7); // YYYY-MM
+    const bucket = byMonth.get(ym);
+    if (bucket) bucket.push(q);
+    else byMonth.set(ym, [q]);
+  }
 
-  type Col = { header: string; width: number; numFmt?: string; key: keyof FullRow };
-  type FullRow = {
-    date: Date;
-    cif_nwe: number | null;
-    fob_med: number | null;
-    fob_rotterdam: number | null;
-    average: number | null;
-    comment: string;
-  };
-  // Per-client request: only the columns the user sees on screen — no
-  // derived/redundant ones. Year/month/product/subtype/basis were
-  // stripped because the sheet name + the user's eye already convey
-  // them (the export is always scoped to a single product anyway).
-  const cols: Col[] = [
-    { header: "Дата",              width: 12, key: "date",          numFmt: NUM_FMT_DATE },
-    { header: "CIF NWE / Basis ARA", width: 14, key: "cif_nwe",      numFmt: NUM_FMT_PRICE },
-    { header: "FOB MED",           width: 12, key: "fob_med",       numFmt: NUM_FMT_PRICE },
-    { header: "FOB Rotterdam",     width: 14, key: "fob_rotterdam", numFmt: NUM_FMT_PRICE },
-    { header: "Среднее",           width: 12, key: "average",       numFmt: NUM_FMT_PRICE },
-    { header: "Комментарий",       width: 28, key: "comment" },
+  // If the dataset is empty we still emit one placeholder sheet so the
+  // user gets a file (and a toast that says "0 строк") instead of an
+  // exceljs "must have at least one sheet" runtime error.
+  if (byMonth.size === 0) {
+    byMonth.set("empty", []);
+  }
+
+  const safe = (s: string) => s.replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
+
+  // Excel max cell-formula columns is 12 + Date + Comment; the wide
+  // products top out around 6, so width is fine. Anchor-date column
+  // comes first.
+  type Col = QuotationColumn & { numFmt?: string; width: number };
+  const sheetCols: Col[] = [
+    { key: "__date", label: "Дата", editable: false, numFmt: NUM_FMT_DATE, width: 12 },
+    ...productCols.map((c): Col => ({
+      ...c,
+      numFmt: c.key === "comment" ? undefined : NUM_FMT_PRICE,
+      width: c.key === "comment" ? 28 : 14,
+    })),
   ];
 
-  // ── Title row ─────────────────────────────────────────
-  ws.getRow(1).height = 24;
-  ws.mergeCells(1, 1, 1, cols.length);
-  const title = ws.getCell(1, 1);
-  const headerLine = [
-    filter.productName ? filter.productName : "Котировки",
-    filter.year ? `${filter.year}` : "все годы",
-    `${rows.length} строк`,
-  ].join("  ·  ");
-  title.value = headerLine;
-  title.font = { bold: true, size: 13, color: { argb: HEADER_TEXT } };
-  title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
-  title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
+  for (const [ym, monthRows] of byMonth) {
+    let sheetName: string;
+    if (ym === "empty") {
+      sheetName = filter.productName ? safe(filter.productName) : "Котировки";
+    } else {
+      const [yStr, mStr] = ym.split("-");
+      const monthIdx = parseInt(mStr, 10) - 1;
+      sheetName = safe(`${capitalizeFirst(MONTHS_RU[monthIdx])} ${yStr}`);
+    }
 
-  // ── Header row ────────────────────────────────────────
-  const headerRow = ws.getRow(2);
-  headerRow.height = 22;
-  cols.forEach((c, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = c.header;
-    cell.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
-    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
-    cell.border = { bottom: { style: "medium", color: { argb: "FFD97706" } } };
-    ws.getColumn(i + 1).width = c.width;
-    if (c.numFmt) ws.getColumn(i + 1).numFmt = c.numFmt;
-  });
-
-  // ── Data rows ─────────────────────────────────────────
-  rows.forEach((q, rowIdx) => {
-    const r = rowIdx + 3;
-    const row = ws.getRow(r);
-    row.height = 18;
-    const isZebra = rowIdx % 2 === 1;
-    const cells: Record<keyof FullRow, string | number | Date | null> = {
-      date: q.date ? new Date(q.date + "T00:00:00Z") : null,
-      cif_nwe: q.price_cif_nwe,
-      fob_med: q.price_fob_med,
-      fob_rotterdam: q.price_fob_rotterdam,
-      average: q.price,
-      comment: q.comment ?? "",
-    };
-    cols.forEach((c, i) => {
-      const cell = row.getCell(i + 1);
-      const v = cells[c.key];
-      cell.value = v == null ? "" : v;
-      cell.font = { size: 10, name: "Calibri" };
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: c.numFmt ? "right" : "left",
-      };
-      cell.fill = {
-        type: "pattern", pattern: "solid",
-        fgColor: { argb: isZebra ? "FFFAFAF9" : "FFFFFFFF" },
-      };
-      cell.border = {
-        right: { style: "thin", color: { argb: "FFE7E5E4" } },
-        bottom: { style: "thin", color: { argb: "FFF5F5F4" } },
-      };
-      if (c.numFmt) cell.numFmt = c.numFmt;
+    const ws = wb.addWorksheet(sheetName, {
+      views: [{ state: "frozen", ySplit: 2 }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     });
-  });
 
-  // ── Autofilter on the header ──────────────────────────
-  ws.autoFilter = {
-    from: { row: 2, column: 1 },
-    to: { row: 2, column: cols.length },
-  };
+    // ── Title row ───────────────────────────────────────
+    ws.getRow(1).height = 24;
+    ws.mergeCells(1, 1, 1, sheetCols.length);
+    const title = ws.getCell(1, 1);
+    const titleParts: string[] = [];
+    if (filter.productName) titleParts.push(filter.productName);
+    titleParts.push(sheetName);
+    titleParts.push(`${monthRows.length} строк`);
+    title.value = titleParts.join("  ·  ");
+    title.font = { bold: true, size: 13, color: { argb: HEADER_TEXT } };
+    title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
+
+    // ── Header row ──────────────────────────────────────
+    const headerRow = ws.getRow(2);
+    headerRow.height = 22;
+    sheetCols.forEach((c, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = c.label;
+      cell.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
+      cell.border = { bottom: { style: "medium", color: { argb: "FFD97706" } } };
+      ws.getColumn(i + 1).width = c.width;
+      if (c.numFmt) ws.getColumn(i + 1).numFmt = c.numFmt;
+    });
+
+    // ── Data rows ───────────────────────────────────────
+    monthRows.forEach((q, rowIdx) => {
+      const r = rowIdx + 3;
+      const row = ws.getRow(r);
+      row.height = 18;
+      const isZebra = rowIdx % 2 === 1;
+
+      sheetCols.forEach((c, i) => {
+        const cell = row.getCell(i + 1);
+        let value: string | number | Date | null;
+        if (c.key === "__date") {
+          value = q.date ? new Date(q.date + "T00:00:00Z") : null;
+        } else if (c.key === "comment") {
+          value = q.comment ?? "";
+        } else {
+          value = cellNumericValue(q, c, productCols);
+        }
+        cell.value = value == null ? "" : value;
+        cell.font = { size: 10, name: "Calibri" };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: c.numFmt ? "right" : "left",
+        };
+        cell.fill = {
+          type: "pattern", pattern: "solid",
+          fgColor: { argb: isZebra ? "FFFAFAF9" : "FFFFFFFF" },
+        };
+        cell.border = {
+          right: { style: "thin", color: { argb: "FFE7E5E4" } },
+          bottom: { style: "thin", color: { argb: "FFF5F5F4" } },
+        };
+        if (c.numFmt) cell.numFmt = c.numFmt;
+      });
+    });
+
+    // ── Среднее footer row ──────────────────────────────
+    const footerR = monthRows.length + 3;
+    const footerRow = ws.getRow(footerR);
+    footerRow.height = 22;
+    sheetCols.forEach((c, i) => {
+      const cell = footerRow.getCell(i + 1);
+      if (i === 0) {
+        cell.value = "Среднее";
+        cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+      } else if (c.key === "comment") {
+        cell.value = "";
+      } else {
+        const vals = monthRows
+          .map((q) => cellNumericValue(q, c, productCols))
+          .filter((v): v is number => v != null);
+        cell.value = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : "";
+        cell.alignment = { vertical: "middle", horizontal: "right" };
+        if (c.numFmt) cell.numFmt = c.numFmt;
+      }
+      cell.font = { bold: true, size: 11, color: { argb: "FF92400E" }, name: "Calibri" };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
+      cell.border = {
+        top: { style: "medium", color: { argb: "FFD97706" } },
+        right: { style: "thin", color: { argb: "FFE7E5E4" } },
+      };
+    });
+
+    // ── Autofilter on the header (excludes title + footer) ───
+    ws.autoFilter = {
+      from: { row: 2, column: 1 },
+      to: { row: 2, column: sheetCols.length },
+    };
+  }
 
   // ── Download ──────────────────────────────────────────
   const buffer = await wb.xlsx.writeBuffer();
@@ -221,7 +298,6 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   const datestamp = new Date().toISOString().slice(0, 10);
-  // File name slug: kotirovki / {product-slug} / + year if set.
   const slug = filter.productName
     ? filter.productName.toLowerCase().replace(/[^a-zа-я0-9]+/giu, "-").replace(/^-+|-+$/g, "")
     : "all";
@@ -239,12 +315,9 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
 // Свод (summary) export — the matrix-shaped table from
 // QuotationSummary: products as rows, months as column groups with
 // «Ср» / «Фикс» / «Тр» sub-columns, year-average tail column.
+// Month names come from the shared MONTHS_RU constant above.
 // ──────────────────────────────────────────────────────────────────
 
-const MONTHS_RU = [
-  "январь","февраль","март","апрель","май","июнь",
-  "июль","август","сентябрь","октябрь","ноябрь","декабрь",
-];
 
 type SummaryRow = {
   productId: string;
