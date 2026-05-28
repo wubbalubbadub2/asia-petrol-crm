@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly";
+export type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly" | "finance" | "trader";
 
 type Result = { ok: true } | { ok: false; error: string };
 

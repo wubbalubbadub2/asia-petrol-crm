@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly";
+type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly" | "finance" | "trader";
 
 type Profile = {
   id: string;
@@ -47,7 +47,9 @@ export function useRole() {
   const isWritable =
     profile?.role === "admin" ||
     profile?.role === "manager" ||
-    profile?.role === "logistics";
+    profile?.role === "logistics" ||
+    profile?.role === "finance" ||
+    profile?.role === "trader";
 
   const isAdmin = profile?.role === "admin";
 

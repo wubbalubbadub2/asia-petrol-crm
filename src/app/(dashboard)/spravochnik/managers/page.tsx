@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { UsersManager } from "@/app/(dashboard)/settings/users/users-manager";
 
-type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly";
+type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly" | "finance" | "trader";
 
 export default async function ManagersPage() {
   const supabase = await createClient();

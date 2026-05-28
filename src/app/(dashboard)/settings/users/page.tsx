@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { UsersManager } from "./users-manager";
 
-type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly";
+type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly" | "finance" | "trader";
 
 export default async function UsersPage() {
   const supabase = await createClient();

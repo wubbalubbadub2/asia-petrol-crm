@@ -3731,7 +3731,14 @@ export type Database = {
         | "avg_to_date"
         | "manual_in_formula"
       trigger_basis: "shipment_date" | "border_crossing_date"
-      user_role: "admin" | "manager" | "logistics" | "accounting" | "readonly"
+      user_role:
+        | "admin"
+        | "manager"
+        | "logistics"
+        | "accounting"
+        | "readonly"
+        | "finance"
+        | "trader"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3870,7 +3877,15 @@ export const Constants = {
         "manual_in_formula",
       ],
       trigger_basis: ["shipment_date", "border_crossing_date"],
-      user_role: ["admin", "manager", "logistics", "accounting", "readonly"],
+      user_role: [
+        "admin",
+        "manager",
+        "logistics",
+        "accounting",
+        "readonly",
+        "finance",
+        "trader",
+      ],
     },
   },
 } as const
