@@ -14,6 +14,7 @@ type DealCompanyGroup = {
   position: number;
   company_group_id: string;
   price: number | null;
+  price_kind: "preliminary" | "final";
   contract_ref: string | null;
   currency: string | null;
   company_group: { name: string } | null;
@@ -74,7 +75,7 @@ export function DealCompanyChain({
     if (!defaultGroup) { toast.error("Нет групп. Создайте в справочнике."); return; }
     const { error } = await sbRef.current.from("deal_company_groups").insert({
       deal_id: dealId, company_group_id: defaultGroup, position: nextPos,
-      price: null, contract_ref: null,
+      price: null, contract_ref: null, price_kind: "preliminary",
     });
     if (error) { toast.error(error.message); return; }
     onReload();
@@ -132,8 +133,18 @@ export function DealCompanyChain({
                   <p className="text-[10px] text-purple-600 uppercase font-medium">Группа {cg.position}</p>
                   <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{cg.company_group?.name ?? "—"}</p>
                   {cg.price != null && (
-                    <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5">
-                      {fmt(cg.price)} {groupSym}
+                    <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5 flex items-center justify-center gap-1">
+                      <span>{fmt(cg.price)} {groupSym}</span>
+                      <span
+                        className={`rounded px-1 py-px text-[8px] font-sans font-semibold uppercase tracking-wide ${
+                          cg.price_kind === "final"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                        title={cg.price_kind === "final" ? "Окончательная цена" : "Предварительная цена"}
+                      >
+                        {cg.price_kind === "final" ? "оконч." : "предв."}
+                      </span>
                     </p>
                   )}
                   {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
@@ -194,10 +205,11 @@ export function DealCompanyChain({
               </p>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-[24px_1fr_140px_90px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
+                <div className="grid grid-cols-[24px_1fr_120px_110px_90px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
                   <div>#</div>
                   <div>Компания</div>
                   <div>Цена</div>
+                  <div>Тип</div>
                   <div>Валюта</div>
                   <div>№ приложения / договора</div>
                   <div></div>
@@ -208,7 +220,7 @@ export function DealCompanyChain({
                   return (
                     <div
                       key={cg.id}
-                      className="grid grid-cols-[24px_1fr_140px_90px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
+                      className="grid grid-cols-[24px_1fr_120px_110px_90px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
                     >
                       <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
 
@@ -242,6 +254,24 @@ export function DealCompanyChain({
                         }}
                         className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
                       />
+
+                      {/* Price kind — preliminary vs final. Default
+                          'preliminary' for fresh rows (migration 00084). */}
+                      <div className="relative">
+                        <select
+                          value={cg.price_kind}
+                          onChange={(e) => {
+                            const v = e.target.value as "preliminary" | "final";
+                            if (v !== cg.price_kind) updateGroup(cg.id, { price_kind: v });
+                          }}
+                          className="h-8 w-full rounded border border-stone-300 bg-white px-2 pr-6 text-[12px] text-stone-800 hover:border-amber-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
+                          title="Тип цены — предварительная или окончательная"
+                        >
+                          <option value="preliminary">Предв.</option>
+                          <option value="final">Оконч.</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+                      </div>
 
                       {/* Per-group currency override. Empty = inherit
                           supplier-side currency for display. */}

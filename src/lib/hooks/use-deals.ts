@@ -93,7 +93,7 @@ export type Deal = {
   buyer_destination_station?: { name: string } | null;
   supplier_departure_station?: { name: string } | null;
   logistics_company_group?: { name: string } | null;
-  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; contract_ref: string | null; currency: string | null; company_group: { name: string } | null }[];
+  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; contract_ref: string | null; currency: string | null; company_group: { name: string } | null }[];
 };
 
 const DEAL_SELECT = `
@@ -109,7 +109,7 @@ const DEAL_SELECT = `
   buyer_destination_station:stations!buyer_destination_station_id(name),
   supplier_departure_station:stations!supplier_departure_station_id(name),
   logistics_company_group:company_groups!logistics_company_group_id(name),
-  deal_company_groups(id, position, company_group_id, price, contract_ref, currency, company_group:company_groups(name)),
+  deal_company_groups(id, position, company_group_id, price, price_kind, contract_ref, currency, company_group:company_groups(name)),
   supplier_lines:deal_supplier_lines(id),
   buyer_lines:deal_buyer_lines(id)
 `;

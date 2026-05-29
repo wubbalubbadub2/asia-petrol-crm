@@ -44,12 +44,13 @@ export function useRole() {
     loadProfile();
   }, []);
 
+  // Trader and accounting are read-only — they only view and export Excel
+  // (client decision, migration 00083).
   const isWritable =
     profile?.role === "admin" ||
     profile?.role === "manager" ||
     profile?.role === "logistics" ||
-    profile?.role === "finance" ||
-    profile?.role === "trader";
+    profile?.role === "finance";
 
   const isAdmin = profile?.role === "admin";
 

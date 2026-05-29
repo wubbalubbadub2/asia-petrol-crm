@@ -753,6 +753,7 @@ export type Database = {
           id: string
           position: number
           price: number | null
+          price_kind: "preliminary" | "final"
         }
         Insert: {
           company_group_id: string
@@ -762,6 +763,7 @@ export type Database = {
           id?: string
           position: number
           price?: number | null
+          price_kind?: "preliminary" | "final"
         }
         Update: {
           company_group_id?: string
@@ -771,6 +773,7 @@ export type Database = {
           id?: string
           position?: number
           price?: number | null
+          price_kind?: "preliminary" | "final"
         }
         Relationships: [
           {

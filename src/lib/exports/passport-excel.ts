@@ -34,7 +34,12 @@ function fmtCompanyChain(deal: Deal): string {
     .slice()
     .sort((a, b) => a.position - b.position);
   return groups
-    .map((g) => `${g.company_group?.name ?? ""}${g.price != null ? ` ${g.price}` : ""}`)
+    .map((g) => {
+      const name = g.company_group?.name ?? "";
+      if (g.price == null) return name;
+      const kind = g.price_kind === "final" ? "оконч." : "предв.";
+      return `${name} ${g.price} (${kind})`;
+    })
     .filter(Boolean)
     .join(" → ");
 }
