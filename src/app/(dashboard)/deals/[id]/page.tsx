@@ -83,11 +83,19 @@ function useDealReload() {
   return useContext(DealReloadContext);
 }
 
+// Per-deal field labels whose value is a tonnage — always pad to 3 decimals
+// (client request 30.05.2026). Includes per-variant rollups rendered nearby.
+const VOLUME_FIELDS_BY_LABEL = new Set([
+  "Объем контракт", "Заявлено", "Остаток", "Отгружено",
+  "Объем плановый", "Факт объем",
+]);
+
 function Field({ label, value, suffix, editing, field, dealId, inputType, onSaved }: {
   label: string; value: string | number | null | undefined; suffix?: string;
   editing?: boolean; field?: string; dealId?: string; onSaved?: () => void;
   inputType?: "text" | "number" | "date";
 }) {
+  const isVolume = VOLUME_FIELDS_BY_LABEL.has(label);
   const ctxReload = useDealReload();
   const isNumeric = typeof value === "number" || inputType === "number";
   const isDate = inputType === "date";
@@ -100,9 +108,12 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
     pendingVal.current = undefined;
   }
 
+  const numOpts: Intl.NumberFormatOptions = isVolume
+    ? { minimumFractionDigits: 3, maximumFractionDigits: 3 }
+    : { maximumFractionDigits: 3 };
   const formatted = shown != null && shown !== ""
     ? (typeof shown === "number"
-      ? Number(shown).toLocaleString("ru-RU", { maximumFractionDigits: 3 })
+      ? Number(shown).toLocaleString("ru-RU", numOpts)
       : String(shown))
     : "—";
 

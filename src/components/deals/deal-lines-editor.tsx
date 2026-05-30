@@ -651,7 +651,7 @@ function LinesEditorView({
               <span className="text-stone-500">
                 Отгружено по этому варианту:{" "}
                 <span className="font-mono tabular-nums font-medium text-stone-700">
-                  {l.rollup.volume.toLocaleString("ru-RU", { maximumFractionDigits: 3 })}
+                  {l.rollup.volume.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                 </span>
                 <span className="text-stone-500"> тонн</span>
               </span>
