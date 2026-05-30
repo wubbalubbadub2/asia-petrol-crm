@@ -1080,6 +1080,7 @@ export type Database = {
           actual_shipped_volume: number | null
           actual_tariff: number | null
           archived_at: string | null
+          avg_month_date: string | null
           buyer_contract: string | null
           buyer_contracted_amount: number | null
           buyer_contracted_volume: number | null
@@ -1161,6 +1162,7 @@ export type Database = {
           actual_shipped_volume?: number | null
           actual_tariff?: number | null
           archived_at?: string | null
+          avg_month_date?: string | null
           buyer_contract?: string | null
           buyer_contracted_amount?: number | null
           buyer_contracted_volume?: number | null
@@ -1242,6 +1244,7 @@ export type Database = {
           actual_shipped_volume?: number | null
           actual_tariff?: number | null
           archived_at?: string | null
+          avg_month_date?: string | null
           buyer_contract?: string | null
           buyer_contracted_amount?: number | null
           buyer_contracted_volume?: number | null

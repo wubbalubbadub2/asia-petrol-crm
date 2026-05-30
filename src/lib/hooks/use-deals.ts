@@ -16,6 +16,8 @@ export type Deal = {
   month: string;
   factory_id: string | null;
   fuel_type_id: string | null;
+  // Opcional anchor date for «Средний месяц» quotation pickup. Migration 00085.
+  avg_month_date: string | null;
   sulfur_percent: string | null;
   supplier_id: string | null;
   supplier_contract: string | null;

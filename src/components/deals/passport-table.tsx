@@ -13,11 +13,23 @@ function formatNum(val: number | null | undefined): string {
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
 }
 
+// Volumes always show 3 decimal places (client request — «3 ноля после запятой»).
+function formatVol(val: number | null | undefined): string {
+  if (val == null || val === 0) return "";
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 // Computed/auto cells: render "0" explicitly so users see that the calc ran
 // (supplier_balance = shipped − payment is a common legitimate zero).
 function formatComputedNum(val: number | null | undefined): string {
   if (val == null) return "";
   return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+}
+
+// Same as formatComputedNum, but pads to exactly 3 decimals for tonnage.
+function formatComputedVol(val: number | null | undefined): string {
+  if (val == null) return "";
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 // Same as formatComputedNum but wrapped in a span that colors negative
@@ -63,6 +75,13 @@ function VariantsBadge({ supplierCount, buyerCount }: { supplierCount: number; b
 //  Inline cell primitives
 // ─────────────────────────────────────────────────────────────────────
 
+// Volume fields that should always display with 3 decimal places (client request).
+const VOLUME_FIELDS = new Set([
+  "supplier_contracted_volume", "supplier_shipped_volume",
+  "buyer_contracted_volume", "buyer_ordered_volume", "buyer_shipped_volume",
+  "preliminary_tonnage", "actual_shipped_volume", "invoice_volume",
+]);
+
 function EditableNumCell({ value, dealId, field }: {
   value: number | null | undefined; dealId: string; field: string;
 }) {
@@ -71,14 +90,15 @@ function EditableNumCell({ value, dealId, field }: {
   const pendingVal = useRef<number | null | undefined>(undefined);
   const shown = pendingVal.current !== undefined ? pendingVal.current : value;
   if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
+  const isVol = VOLUME_FIELDS.has(field);
   if (!editing) return (
     <button onClick={() => { setLocalVal(shown?.toString() ?? ""); setEditing(true); }}
       className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px]">
-      {formatNum(shown)}
+      {isVol ? formatVol(shown) : formatNum(shown)}
     </button>
   );
   return (
-    <input autoFocus type="number" step="0.01" value={localVal}
+    <input autoFocus type="number" step={isVol ? "0.001" : "0.01"} value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const num = localVal.trim() === "" ? null : parseFloat(localVal); if (num !== value) { pendingVal.current = num; updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
@@ -308,7 +328,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Предв. сумма</th>
             <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Факт объем</th>
             <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Сумма</th>
-            <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Менеджер</th>
+            <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Коммерция</th>
             <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-stone-50"></th>
           </tr>
         </thead>
@@ -347,7 +367,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.supplier_price)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="налив (loading_volume) — реестр">{formatComputedNum(deal.supplier_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="налив (loading_volume) — реестр">{formatComputedVol(deal.supplier_shipped_volume)}</td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">
                 <ComputedNumSigned value={deal.supplier_balance} />
@@ -388,7 +408,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.buyer_price)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="тонн (shipment_volume) — реестр">{formatComputedNum(deal.buyer_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="тонн (shipment_volume) — реестр">{formatComputedVol(deal.buyer_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: оплата − отгружено">
@@ -404,7 +424,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
               <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="тонны из реестра">{formatComputedNum(deal.actual_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="тонны из реестра">{formatComputedVol(deal.actual_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
               <td className="px-1 py-0.5">
                 <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
@@ -445,7 +465,8 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
     return s;
   };
   const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
-  const fmtVol = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+  // Volumes — always 3 decimals (client request).
+  const fmtVol = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   // Cell builder — keeps the markup consistent.
   const num = (band: "amber" | "blue" | "stone" | "purple", v: number, digits: 2 | 3 = 2) => (
     <td className={`border-r px-2 py-1 text-right font-mono tabular-nums font-medium ${

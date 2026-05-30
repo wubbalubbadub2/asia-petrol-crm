@@ -493,6 +493,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Оплата" value={deal.supplier_payment} suffix={`${supplierCurrencySymbol} (оплаты)`} />
             <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
             <Field label="Баланс" value={deal.supplier_balance} suffix={`${supplierCurrencySymbol} (авто)`} />
+            {/* Anchor date for «Средний месяц» pickup — migration 00085. */}
+            <Field label="Дата котировки (ср. месяц)" value={deal.avg_month_date} inputType="date" editing={editing} field="avg_month_date" dealId={deal.id} />
           </div>
         </CardContent>
       </Card>
@@ -511,6 +513,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
             defaultDiscount={deal.supplier_discount ?? 0}
             defaultQuotation={deal.supplier_quotation ?? null}
+            avgMonthDate={deal.avg_month_date ?? null}
             priceCondition={deal.supplier_price_condition} />
         </div>
       )}
@@ -577,6 +580,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             defaultBasis={(deal as Record<string, unknown>).trigger_basis as "shipment_date" | "border_crossing_date" | undefined}
             defaultDiscount={deal.buyer_discount ?? 0}
             defaultQuotation={deal.buyer_quotation ?? null}
+            avgMonthDate={deal.avg_month_date ?? null}
             priceCondition={deal.buyer_price_condition} />
         </div>
       )}
@@ -638,7 +642,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
             <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
-            <EditableSelect label="Менеджер" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
+            <EditableSelect label="Коммерция" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={logisticsCurrencySymbol} />
         </CardContent>
@@ -650,8 +654,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-[14px]">Ответственные</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
-          <EditableSelect label="Менеджер поставщика" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
-          <EditableSelect label="Менеджер покупателя" value={deal.buyer_manager_id} displayValue={deal.buyer_manager?.full_name ?? "—"} editing={editing} field="buyer_manager_id" dealId={deal.id} options={refs.managers} />
+          <EditableSelect label="Коммерция (поставщик)" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
+          <EditableSelect label="Коммерция (покупатель)" value={deal.buyer_manager_id} displayValue={deal.buyer_manager?.full_name ?? "—"} editing={editing} field="buyer_manager_id" dealId={deal.id} options={refs.managers} />
           <EditableSelect label="Трейдер" value={deal.trader_id} displayValue={deal.trader?.full_name ?? "—"} editing={editing} field="trader_id" dealId={deal.id} options={refs.managers} />
         </CardContent>
       </Card>

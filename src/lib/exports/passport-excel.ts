@@ -96,7 +96,7 @@ const COLUMNS: Column[] = [
   { key: "preliminary_amount", header: "Предв. сумма", width: 13, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.preliminary_amount },
   { key: "actual_shipped_volume", header: "Факт объем", width: 11, band: "logistics", numFmt: NUM_FMT_VOLUME, read: (d) => d.actual_shipped_volume },
   { key: "invoice_amount", header: "Сумма (логистика)", width: 14, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.invoice_amount },
-  { key: "supplier_manager", header: "Менеджер", width: 16, band: "logistics", read: (d) => d.supplier_manager?.full_name ?? "" },
+  { key: "supplier_manager", header: "Коммерция", width: 16, band: "logistics", read: (d) => d.supplier_manager?.full_name ?? "" },
 ];
 
 const BAND_STYLE: Record<Column["band"], { label: string; bg: string; text: string }> = {

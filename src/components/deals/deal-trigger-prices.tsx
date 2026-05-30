@@ -89,6 +89,7 @@ export function DealTriggerPrices({
   defaultProductTypeId,
   defaultDiscount = 0,
   defaultQuotation = null,
+  avgMonthDate = null,
   priceCondition = "trigger",
 }: {
   dealId: string;
@@ -98,6 +99,7 @@ export function DealTriggerPrices({
   defaultProductTypeId?: string | null;
   defaultDiscount?: number;
   defaultQuotation?: number | null;
+  avgMonthDate?: string | null;
   priceCondition?: string;
 }) {
   const isTrigger = priceCondition === "trigger";
@@ -137,11 +139,12 @@ export function DealTriggerPrices({
       .then(({ data }) => setProductTypes((data ?? []) as ProductType[]));
   }, []);
 
-  // Pre-fill the quotation from the deal when opening the form in modes that
-  // don't auto-compute (fixed/manual). Trigger and average_month always fetch
-  // via the «Получить» button.
+  // Pre-fill the quotation from the deal whenever opening the form, EXCEPT in
+  // pure trigger mode (each line there has its own window). For fixed and
+  // average_month, the deal-level котировка is the source of truth — the user
+  // can still click «Получить» to refresh from quotations table.
   useEffect(() => {
-    if (adding && !isAutoQuote && quotationAvg == null && defaultQuotation != null) {
+    if (adding && !isTrigger && quotationAvg == null && defaultQuotation != null) {
       setQuotationAvg(defaultQuotation);
     }
     // Intentional: only react when `adding` flips open.
@@ -152,9 +155,10 @@ export function DealTriggerPrices({
   async function fetchQuotation() {
     if (!productTypeId) return;
     if (isAverageMonth) {
-      // Determine the shipment month from the shipment date (or border date
-      // as a safety fallback when shipment date isn't filled in).
-      const refDate = shipDate || borderDate;
+      // Source of truth for «Средний месяц» month: deal-level avgMonthDate
+      // if set (per 30.05.2026 client feedback). Otherwise fall back to the
+      // per-line shipment_date / border_crossing_date.
+      const refDate = avgMonthDate || shipDate || borderDate;
       if (!refDate) return;
       const d = new Date(refDate + "T00:00:00");
       if (Number.isNaN(d.getTime())) return;

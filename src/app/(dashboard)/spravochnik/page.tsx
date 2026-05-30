@@ -60,10 +60,10 @@ const sections = [
     description: "Группы компании для сделок",
   },
   {
-    title: "Менеджеры",
+    title: "Коммерция",
     href: "/spravochnik/managers",
     icon: Users,
-    description: "Менеджеры и сотрудники",
+    description: "Сотрудники коммерции",
   },
 ];
 

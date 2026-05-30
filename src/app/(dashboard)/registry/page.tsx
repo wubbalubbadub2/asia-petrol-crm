@@ -24,6 +24,9 @@ const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", KZT: "₸", KGS: "�
 const tabs = [{ key: "kg" as const, label: "KG (Экспорт)" }, { key: "kz" as const, label: "KZ (Внутренний)" }];
 
 function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
+// Tonnage display: always 3 decimals, even for whole / 2-decimal values.
+// Per client request — "после запятой 3 ноля должно быть".
+function fmtVol(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("ru-RU") : ""; }
 function ceil(v: number | null) { return v == null ? null : Math.ceil(v); }
 function calcAmt(v: number | null, t: number | null) { const r = ceil(v); return r == null || t == null ? null : r * t; }
@@ -51,8 +54,11 @@ function EC({ value, recId, field, onSaved, cls = "" }: { value: string | null |
 function EN({ value, recId, field, onSaved }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<number | null | undefined>(undefined);
   const sh = pv.current !== undefined ? pv.current : value; if (pv.current !== undefined && value === pv.current) pv.current = undefined;
-  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px]">{fmtNum(sh)}</button>;
-  return <input autoFocus type="number" step="0.01" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; updateRegistryEntry(recId, { [field]: n }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
+  // Volume fields render with the always-3-decimals formatter; everything else
+  // (tariffs, amounts) keeps the existing «up to 3» formatter.
+  const isVol = field === "loading_volume" || field === "shipment_volume";
+  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px]">{isVol ? fmtVol(sh) : fmtNum(sh)}</button>;
+  return <input autoFocus type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; updateRegistryEntry(recId, { [field]: n }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
 }
 function ED({ value, recId, field, onSaved }: { value: string | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<string | null | undefined>(undefined);

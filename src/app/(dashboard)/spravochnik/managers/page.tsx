@@ -36,11 +36,11 @@ export default async function ManagersPage() {
         <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Добавление и редактирование менеджеров доступно только администратору.
+            Добавление и редактирование сотрудников коммерции доступно только администратору.
           </span>
         </div>
       )}
-      <UsersManager initialRows={rows} readOnly={!isAdmin} title="Менеджеры" />
+      <UsersManager initialRows={rows} readOnly={!isAdmin} title="Коммерция" />
     </div>
   );
 }

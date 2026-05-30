@@ -173,6 +173,13 @@ export default function NewDealPage() {
   const [buyerManagerId, setBuyerManagerId] = useState("");
   const [traderId, setTraderId] = useState("");
 
+  // «Оплата заранее» — sometimes the wire hits before the deal is entered.
+  // Captured here, written as a deal_payments row right after the deal is
+  // created (client request, 30.05.2026).
+  const [prepayAmount, setPrepayAmount] = useState("");
+  const [prepayDate, setPrepayDate] = useState("");
+  const [prepaySide, setPrepaySide] = useState<"supplier" | "buyer">("supplier");
+
   useEffect(() => {
     Promise.all([
       supabase.from("factories").select("id, name").eq("is_active", true).order("name"),
@@ -308,6 +315,25 @@ export default function NewDealPage() {
           destination_station_id: v.stationId || null,
         }))
       );
+    }
+
+    // «Оплата заранее» → write a deal_payments row right after the deal exists.
+    // No-op if no amount was entered. Date defaults to today.
+    if (deal && prepayAmount) {
+      const amt = parseFloat(prepayAmount);
+      if (Number.isFinite(amt) && amt > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        const { error: payErr } = await supabase.from("deal_payments").insert({
+          deal_id: deal.id,
+          side: prepaySide,
+          amount: amt,
+          payment_date: prepayDate || today,
+          payment_type: "prepayment",
+          description: "Оплата заранее (при создании сделки)",
+          currency: prepaySide === "supplier" ? deal.supplier_currency : deal.buyer_currency,
+        });
+        if (payErr) toast.error(`Не удалось записать оплату заранее: ${payErr.message}`);
+      }
     }
 
     // Save company groups
@@ -622,13 +648,13 @@ export default function NewDealPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <SelectField
-              label="Менеджер поставщика"
+              label="Коммерция (поставщик)"
               value={supplierManagerId}
               onChange={setSupplierManagerId}
               options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
             />
             <SelectField
-              label="Менеджер покупателя"
+              label="Коммерция (покупатель)"
               value={buyerManagerId}
               onChange={setBuyerManagerId}
               options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
@@ -639,6 +665,49 @@ export default function NewDealPage() {
               onChange={setTraderId}
               options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
             />
+          </CardContent>
+        </Card>
+
+        {/* Оплата заранее */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Оплата заранее (опционально)</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-[12px] text-stone-500">Сторона</Label>
+              <select
+                value={prepaySide}
+                onChange={(e) => setPrepaySide(e.target.value as "supplier" | "buyer")}
+                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="supplier">Поставщику</option>
+                <option value="buyer">От покупателя</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Сумма</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={prepayAmount}
+                onChange={(e) => setPrepayAmount(e.target.value)}
+                placeholder="0,00"
+                className="h-8 text-[13px] font-mono"
+              />
+            </div>
+            <div>
+              <Label className="text-[12px] text-stone-500">Дата оплаты</Label>
+              <Input
+                type="date"
+                value={prepayDate}
+                onChange={(e) => setPrepayDate(e.target.value)}
+                className="h-8 text-[13px]"
+              />
+            </div>
+            <div className="text-[11px] text-stone-400 self-end pb-1.5">
+              Если оплата пришла до создания сделки. Запишется в раздел «Оплаты» сразу после сохранения.
+            </div>
           </CardContent>
         </Card>
 

@@ -23,7 +23,7 @@ export function TopBar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
 
   const roleLabels: Record<string, string> = {
     admin: "Админ",
-    manager: "Менеджер",
+    manager: "Коммерция",
     logistics: "Логист",
     accounting: "Бухгалтерия",
     readonly: "Просмотр",

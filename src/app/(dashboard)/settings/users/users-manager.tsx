@@ -38,7 +38,7 @@ type Row = {
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "admin", label: "Администратор" },
-  { value: "manager", label: "Менеджер" },
+  { value: "manager", label: "Коммерция" },
   { value: "trader", label: "Трейдер" },
   { value: "finance", label: "Финансист" },
   { value: "logistics", label: "Логистика" },

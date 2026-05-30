@@ -27,6 +27,12 @@ function fmtNum(v: number | null | undefined, d = 3) {
   return v.toLocaleString("ru-RU", { maximumFractionDigits: d });
 }
 
+// Tonnage — always 3 decimals (client request).
+function fmtVol(v: number | null | undefined) {
+  if (v == null) return "—";
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
 }
@@ -109,8 +115,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
                   <span className={`inline-block w-3 text-[9px] text-stone-400 transition-transform ${expandedDate === g.date ? "rotate-90" : ""}`}>▶</span>
                   {fmtDate(g.date)}
                 </td>
-                <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{g.totalLoading > 0 ? fmtNum(g.totalLoading) : "—"}</td>
-                <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalVolume)}</td>
+                <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{g.totalLoading > 0 ? fmtVol(g.totalLoading) : "—"}</td>
+                <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtVol(g.totalVolume)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalAmount, 2)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">{fmtNum(g.tariffFact)}</td>
                 <td className="py-1 text-right">
@@ -120,8 +126,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
               {expandedDate === g.date && g.wagons.map((w) => (
                 <tr key={w.id} className="bg-stone-50/50 border-b border-stone-50">
                   <td className="py-0.5 pr-2 pl-6 text-stone-400 font-mono text-[10px]">{w.wagon_number ?? "—"}</td>
-                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-amber-700">{fmtNum(w.loading_volume)}</td>
-                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px]">{fmtNum(w.shipment_volume)}</td>
+                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-amber-700">{fmtVol(w.loading_volume)}</td>
+                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px]">{fmtVol(w.shipment_volume)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.amount, 2)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.railway_tariff)}</td>
                   <td className="py-0.5 text-right text-[9px] text-stone-400">{w.invoice_number ?? ""}</td>
@@ -131,8 +137,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
           ))}
           <tr className="border-t border-stone-300 font-medium">
             <td className="py-1 pr-2 text-stone-500">Итого</td>
-            <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{totalLoading > 0 ? fmtNum(totalLoading) : "—"}</td>
-            <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(totalVol)}</td>
+            <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{totalLoading > 0 ? fmtVol(totalLoading) : "—"}</td>
+            <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtVol(totalVol)}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(totalAmt, 2)}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">
               {totalVol > 0 && totalAmt > 0 ? fmtNum(Math.round((totalAmt / Math.ceil(totalVol)) * 100) / 100) : "—"}

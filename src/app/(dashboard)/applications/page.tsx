@@ -494,7 +494,7 @@ export default function ApplicationsPage() {
                 <TableHead className="text-right text-[11px]">Тоннаж</TableHead>
                 <TableHead className="text-[11px]">Ст. назначения</TableHead>
                 <TableHead className="text-[11px]">Грузополучатель</TableHead>
-                <TableHead className="text-[11px]">Менеджер</TableHead>
+                <TableHead className="text-[11px]">Коммерция</TableHead>
                 <TableHead className="text-[11px] text-center">Статус</TableHead>
                 <TableHead className="text-[11px]">Сделка</TableHead>
               </TableRow>
