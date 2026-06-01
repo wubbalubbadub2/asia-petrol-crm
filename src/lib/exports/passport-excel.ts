@@ -52,6 +52,17 @@ function avgGroupPrice(deal: Deal): number | null {
   return prices.reduce((a, b) => a + b, 0) / prices.length;
 }
 
+// Separate group-price averages by kind so the export can show
+// preliminary and final side-by-side (client request 06.2026).
+function avgGroupPriceByKind(deal: Deal, kind: "preliminary" | "final"): number | null {
+  const prices = (deal.deal_company_groups ?? [])
+    .filter((g) => g.price_kind === kind)
+    .map((g) => g.price)
+    .filter((p): p is number => p != null);
+  if (prices.length === 0) return null;
+  return prices.reduce((a, b) => a + b, 0) / prices.length;
+}
+
 const COLUMNS: Column[] = [
   // ── Сделка ─────────────────────────────────────────────
   { key: "deal_code", header: "№", width: 14, band: "deal", read: (d) => d.deal_code },
@@ -66,6 +77,10 @@ const COLUMNS: Column[] = [
   { key: "supplier_basis", header: "Базис", width: 14, band: "supplier", read: (d) => d.supplier_delivery_basis ?? "" },
   { key: "supplier_volume", header: "Объем, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_contracted_volume },
   { key: "supplier_amount", header: "Сумма дог.", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_contracted_amount },
+  // Quotation/discount inserted BEFORE the final price so accountants
+  // can see the build-up: quotation − discount = price (client req 06.2026).
+  { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation },
+  { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
   { key: "supplier_price", header: "Цена", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price },
   { key: "supplier_shipped_amount", header: "Отгр. сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount },
   { key: "supplier_shipped_volume", header: "Отгр., т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
@@ -74,7 +89,10 @@ const COLUMNS: Column[] = [
 
   // ── Группы компании ────────────────────────────────────
   { key: "company_chain", header: "Цепочка", width: 28, band: "groups", read: (d) => fmtCompanyChain(d) },
-  { key: "company_avg_price", header: "Цена гр. (avg)", width: 13, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPrice(d) },
+  // Split avg-price into preliminary and final, preliminary first
+  // (client req 06.2026 — "предварительная до окончательной").
+  { key: "company_preliminary_price", header: "Цена гр. (предв.)", width: 14, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPriceByKind(d, "preliminary") },
+  { key: "company_final_price", header: "Цена гр. (оконч.)", width: 14, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPriceByKind(d, "final") },
 
   // ── Покупатель ─────────────────────────────────────────
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
@@ -82,6 +100,8 @@ const COLUMNS: Column[] = [
   { key: "buyer_basis", header: "Базис", width: 14, band: "buyer", read: (d) => d.buyer_delivery_basis ?? "" },
   { key: "buyer_volume", header: "Объем, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_contracted_volume },
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
+  { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
+  { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
   { key: "buyer_price", header: "Цена", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume },
