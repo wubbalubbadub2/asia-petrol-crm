@@ -96,6 +96,20 @@ export type Deal = {
   supplier_departure_station?: { name: string } | null;
   logistics_company_group?: { name: string } | null;
   deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; contract_ref: string | null; currency: string | null; company_group: { name: string } | null }[];
+  // Loaded for Excel export — pulls preliminary_price snapshot per variant.
+  // Always carries at least the default line; we annotate counts post-fetch
+  // (see annotateLineCounts).
+  supplier_lines?: DealLineSnapshot[];
+  buyer_lines?: DealLineSnapshot[];
+};
+
+export type DealLineSnapshot = {
+  id: string;
+  is_default: boolean;
+  price: number | null;
+  price_stage: "preliminary" | "final";
+  preliminary_price: number | null;
+  preliminary_quotation: number | null;
 };
 
 const DEAL_SELECT = `
@@ -112,8 +126,8 @@ const DEAL_SELECT = `
   supplier_departure_station:stations!supplier_departure_station_id(name),
   logistics_company_group:company_groups!logistics_company_group_id(name),
   deal_company_groups(id, position, company_group_id, price, price_kind, contract_ref, currency, company_group:company_groups(name)),
-  supplier_lines:deal_supplier_lines(id),
-  buyer_lines:deal_buyer_lines(id)
+  supplier_lines:deal_supplier_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
+  buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation)
 `;
 
 // Annotate fetched deals with simple line counts so the passport table

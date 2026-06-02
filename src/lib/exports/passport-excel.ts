@@ -52,15 +52,22 @@ function avgGroupPrice(deal: Deal): number | null {
   return prices.reduce((a, b) => a + b, 0) / prices.length;
 }
 
-// Separate group-price averages by kind so the export can show
-// preliminary and final side-by-side (client request 06.2026).
-function avgGroupPriceByKind(deal: Deal, kind: "preliminary" | "final"): number | null {
-  const prices = (deal.deal_company_groups ?? [])
-    .filter((g) => g.price_kind === kind)
-    .map((g) => g.price)
-    .filter((p): p is number => p != null);
-  if (prices.length === 0) return null;
-  return prices.reduce((a, b) => a + b, 0) / prices.length;
+// Resolve the default line for a side; fall back to the first line.
+// Multi-variant deals still get a representative line — accountants
+// generally care about the default for the passport overview.
+function defaultLine(deal: Deal, side: Side) {
+  const lines = side === "supplier" ? deal.supplier_lines : deal.buyer_lines;
+  if (!lines || lines.length === 0) return null;
+  return lines.find((l) => l.is_default) ?? lines[0];
+}
+
+// Preliminary price for a side. While the line is still in
+// 'preliminary' stage, line.price IS the preliminary number. After
+// finalization, the snapshot is preserved on line.preliminary_price.
+function preliminaryPrice(deal: Deal, side: Side): number | null {
+  const line = defaultLine(deal, side);
+  if (!line) return null;
+  return line.price_stage === "final" ? line.preliminary_price : line.price;
 }
 
 const COLUMNS: Column[] = [
@@ -81,7 +88,11 @@ const COLUMNS: Column[] = [
   // can see the build-up: quotation − discount = price (client req 06.2026).
   { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation },
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
-  { key: "supplier_price", header: "Цена", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price },
+  // Preliminary first, then final. While stage='preliminary' the deal's
+  // supplier_price == preliminary price; after finalize, the snapshot
+  // moves to line.preliminary_price and supplier_price holds the final.
+  { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
+  { key: "supplier_price", header: "Цена оконч.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price },
   { key: "supplier_shipped_amount", header: "Отгр. сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount },
   { key: "supplier_shipped_volume", header: "Отгр., т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment },
@@ -89,10 +100,7 @@ const COLUMNS: Column[] = [
 
   // ── Группы компании ────────────────────────────────────
   { key: "company_chain", header: "Цепочка", width: 28, band: "groups", read: (d) => fmtCompanyChain(d) },
-  // Split avg-price into preliminary and final, preliminary first
-  // (client req 06.2026 — "предварительная до окончательной").
-  { key: "company_preliminary_price", header: "Цена гр. (предв.)", width: 14, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPriceByKind(d, "preliminary") },
-  { key: "company_final_price", header: "Цена гр. (оконч.)", width: 14, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPriceByKind(d, "final") },
+  { key: "company_avg_price", header: "Цена гр. (avg)", width: 13, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPrice(d) },
 
   // ── Покупатель ─────────────────────────────────────────
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
@@ -102,7 +110,8 @@ const COLUMNS: Column[] = [
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
-  { key: "buyer_price", header: "Цена", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price },
+  { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
+  { key: "buyer_price", header: "Цена оконч.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount },
