@@ -112,7 +112,6 @@ function SupplierForm({ item, onSave, onClose }: FormProps) {
           value={form.bin_iin ?? ""}
           onChange={(e) => set("bin_iin", e.target.value)}
           placeholder="000000000000"
-          maxLength={12}
         />
       </div>
 
