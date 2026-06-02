@@ -76,55 +76,77 @@ function EM({ value, recId, field, onSaved }: { value: string | null | undefined
     </select>
   );
 }
-// Editable «округл» cell. Defaults to CEIL(shipment_volume) but accepts
-// a manual override stored in rounded_volume_override; clearing the value
-// reverts to auto-rounding.
-function ERound({ rawVolume, override, recId, onSaved }: {
+// Editable «округл» cell. Auto = CEIL(rawVolume) when roundVolume,
+// else rawVolume as-is. Manual override (rounded_volume_override) trumps
+// both. The tiny ⌈⌉ toggle next to the value flips roundVolume per row
+// without losing auto-tracking (unlike the manual override which freezes
+// the number — client req 06.2026).
+function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
   rawVolume: number | null | undefined;
   override: number | null | undefined;
+  roundVolume: boolean | null | undefined;
   recId: string;
   onSaved: () => void;
 }) {
   const [ed, setEd] = useState(false);
   const [lv, setLv] = useState("");
-  const auto = rawVolume == null ? null : Math.ceil(rawVolume);
+  const isRounded = roundVolume !== false; // default TRUE
+  const auto = rawVolume == null ? null : (isRounded ? Math.ceil(rawVolume) : rawVolume);
   const display = override != null ? override : auto;
   const isOverridden = override != null;
-  if (!ed) return (
-    <button
-      onClick={() => { setLv(display == null ? "" : String(display)); setEd(true); }}
-      title={isOverridden ? "Округл переопределён вручную. Очистите поле, чтобы вернуть авто-расчёт." : "Авто: ⌈тонн⌉. Введите значение, чтобы переопределить."}
-      className={`w-full text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${isOverridden ? "italic text-amber-700" : "text-stone-400"}`}
-    >
-      {fmtNum(display)}
-    </button>
-  );
+  const toggle = () => {
+    updateRegistryEntry(recId, { round_volume: !isRounded } as RegistryUpdate)
+      .then(onSaved).catch(() => {});
+  };
   return (
-    <input
-      autoFocus
-      type="number"
-      step="0.01"
-      value={lv}
-      onChange={(e) => setLv(e.target.value)}
-      onBlur={() => {
-        setEd(false);
-        const raw = lv.trim();
-        if (raw === "") {
-          if (isOverridden) {
-            updateRegistryEntry(recId, { rounded_volume_override: null } as RegistryUpdate)
+    <div className="flex items-center justify-end gap-1">
+      <button
+        onClick={(e) => { e.stopPropagation(); toggle(); }}
+        title={isRounded ? "Округлять до целого (вкл). Кликни — выключить." : "Без округления (выкл). Кликни — включить."}
+        className={`text-[9px] leading-none font-mono px-1 py-0.5 rounded transition-colors ${
+          isRounded
+            ? "bg-stone-100 text-stone-500 hover:bg-stone-200"
+            : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+        }`}
+      >
+        {isRounded ? "⌈⌉" : "≈"}
+      </button>
+      {ed ? (
+        <input
+          autoFocus
+          type="number"
+          step="0.01"
+          value={lv}
+          onChange={(e) => setLv(e.target.value)}
+          onBlur={() => {
+            setEd(false);
+            const raw = lv.trim();
+            if (raw === "") {
+              if (isOverridden) {
+                updateRegistryEntry(recId, { rounded_volume_override: null } as RegistryUpdate)
+                  .then(onSaved).catch(() => {});
+              }
+              return;
+            }
+            const n = parseFloat(raw.replace(",", "."));
+            if (!Number.isFinite(n)) return;
+            if (n === override) return;
+            updateRegistryEntry(recId, { rounded_volume_override: n } as RegistryUpdate)
               .then(onSaved).catch(() => {});
-          }
-          return;
-        }
-        const n = parseFloat(raw.replace(",", "."));
-        if (!Number.isFinite(n)) return;
-        if (n === override) return;
-        updateRegistryEntry(recId, { rounded_volume_override: n } as RegistryUpdate)
-          .then(onSaved).catch(() => {});
-      }}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
-      className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none"
-    />
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
+          className="w-14 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none"
+        />
+      ) : (
+        <button
+          onClick={() => { setLv(display == null ? "" : String(display)); setEd(true); }}
+          title={isOverridden ? "Округл переопределён вручную. Очистите поле, чтобы вернуть авто-расчёт." : (isRounded ? "Авто: ⌈тонн⌉. Введите значение, чтобы переопределить." : "Авто: тонн (без округления). Введите значение, чтобы переопределить.")}
+          className={`flex-1 text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] ${isOverridden ? "italic text-amber-700" : "text-stone-400"}`}
+        >
+          {fmtNum(display)}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1105,7 +1127,7 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Тонн</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[45px]">округл</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">валюта</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. назн.</th>
@@ -1142,8 +1164,9 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ERound
-                                  rawVolume={r.shipment_volume}
+                                  rawVolume={r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume}
                                   override={r.rounded_volume_override}
+                                  roundVolume={r.round_volume}
                                   recId={r.id}
                                   onSaved={reload}
                                 />
