@@ -4,6 +4,33 @@ import { useState, useRef, useEffect } from "react";
 import { Send, MessageSquare, DollarSign, Truck, FileText, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type ActivityMessage } from "@/lib/hooks/use-deal-activity";
+import { currencySymbol } from "@/lib/constants/currencies";
+
+function formatAmount(n: number): string {
+  return n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+}
+
+// Payment events used to log the cumulative supplier_payment / buyer_payment
+// value as plain text (e.g. "Оплата поставщику: 141050000.0000"). 00087
+// switched the trigger to log the delta and stash currency in metadata.
+// This helper renders both shapes — for older rows we recompute delta
+// from metadata.old/new so the chat displays the per-payment amount.
+function renderPaymentContent(msg: ActivityMessage): string {
+  if (msg.type !== "payment") return msg.content;
+  const md = (msg.metadata ?? {}) as { field?: string; delta?: number | string; old?: number | string | null; new?: number | string | null; currency?: string | null };
+  const field = md.field;
+  if (field !== "supplier_payment" && field !== "buyer_payment") return msg.content;
+  const toNum = (v: unknown): number => {
+    if (typeof v === "number") return v;
+    if (typeof v === "string" && v.trim() !== "") return parseFloat(v);
+    return 0;
+  };
+  const delta = md.delta != null ? toNum(md.delta) : toNum(md.new) - toNum(md.old);
+  const label = field === "supplier_payment" ? "Оплата поставщику" : "Оплата покупателя";
+  const sym = currencySymbol(md.currency ?? null, "");
+  const signed = (delta < 0 ? "−" : "") + formatAmount(Math.abs(delta));
+  return `${label}: ${signed}${sym ? " " + sym : ""}`;
+}
 
 const TYPE_ICONS: Record<string, { icon: typeof MessageSquare; color: string; bg: string }> = {
   comment: { icon: MessageSquare, color: "text-amber-600", bg: "bg-amber-100" },
@@ -74,7 +101,7 @@ export function ActivityFeed({ messages, loading, sendMessage }: {
                   {isComment && msg.user?.full_name && <span className="text-[12px] font-medium text-stone-800">{msg.user.full_name}</span>}
                   <span className="text-[10px] text-stone-400">{formatTime(msg.created_at)}</span>
                 </div>
-                <p className={`text-[12px] leading-relaxed mt-0.5 ${isComment ? "text-stone-700" : "text-stone-500 italic"}`}>{msg.content}</p>
+                <p className={`text-[12px] leading-relaxed mt-0.5 ${isComment ? "text-stone-700" : "text-stone-500 italic"}`}>{renderPaymentContent(msg)}</p>
               </div>
             </div>
           );
