@@ -87,7 +87,23 @@ export function SearchableSelect({
         align="start"
         sideOffset={4}
       >
-        <Command shouldFilter>
+        <Command
+          shouldFilter
+          // CommandItem.value below is `${label} ${uuid}` to keep cmdk's
+          // keys unique even when labels collide. The downside is that
+          // cmdk's default fuzzy filter matches against the UUID too —
+          // typing "113" matched almost every option because random
+          // UUIDs contain a '1','1','3' subsequence somewhere. Match
+          // only against the label portion (everything before the last
+          // space) so the search behaves like an honest substring.
+          filter={(itemValue, search) => {
+            const needle = search.trim().toLowerCase();
+            if (!needle) return 1;
+            const lastSpace = itemValue.lastIndexOf(" ");
+            const label = (lastSpace > 0 ? itemValue.slice(0, lastSpace) : itemValue).toLowerCase();
+            return label.includes(needle) ? 1 : 0;
+          }}
+        >
           <CommandInput placeholder={searchPlaceholder} className="text-[12px]" />
           <CommandList className="max-h-[280px]">
             <CommandEmpty className="text-[12px] py-3 text-center text-stone-400">
