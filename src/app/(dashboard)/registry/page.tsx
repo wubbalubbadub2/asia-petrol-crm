@@ -304,10 +304,15 @@ function groupRecs(records: ShipmentRecord[]): RGroup[] {
       },
     });
     const g = m.get(k)!; g.records.push(r); g.totalVol += r.shipment_volume ?? 0;
-    // Prefer the stored amount (trigger-computed OR user-overridden) over a
-    // client recompute so manual overrides flow into rollups. Fall back to
-    // the computation only when nothing is stored yet (rare).
-    g.totalAmt += r.shipped_tonnage_amount ?? calcAmt(r.shipment_volume, r.railway_tariff) ?? 0;
+    // Sum exactly what the «сумма» column renders (raw shipped_tonnage_amount).
+    // The old fallback to calcAmt(shipment_volume, tariff) phantom-filled rows
+    // with NULL stored amount — and for KZ that fallback used the wrong base
+    // (shipment_volume instead of loading_volume), so the group header tally
+    // diverged from the sum of the column the operator was looking at. If a
+    // row's stored amount is NULL, the trigger hasn't been able to compute it
+    // yet (missing volume/tariff) — counting it as zero matches what the
+    // column shows.
+    g.totalAmt += r.shipped_tonnage_amount ?? 0;
   }
   return Array.from(m.values());
 }
