@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -75,8 +75,16 @@ export function useRegistry(type: "KG" | "KZ") {
   const [data, setData] = useState<ShipmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+  // Tracks the "currently requested" tab type. The paginated load below
+  // can span many seconds; if the user flips KG → KZ mid-load the old
+  // load must NOT call setData with KG rows, or the KZ tab silently
+  // renders KG deals. Comparing the captured requestedType against this
+  // ref at every page boundary lets the stale load short-circuit.
+  const currentTypeRef = useRef(type);
+  useEffect(() => { currentTypeRef.current = type; }, [type]);
 
   const load = useCallback(async () => {
+    const requestedType = type;
     // PostgREST's default Max-Rows is 1000 and a hard `.limit(500)` here
     // was silently dropping every shipment past the 500th most-recent
     // date — entire deals would disappear from the table once the
@@ -87,10 +95,13 @@ export function useRegistry(type: "KG" | "KZ") {
     const pageSize = 1000;
     let from = 0;
     for (;;) {
+      // If the tab changed while we were paginating, bail before issuing
+      // another network round-trip.
+      if (currentTypeRef.current !== requestedType) return;
       const { data, error } = await supabase
         .from("shipment_registry")
         .select(REG_SELECT)
-        .eq("registry_type", type)
+        .eq("registry_type", requestedType)
         // Default null ordering for DESC in Postgres is NULLS FIRST,
         // so freshly created shipments without a date appear at the top
         // until the user fills the date in. The secondary sort on
@@ -107,6 +118,9 @@ export function useRegistry(type: "KG" | "KZ") {
       if (rows.length < pageSize) break;
       from += pageSize;
     }
+    // Final guard: if the tab flipped between the last page returning
+    // and this commit, drop the stale result on the floor.
+    if (currentTypeRef.current !== requestedType) return;
     setData(all);
     setLoading(false);
   }, [supabase, type]);
