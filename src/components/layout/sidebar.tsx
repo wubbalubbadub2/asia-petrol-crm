@@ -57,7 +57,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
             className="text-[15px] font-bold text-white tracking-tight"
             style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
           >
-            Asia Petrol
+            Singularity Trading
           </span>
         </div>
       </div>

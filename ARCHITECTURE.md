@@ -1,4 +1,4 @@
-# Asia Petrol CRM — Architecture
+# Singularity Trading CRM — Architecture
 
 A single-page operational CRM replacing a multi-sheet Excel workbook used by a Kazakhstan-based petroleum trading company. Deals span KG (export) and KZ (domestic) pipelines with per-month pricing, railway tariff lookups, registry of wagon shipments, payments in multiple currencies, and company-chain margin tracking.
 

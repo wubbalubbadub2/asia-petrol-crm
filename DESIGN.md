@@ -1,4 +1,4 @@
-# Design System — Asia Petrol CRM
+# Design System — Singularity Trading CRM
 
 ## Product Context
 - **What this is:** CRM/dashboard for petroleum trading. Replaces 86-column Excel spreadsheets for deal management, quotations, shipment registries, and logistics accounting.

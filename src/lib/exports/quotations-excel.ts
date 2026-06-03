@@ -143,7 +143,7 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
   // ── Build workbook ─────────────────────────────────────
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Asia Petrol CRM";
+  wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
 
   // Group rows by YYYY-MM. Object.keys insertion order matches first-
@@ -349,7 +349,7 @@ export async function exportQuotationSummaryToExcel(input: SummaryExportInput): 
 
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Asia Petrol CRM";
+  wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
 
   const ws = wb.addWorksheet(`Свод КОТ ${year}`, {

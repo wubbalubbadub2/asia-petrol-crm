@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Design System: Asia Petrol CRM — Industrial/Utilitarian */
+/* Design System: Singularity Trading CRM — Industrial/Utilitarian */
 /* Fonts loaded via <link> tags in layout.tsx */
 
 @custom-variant dark (&:is(.dark *));
@@ -56,7 +56,7 @@
 }
 
 :root {
-  /* Asia Petrol: Warm stone neutrals + amber accent */
+  /* Singularity Trading: Warm stone neutrals + amber accent */
   --background: #FAFAF9;
   --foreground: #1C1917;
   --card: #FFFFFF;

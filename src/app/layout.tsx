@@ -5,8 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Asia Petrol CRM",
-  description: "CRM и управление сделками Asia Petrol",
+  title: "Singularity Trading CRM",
+  description: "CRM и управление сделками Singularity Trading",
 };
 
 export default function RootLayout({

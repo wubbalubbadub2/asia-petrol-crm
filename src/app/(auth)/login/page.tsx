@@ -49,7 +49,7 @@ export default function LoginPage() {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/30">
             <Fuel className="h-7 w-7 text-white" />
           </div>
-          <CardTitle className="text-2xl">Asia Petrol</CardTitle>
+          <CardTitle className="text-2xl">Singularity Trading</CardTitle>
           <p className="text-[13px] text-muted-foreground">
             Войдите в CRM систему
           </p>

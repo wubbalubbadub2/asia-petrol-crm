@@ -148,7 +148,7 @@ export type ExportContext = {
 export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Asia Petrol CRM";
+  wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
 
   const sheetName =

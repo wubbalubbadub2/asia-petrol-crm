@@ -1,4 +1,4 @@
-# Asia Petrol CRM — Product Overview
+# Singularity Trading CRM — Product Overview
 
 A full-stack operational CRM for a Kazakhstan-based petroleum trading company. Phase 1 retired an 86-column Excel workbook that had become the single source of truth for deals, shipments, tariffs, payments, and multi-currency balances. Phase 2 extends the platform toward 1С integration, банковский учёт, аналитика просрочек, mobile, and verified reporting. Phase 3 closes the loop on documents and treasury.
 
