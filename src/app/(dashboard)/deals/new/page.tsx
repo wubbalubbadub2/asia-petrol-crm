@@ -394,7 +394,23 @@ export default function NewDealPage() {
         <h1 className="text-xl font-bold">Новая сделка</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form
+        onSubmit={handleSubmit}
+        // Enter inside any <input> would otherwise auto-submit the form,
+        // creating a half-filled deal. Only the explicit «Создать сделку»
+        // button (or Enter while it's focused) is allowed to submit.
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          const target = e.target as HTMLElement;
+          const tag = target.tagName;
+          const type = (target as HTMLInputElement).type;
+          // Allow Enter in textareas (newline) and on actual submit buttons.
+          if (tag === "TEXTAREA") return;
+          if (tag === "BUTTON" && type === "submit") return;
+          e.preventDefault();
+        }}
+        className="space-y-4"
+      >
         {/* Basic Info */}
         <Card>
           <CardHeader className="pb-3">

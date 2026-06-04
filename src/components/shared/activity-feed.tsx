@@ -10,26 +10,131 @@ function formatAmount(n: number): string {
   return n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
-// Payment events used to log the cumulative supplier_payment / buyer_payment
-// value as plain text (e.g. "Оплата поставщику: 141050000.0000"). 00087
-// switched the trigger to log the delta and stash currency in metadata.
-// This helper renders both shapes — for older rows we recompute delta
-// from metadata.old/new so the chat displays the per-payment amount.
-function renderPaymentContent(msg: ActivityMessage): string {
-  if (msg.type !== "payment") return msg.content;
-  const md = (msg.metadata ?? {}) as { field?: string; delta?: number | string; old?: number | string | null; new?: number | string | null; currency?: string | null };
+const toNum = (v: unknown): number | null => {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
+// Field-name → Russian label used as the row prefix. Mirrors the labels
+// emitted by the 00088 trigger so even rows that were inserted without
+// content (or with the trigger's terse "X изменён") render consistently
+// on the FE.
+const FIELD_LABELS: Record<string, string> = {
+  supplier_payment: "Оплата поставщику",
+  buyer_payment: "Оплата покупателя",
+  supplier_contracted_volume: "Объём поставщика",
+  buyer_contracted_volume: "Объём покупателя",
+  buyer_ordered_volume: "Заказанный объём покупателя",
+  supplier_price: "Цена поставщика",
+  buyer_price: "Цена покупателя",
+  supplier_quotation: "Котировка поставщика",
+  buyer_quotation: "Котировка покупателя",
+  supplier_discount: "Скидка поставщика",
+  buyer_discount: "Скидка покупателя",
+  planned_tariff: "Плановый тариф",
+  actual_tariff: "Факт. тариф",
+  preliminary_tonnage: "Предв. тоннаж",
+  surcharge_amount: "Доплата",
+  supplier_contract: "Договор поставщика",
+  buyer_contract: "Договор покупателя",
+  supplier_delivery_basis: "Базис поставки (поставщик)",
+  buyer_delivery_basis: "Базис поставки (покупатель)",
+  supplier_payment_date: "Дата оплаты поставщику",
+  buyer_payment_date: "Дата оплаты покупателя",
+  buyer_ship_date: "Дата отгрузки покупателю",
+  month: "Месяц сделки",
+  supplier_id: "Поставщик",
+  buyer_id: "Покупатель",
+  factory_id: "Завод",
+  fuel_type_id: "Вид ГСМ",
+  forwarder_id: "Экспедитор",
+  supplier_manager_id: "Менеджер поставщика",
+  buyer_manager_id: "Менеджер покупателя",
+  trader_id: "Трейдер",
+  is_archived: "Архивирована",
+};
+
+// Format a single value for display. Numeric values get Russian thousand
+// separators + optional currency/unit suffix. Strings render as-is.
+// Null / undefined renders as «—».
+function formatValue(raw: unknown, suffix: string, isNumeric: boolean): string {
+  if (raw === null || raw === undefined) return "—";
+  if (isNumeric) {
+    const n = toNum(raw);
+    if (n === null) return "—";
+    return formatAmount(n) + (suffix ? " " + suffix : "");
+  }
+  const s = String(raw);
+  return s === "" ? "—" : s;
+}
+
+type ActivityMetadata = {
+  field?: string;
+  delta?: number | string;
+  old?: number | string | null;
+  new?: number | string | null;
+  old_label?: string | null;
+  new_label?: string | null;
+  currency?: string | null;
+  unit?: string | null;
+};
+
+// Render the activity row's main line. Payment events keep the existing
+// "delta + currency" shape (cumulative-to-delta migration in 00087).
+// Other system rows use "Label: old → new" so the user can see what
+// changed at a glance.
+function renderActivityContent(msg: ActivityMessage): string {
+  const md = (msg.metadata ?? {}) as ActivityMetadata;
   const field = md.field;
-  if (field !== "supplier_payment" && field !== "buyer_payment") return msg.content;
-  const toNum = (v: unknown): number => {
-    if (typeof v === "number") return v;
-    if (typeof v === "string" && v.trim() !== "") return parseFloat(v);
-    return 0;
-  };
-  const delta = md.delta != null ? toNum(md.delta) : toNum(md.new) - toNum(md.old);
-  const label = field === "supplier_payment" ? "Оплата поставщику" : "Оплата покупателя";
-  const sym = currencySymbol(md.currency ?? null, "");
-  const signed = (delta < 0 ? "−" : "") + formatAmount(Math.abs(delta));
-  return `${label}: ${signed}${sym ? " " + sym : ""}`;
+
+  // Payments: delta + currency, ignore content (which is the cumulative
+  // legacy text on pre-00087 rows).
+  if (msg.type === "payment" && (field === "supplier_payment" || field === "buyer_payment")) {
+    const oldN = toNum(md.old) ?? 0;
+    const newN = toNum(md.new) ?? 0;
+    const delta = md.delta != null ? (toNum(md.delta) ?? 0) : newN - oldN;
+    const label = FIELD_LABELS[field];
+    const sym = currencySymbol(md.currency ?? null, "");
+    const signed = (delta < 0 ? "−" : "") + formatAmount(Math.abs(delta));
+    return `${label}: ${signed}${sym ? " " + sym : ""}`;
+  }
+
+  // Non-payment system rows: only re-format if we have a known field
+  // with old/new in metadata. Otherwise fall back to whatever the
+  // trigger wrote.
+  if (!field || !(field in FIELD_LABELS)) return msg.content;
+
+  const label = FIELD_LABELS[field];
+  const isFK = field.endsWith("_id");
+  const isBool = field === "is_archived";
+  const suffix = md.currency
+    ? currencySymbol(md.currency, "")
+    : (md.unit ?? "");
+
+  if (isFK) {
+    const oldStr = md.old_label ?? (md.old == null ? "—" : String(md.old));
+    const newStr = md.new_label ?? (md.new == null ? "—" : String(md.new));
+    return `${label}: ${oldStr} → ${newStr}`;
+  }
+
+  if (isBool) {
+    return msg.content; // trigger already formatted it ("перенесена в архив" / "восстановлена")
+  }
+
+  const isNumeric = !!(
+    field.includes("volume") ||
+    field.includes("price") ||
+    field.includes("quotation") ||
+    field.includes("discount") ||
+    field.includes("tariff") ||
+    field.includes("tonnage") ||
+    field === "surcharge_amount"
+  );
+  return `${label}: ${formatValue(md.old, suffix, isNumeric)} → ${formatValue(md.new, suffix, isNumeric)}`;
 }
 
 const TYPE_ICONS: Record<string, { icon: typeof MessageSquare; color: string; bg: string }> = {
@@ -101,7 +206,7 @@ export function ActivityFeed({ messages, loading, sendMessage }: {
                   {isComment && msg.user?.full_name && <span className="text-[12px] font-medium text-stone-800">{msg.user.full_name}</span>}
                   <span className="text-[10px] text-stone-400">{formatTime(msg.created_at)}</span>
                 </div>
-                <p className={`text-[12px] leading-relaxed mt-0.5 ${isComment ? "text-stone-700" : "text-stone-500 italic"}`}>{renderPaymentContent(msg)}</p>
+                <p className={`text-[12px] leading-relaxed mt-0.5 ${isComment ? "text-stone-700" : "text-stone-500 italic"}`}>{renderActivityContent(msg)}</p>
               </div>
             </div>
           );
