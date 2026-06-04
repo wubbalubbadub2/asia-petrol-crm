@@ -15,6 +15,11 @@ type DealCompanyGroup = {
   company_group_id: string;
   price: number | null;
   price_kind: "preliminary" | "final";
+  // 00089 — котировка + скидка по группе. Optional до регенерации
+  // database.ts через `npm run types:db`.
+  quotation?: number | null;
+  quotation_comment?: string | null;
+  discount?: number | null;
   contract_ref: string | null;
   currency: string | null;
   company_group: { name: string } | null;
@@ -205,9 +210,11 @@ export function DealCompanyChain({
               </p>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-[24px_1fr_120px_110px_90px_180px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
+                <div className="grid grid-cols-[24px_1fr_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
                   <div>#</div>
                   <div>Компания</div>
+                  <div>Котир.</div>
+                  <div>Скидка</div>
                   <div>Цена</div>
                   <div>Тип</div>
                   <div>Валюта</div>
@@ -220,7 +227,7 @@ export function DealCompanyChain({
                   return (
                     <div
                       key={cg.id}
-                      className="grid grid-cols-[24px_1fr_120px_110px_90px_180px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
+                      className="grid grid-cols-[24px_1fr_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
                     >
                       <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
 
@@ -243,6 +250,29 @@ export function DealCompanyChain({
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
                       </div>
+
+                      <Input
+                        type="number" step="0.01"
+                        defaultValue={cg.quotation ?? ""}
+                        placeholder="котир."
+                        title={cg.quotation_comment ?? "Котировка"}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
+                          if (v !== (cg.quotation ?? null)) updateGroup(cg.id, { quotation: Number.isFinite(v as number) ? v : null });
+                        }}
+                        className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
+                      />
+
+                      <Input
+                        type="number" step="0.01"
+                        defaultValue={cg.discount ?? ""}
+                        placeholder="скидка"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
+                          if (v !== (cg.discount ?? null)) updateGroup(cg.id, { discount: Number.isFinite(v as number) ? v : null });
+                        }}
+                        className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
+                      />
 
                       <Input
                         type="number" step="0.01"

@@ -96,12 +96,21 @@ export default function NewDealPage() {
 
   // Company groups (up to 6)
   const [dealCompanyGroups, setDealCompanyGroups] = useState<
-    { companyGroupId: string; price: string; contractRef: string }[]
+    {
+      companyGroupId: string;
+      quotation: string;
+      discount: string;
+      price: string;
+      contractRef: string;
+    }[]
   >([]);
 
   function addCompanyGroup() {
     if (dealCompanyGroups.length >= 6) return;
-    setDealCompanyGroups([...dealCompanyGroups, { companyGroupId: "", price: "", contractRef: "" }]);
+    setDealCompanyGroups([
+      ...dealCompanyGroups,
+      { companyGroupId: "", quotation: "", discount: "", price: "", contractRef: "" },
+    ]);
   }
 
   function updateCompanyGroup(idx: number, field: string, value: string) {
@@ -344,6 +353,8 @@ export default function NewDealPage() {
           deal_id: deal.id,
           company_group_id: cg.companyGroupId,
           position: idx + 1,
+          quotation: cg.quotation ? parseFloat(cg.quotation) : null,
+          discount: cg.discount ? parseFloat(cg.discount) : null,
           price: cg.price ? parseFloat(cg.price) : null,
           contract_ref: cg.contractRef || null,
         }));
@@ -597,11 +608,19 @@ export default function NewDealPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="w-32">
+                    <div className="w-24">
+                      <Label className="text-[11px] text-stone-500">Котировка</Label>
+                      <Input type="number" step="0.01" value={cg.quotation} onChange={(e) => updateCompanyGroup(idx, "quotation", e.target.value)} className="h-8 text-[13px] font-mono" />
+                    </div>
+                    <div className="w-24">
+                      <Label className="text-[11px] text-stone-500">Скидка</Label>
+                      <Input type="number" step="0.01" value={cg.discount} onChange={(e) => updateCompanyGroup(idx, "discount", e.target.value)} className="h-8 text-[13px] font-mono" />
+                    </div>
+                    <div className="w-24">
                       <Label className="text-[11px] text-stone-500">Цена</Label>
                       <Input type="number" step="0.01" value={cg.price} onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)} className="h-8 text-[13px] font-mono" />
                     </div>
-                    <div className="w-40">
+                    <div className="w-36">
                       <Label className="text-[11px] text-stone-500">№ прил / договор</Label>
                       <Input value={cg.contractRef} onChange={(e) => updateCompanyGroup(idx, "contractRef", e.target.value)} placeholder="№ и дата" className="h-8 text-[13px]" />
                     </div>

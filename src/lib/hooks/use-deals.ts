@@ -95,7 +95,7 @@ export type Deal = {
   buyer_destination_station?: { name: string } | null;
   supplier_departure_station?: { name: string } | null;
   logistics_company_group?: { name: string } | null;
-  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; contract_ref: string | null; currency: string | null; company_group: { name: string } | null }[];
+  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; quotation_comment: string | null; discount: number | null; contract_ref: string | null; currency: string | null; company_group: { name: string } | null }[];
   // Loaded for Excel export — pulls preliminary_price snapshot per variant.
   // Always carries at least the default line; we annotate counts post-fetch
   // (see annotateLineCounts).
@@ -125,7 +125,7 @@ const DEAL_SELECT = `
   buyer_destination_station:stations!buyer_destination_station_id(name),
   supplier_departure_station:stations!supplier_departure_station_id(name),
   logistics_company_group:company_groups!logistics_company_group_id(name),
-  deal_company_groups(id, position, company_group_id, price, price_kind, contract_ref, currency, company_group:company_groups(name)),
+  deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency, company_group:company_groups(name)),
   supplier_lines:deal_supplier_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
   buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation)
 `;
