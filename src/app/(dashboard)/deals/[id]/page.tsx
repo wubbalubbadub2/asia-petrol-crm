@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useState, useEffect, useRef, useContext, createContext } from "react";
+import { use, useState, useEffect, useRef, useContext, createContext, useMemo } from "react";
+import { useGlobalRefs } from "@/lib/refs";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -320,51 +321,27 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const [historyOpen, setHistoryOpen] = useState(false);
   const [numberDialogOpen, setNumberDialogOpen] = useState(false);
   const { isAdmin, isWritable } = useRole();
-  const [refs, setRefs] = useState<{
-    suppliers: { value: string; label: string }[];
-    buyers: { value: string; label: string }[];
-    forwarders: { value: string; label: string }[];
-    managers: { value: string; label: string }[];
-    stations: { value: string; label: string }[];
-    companyGroups: { value: string; label: string }[];
-    factories: { value: string; label: string }[];
-    fuelTypes: { value: string; label: string }[];
-    quotationTypes: { value: string; label: string }[];
-  }>({ suppliers: [], buyers: [], forwarders: [], managers: [], stations: [], companyGroups: [], factories: [], fuelTypes: [], quotationTypes: [] });
+  // All form selectors read from the shared refs cache (warmed by
+  // /lib/refs.ts in the dashboard layout). On a navigation back to a
+  // deal the dropdowns are populated synchronously instead of waiting
+  // for nine parallel ref queries every time.
+  const { refs: globalRefs } = useGlobalRefs();
+  const refs = useMemo(() => ({
+    suppliers: globalRefs.suppliers.map((c) => ({ value: c.id, label: c.short_name || c.full_name })),
+    buyers: globalRefs.buyers.map((c) => ({ value: c.id, label: c.short_name || c.full_name })),
+    forwarders: globalRefs.forwarders.map((r) => ({ value: r.id, label: r.name })),
+    managers: globalRefs.managers.map((p) => ({ value: p.id, label: p.full_name })),
+    stations: globalRefs.stations.map((r) => ({ value: r.id, label: r.name })),
+    companyGroups: globalRefs.companyGroups.map((r) => ({ value: r.id, label: r.name })),
+    factories: globalRefs.factories.map((r) => ({ value: r.id, label: r.name })),
+    fuelTypes: globalRefs.fuelTypes.map((r) => ({ value: r.id, label: r.name })),
+    quotationTypes: globalRefs.quotationTypes.map((r) => ({ value: r.id, label: r.name })),
+  }), [globalRefs]);
 
   // Pricing variants per side (multi-line, 00053+00054)
   const { data: supplierLines, reload: reloadSupplierLines } = useDealSupplierLines(id);
   const { data: buyerLines,    reload: reloadBuyerLines }    = useDealBuyerLines(id);
   const { data: lineRollups,   reload: reloadLineRollups }   = useDealLineRollups(id);
-
-  // Load reference data — needed at all times so the variants block
-  // can render station/quotation labels even outside edit mode.
-  useEffect(() => {
-    const sb = createClient();
-    Promise.all([
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true),
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true),
-      sb.from("forwarders").select("id, name").eq("is_active", true),
-      sb.from("profiles").select("id, full_name").eq("is_active", true),
-      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
-      sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
-      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
-      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      sb.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
-    ]).then(([s, b, f, m, st, cg, fac, ft, qt]) => {
-      setRefs({
-        suppliers: (s.data ?? []).map((r) => ({ value: r.id, label: r.short_name || r.full_name })),
-        buyers: (b.data ?? []).map((r) => ({ value: r.id, label: r.short_name || r.full_name })),
-        forwarders: (f.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        managers: (m.data ?? []).map((r) => ({ value: r.id, label: r.full_name })),
-        stations: (st.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        companyGroups: (cg.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        factories: (fac.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        fuelTypes: (ft.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        quotationTypes: (qt.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-      });
-    });
-  }, []);
 
   const priceConditionOptions = [
     { value: "average_month", label: "Средний месяц" },

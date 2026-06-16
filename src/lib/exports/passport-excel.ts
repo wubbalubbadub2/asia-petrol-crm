@@ -67,7 +67,10 @@ function defaultLine(deal: Deal, side: Side) {
 function preliminaryPrice(deal: Deal, side: Side): number | null {
   const line = defaultLine(deal, side);
   if (!line) return null;
-  return line.price_stage === "final" ? line.preliminary_price : line.price;
+  // line fields are optional on DealLineSnapshot now (list payload only
+  // carries `id`; export enriches via fetchDealLinesForExport). Coerce
+  // undefined → null so the Excel column stays nullable.
+  return (line.price_stage === "final" ? line.preliminary_price : line.price) ?? null;
 }
 
 const COLUMNS: Column[] = [
@@ -146,6 +149,19 @@ export type ExportContext = {
 };
 
 export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
+  // Enrich the deals with full supplier/buyer line snapshots — DEAL_SELECT
+  // ships only `id` per line for the on-screen passport (count badge),
+  // and the Excel columns need price / price_stage / preliminary_price.
+  // One IN-scoped bulk query per side; cheap relative to building the
+  // workbook itself.
+  const { fetchDealLinesForExport } = await import("@/lib/hooks/use-deals");
+  const lines = await fetchDealLinesForExport(deals.map((d) => d.id));
+  deals = deals.map((d) => ({
+    ...d,
+    supplier_lines: lines.supplier.get(d.id) ?? d.supplier_lines ?? [],
+    buyer_lines: lines.buyer.get(d.id) ?? d.buyer_lines ?? [],
+  }));
+
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Singularity Trading CRM";

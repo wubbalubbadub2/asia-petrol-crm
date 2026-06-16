@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { AuthGuard } from "@/components/layout/auth-guard";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { getGlobalRefs } from "@/lib/refs";
 
 export default function DashboardLayout({
   children,
@@ -12,6 +13,13 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Warm the global refs cache once the dashboard mounts. The first
+  // child page that calls useGlobalRefs() then reads synchronously
+  // instead of paying for 10 parallel ref queries on its own mount.
+  useEffect(() => {
+    void getGlobalRefs();
+  }, []);
 
   return (
     <AuthGuard>

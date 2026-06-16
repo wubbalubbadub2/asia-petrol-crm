@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
 import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useGlobalRefs } from "@/lib/refs";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -984,34 +985,20 @@ export default function RegistryPage() {
     setWagonFilter(""); setWaybillFilter("");
   }
 
-  // Page-level reference data (loaded once, shared with inline ES cells)
-  const [refs, setRefs] = useState<{
-    factories: Ref[]; suppliers: DRef2[]; buyers: DRef2[]; companyGroups: Ref[];
-    forwarders: Ref[]; fuelTypes: Ref[]; stations: Ref[];
-  }>({ factories: [], suppliers: [], buyers: [], companyGroups: [], forwarders: [], fuelTypes: [], stations: [] });
-
-  useEffect(() => {
-    const sb = createClient();
-    Promise.all([
-      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
-      sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
-      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
-    ]).then(([fac, sup, buy, cg, fw, ft, st]) => {
-      setRefs({
-        factories: (fac.data ?? []) as Ref[],
-        suppliers: (sup.data ?? []) as DRef2[],
-        buyers: (buy.data ?? []) as DRef2[],
-        companyGroups: (cg.data ?? []) as Ref[],
-        forwarders: (fw.data ?? []) as Ref[],
-        fuelTypes: (ft.data ?? []) as Ref[],
-        stations: (st.data ?? []) as Ref[],
-      });
-    });
-  }, []);
+  // Page-level reference data — read from the shared cache so a tab
+  // flip or registry → deal → registry round-trip doesn't refire the
+  // seven parallel ref queries every time. Cache is warmed in the
+  // dashboard layout.
+  const { refs: globalRefs } = useGlobalRefs();
+  const refs = useMemo(() => ({
+    factories: globalRefs.factories as Ref[],
+    suppliers: globalRefs.suppliers as unknown as DRef2[],
+    buyers: globalRefs.buyers as unknown as DRef2[],
+    companyGroups: globalRefs.companyGroups as Ref[],
+    forwarders: globalRefs.forwarders as Ref[],
+    fuelTypes: globalRefs.fuelTypes as Ref[],
+    stations: globalRefs.stations as Ref[],
+  }), [globalRefs]);
 
   const factoryOpts = useMemo(() => refs.factories.map((f) => ({ value: f.id, label: f.name })), [refs.factories]);
   const supplierOpts = useMemo(() => refs.suppliers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name })), [refs.suppliers]);

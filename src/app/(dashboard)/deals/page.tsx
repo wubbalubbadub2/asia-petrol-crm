@@ -20,6 +20,7 @@ import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useRole } from "@/lib/hooks/use-role";
+import { useGlobalRefs } from "@/lib/refs";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -79,35 +80,19 @@ export default function DealsPage() {
   const [monthFilter, setMonthFilter] = useState("");
   const [forwarderFilter, setForwarderFilter] = useState("");
   const [applicationFilter, setApplicationFilter] = useState("");
-  const [refs, setRefs] = useState<{
-    suppliers: { id: string; label: string }[];
-    buyers: { id: string; label: string }[];
-    factories: { id: string; label: string }[];
-    fuelTypes: { id: string; label: string }[];
-    forwarders: { id: string; label: string }[];
-  }>({ suppliers: [], buyers: [], factories: [], fuelTypes: [], forwarders: [] });
-  const sbRef = useRef(createClient());
+  // Filter dropdowns read from the shared refs cache so a navigation
+  // back to /deals doesn't re-fire the 5 counterparty/factory/fuel/
+  // forwarder queries every time. Cache is warmed in the dashboard
+  // layout the moment the user lands inside the app.
+  const { refs: globalRefs } = useGlobalRefs();
+  const refs = useMemo(() => ({
+    suppliers: globalRefs.suppliers.map((c) => ({ id: c.id, label: c.short_name || c.full_name })),
+    buyers: globalRefs.buyers.map((c) => ({ id: c.id, label: c.short_name || c.full_name })),
+    factories: globalRefs.factories.map((r) => ({ id: r.id, label: r.name })),
+    fuelTypes: globalRefs.fuelTypes.map((r) => ({ id: r.id, label: r.name })),
+    forwarders: globalRefs.forwarders.map((r) => ({ id: r.id, label: r.name })),
+  }), [globalRefs]);
   const { isAdmin } = useRole();
-
-  // Load reference lists once for filter dropdowns
-  useEffect(() => {
-    const sb = sbRef.current;
-    Promise.all([
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
-      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
-      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-    ]).then(([s, b, f, ft, fw]) => {
-      setRefs({
-        suppliers: (s.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
-        buyers: (b.data ?? []).map((r) => ({ id: r.id, label: r.short_name || r.full_name })),
-        factories: (f.data ?? []).map((r) => ({ id: r.id, label: r.name })),
-        fuelTypes: (ft.data ?? []).map((r) => ({ id: r.id, label: r.name })),
-        forwarders: (fw.data ?? []).map((r) => ({ id: r.id, label: r.name })),
-      });
-    });
-  }, []);
 
   // Excel export — dynamic-imports exceljs so it stays out of the
   // initial bundle. Always exports the *currently filtered* rows so

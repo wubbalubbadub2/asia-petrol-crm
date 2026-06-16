@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { type Deal, type ShipmentSnap, updateDeal, fetchDealShipments } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { useGlobalRefs } from "@/lib/refs";
 import { toast } from "sonner";
 
 // Format the lazy-loaded shipments into the popover body. Header is
@@ -315,35 +316,20 @@ type Refs = {
 };
 
 function useRefs(): Refs {
-  const [refs, setRefs] = useState<Refs>({
-    suppliers: [], buyers: [], forwarders: [], managers: [],
-    stations: [], factories: [], fuelTypes: [], companyGroups: [],
-  });
-  useEffect(() => {
-    const sb = createClient();
-    Promise.all([
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
-      sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
-      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-      sb.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
-      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
-      sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
-    ]).then(([sup, buy, fw, mgr, st, fac, ft, cg]) => {
-      setRefs({
-        suppliers: (sup.data ?? []).map((r) => ({ value: r.id, label: r.short_name ?? r.full_name })),
-        buyers: (buy.data ?? []).map((r) => ({ value: r.id, label: r.short_name ?? r.full_name })),
-        forwarders: (fw.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        managers: (mgr.data ?? []).map((r) => ({ value: r.id, label: r.full_name })),
-        stations: (st.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        factories: (fac.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        fuelTypes: (ft.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-        companyGroups: (cg.data ?? []).map((r) => ({ value: r.id, label: r.name })),
-      });
-    });
-  }, []);
-  return refs;
+  // Pulls from the shared module cache (see lib/refs.ts). First page
+  // that needs refs fires the parallel fetch once; this component then
+  // reads synchronously and only re-renders when the cache resolves.
+  const { refs: g } = useGlobalRefs();
+  return useMemo<Refs>(() => ({
+    suppliers: g.suppliers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name })),
+    buyers: g.buyers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name })),
+    forwarders: g.forwarders.map((r) => ({ value: r.id, label: r.name })),
+    managers: g.managers.map((p) => ({ value: p.id, label: p.full_name })),
+    stations: g.stations.map((r) => ({ value: r.id, label: r.name })),
+    factories: g.factories.map((r) => ({ value: r.id, label: r.name })),
+    fuelTypes: g.fuelTypes.map((r) => ({ value: r.id, label: r.name })),
+    companyGroups: g.companyGroups.map((r) => ({ value: r.id, label: r.name })),
+  }), [g]);
 }
 
 const MONTH_OPTS: Opt[] = MONTHS_RU.map((m) => ({ value: m, label: m }));

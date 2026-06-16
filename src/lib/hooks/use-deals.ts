@@ -150,14 +150,47 @@ export function invalidateDealShipments(dealId: string) {
   shipmentsCache.delete(dealId);
 }
 
+// Most fields are optional because DEAL_SELECT only fetches `id` for
+// the list view's count badge. The Excel export enriches deals via
+// fetchDealLinesForExport (below) before reading these fields.
 export type DealLineSnapshot = {
   id: string;
-  is_default: boolean;
-  price: number | null;
-  price_stage: "preliminary" | "final";
-  preliminary_price: number | null;
-  preliminary_quotation: number | null;
+  is_default?: boolean;
+  price?: number | null;
+  price_stage?: "preliminary" | "final";
+  preliminary_price?: number | null;
+  preliminary_quotation?: number | null;
 };
+
+// Bulk-fetch the line snapshots for a set of deals. Used by the Excel
+// export so the heavy column data isn't paid for on every passport
+// refresh. One round-trip per side, IN-list scoped to visible deals.
+export async function fetchDealLinesForExport(
+  dealIds: string[],
+): Promise<{ supplier: Map<string, DealLineSnapshot[]>; buyer: Map<string, DealLineSnapshot[]> }> {
+  if (dealIds.length === 0) return { supplier: new Map(), buyer: new Map() };
+  const sb = createClient();
+  const [supRes, buyRes] = await Promise.all([
+    sb
+      .from("deal_supplier_lines")
+      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation")
+      .in("deal_id", dealIds),
+    sb
+      .from("deal_buyer_lines")
+      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation")
+      .in("deal_id", dealIds),
+  ]);
+  function group(rows: { deal_id: string }[] | null) {
+    const m = new Map<string, DealLineSnapshot[]>();
+    for (const r of rows ?? []) {
+      const arr = m.get(r.deal_id) ?? [];
+      arr.push(r as unknown as DealLineSnapshot);
+      m.set(r.deal_id, arr);
+    }
+    return m;
+  }
+  return { supplier: group(supRes.data), buyer: group(buyRes.data) };
+}
 
 const DEAL_SELECT = `
   *,
@@ -173,9 +206,14 @@ const DEAL_SELECT = `
   supplier_departure_station:stations!supplier_departure_station_id(name),
   logistics_company_group:company_groups!logistics_company_group_id(name),
   deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency, company_group:company_groups(name)),
-  supplier_lines:deal_supplier_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
-  buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation)
+  supplier_lines:deal_supplier_lines(id),
+  buyer_lines:deal_buyer_lines(id)
 `;
+// NOTE: lines arrays carry only `id` here — they're used purely for the
+// «+N лин.» count badge in passport-table (see annotateLineCounts). The
+// Excel export enriches them on demand via fetchDealLinesForExport so
+// the list payload stays small. Was previously selecting 6 fields ×
+// every variant for every deal, which dominated DEAL_SELECT bandwidth.
 
 // Annotate fetched deals with simple line counts so the passport table
 // can render a "+N линий" badge without a second round trip.
