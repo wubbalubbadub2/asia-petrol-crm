@@ -94,13 +94,16 @@ export default function NewDealPage() {
   const [buyerVolume, setBuyerVolume] = useState("");
   const [buyerVariants, setBuyerVariants] = useState<VariantDraft[]>([{ ...EMPTY_VARIANT }]);
 
-  // Company groups (up to 6)
+  // Company groups (up to 6). price = quotation − discount, auto-filled
+  // until the user types into the Цена field — same convention as the
+  // supplier/buyer variant block (see deal-create-variants.tsx).
   const [dealCompanyGroups, setDealCompanyGroups] = useState<
     {
       companyGroupId: string;
       quotation: string;
       discount: string;
       price: string;
+      priceManualEdited: boolean;
       contractRef: string;
     }[]
   >([]);
@@ -109,13 +112,26 @@ export default function NewDealPage() {
     if (dealCompanyGroups.length >= 6) return;
     setDealCompanyGroups([
       ...dealCompanyGroups,
-      { companyGroupId: "", quotation: "", discount: "", price: "", contractRef: "" },
+      { companyGroupId: "", quotation: "", discount: "", price: "", priceManualEdited: false, contractRef: "" },
     ]);
   }
 
   function updateCompanyGroup(idx: number, field: string, value: string) {
     const updated = [...dealCompanyGroups];
-    updated[idx] = { ...updated[idx], [field]: value };
+    const row = { ...updated[idx], [field]: value };
+    if (field === "price") {
+      row.priceManualEdited = value !== "";
+    }
+    if (!row.priceManualEdited && (field === "quotation" || field === "discount")) {
+      const q = row.quotation ? parseFloat(row.quotation.replace(",", ".")) : NaN;
+      if (Number.isFinite(q)) {
+        const d = row.discount ? parseFloat(row.discount.replace(",", ".")) : 0;
+        row.price = String(Math.round((q - (Number.isFinite(d) ? d : 0)) * 100) / 100);
+      } else {
+        row.price = "";
+      }
+    }
+    updated[idx] = row;
     setDealCompanyGroups(updated);
   }
 
@@ -617,8 +633,19 @@ export default function NewDealPage() {
                       <Input type="number" step="0.01" value={cg.discount} onChange={(e) => updateCompanyGroup(idx, "discount", e.target.value)} className="h-8 text-[13px] font-mono" />
                     </div>
                     <div className="w-24">
-                      <Label className="text-[11px] text-stone-500">Цена</Label>
-                      <Input type="number" step="0.01" value={cg.price} onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)} className="h-8 text-[13px] font-mono" />
+                      <Label className="text-[11px] text-stone-500">
+                        Цена {cg.priceManualEdited
+                          ? <span className="text-[10px] text-amber-600">(вручную)</span>
+                          : cg.price ? <span className="text-[10px] text-green-600">(котир. − скидка)</span>
+                          : <span className="text-[10px] text-stone-400">(ожидание)</span>}
+                      </Label>
+                      <Input
+                        type="number" step="0.01"
+                        value={cg.price}
+                        onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)}
+                        placeholder="авто из котировки − скидки"
+                        className="h-8 text-[13px] font-mono"
+                      />
                     </div>
                     <div className="w-36">
                       <Label className="text-[11px] text-stone-500">№ прил / договор</Label>
