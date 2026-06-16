@@ -151,8 +151,16 @@ export function useDeals(filters?: {
   const [loading, setLoading] = useState(true);
   const supabaseRef = useRef(createClient());
 
+  // We deliberately do NOT toggle loading back to true on reload.
+  // The passport page renders «Загрузка паспорта…» whenever
+  // loading is true — that unmounts the table and the user perceives
+  // a full page reload every time an inline edit fires the parent
+  // refetch. Initial mount sets loading once via useState(true) and
+  // flips to false after the first fetch; subsequent reloads swap
+  // data silently while the table stays mounted (filtered rows,
+  // scroll, focus, cell edit state all preserved). Same pattern
+  // useDeal already uses for the deal-detail page.
   const load = useCallback(async () => {
-    setLoading(true);
     // Paginate to bypass PostgREST's default Max-Rows=1000. Without this
     // the passport silently dropped older deals once a single tab year
     // crossed the cap.
