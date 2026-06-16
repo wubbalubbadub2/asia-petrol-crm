@@ -8,19 +8,31 @@ import { toast } from "sonner";
 // Table name is a runtime string so the strict Database<Table> narrowing
 // doesn't help us here — cast to `any` at the builder boundary only.
 // Callers are responsible for passing a correctly-typed T.
+//
+// Stale-while-revalidate cache shared across all spravochnik pages —
+// navigating back to /spravochnik/<table> after editing a row paints
+// the previous snapshot instantly while a silent background fetch
+// refreshes it. 60s TTL.
+const refTableCache = new Map<string, { data: unknown[]; ts: number }>();
+const REF_TTL_MS = 60_000;
+
 export function useSupabaseTable<T extends { id?: string }>(
   tableName: string,
   orderBy: string = "created_at",
   selectQuery: string = "*"
 ) {
-  const [data, setData] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${tableName}|${orderBy}|${selectQuery}`;
+  const cached = refTableCache.get(cacheKey);
+  const fresh = !!cached && Date.now() - cached.ts < REF_TTL_MS;
+  const [data, setData] = useState<T[]>((cached?.data ?? []) as T[]);
+  // Only block when nothing is cached — first visit pays for the round
+  // trip, subsequent visits read from memory and paint instantly.
+  const [loading, setLoading] = useState(!cached);
   const supabaseRef = useRef(createClient());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = () => supabaseRef.current as any;
 
   const load = useCallback(async () => {
-    setLoading(true);
     const { data, error } = await sb()
       .from(tableName)
       .select(selectQuery)
@@ -29,14 +41,17 @@ export function useSupabaseTable<T extends { id?: string }>(
     if (error) {
       toast.error(`Ошибка загрузки: ${error.message}`);
     } else {
-      setData((data ?? []) as T[]);
+      const rows = (data ?? []) as T[];
+      setData(rows);
+      refTableCache.set(cacheKey, { data: rows, ts: Date.now() });
     }
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableName, orderBy, selectQuery]);
 
   useEffect(() => {
-    load();
+    if (!fresh) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   async function save(values: Partial<T>, isEdit: boolean) {

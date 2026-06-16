@@ -37,15 +37,22 @@ const APP_SELECT = `
   assigned_manager:profiles!assigned_manager_id(full_name)
 `;
 
+// Stale-while-revalidate cache so navigating back to /applications
+// paints the previous snapshot instantly.
+let appsCache: { data: Application[]; ts: number } | null = null;
+const APPS_TTL_MS = 60_000;
+
 export function useApplications() {
-  const [data, setData] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
+  const fresh = !!appsCache && Date.now() - appsCache.ts < APPS_TTL_MS;
+  const [data, setData] = useState<Application[]>(appsCache?.data ?? []);
+  const [loading, setLoading] = useState(!appsCache);
   const supabase = createClient();
 
   const load = useCallback(async () => {
-    setLoading(true);
     // Paginate around PostgREST Max-Rows=1000. Applications table grows
     // unbounded over time and the page renders the full historical list.
+    // Background revalidation: don't toggle loading=true so the cached
+    // snapshot stays painted while we silently refresh.
     const { data, error } = await fetchAllPaginated((from, to) =>
       supabase
         .from("applications")
@@ -57,12 +64,14 @@ export function useApplications() {
     if (error) {
       toast.error(`Ошибка загрузки заявок: ${error.message}`);
     } else {
-      setData(data as unknown as Application[]);
+      const rows = data as unknown as Application[];
+      setData(rows);
+      appsCache = { data: rows, ts: Date.now() };
     }
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
   return { data, loading, reload: load };
 }

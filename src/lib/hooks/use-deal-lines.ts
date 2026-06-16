@@ -85,9 +85,17 @@ const BUYER_SELECT = `
   destination_station:stations!destination_station_id(name)
 `;
 
+// Stale-while-revalidate caches keyed by dealId. Same deal opened twice
+// in a session paints the variant cards instantly.
+const supplierLinesCache = new Map<string, { data: DealSupplierLine[]; ts: number }>();
+const buyerLinesCache = new Map<string, { data: DealBuyerLine[]; ts: number }>();
+const LINES_TTL_MS = 60_000;
+
 export function useDealSupplierLines(dealId: string | null) {
-  const [data, setData] = useState<DealSupplierLine[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = dealId ? supplierLinesCache.get(dealId) : null;
+  const fresh = !!cached && Date.now() - cached.ts < LINES_TTL_MS;
+  const [data, setData] = useState<DealSupplierLine[]>(cached?.data ?? []);
+  const [loading, setLoading] = useState(!cached);
   const sb = useRef(createClient());
 
   // Same rationale as useDeal: don't toggle loading=true on reload,
@@ -103,17 +111,23 @@ export function useDealSupplierLines(dealId: string | null) {
       .order("is_default", { ascending: false })
       .order("position", { ascending: true });
     if (error) toast.error(`Ошибка загрузки линий поставщика: ${error.message}`);
-    else setData((data ?? []) as DealSupplierLine[]);
+    else {
+      const rows = (data ?? []) as DealSupplierLine[];
+      setData(rows);
+      supplierLinesCache.set(dealId, { data: rows, ts: Date.now() });
+    }
     setLoading(false);
   }, [dealId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
   return { data, loading, reload: load };
 }
 
 export function useDealBuyerLines(dealId: string | null) {
-  const [data, setData] = useState<DealBuyerLine[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = dealId ? buyerLinesCache.get(dealId) : null;
+  const fresh = !!cached && Date.now() - cached.ts < LINES_TTL_MS;
+  const [data, setData] = useState<DealBuyerLine[]>(cached?.data ?? []);
+  const [loading, setLoading] = useState(!cached);
   const sb = useRef(createClient());
 
   const load = useCallback(async () => {
@@ -125,11 +139,15 @@ export function useDealBuyerLines(dealId: string | null) {
       .order("is_default", { ascending: false })
       .order("position", { ascending: true });
     if (error) toast.error(`Ошибка загрузки линий покупателя: ${error.message}`);
-    else setData((data ?? []) as DealBuyerLine[]);
+    else {
+      const rows = (data ?? []) as DealBuyerLine[];
+      setData(rows);
+      buyerLinesCache.set(dealId, { data: rows, ts: Date.now() });
+    }
     setLoading(false);
   }, [dealId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
   return { data, loading, reload: load };
 }
 
@@ -220,9 +238,15 @@ export type LineRollups = {
   buyer:    Record<string, LineRollup>;
 };
 
+// Cache for the per-line aggregates — same TTL pattern as the variant
+// queries above.
+const lineRollupsCache = new Map<string, { data: LineRollups; ts: number }>();
+
 export function useDealLineRollups(dealId: string | null) {
-  const [data, setData] = useState<LineRollups>({ supplier: {}, buyer: {} });
-  const [loading, setLoading] = useState(true);
+  const cached = dealId ? lineRollupsCache.get(dealId) : null;
+  const fresh = !!cached && Date.now() - cached.ts < LINES_TTL_MS;
+  const [data, setData] = useState<LineRollups>(cached?.data ?? { supplier: {}, buyer: {} });
+  const [loading, setLoading] = useState(!cached);
   const sb = useRef(createClient());
 
   // Same pattern: don't toggle loading on subsequent loads, just swap
@@ -287,10 +311,12 @@ export function useDealLineRollups(dealId: string | null) {
       map[lineId] = it;
     }
 
-    setData({ supplier, buyer });
+    const rollup = { supplier, buyer };
+    setData(rollup);
+    if (dealId) lineRollupsCache.set(dealId, { data: rollup, ts: Date.now() });
     setLoading(false);
   }, [dealId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
   return { data, loading, reload: load };
 }

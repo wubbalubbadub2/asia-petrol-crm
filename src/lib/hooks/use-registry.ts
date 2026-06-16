@@ -71,9 +71,17 @@ const REG_SELECT = `
   buyer:counterparties!buyer_id(short_name, full_name)
 `;
 
+// Stale-while-revalidate cache keyed by tab (KG / KZ). Navigating back
+// to /registry after editing a shipment paints the previous snapshot
+// instantly while a silent background fetch refreshes it. 60s TTL.
+const registryCache = new Map<string, { data: ShipmentRecord[]; ts: number }>();
+const REGISTRY_TTL_MS = 60_000;
+
 export function useRegistry(type: "KG" | "KZ") {
-  const [data, setData] = useState<ShipmentRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = registryCache.get(type);
+  const isFresh = !!cached && Date.now() - cached.ts < REGISTRY_TTL_MS;
+  const [data, setData] = useState<ShipmentRecord[]>(cached?.data ?? []);
+  const [loading, setLoading] = useState(!cached);
   const supabase = createClient();
   // Tracks the "currently requested" tab type. The paginated load below
   // can span many seconds; if the user flips KG → KZ mid-load the old
@@ -90,7 +98,9 @@ export function useRegistry(type: "KG" | "KZ") {
     // date — entire deals would disappear from the table once the
     // registry crossed that threshold. Page through `.range()` until a
     // short page tells us we're done. Same fix as the quotation summary.
-    setLoading(true);
+    //
+    // We do NOT toggle loading back to true on background revalidation —
+    // the cached snapshot stays painted while we silently refresh.
     const all: ShipmentRecord[] = [];
     const pageSize = 1000;
     let from = 0;
@@ -122,10 +132,11 @@ export function useRegistry(type: "KG" | "KZ") {
     // and this commit, drop the stale result on the floor.
     if (currentTypeRef.current !== requestedType) return;
     setData(all);
+    registryCache.set(requestedType, { data: all, ts: Date.now() });
     setLoading(false);
   }, [supabase, type]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
   return { data, loading, reload: load };
 }
