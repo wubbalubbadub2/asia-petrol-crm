@@ -200,9 +200,12 @@ export async function fetchDealLinesForExport(
 // significantly. deal_company_groups stays embedded — it carries
 // per-deal data (price/discount/etc) that isn't in any reference
 // table.
+// company_group name on each deal_company_groups row also resolves
+// from the refs cache — drop the nested join so the list query is
+// purely from the `deals` table + 3 lightweight `id`-only embeds.
 const LIST_SELECT = `
   *,
-  deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency, company_group:company_groups(name)),
+  deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency),
   supplier_lines:deal_supplier_lines(id),
   buyer_lines:deal_buyer_lines(id)
 `;
@@ -270,6 +273,10 @@ export type DealFilters = {
 // navigating between sibling pages feels native.
 const dealsCache = new Map<string, { data: Deal[]; total: number; ts: number }>();
 const DEALS_TTL_MS = 60_000;
+// dealByIdCache is also used by useDeals to pre-seed each visible row
+// so the detail page opens instantly when clicked from the list.
+const dealByIdCache = new Map<string, { data: Deal; ts: number }>();
+const DEAL_TTL_MS = 60_000;
 
 export function useDeals(filters?: DealFilters) {
   const cacheKey = JSON.stringify(filters ?? {});
@@ -327,6 +334,12 @@ export function useDeals(filters?: DealFilters) {
       setData(rows);
       setTotalCount(count ?? 0);
       dealsCache.set(cacheKey, { data: rows, total: count ?? 0, ts: Date.now() });
+      // Pre-seed dealByIdCache with each visible row so clicking
+      // into a deal from the list opens instantly — useDeal hits the
+      // cached partial snapshot, paints the form, then quietly
+      // upgrades to the full DEAL_SELECT in background.
+      const now = Date.now();
+      for (const d of rows) dealByIdCache.set(d.id, { data: d, ts: now });
     }
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,12 +358,9 @@ export function useDeals(filters?: DealFilters) {
   return { data, totalCount, loading, reload: load, pageSize, page };
 }
 
-// Stale-while-revalidate cache by deal id. Opening a deal you already
-// looked at this session paints the form instantly — the silent
-// background refetch updates anything that's changed.
-const dealByIdCache = new Map<string, { data: Deal; ts: number }>();
-const DEAL_TTL_MS = 60_000;
-
+// dealByIdCache + DEAL_TTL_MS are declared above (hoisted for useDeals'
+// pre-seed loop). useDeal reads from the same Map so seeded entries
+// surface instantly when a row is clicked.
 export function useDeal(id: string | null) {
   const cached = id ? dealByIdCache.get(id) : null;
   const isFresh = !!cached && Date.now() - cached.ts < DEAL_TTL_MS;

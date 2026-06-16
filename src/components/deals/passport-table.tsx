@@ -506,7 +506,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                     <span key={cg.id} className="inline-flex items-center gap-0.5">
                       {idx > 0 && <span className="text-stone-300 mx-0.5">→</span>}
                       <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700 whitespace-nowrap inline-flex items-center gap-1">
-                        <span>{cg.company_group?.name ?? ""}</span>
+                        <span>{cgLabels.get(cg.company_group_id) ?? cg.company_group?.name ?? ""}</span>
                         <EditableCGPrice cgId={cg.id} value={cg.price} onSaved={onDataChanged} />
                         <span
                           className={`rounded px-1 py-px text-[8px] font-semibold uppercase tracking-wide ${
