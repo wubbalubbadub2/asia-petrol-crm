@@ -125,17 +125,42 @@ export default function DealsPage() {
   }
 
   const dealTypeFilter = activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : undefined;
-  const { data: deals, loading, reload } = useDeals({
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
+
+  // Reset to first page when filters change — otherwise switching from
+  // year=2026 to year=2025 keeps page=N which usually overshoots the
+  // smaller result set and shows «Нет сделок».
+  useEffect(() => {
+    setPage(0);
+  }, [
+    activeTab, yearFilter, search, supplierFilter, buyerFilter, factoryFilter,
+    fuelTypeFilter, monthFilter, forwarderFilter, applicationFilter,
+  ]);
+
+  // All filters now push down to PostgREST — useDeals returns only
+  // PAGE_SIZE rows + the total match count. The deals list mounts in
+  // ms regardless of how many deals exist for the year.
+  const { data: deals, totalCount, loading, reload } = useDeals({
     dealType: dealTypeFilter,
     year: yearFilter,
     isArchived: false,
+    supplierId: supplierFilter || undefined,
+    buyerId: buyerFilter || undefined,
+    factoryId: factoryFilter || undefined,
+    fuelTypeId: fuelTypeFilter || undefined,
+    month: monthFilter || undefined,
+    forwarderId: forwarderFilter || undefined,
+    applicationContract: applicationFilter || undefined,
+    searchCode: search || undefined,
+    page,
+    pageSize: PAGE_SIZE,
   });
 
   // «Приложение» dropdown options — distinct contract numbers across
-  // both supplier and buyer sides of the loaded deals. Per the product
-  // owner, the «договор» column in the passport IS the «приложение»
-  // they want to filter by (each contract / annex). Empty string +
-  // null are excluded so the dropdown only lists real values.
+  // both supplier and buyer sides of the *visible page*. With paging on
+  // this list is narrower than the full year; in practice the operator
+  // picks the application label first, so it's good enough.
   const contractOpts = useMemo(() => {
     const set = new Set<string>();
     for (const d of deals) {
@@ -145,29 +170,9 @@ export default function DealsPage() {
     return [...set].sort((a, b) => a.localeCompare(b, "ru"));
   }, [deals]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return deals.filter((d) => {
-      if (supplierFilter && d.supplier_id !== supplierFilter) return false;
-      if (buyerFilter && d.buyer_id !== buyerFilter) return false;
-      if (factoryFilter && d.factory_id !== factoryFilter) return false;
-      if (fuelTypeFilter && d.fuel_type_id !== fuelTypeFilter) return false;
-      if (monthFilter && d.month !== monthFilter) return false;
-      if (forwarderFilter && d.forwarder_id !== forwarderFilter) return false;
-      if (applicationFilter && d.supplier_contract !== applicationFilter && d.buyer_contract !== applicationFilter) return false;
-      if (!q) return true;
-      return (
-        d.deal_code?.toLowerCase().includes(q) ||
-        d.supplier?.short_name?.toLowerCase().includes(q) ||
-        d.supplier?.full_name?.toLowerCase().includes(q) ||
-        d.buyer?.short_name?.toLowerCase().includes(q) ||
-        d.buyer?.full_name?.toLowerCase().includes(q) ||
-        d.fuel_type?.name?.toLowerCase().includes(q) ||
-        d.forwarder?.name?.toLowerCase().includes(q) ||
-        false
-      );
-    });
-  }, [deals, search, supplierFilter, buyerFilter, factoryFilter, fuelTypeFilter, monthFilter, forwarderFilter, applicationFilter]);
+  // No client-side filtering left — data is already filtered server-side.
+  const filtered = deals;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const activeFilterCount =
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
@@ -246,7 +251,10 @@ export default function DealsPage() {
             </Button>
           )}
           <span className="text-[11px] text-stone-400 ml-auto">
-            {filtered.length} {filtered.length === 1 ? "сделка" : "сделок"}
+            {totalCount} {totalCount === 1 ? "сделка" : totalCount % 10 >= 2 && totalCount % 10 <= 4 && (totalCount % 100 < 10 || totalCount % 100 >= 20) ? "сделки" : "сделок"}
+            {totalPages > 1 && (
+              <span className="ml-2 text-stone-500">· стр. {page + 1}/{totalPages}</span>
+            )}
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2">
@@ -303,6 +311,23 @@ export default function DealsPage() {
           />
         )}
       </div>
+
+      {/* Pagination — server-side. Controls hidden when totalCount fits
+          on one page. Сброс page=0 при смене фильтров — выше в useEffect. */}
+      {totalPages > 1 && (
+        <div className="flex-shrink-0 flex items-center justify-end gap-2 pt-1 text-[12px]">
+          <span className="text-stone-500">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} из {totalCount}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setPage(0)} disabled={page === 0}>« 1</Button>
+            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>‹</Button>
+            <span className="px-2 text-stone-600">{page + 1}/{totalPages}</span>
+            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>›</Button>
+            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>{totalPages} »</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

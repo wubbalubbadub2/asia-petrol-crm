@@ -348,8 +348,12 @@ type PassportTableProps = {
 export function PassportTable({ deals, loading, dealType, onDataChanged }: PassportTableProps) {
   const refs = useRefs();
 
-  if (loading) return <p className="text-sm text-muted-foreground py-4">Загрузка паспорта...</p>;
-  if (deals.length === 0) return (
+  // Only block the table when there's truly nothing to show. With the
+  // SWR cache in useDeals, navigating back to a previously-visited
+  // page already has rows in `deals` — paint them instantly while the
+  // background refetch swaps in fresh data.
+  if (loading && deals.length === 0) return <p className="text-sm text-muted-foreground py-4">Загрузка паспорта...</p>;
+  if (!loading && deals.length === 0) return (
     <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
       <p className="text-sm text-stone-500">Нет сделок{dealType !== "ALL" ? ` типа ${dealType}` : ""}</p>
     </div>

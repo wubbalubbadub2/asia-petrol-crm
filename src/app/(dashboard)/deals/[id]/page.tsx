@@ -351,7 +351,10 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   ];
   const monthOptions = MONTHS_RU.map((m) => ({ value: m, label: m }));
 
-  if (loading) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
+  // Only block on first paint when there's nothing cached. With the
+  // SWR cache in useDeal, a deal you've opened before in this session
+  // paints instantly — the background refetch swaps in fresh data.
+  if (loading && !deal) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
   if (!deal) return <p className="text-sm text-destructive py-8">Сделка не найдена</p>;
 
   const symbolOf = (code: string) =>

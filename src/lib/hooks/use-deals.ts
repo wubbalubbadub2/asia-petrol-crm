@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesInsert } from "@/lib/types/database";
 import { toast } from "sonner";
 
@@ -226,15 +225,48 @@ function annotateLineCounts<T extends WithLines>(rows: T[]): (T & Deal)[] {
   })) as (T & Deal)[];
 }
 
-export function useDeals(filters?: {
+export type DealFilters = {
   dealType?: "KG" | "KZ" | "OIL";
   year?: number;
   month?: string;
   isArchived?: boolean;
-}) {
-  const [data, setData] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Server-side filters — push down to the SELECT instead of fetching
+  // every deal and filtering in JS. Page mount cost goes from
+  // O(all deals of the year) to O(pageSize).
+  supplierId?: string;
+  buyerId?: string;
+  factoryId?: string;
+  fuelTypeId?: string;
+  forwarderId?: string;
+  applicationContract?: string;
+  searchCode?: string;
+  page?: number;     // 0-indexed; default 0
+  pageSize?: number; // default 50
+};
+
+// Module-level stale-while-revalidate cache. Keyed by JSON-stringified
+// filters so the same (year, page, supplier=…) combo seen twice in a
+// session paints instantly from memory while a background fetch
+// refreshes it. 60s TTL — quick enough that mutations made on the
+// detail page are picked up after a short revisit, slow enough that
+// navigating between sibling pages feels native.
+const dealsCache = new Map<string, { data: Deal[]; total: number; ts: number }>();
+const DEALS_TTL_MS = 60_000;
+
+export function useDeals(filters?: DealFilters) {
+  const cacheKey = JSON.stringify(filters ?? {});
+  const cached = dealsCache.get(cacheKey);
+  const isFresh = !!cached && Date.now() - cached.ts < DEALS_TTL_MS;
+
+  const [data, setData] = useState<Deal[]>(cached?.data ?? []);
+  const [totalCount, setTotalCount] = useState(cached?.total ?? 0);
+  // Only show a top-level «loading» when we have nothing to render —
+  // a cached snapshot, even slightly stale, beats a blocker.
+  const [loading, setLoading] = useState(!cached);
   const supabaseRef = useRef(createClient());
+
+  const pageSize = filters?.pageSize ?? 50;
+  const page = filters?.page ?? 0;
 
   // We deliberately do NOT toggle loading back to true on reload.
   // The passport page renders «Загрузка паспорта…» whenever
@@ -246,34 +278,67 @@ export function useDeals(filters?: {
   // scroll, focus, cell edit state all preserved). Same pattern
   // useDeal already uses for the deal-detail page.
   const load = useCallback(async () => {
-    // Paginate to bypass PostgREST's default Max-Rows=1000. Without this
-    // the passport silently dropped older deals once a single tab year
-    // crossed the cap.
-    const { data, error } = await fetchAllPaginated<WithLines>((from, to) => {
-      let q = supabaseRef.current.from("deals").select(DEAL_SELECT);
-      q = q.or("is_draft.is.null,is_draft.eq.false");
-      if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
-      if (filters?.year) q = q.eq("year", filters.year);
-      if (filters?.month) q = q.eq("month", filters.month);
-      if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
-      return q.order("deal_number", { ascending: true }).range(from, to);
-    });
+    let q = supabaseRef.current
+      .from("deals")
+      .select(DEAL_SELECT, { count: "exact" });
+    q = q.or("is_draft.is.null,is_draft.eq.false");
+    if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
+    if (filters?.year) q = q.eq("year", filters.year);
+    if (filters?.month) q = q.eq("month", filters.month);
+    if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
+    if (filters?.supplierId) q = q.eq("supplier_id", filters.supplierId);
+    if (filters?.buyerId) q = q.eq("buyer_id", filters.buyerId);
+    if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
+    if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
+    if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
+    if (filters?.applicationContract) {
+      const c = filters.applicationContract.replace(/,/g, "\\,");
+      q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
+    }
+    if (filters?.searchCode && filters.searchCode.trim()) {
+      q = q.ilike("deal_code", `%${filters.searchCode.trim()}%`);
+    }
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    q = q.order("deal_number", { ascending: true }).range(from, to);
+    const { data, error, count } = await q;
     if (error) {
       toast.error(`Ошибка загрузки сделок: ${error.message}`);
     } else {
-      setData(annotateLineCounts(data) as unknown as Deal[]);
+      const rows = annotateLineCounts((data ?? []) as unknown as WithLines[]) as unknown as Deal[];
+      setData(rows);
+      setTotalCount(count ?? 0);
+      dealsCache.set(cacheKey, { data: rows, total: count ?? 0, ts: Date.now() });
     }
     setLoading(false);
-  }, [filters?.dealType, filters?.year, filters?.month, filters?.isArchived]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filters?.dealType, filters?.year, filters?.month, filters?.isArchived,
+    filters?.supplierId, filters?.buyerId, filters?.factoryId, filters?.fuelTypeId,
+    filters?.forwarderId, filters?.applicationContract, filters?.searchCode,
+    page, pageSize,
+  ]);
 
-  useEffect(() => { load(); }, [load]);
+  // Skip the background revalidation when the cached snapshot is still
+  // fresh and we already painted it — saves a round-trip on rapid
+  // navigation between sibling pages.
+  useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
-  return { data, loading, reload: load };
+  return { data, totalCount, loading, reload: load, pageSize, page };
 }
 
+// Stale-while-revalidate cache by deal id. Opening a deal you already
+// looked at this session paints the form instantly — the silent
+// background refetch updates anything that's changed.
+const dealByIdCache = new Map<string, { data: Deal; ts: number }>();
+const DEAL_TTL_MS = 60_000;
+
 export function useDeal(id: string | null) {
-  const [data, setData] = useState<Deal | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = id ? dealByIdCache.get(id) : null;
+  const isFresh = !!cached && Date.now() - cached.ts < DEAL_TTL_MS;
+  const [data, setData] = useState<Deal | null>(cached?.data ?? null);
+  // Only block render when we have absolutely nothing to show.
+  const [loading, setLoading] = useState(!cached);
   const supabaseRef2 = useRef(createClient());
 
   // Note on `loading`: we deliberately do NOT toggle it back to true
@@ -295,12 +360,14 @@ export function useDeal(id: string | null) {
       toast.error(`Ошибка загрузки сделки: ${error.message}`);
     } else if (data) {
       const [annotated] = annotateLineCounts([data as unknown as WithLines]);
-      setData(annotated as unknown as Deal);
+      const deal = annotated as unknown as Deal;
+      setData(deal);
+      dealByIdCache.set(id, { data: deal, ts: Date.now() });
     }
     setLoading(false);
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
   return { data, loading, reload: load };
 }
