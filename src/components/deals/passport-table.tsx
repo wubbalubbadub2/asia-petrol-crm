@@ -130,17 +130,26 @@ function EditableTextCell({ value, dealId, field, wide = false }: {
 }
 
 // Reference-select cell: click to open a dropdown; persists on change.
-// Uses defaultValue so we don't bind to a controlled state; that way the
-// pending display keeps showing until the row reloads with the new value.
-function EditableSelectCell({ value, displayLabel, dealId, field, options, color = "stone" }: {
+// Uses pendingVal so the chosen label sticks in the UI immediately —
+// the parent's deals array still has the old joined name (deal.forwarder
+// etc) until onSaved triggers a refetch, and we'd otherwise flash the
+// stale label between save and reload.
+function EditableSelectCell({ value, displayLabel, dealId, field, options, color = "stone", onSaved }: {
   value: string | null | undefined;
   displayLabel: string;
   dealId: string;
   field: string;
   options: { value: string; label: string }[];
   color?: "stone" | "amber" | "blue";
+  onSaved?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const pendingVal = useRef<string | null | undefined>(undefined);
+  const shownVal = pendingVal.current !== undefined ? pendingVal.current : value;
+  if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
+  const pendingLabel = pendingVal.current !== undefined
+    ? (options.find((o) => o.value === pendingVal.current)?.label ?? "")
+    : displayLabel;
   const colorClass =
     color === "amber" ? "text-stone-700" :
     color === "blue" ? "text-stone-700" :
@@ -148,17 +157,20 @@ function EditableSelectCell({ value, displayLabel, dealId, field, options, color
   if (!editing) return (
     <button onClick={() => setEditing(true)}
       className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-pointer min-h-[18px] truncate max-w-[110px] ${colorClass}`}>
-      {displayLabel || <span className="text-stone-300">—</span>}
+      {pendingLabel || <span className="text-stone-300">—</span>}
     </button>
   );
   return (
-    <select autoFocus defaultValue={value ?? ""}
+    <select autoFocus defaultValue={shownVal ?? ""}
       onBlur={() => setEditing(false)}
       onChange={(e) => {
         const nv = e.target.value || null;
         setEditing(false);
         if (nv !== (value ?? null)) {
-          updateDeal(dealId, { [field]: nv }).catch(() => {});
+          pendingVal.current = nv;
+          updateDeal(dealId, { [field]: nv })
+            .then(() => { onSaved?.(); })
+            .catch(() => { pendingVal.current = undefined; });
         }
       }}
       className="w-full h-6 text-[11px] border border-amber-300 rounded bg-amber-50/50 px-1 focus:outline-none cursor-pointer">
@@ -341,10 +353,10 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
               </td>
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} />
+                <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} onSaved={onDataChanged} />
               </td>
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.factory_id} displayLabel={deal.factory?.name ?? ""} dealId={deal.id} field="factory_id" options={refs.factories} />
+                <EditableSelectCell value={deal.factory_id} displayLabel={deal.factory?.name ?? ""} dealId={deal.id} field="factory_id" options={refs.factories} onSaved={onDataChanged} />
               </td>
               <td className="border-r px-1 py-0.5">
                 <EditableSelectCell
@@ -353,13 +365,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                   dealId={deal.id}
                   field="fuel_type_id"
                   options={refs.fuelTypes}
+                  onSaved={onDataChanged}
                 />
               </td>
               <td className="border-r border-stone-300 px-1 py-0.5"><EditableTextCell value={deal.sulfur_percent} dealId={deal.id} field="sulfur_percent" /></td>
 
               {/* Supplier: 9 cols */}
               <td className="border-r px-1 py-0.5 bg-amber-50/10">
-                <EditableSelectCell value={deal.supplier_id} displayLabel={deal.supplier?.short_name ?? deal.supplier?.full_name ?? ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" />
+                <EditableSelectCell value={deal.supplier_id} displayLabel={deal.supplier?.short_name ?? deal.supplier?.full_name ?? ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" onSaved={onDataChanged} />
               </td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" /></td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_delivery_basis} dealId={deal.id} field="supplier_delivery_basis" /></td>
@@ -400,7 +413,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
               {/* Buyer: 10 cols */}
               <td className="border-r px-1 py-0.5 bg-blue-50/10">
-                <EditableSelectCell value={deal.buyer_id} displayLabel={deal.buyer?.short_name ?? deal.buyer?.full_name ?? ""} dealId={deal.id} field="buyer_id" options={refs.buyers} color="blue" />
+                <EditableSelectCell value={deal.buyer_id} displayLabel={deal.buyer?.short_name ?? deal.buyer?.full_name ?? ""} dealId={deal.id} field="buyer_id" options={refs.buyers} color="blue" onSaved={onDataChanged} />
               </td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" /></td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_delivery_basis} dealId={deal.id} field="buyer_delivery_basis" /></td>
@@ -417,17 +430,17 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
               {/* Logistics */}
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.forwarder_id} displayLabel={deal.forwarder?.name ?? ""} dealId={deal.id} field="forwarder_id" options={refs.forwarders} />
+                <EditableSelectCell value={deal.forwarder_id} displayLabel={deal.forwarder?.name ?? ""} dealId={deal.id} field="forwarder_id" options={refs.forwarders} onSaved={onDataChanged} />
               </td>
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={deal.logistics_company_group?.name ?? ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} />
+                <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={deal.logistics_company_group?.name ?? ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} onSaved={onDataChanged} />
               </td>
               <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="тонны из реестра">{formatComputedVol(deal.actual_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
               <td className="px-1 py-0.5">
-                <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
+                <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} onSaved={onDataChanged} />
               </td>
               <td className="px-1 py-1">
                 <button onClick={async () => {
