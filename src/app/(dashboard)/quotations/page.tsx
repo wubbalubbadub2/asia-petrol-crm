@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // --- Helpers ---
 function getDaysInMonth(year: number, month: number): string[] {
@@ -169,16 +170,37 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
   function prevMonth() { if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1); }
   function nextMonth() { if (month === 12) { setMonth(1); setYear(year + 1); } else setMonth(month + 1); }
 
-  // Excel export — this product's quotations across all dates.
+  // Excel export — user picks which columns to include first. Defaults
+  // to every column on screen; sticky per-session selection lives in the
+  // dialog's own state so re-exporting the same product doesn't force
+  // them to re-check the same boxes.
   const [exporting, setExporting] = useState(false);
-  async function handleExport() {
+  const [columnDialogOpen, setColumnDialogOpen] = useState(false);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => PRICE_COLS.map((c) => c.key));
+  // Reset selection when the product (and thus column list) changes.
+  useEffect(() => {
+    setSelectedColumns(PRICE_COLS.map((c) => c.key));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productType.id]);
+
+  function openExportDialog() {
     if (exporting) return;
+    setColumnDialogOpen(true);
+  }
+
+  async function runExport() {
+    if (selectedColumns.length === 0) {
+      toast.error("Выберите хотя бы одну колонку");
+      return;
+    }
+    setColumnDialogOpen(false);
     setExporting(true);
     try {
       const { exportQuotationsToExcel } = await import("@/lib/exports/quotations-excel");
       const n = await exportQuotationsToExcel({
         productTypeId: productType.id,
         productName: productType.name,
+        columnKeys: selectedColumns,
       });
       toast.success(`Файл готов: ${n} строк`);
     } catch (e) {
@@ -196,10 +218,74 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
           <h2 className="text-lg font-bold">{productType.name}</h2>
           {productType.sub_name && <p className="text-[12px] text-stone-500">{productType.sub_name}</p>}
         </div>
-        <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting} title="Экспорт котировок этой категории в Excel">
+        <Button size="sm" variant="outline" onClick={openExportDialog} disabled={exporting} title="Экспорт котировок этой категории в Excel">
           {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
           Excel
         </Button>
+
+        <Dialog open={columnDialogOpen} onOpenChange={setColumnDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Колонки для выгрузки</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-[12px] text-stone-500">
+                <span>{productType.name}</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedColumns(PRICE_COLS.map((c) => c.key))}
+                    className="text-amber-600 hover:text-amber-700"
+                  >
+                    Выбрать все
+                  </button>
+                  <span className="text-stone-300">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedColumns([])}
+                    className="text-stone-600 hover:text-stone-700"
+                  >
+                    Снять все
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
+                {PRICE_COLS.map((col) => {
+                  const checked = selectedColumns.includes(col.key);
+                  return (
+                    <label
+                      key={col.key}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-stone-50 cursor-pointer text-[13px]"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(c) => {
+                          const on = c === true;
+                          setSelectedColumns((prev) =>
+                            on ? [...new Set([...prev, col.key])] : prev.filter((k) => k !== col.key),
+                          );
+                        }}
+                      />
+                      <span className="flex-1">{col.label}</span>
+                      {col.formula === "avg" && (
+                        <span className="text-[10px] text-amber-600">формула</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                <Button type="button" variant="outline" size="sm" onClick={() => setColumnDialogOpen(false)}>
+                  Отмена
+                </Button>
+                <Button type="button" size="sm" onClick={runExport} disabled={selectedColumns.length === 0}>
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Выгрузить ({selectedColumns.length})
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <div className="ml-auto flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
           <span className="text-sm font-medium min-w-[130px] text-center capitalize">{MONTHS_RU[month - 1]} {year}</span>

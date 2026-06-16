@@ -43,6 +43,10 @@ export type QuotationsExportFilter = {
   year?: number;          // null = all years
   productTypeId?: string; // null = all products
   productName?: string;   // optional, used in sheet name when filtered
+  // When set, only the listed column keys appear in the workbook. Order is
+  // taken from the product's column config — checkbox order in the UI
+  // doesn't shift the layout.
+  columnKeys?: string[];
 };
 
 // Page through the quotations table. PostgREST's Max-Rows default
@@ -136,9 +140,13 @@ export async function exportQuotationsToExcel(filter: QuotationsExportFilter = {
   // Column config follows the product's on-screen layout. If no product
   // is pinned (the legacy "export everything" path), fall back to the
   // full layout so the result is at least readable.
-  const productCols: QuotationColumn[] = filter.productName
+  let productCols: QuotationColumn[] = filter.productName
     ? getColumnsForProduct(filter.productName)
     : FULL_PRICE_COLS;
+  if (filter.columnKeys && filter.columnKeys.length > 0) {
+    const allow = new Set(filter.columnKeys);
+    productCols = productCols.filter((c) => allow.has(c.key));
+  }
 
   // ── Build workbook ─────────────────────────────────────
   const ExcelJS = (await import("exceljs")).default;

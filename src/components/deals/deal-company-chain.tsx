@@ -258,7 +258,16 @@ export function DealCompanyChain({
                         title={cg.quotation_comment ?? "Котировка"}
                         onBlur={(e) => {
                           const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
-                          if (v !== (cg.quotation ?? null)) updateGroup(cg.id, { quotation: Number.isFinite(v as number) ? v : null });
+                          const newQ = Number.isFinite(v as number) ? (v as number) : null;
+                          if (newQ === (cg.quotation ?? null)) return;
+                          // Также пересчитываем цену = котировка − скидка,
+                          // зеркаля поведение формы создания сделки. Если
+                          // пользователь хочет цену вручную — он редактирует
+                          // её последней.
+                          const newP = newQ != null
+                            ? Math.round((newQ - (cg.discount ?? 0)) * 100) / 100
+                            : null;
+                          updateGroup(cg.id, { quotation: newQ, price: newP });
                         }}
                         className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
                       />
@@ -269,15 +278,25 @@ export function DealCompanyChain({
                         placeholder="скидка"
                         onBlur={(e) => {
                           const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
-                          if (v !== (cg.discount ?? null)) updateGroup(cg.id, { discount: Number.isFinite(v as number) ? v : null });
+                          const newD = Number.isFinite(v as number) ? (v as number) : null;
+                          if (newD === (cg.discount ?? null)) return;
+                          const newP = cg.quotation != null
+                            ? Math.round((cg.quotation - (newD ?? 0)) * 100) / 100
+                            : cg.price;
+                          updateGroup(cg.id, { discount: newD, price: newP });
                         }}
                         className="h-8 text-[12px] font-mono text-right border-stone-300 bg-white hover:border-amber-400 focus:border-amber-500"
                       />
 
                       <Input
+                        // Key includes cg.price so the input remounts when
+                        // котировка/скидка auto-fill triggers a fresh price —
+                        // defaultValue alone wouldn't refresh visually
+                        // (uncontrolled input, React keeps the old DOM value).
+                        key={`price-${cg.id}-${cg.price ?? ""}`}
                         type="number" step="0.01"
                         defaultValue={cg.price ?? ""}
-                        placeholder="цена"
+                        placeholder="авто = котир. − скидка"
                         onBlur={(e) => {
                           const v = e.target.value.trim() === "" ? null : parseFloat(e.target.value.replace(",", "."));
                           if (v !== cg.price) updateGroup(cg.id, { price: Number.isFinite(v as number) ? v : null });
