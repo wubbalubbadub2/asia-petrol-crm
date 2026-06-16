@@ -191,6 +191,25 @@ export async function fetchDealLinesForExport(
   return { supplier: group(supRes.data), buyer: group(buyRes.data) };
 }
 
+// LIST_SELECT — minimal projection for the deals list. We dropped the
+// 7 single-row FK joins (factory / fuel_type / supplier / buyer /
+// forwarder / supplier_manager / logistics_company_group) because
+// passport-table now resolves those names from the global refs cache
+// (see lib/refs.ts). Every dropped join was a sub-select per row on
+// PostgREST; removing them cuts the deals query latency
+// significantly. deal_company_groups stays embedded — it carries
+// per-deal data (price/discount/etc) that isn't in any reference
+// table.
+const LIST_SELECT = `
+  *,
+  deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency, company_group:company_groups(name)),
+  supplier_lines:deal_supplier_lines(id),
+  buyer_lines:deal_buyer_lines(id)
+`;
+
+// DETAIL_SELECT — full join set, used by useDeal on the deal-detail
+// page where every relation is rendered and resolving via refs cache
+// would require threading the cache into many subcomponents.
 const DEAL_SELECT = `
   *,
   factory:factories(name),
@@ -211,8 +230,7 @@ const DEAL_SELECT = `
 // NOTE: lines arrays carry only `id` here — they're used purely for the
 // «+N лин.» count badge in passport-table (see annotateLineCounts). The
 // Excel export enriches them on demand via fetchDealLinesForExport so
-// the list payload stays small. Was previously selecting 6 fields ×
-// every variant for every deal, which dominated DEAL_SELECT bandwidth.
+// the list payload stays small.
 
 // Annotate fetched deals with simple line counts so the passport table
 // can render a "+N линий" badge without a second round trip.
@@ -280,7 +298,7 @@ export function useDeals(filters?: DealFilters) {
   const load = useCallback(async () => {
     let q = supabaseRef.current
       .from("deals")
-      .select(DEAL_SELECT, { count: "exact" });
+      .select(LIST_SELECT, { count: "exact" });
     q = q.or("is_draft.is.null,is_draft.eq.false");
     if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
     if (filters?.year) q = q.eq("year", filters.year);

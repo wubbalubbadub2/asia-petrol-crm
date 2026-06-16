@@ -149,18 +149,48 @@ export type ExportContext = {
 };
 
 export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
-  // Enrich the deals with full supplier/buyer line snapshots — DEAL_SELECT
-  // ships only `id` per line for the on-screen passport (count badge),
-  // and the Excel columns need price / price_stage / preliminary_price.
-  // One IN-scoped bulk query per side; cheap relative to building the
-  // workbook itself.
-  const { fetchDealLinesForExport } = await import("@/lib/hooks/use-deals");
+  // Enrich deals with line snapshots (DEAL_SELECT ships only `id` per
+  // line for the list view's count badge) AND with the joined ref
+  // names (LIST_SELECT no longer embeds factory / supplier / buyer /
+  // forwarder / fuel_type / supplier_manager / logistics_company_group
+  // — passport-table resolves those from the global refs cache). The
+  // Excel COLUMNS still read d.supplier?.short_name etc., so we patch
+  // those onto each row here from the refs maps.
+  const [{ fetchDealLinesForExport }, { getGlobalRefs, getCachedRefsSync }] = await Promise.all([
+    import("@/lib/hooks/use-deals"),
+    import("@/lib/refs"),
+  ]);
+  const refs = getCachedRefsSync() ?? await getGlobalRefs();
+  const supplierById = new Map(refs.suppliers.map((c) => [c.id, c]));
+  const buyerById = new Map(refs.buyers.map((c) => [c.id, c]));
+  const factoryById = new Map(refs.factories.map((r) => [r.id, r]));
+  const fuelById = new Map(refs.fuelTypes.map((r) => [r.id, r]));
+  const forwarderById = new Map(refs.forwarders.map((r) => [r.id, r]));
+  const managerById = new Map(refs.managers.map((p) => [p.id, p]));
+  const cgById = new Map(refs.companyGroups.map((r) => [r.id, r]));
+
   const lines = await fetchDealLinesForExport(deals.map((d) => d.id));
-  deals = deals.map((d) => ({
-    ...d,
-    supplier_lines: lines.supplier.get(d.id) ?? d.supplier_lines ?? [],
-    buyer_lines: lines.buyer.get(d.id) ?? d.buyer_lines ?? [],
-  }));
+  deals = deals.map((d) => {
+    const s = d.supplier_id ? supplierById.get(d.supplier_id) : null;
+    const b = d.buyer_id ? buyerById.get(d.buyer_id) : null;
+    const f = d.factory_id ? factoryById.get(d.factory_id) : null;
+    const ft = d.fuel_type_id ? fuelById.get(d.fuel_type_id) : null;
+    const fw = d.forwarder_id ? forwarderById.get(d.forwarder_id) : null;
+    const sm = d.supplier_manager_id ? managerById.get(d.supplier_manager_id) : null;
+    const lcg = d.logistics_company_group_id ? cgById.get(d.logistics_company_group_id) : null;
+    return {
+      ...d,
+      supplier: s ? { full_name: s.full_name, short_name: s.short_name } : d.supplier ?? null,
+      buyer: b ? { full_name: b.full_name, short_name: b.short_name } : d.buyer ?? null,
+      factory: f ? { name: f.name } : d.factory ?? null,
+      fuel_type: ft ? { name: ft.name, color: ft.color ?? "#6B7280" } : d.fuel_type ?? null,
+      forwarder: fw ? { name: fw.name } : d.forwarder ?? null,
+      supplier_manager: sm ? { full_name: sm.full_name } : d.supplier_manager ?? null,
+      logistics_company_group: lcg ? { name: lcg.name } : d.logistics_company_group ?? null,
+      supplier_lines: lines.supplier.get(d.id) ?? d.supplier_lines ?? [],
+      buyer_lines: lines.buyer.get(d.id) ?? d.buyer_lines ?? [],
+    };
+  });
 
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();

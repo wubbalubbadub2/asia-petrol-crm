@@ -347,6 +347,29 @@ type PassportTableProps = {
 
 export function PassportTable({ deals, loading, dealType, onDataChanged }: PassportTableProps) {
   const refs = useRefs();
+  const { refs: g } = useGlobalRefs();
+
+  // Resolver maps — passport rows used to read joined names from the
+  // deals query (deal.supplier?.short_name etc), but those embeds were
+  // 7 sub-selects per row. We dropped them from LIST_SELECT and look
+  // up names here from the already-warmed refs cache. O(1) per lookup,
+  // zero extra round-trips.
+  const supplierLabels = useMemo(
+    () => new Map(g.suppliers.map((c) => [c.id, c.short_name ?? c.full_name])),
+    [g.suppliers],
+  );
+  const buyerLabels = useMemo(
+    () => new Map(g.buyers.map((c) => [c.id, c.short_name ?? c.full_name])),
+    [g.buyers],
+  );
+  const factoryLabels = useMemo(() => new Map(g.factories.map((r) => [r.id, r.name])), [g.factories]);
+  const fuelTypeLabels = useMemo(
+    () => new Map(g.fuelTypes.map((r) => [r.id, { name: r.name, color: r.color ?? "#6B7280" }])),
+    [g.fuelTypes],
+  );
+  const forwarderLabels = useMemo(() => new Map(g.forwarders.map((r) => [r.id, r.name])), [g.forwarders]);
+  const managerLabels = useMemo(() => new Map(g.managers.map((p) => [p.id, p.full_name])), [g.managers]);
+  const cgLabels = useMemo(() => new Map(g.companyGroups.map((r) => [r.id, r.name])), [g.companyGroups]);
 
   // Only block the table when there's truly nothing to show. With the
   // SWR cache in useDeals, navigating back to a previously-visited
@@ -442,12 +465,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} />
               </td>
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.factory_id} displayLabel={deal.factory?.name ?? ""} dealId={deal.id} field="factory_id" options={refs.factories} />
+                <EditableSelectCell value={deal.factory_id} displayLabel={(deal.factory_id && factoryLabels.get(deal.factory_id)) || ""} dealId={deal.id} field="factory_id" options={refs.factories} />
               </td>
               <td className="border-r px-1 py-0.5">
                 <EditableSelectCell
                   value={deal.fuel_type_id}
-                  displayLabel={deal.fuel_type?.name ?? ""}
+                  displayLabel={(deal.fuel_type_id && fuelTypeLabels.get(deal.fuel_type_id)?.name) || ""}
                   dealId={deal.id}
                   field="fuel_type_id"
                   options={refs.fuelTypes}
@@ -457,7 +480,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
               {/* Supplier: 9 cols */}
               <td className="border-r px-1 py-0.5 bg-amber-50/10">
-                <EditableSelectCell value={deal.supplier_id} displayLabel={deal.supplier?.short_name ?? deal.supplier?.full_name ?? ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" />
+                <EditableSelectCell value={deal.supplier_id} displayLabel={(deal.supplier_id && supplierLabels.get(deal.supplier_id)) || ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" />
               </td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" /></td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_delivery_basis} dealId={deal.id} field="supplier_delivery_basis" /></td>
@@ -503,7 +526,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
               {/* Buyer: 10 cols */}
               <td className="border-r px-1 py-0.5 bg-blue-50/10">
-                <EditableSelectCell value={deal.buyer_id} displayLabel={deal.buyer?.short_name ?? deal.buyer?.full_name ?? ""} dealId={deal.id} field="buyer_id" options={refs.buyers} color="blue" />
+                <EditableSelectCell value={deal.buyer_id} displayLabel={(deal.buyer_id && buyerLabels.get(deal.buyer_id)) || ""} dealId={deal.id} field="buyer_id" options={refs.buyers} color="blue" />
               </td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" /></td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_delivery_basis} dealId={deal.id} field="buyer_delivery_basis" /></td>
@@ -525,10 +548,10 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
               {/* Logistics */}
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.forwarder_id} displayLabel={deal.forwarder?.name ?? ""} dealId={deal.id} field="forwarder_id" options={refs.forwarders} />
+                <EditableSelectCell value={deal.forwarder_id} displayLabel={(deal.forwarder_id && forwarderLabels.get(deal.forwarder_id)) || ""} dealId={deal.id} field="forwarder_id" options={refs.forwarders} />
               </td>
               <td className="border-r px-1 py-0.5">
-                <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={deal.logistics_company_group?.name ?? ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} />
+                <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={(deal.logistics_company_group_id && cgLabels.get(deal.logistics_company_group_id)) || ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} />
               </td>
               <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
@@ -540,7 +563,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               />
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
               <td className="px-1 py-0.5">
-                <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
+                <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
               </td>
               <td className="px-1 py-1">
                 <button onClick={async () => {

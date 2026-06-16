@@ -23,6 +23,10 @@ import { createClient } from "@/lib/supabase/client";
 export type RefOpt = { id: string; name: string };
 export type CounterpartyRef = { id: string; short_name: string | null; full_name: string };
 export type ProfileRef = { id: string; full_name: string };
+// Fuel types carry a colour swatch — passport-table renders it as the
+// dot beside the fuel name. Loaded once so the dots stay in sync with
+// the spravochnik even though deals queries don't embed the join.
+export type FuelTypeRef = { id: string; name: string; color: string | null };
 
 export type GlobalRefs = {
   suppliers: CounterpartyRef[];
@@ -32,7 +36,7 @@ export type GlobalRefs = {
   stations: RefOpt[];
   companyGroups: RefOpt[];
   factories: RefOpt[];
-  fuelTypes: RefOpt[];
+  fuelTypes: FuelTypeRef[];
   quotationTypes: RefOpt[];
   consignees: RefOpt[];
 };
@@ -61,7 +65,7 @@ function fetchAll(): Promise<GlobalRefs> {
     sb.from("stations").select("id, name").eq("is_active", true).order("name"),
     sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
     sb.from("factories").select("id, name").eq("is_active", true).order("name"),
-    sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
+    sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
     sb.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (sb.from as any)("consignees").select("id, name").eq("is_active", true).order("name"),
@@ -82,7 +86,7 @@ function fetchAll(): Promise<GlobalRefs> {
       stations: pull(4) as unknown as RefOpt[],
       companyGroups: pull(5) as unknown as RefOpt[],
       factories: pull(6) as unknown as RefOpt[],
-      fuelTypes: pull(7) as unknown as RefOpt[],
+      fuelTypes: pull(7) as unknown as FuelTypeRef[],
       quotationTypes: pull(8) as unknown as RefOpt[],
       consignees: pull(9) as unknown as RefOpt[],
     };
