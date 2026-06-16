@@ -1083,8 +1083,8 @@ export default function RegistryPage() {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-muted-foreground">Загрузка...</p>
-      : groups.length === 0 ? <div className="rounded-md border border-stone-200 bg-white py-12 text-center"><Truck className="h-8 w-8 text-stone-300 mx-auto mb-2" /><p className="text-sm text-stone-500">Реестр {tab.toUpperCase()} пуст</p></div>
+      {loading && groups.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
+      : !loading && groups.length === 0 ? <div className="rounded-md border border-stone-200 bg-white py-12 text-center"><Truck className="h-8 w-8 text-stone-300 mx-auto mb-2" /><p className="text-sm text-stone-500">Реестр {tab.toUpperCase()} пуст</p></div>
       : <div className="space-y-2">
           {groups.map((g) => {
             const open = expanded.has(g.key);

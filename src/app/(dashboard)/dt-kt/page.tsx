@@ -445,7 +445,7 @@ export default function DtKtPage() {
         </div>
       </div>
 
-      {loading ? <p className="text-sm text-muted-foreground">Загрузка...</p>
+      {loading && records.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
       : records.length === 0 ? (
         <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
           <p className="text-sm text-stone-500">Нет данных за {yearFilter} год</p>
