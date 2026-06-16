@@ -101,12 +101,13 @@ export type Deal = {
   // (see annotateLineCounts).
   supplier_lines?: DealLineSnapshot[];
   buyer_lines?: DealLineSnapshot[];
-  // Per-deal shipments — feeds the hover-tooltip breakdown of «Отгр.
-  // тонн» / «Факт объем» so the operator can see which wagons sum into
-  // the displayed total without leaving the passport.
-  shipments?: ShipmentSnap[];
 };
 
+// Shipment shape used by the click-popover breakdown on the passport
+// volume cells. Loaded lazily per-deal (see fetchDealShipments below);
+// never embedded into DEAL_SELECT — that embed alone was multiplying
+// the deals list payload by ~5× because every row pulled its full
+// shipment_registry tail in one round-trip.
 export type ShipmentSnap = {
   id: string;
   wagon_number: string | null;
@@ -115,6 +116,39 @@ export type ShipmentSnap = {
   shipment_volume: number | null;
   date: string | null;
 };
+
+// Module-level cache so the same deal isn't refetched when the operator
+// reopens the popover or hops between volume cells of the same row.
+// In-flight promises are stored too, so two near-simultaneous clicks
+// don't double-fire the query.
+const shipmentsCache = new Map<string, Promise<ShipmentSnap[]>>();
+export function fetchDealShipments(dealId: string): Promise<ShipmentSnap[]> {
+  const cached = shipmentsCache.get(dealId);
+  if (cached) return cached;
+  const sb = createClient();
+  // Wrap with Promise.resolve — the PostgREST builder returns a
+  // PromiseLike, not a full Promise, and Map<string, Promise<…>> needs
+  // the real .catch / .finally surface.
+  const p = Promise.resolve(
+    sb
+      .from("shipment_registry")
+      .select("id, wagon_number, waybill_number, loading_volume, shipment_volume, date")
+      .eq("deal_id", dealId),
+  ).then(({ data, error }) => {
+    if (error) {
+      // Drop the failed entry so the next click retries instead of
+      // returning the same rejected promise forever.
+      shipmentsCache.delete(dealId);
+      throw error;
+    }
+    return (data ?? []) as ShipmentSnap[];
+  });
+  shipmentsCache.set(dealId, p);
+  return p;
+}
+export function invalidateDealShipments(dealId: string) {
+  shipmentsCache.delete(dealId);
+}
 
 export type DealLineSnapshot = {
   id: string;
@@ -140,8 +174,7 @@ const DEAL_SELECT = `
   logistics_company_group:company_groups!logistics_company_group_id(name),
   deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency, company_group:company_groups(name)),
   supplier_lines:deal_supplier_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
-  buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
-  shipments:shipment_registry(id, wagon_number, waybill_number, loading_volume, shipment_volume, date)
+  buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation)
 `;
 
 // Annotate fetched deals with simple line counts so the passport table

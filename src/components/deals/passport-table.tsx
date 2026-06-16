@@ -1,22 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
-import { type Deal, type ShipmentSnap, updateDeal } from "@/lib/hooks/use-deals";
+import { type Deal, type ShipmentSnap, updateDeal, fetchDealShipments } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { toast } from "sonner";
 
-// Multi-line tooltip listing the volumes that sum into the cell.
-// Format per client: header = N отгрузок only (no technical column
-// label), then one line per shipment as «объём · дата». No wagon
-// number, no surrounding text. Browsers respect \n in `title`.
-function shipmentBreakdown(
-  shipments: ShipmentSnap[] | undefined,
+// Format the lazy-loaded shipments into the popover body. Header is
+// «N отгрузок»; each row is «DD.MM.YYYY: объём» sorted by date asc.
+function shipmentLines(
+  shipments: ShipmentSnap[],
   field: "loading_volume" | "shipment_volume",
 ): string {
-  if (!shipments || shipments.length === 0) return "Нет отгрузок";
   const rows = shipments
     .filter((s) => s[field] != null)
     .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
@@ -24,8 +22,8 @@ function shipmentBreakdown(
       const v = (s[field] as number).toLocaleString("ru-RU", {
         minimumFractionDigits: 3, maximumFractionDigits: 3,
       });
-      const d = s.date ? s.date.slice(0, 10).split("-").reverse().join(".") : "";
-      return d ? `${v}  ·  ${d}` : v;
+      const d = s.date ? s.date.slice(0, 10).split("-").reverse().join(".") : "—";
+      return `${d}: ${v}`;
     });
   if (rows.length === 0) return "Нет отгрузок";
   const word = rows.length === 1 ? "отгрузка" : "отгрузок";
@@ -92,6 +90,79 @@ function VariantsBadge({ supplierCount, buyerCount }: { supplierCount: number; b
     >
       +{total} лин.
     </span>
+  );
+}
+
+// Click-toggle popover on a volume cell. First open fires a lazy
+// shipment_registry query (cached at module level — see
+// fetchDealShipments); subsequent opens for the same deal hit the
+// cache and render instantly. Click outside closes. Uses createPortal
+// so the popover escapes the table's overflow-auto clipping context
+// and isn't trimmed when the cell is near the viewport edge.
+function VolumeBreakdownCell({
+  dealId, value, field, className,
+}: {
+  dealId: string;
+  value: number | null | undefined;
+  field: "loading_volume" | "shipment_volume";
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [shipments, setShipments] = useState<ShipmentSnap[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const cellRef = useRef<HTMLTableCellElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (cellRef.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
+  async function toggle() {
+    if (open) { setOpen(false); return; }
+    const rect = cellRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
+    setOpen(true);
+    if (shipments !== null) return;
+    setLoading(true);
+    try {
+      const data = await fetchDealShipments(dealId);
+      setShipments(data);
+    } catch {
+      setShipments([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <td
+        ref={cellRef}
+        onClick={toggle}
+        className={`${className ?? ""} cursor-pointer ${open ? "ring-2 ring-amber-300/70" : ""}`}
+      >
+        {formatComputedVol(value)}
+      </td>
+      {open && pos && typeof window !== "undefined" && createPortal(
+        <div
+          ref={popRef}
+          style={{ top: pos.top, right: pos.right }}
+          className="fixed z-50 min-w-[200px] max-w-[300px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl whitespace-pre-line font-mono tabular-nums"
+        >
+          {loading || shipments === null ? "Загрузка…" : shipmentLines(shipments, field)}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -404,7 +475,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.supplier_price)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "loading_volume")}>{formatComputedVol(deal.supplier_shipped_volume)}</td>
+              <VolumeBreakdownCell
+                dealId={deal.id}
+                value={deal.supplier_shipped_volume}
+                field="loading_volume"
+                className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500"
+              />
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">
                 <ComputedNumSigned value={deal.supplier_balance} />
@@ -445,7 +521,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.buyer_price)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "shipment_volume")}>{formatComputedVol(deal.buyer_shipped_volume)}</td>
+              <VolumeBreakdownCell
+                dealId={deal.id}
+                value={deal.buyer_shipped_volume}
+                field="shipment_volume"
+                className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500"
+              />
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: оплата − отгружено">
@@ -461,7 +542,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
               <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "shipment_volume")}>{formatComputedVol(deal.actual_shipped_volume)}</td>
+              <VolumeBreakdownCell
+                dealId={deal.id}
+                value={deal.actual_shipped_volume}
+                field="shipment_volume"
+                className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500"
+              />
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
               <td className="px-1 py-0.5">
                 <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
