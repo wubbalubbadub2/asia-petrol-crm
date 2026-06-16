@@ -14,6 +14,7 @@ import {
   Fuel,
   Users,
   Briefcase,
+  PackageCheck,
 } from "lucide-react";
 
 const sections = [
@@ -40,6 +41,12 @@ const sections = [
     href: "/spravochnik/forwarders",
     icon: Truck,
     description: "Транспортные операторы",
+  },
+  {
+    title: "Грузополучатели",
+    href: "/spravochnik/consignees",
+    icon: PackageCheck,
+    description: "Получатели груза по ЖД накладным",
   },
   {
     title: "Станции",

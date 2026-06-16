@@ -325,7 +325,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   const [deal, setDeal] = useState<DRef | null>(null);
   const [w, setW] = useState(""); const [v, setV] = useState(""); const [lv, setLv] = useState("");
   const [dt, setDt] = useState(""); const [sm, setSm] = useState(""); const [sf, setSf] = useState("");
-  const [cm, setCm] = useState("");
+  const [cm, setCm] = useState(""); const [wb, setWb] = useState("");
   const [tariffVal, setTariffVal] = useState<number | null>(group.tariff);
   const [curOverride, setCurOverride] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -420,6 +420,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       departure_station_id: deal?.supplier_departure_station_id || firstRec?.departure_station_id || null,
       railway_tariff: tariff, company_group_id: deal?.logistics_company_group_id || firstRec?.company_group_id || null,
       wagon_number: w, shipment_volume: parseFloat(v),
+      waybill_number: wb || null,
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
       currency: curOverride || null, comment: cm || null,
       supplier_line_id: supLineMatch?.id ?? null,
@@ -427,7 +428,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       supplier_appendix: supLineMatch?.appendix ?? null,
       buyer_appendix: buyLineMatch?.appendix ?? null,
     });
-    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); setCm(""); setApx(""); onDone();
+    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); setCm(""); setApx(""); setWb(""); onDone();
   }
 
   // Show deal info in the row (from fetched deal or group)
@@ -452,6 +453,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{buyerName}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{fwName}</td>
       <td className="border-r px-1 py-1"><input value={w} onChange={(e) => setW(e.target.value)} placeholder="№ вагона *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" /></td>
+      <td className="border-r px-1 py-1"><input value={wb} onChange={(e) => setWb(e.target.value)} placeholder="№ накл." className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-1 py-1"><input type="number" step="0.001" value={v} onChange={(e) => setV(e.target.value)} placeholder="тонн *" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
       <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-1 py-1">
@@ -907,6 +909,10 @@ export default function RegistryPage() {
   const [forwarderFilter, setForwarderFilter] = useState("");
   const [dealFilter, setDealFilter] = useState("");
   const [companyGroupFilter, setCompanyGroupFilter] = useState("");
+  // Substring filters on wagon / waybill numbers — operator needs to
+  // jump straight to a specific shipment without scrolling groups.
+  const [wagonFilter, setWagonFilter] = useState("");
+  const [waybillFilter, setWaybillFilter] = useState("");
 
   // Reset selection when tab switches — selected ids belong to the previous tab.
   useEffect(() => { setSelected(new Set()); }, [tab]);
@@ -942,13 +948,17 @@ export default function RegistryPage() {
   // Apply header filters before grouping. Tab is already server-side
   // (useRegistry pulls KG xor KZ); the rest narrow the rendered set.
   const filteredRecords = useMemo(() => {
+    const wq = wagonFilter.trim().toLowerCase();
+    const bq = waybillFilter.trim().toLowerCase();
     return records.filter((r) => {
       if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
       if (dealFilter && r.deal_id !== dealFilter) return false;
       if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
+      if (wq && !(r.wagon_number ?? "").toLowerCase().includes(wq)) return false;
+      if (bq && !(r.waybill_number ?? "").toLowerCase().includes(bq)) return false;
       return true;
     });
-  }, [records, forwarderFilter, dealFilter, companyGroupFilter]);
+  }, [records, forwarderFilter, dealFilter, companyGroupFilter, wagonFilter, waybillFilter]);
   const groups = groupRecs(filteredRecords);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
 
@@ -967,9 +977,11 @@ export default function RegistryPage() {
   }, [records]);
 
   const activeFilterCount =
-    (forwarderFilter ? 1 : 0) + (dealFilter ? 1 : 0) + (companyGroupFilter ? 1 : 0);
+    (forwarderFilter ? 1 : 0) + (dealFilter ? 1 : 0) + (companyGroupFilter ? 1 : 0) +
+    (wagonFilter.trim() ? 1 : 0) + (waybillFilter.trim() ? 1 : 0);
   function clearRegistryFilters() {
     setForwarderFilter(""); setDealFilter(""); setCompanyGroupFilter("");
+    setWagonFilter(""); setWaybillFilter("");
   }
 
   // Page-level reference data (loaded once, shared with inline ES cells)
@@ -1026,10 +1038,11 @@ export default function RegistryPage() {
       </div>
 
       {/* Header filters — narrow the visible shipments by forwarder /
-          deal / company group. Tab (KG/KZ) is already a separate axis.
-          All three are searchable (cmdk-backed) so long lists stay
-          navigable. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          deal / company group + substring search by вагон / накладная.
+          Tab (KG/KZ) is already a separate axis. Dropdowns are
+          cmdk-backed so long lists stay navigable; the two text inputs
+          filter via case-insensitive includes. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
         <SearchableSelect
           value={forwarderFilter} onChange={setForwarderFilter}
           options={fwOpts}
@@ -1044,6 +1057,18 @@ export default function RegistryPage() {
           value={companyGroupFilter} onChange={setCompanyGroupFilter}
           options={cgOpts}
           placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
+        />
+        <Input
+          value={wagonFilter}
+          onChange={(e) => setWagonFilter(e.target.value)}
+          placeholder="№ вагона…"
+          className="h-9 text-[12px] font-mono"
+        />
+        <Input
+          value={waybillFilter}
+          onChange={(e) => setWaybillFilter(e.target.value)}
+          placeholder="№ ЖД накладной…"
+          className="h-9 text-[12px] font-mono"
         />
         {activeFilterCount > 0 && (
           <Button size="sm" variant="ghost" onClick={clearRegistryFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600 justify-self-start">
@@ -1129,6 +1154,7 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">покупатель</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">экспедитор</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">№ ЖД накл.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Тонн</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
@@ -1164,6 +1190,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={r.buyer?.short_name ?? r.buyer?.full_name ?? ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.forwarder_id} displayLabel={r.forwarder?.name ?? ""} recId={r.id} field="forwarder_id" options={fwOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.wagon_number} recId={r.id} field="wagon_number" onSaved={reload} cls="font-mono" /></td>
+                              <td className="border-r px-1 py-0.5"><EC value={r.waybill_number} recId={r.id} field="waybill_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>

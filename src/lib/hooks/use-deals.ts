@@ -101,6 +101,19 @@ export type Deal = {
   // (see annotateLineCounts).
   supplier_lines?: DealLineSnapshot[];
   buyer_lines?: DealLineSnapshot[];
+  // Per-deal shipments — feeds the hover-tooltip breakdown of «Отгр.
+  // тонн» / «Факт объем» so the operator can see which wagons sum into
+  // the displayed total without leaving the passport.
+  shipments?: ShipmentSnap[];
+};
+
+export type ShipmentSnap = {
+  id: string;
+  wagon_number: string | null;
+  waybill_number: string | null;
+  loading_volume: number | null;
+  shipment_volume: number | null;
+  date: string | null;
 };
 
 export type DealLineSnapshot = {
@@ -127,7 +140,8 @@ const DEAL_SELECT = `
   logistics_company_group:company_groups!logistics_company_group_id(name),
   deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency, company_group:company_groups(name)),
   supplier_lines:deal_supplier_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
-  buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation)
+  buyer_lines:deal_buyer_lines(id, is_default, price, price_stage, preliminary_price, preliminary_quotation),
+  shipments:shipment_registry(id, wagon_number, waybill_number, loading_volume, shipment_volume, date)
 `;
 
 // Annotate fetched deals with simple line counts so the passport table
