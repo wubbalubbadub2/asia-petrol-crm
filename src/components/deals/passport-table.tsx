@@ -8,16 +8,15 @@ import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { toast } from "sonner";
 
-// Build a multi-line tooltip that lists every shipment contributing to
-// the visible volume sum (loading_volume for «налив» / shipment_volume
-// for «тонн» / «факт»). Browsers respect \n in `title` attributes so a
-// plain string is enough — no popover component, no extra JS.
+// Multi-line tooltip listing the volumes that sum into the cell.
+// Format per client: header = N отгрузок only (no technical column
+// label), then one line per shipment as «объём · дата». No wagon
+// number, no surrounding text. Browsers respect \n in `title`.
 function shipmentBreakdown(
   shipments: ShipmentSnap[] | undefined,
   field: "loading_volume" | "shipment_volume",
-  totalLabel: string,
 ): string {
-  if (!shipments || shipments.length === 0) return `${totalLabel}\n(нет отгрузок в реестре)`;
+  if (!shipments || shipments.length === 0) return "Нет отгрузок";
   const rows = shipments
     .filter((s) => s[field] != null)
     .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
@@ -25,12 +24,12 @@ function shipmentBreakdown(
       const v = (s[field] as number).toLocaleString("ru-RU", {
         minimumFractionDigits: 3, maximumFractionDigits: 3,
       });
-      const w = s.wagon_number || "—";
       const d = s.date ? s.date.slice(0, 10).split("-").reverse().join(".") : "";
-      return `${w}: ${v}${d ? "  ·  " + d : ""}`;
+      return d ? `${v}  ·  ${d}` : v;
     });
-  if (rows.length === 0) return `${totalLabel}\n(нет отгрузок с этим объёмом)`;
-  return `${totalLabel} · ${rows.length} ${rows.length === 1 ? "отгрузка" : "отгрузок"}\n${rows.join("\n")}`;
+  if (rows.length === 0) return "Нет отгрузок";
+  const word = rows.length === 1 ? "отгрузка" : "отгрузок";
+  return `${rows.length} ${word}\n${rows.join("\n")}`;
 }
 
 function formatNum(val: number | null | undefined): string {
@@ -405,7 +404,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.supplier_price)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "loading_volume", "налив (loading_volume) — реестр")}>{formatComputedVol(deal.supplier_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "loading_volume")}>{formatComputedVol(deal.supplier_shipped_volume)}</td>
               <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">
                 <ComputedNumSigned value={deal.supplier_balance} />
@@ -446,7 +445,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.buyer_price)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "shipment_volume", "тонн (shipment_volume) — реестр")}>{formatComputedVol(deal.buyer_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "shipment_volume")}>{formatComputedVol(deal.buyer_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
               <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
               <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: оплата − отгружено">
@@ -462,7 +461,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               </td>
               <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
-              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "shipment_volume", "факт (shipment_volume) — реестр")}>{formatComputedVol(deal.actual_shipped_volume)}</td>
+              <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500 cursor-help" title={shipmentBreakdown(deal.shipments, "shipment_volume")}>{formatComputedVol(deal.actual_shipped_volume)}</td>
               <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
               <td className="px-1 py-0.5">
                 <EditableSelectCell value={deal.supplier_manager_id} displayLabel={deal.supplier_manager?.full_name ?? ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
