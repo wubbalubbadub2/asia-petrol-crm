@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import { useDelayed } from "@/lib/hooks/use-delayed";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
 
@@ -202,6 +203,7 @@ export default function DtKtPage() {
   const sb = useRef(createClient());
   const [records, setRecords] = useState<DtKtRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoader = useDelayed(loading);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [showAdd, setShowAdd] = useState(false);
   const [registrySums, setRegistrySums] = useState<RegistrySums[]>([]);
@@ -445,7 +447,7 @@ export default function DtKtPage() {
         </div>
       </div>
 
-      {loading && records.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
+      {showLoader && records.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
       : records.length === 0 ? (
         <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
           <p className="text-sm text-stone-500">Нет данных за {yearFilter} год</p>

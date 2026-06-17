@@ -252,8 +252,7 @@ export type DealFilters = {
   month?: string;
   isArchived?: boolean;
   // Server-side filters — push down to the SELECT instead of fetching
-  // every deal and filtering in JS. Page mount cost goes from
-  // O(all deals of the year) to O(pageSize).
+  // every deal and filtering in JS.
   supplierId?: string;
   buyerId?: string;
   factoryId?: string;
@@ -262,8 +261,6 @@ export type DealFilters = {
   logisticsCompanyGroupId?: string;
   applicationContract?: string;
   searchCode?: string;
-  page?: number;     // 0-indexed; default 0
-  pageSize?: number; // default 50
 };
 
 // Module-level stale-while-revalidate cache. Keyed by JSON-stringified
@@ -291,65 +288,66 @@ export function useDeals(filters?: DealFilters) {
   const [loading, setLoading] = useState(!cached);
   const supabaseRef = useRef(createClient());
 
-  const pageSize = filters?.pageSize ?? 50;
-  const page = filters?.page ?? 0;
-
-  // We deliberately do NOT toggle loading back to true on reload.
-  // The passport page renders «Загрузка паспорта…» whenever
-  // loading is true — that unmounts the table and the user perceives
-  // a full page reload every time an inline edit fires the parent
-  // refetch. Initial mount sets loading once via useState(true) and
-  // flips to false after the first fetch; subsequent reloads swap
-  // data silently while the table stays mounted (filtered rows,
-  // scroll, focus, cell edit state all preserved). Same pattern
-  // useDeal already uses for the deal-detail page.
+  // Client wanted the passport back as one scrollable list — no
+  // pagination controls. We still paginate INTERNALLY against the
+  // 1000-row PostgREST cap, but stream every page into a single array
+  // and only flip loading=false once. LIST_SELECT is now lean enough
+  // (no FK joins, just three id-only embeds) that even ~500 rows
+  // come back well under a second.
+  const PAGE = 1000;
   const load = useCallback(async () => {
-    let q = supabaseRef.current
-      .from("deals")
-      .select(LIST_SELECT, { count: "exact" });
-    q = q.or("is_draft.is.null,is_draft.eq.false");
-    if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
-    if (filters?.year) q = q.eq("year", filters.year);
-    if (filters?.month) q = q.eq("month", filters.month);
-    if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
-    if (filters?.supplierId) q = q.eq("supplier_id", filters.supplierId);
-    if (filters?.buyerId) q = q.eq("buyer_id", filters.buyerId);
-    if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
-    if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
-    if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
-    if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
-    if (filters?.applicationContract) {
-      const c = filters.applicationContract.replace(/,/g, "\\,");
-      q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
+    const baseFilter = (qb: ReturnType<typeof supabaseRef.current.from>) => {
+      let q = qb.select(LIST_SELECT, { count: "exact" }) as ReturnType<typeof qb.select>;
+      q = q.or("is_draft.is.null,is_draft.eq.false");
+      if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
+      if (filters?.year) q = q.eq("year", filters.year);
+      if (filters?.month) q = q.eq("month", filters.month);
+      if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
+      if (filters?.supplierId) q = q.eq("supplier_id", filters.supplierId);
+      if (filters?.buyerId) q = q.eq("buyer_id", filters.buyerId);
+      if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
+      if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
+      if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
+      if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
+      if (filters?.applicationContract) {
+        const c = filters.applicationContract.replace(/,/g, "\\,");
+        q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
+      }
+      if (filters?.searchCode && filters.searchCode.trim()) {
+        q = q.ilike("deal_code", `%${filters.searchCode.trim()}%`);
+      }
+      return q.order("deal_number", { ascending: true });
+    };
+
+    const all: unknown[] = [];
+    let total = 0;
+    let from = 0;
+    for (;;) {
+      const { data, error, count } = await baseFilter(supabaseRef.current.from("deals"))
+        .range(from, from + PAGE - 1);
+      if (error) {
+        toast.error(`Ошибка загрузки сделок: ${error.message}`);
+        break;
+      }
+      const batch = (data ?? []) as unknown[];
+      all.push(...batch);
+      if (count != null) total = count;
+      if (batch.length < PAGE) break;
+      from += PAGE;
     }
-    if (filters?.searchCode && filters.searchCode.trim()) {
-      q = q.ilike("deal_code", `%${filters.searchCode.trim()}%`);
-    }
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-    q = q.order("deal_number", { ascending: true }).range(from, to);
-    const { data, error, count } = await q;
-    if (error) {
-      toast.error(`Ошибка загрузки сделок: ${error.message}`);
-    } else {
-      const rows = annotateLineCounts((data ?? []) as unknown as WithLines[]) as unknown as Deal[];
-      setData(rows);
-      setTotalCount(count ?? 0);
-      dealsCache.set(cacheKey, { data: rows, total: count ?? 0, ts: Date.now() });
-      // Pre-seed dealByIdCache with each visible row so clicking
-      // into a deal from the list opens instantly — useDeal hits the
-      // cached partial snapshot, paints the form, then quietly
-      // upgrades to the full DEAL_SELECT in background.
-      const now = Date.now();
-      for (const d of rows) dealByIdCache.set(d.id, { data: d, ts: now });
-    }
+    const rows = annotateLineCounts(all as WithLines[]) as unknown as Deal[];
+    setData(rows);
+    setTotalCount(total);
+    dealsCache.set(cacheKey, { data: rows, total, ts: Date.now() });
+    const now = Date.now();
+    for (const d of rows) dealByIdCache.set(d.id, { data: d, ts: now });
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filters?.dealType, filters?.year, filters?.month, filters?.isArchived,
     filters?.supplierId, filters?.buyerId, filters?.factoryId, filters?.fuelTypeId,
-    filters?.forwarderId, filters?.applicationContract, filters?.searchCode,
-    page, pageSize,
+    filters?.forwarderId, filters?.logisticsCompanyGroupId,
+    filters?.applicationContract, filters?.searchCode,
   ]);
 
   // Skip the background revalidation when the cached snapshot is still
@@ -357,7 +355,7 @@ export function useDeals(filters?: DealFilters) {
   // navigation between sibling pages.
   useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
-  return { data, totalCount, loading, reload: load, pageSize, page };
+  return { data, totalCount, loading, reload: load };
 }
 
 // dealByIdCache + DEAL_TTL_MS are declared above (hoisted for useDeals'

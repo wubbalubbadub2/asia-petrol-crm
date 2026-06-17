@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useRef, useContext, createContext, useMemo } from "react";
 import { useGlobalRefs } from "@/lib/refs";
+import { useDelayed } from "@/lib/hooks/use-delayed";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -351,10 +352,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   ];
   const monthOptions = MONTHS_RU.map((m) => ({ value: m, label: m }));
 
-  // Only block on first paint when there's nothing cached. With the
-  // SWR cache in useDeal, a deal you've opened before in this session
-  // paints instantly — the background refetch swaps in fresh data.
-  if (loading && !deal) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
+  // Only show the loader once the fetch has dragged past 800 ms —
+  // sub-second loads don't get a blocker. Cached snapshots paint
+  // instantly so the blocker only ever appears on the very first cold
+  // visit.
+  const showLoader = useDelayed(loading);
+  if (showLoader && !deal) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
   if (!deal) return <p className="text-sm text-destructive py-8">Сделка не найдена</p>;
 
   const symbolOf = (code: string) =>

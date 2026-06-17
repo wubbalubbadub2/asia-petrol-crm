@@ -13,6 +13,7 @@ import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/b
 import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useGlobalRefs } from "@/lib/refs";
+import { useDelayed } from "@/lib/hooks/use-delayed";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -900,6 +901,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
 export default function RegistryPage() {
   const [tab, setTab] = useState<"kg" | "kz">("kg");
   const { data: records, loading, reload } = useRegistry(tab === "kg" ? "KG" : "KZ");
+  const showRegistryLoader = useDelayed(loading);
   const [showAdd, setShowAdd] = useState(false);
   const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -1083,7 +1085,7 @@ export default function RegistryPage() {
         </div>
       )}
 
-      {loading && groups.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
+      {showRegistryLoader && groups.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
       : !loading && groups.length === 0 ? <div className="rounded-md border border-stone-200 bg-white py-12 text-center"><Truck className="h-8 w-8 text-stone-300 mx-auto mb-2" /><p className="text-sm text-stone-500">Реестр {tab.toUpperCase()} пуст</p></div>
       : <div className="space-y-2">
           {groups.map((g) => {

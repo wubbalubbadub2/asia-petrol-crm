@@ -8,6 +8,7 @@ import { type Deal, type ShipmentSnap, updateDeal, fetchDealShipments } from "@/
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
+import { useDelayed } from "@/lib/hooks/use-delayed";
 import { toast } from "sonner";
 
 // Format the lazy-loaded shipments into the popover body. Header is
@@ -371,11 +372,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   const managerLabels = useMemo(() => new Map(g.managers.map((p) => [p.id, p.full_name])), [g.managers]);
   const cgLabels = useMemo(() => new Map(g.companyGroups.map((r) => [r.id, r.name])), [g.companyGroups]);
 
-  // Only block the table when there's truly nothing to show. With the
-  // SWR cache in useDeals, navigating back to a previously-visited
-  // page already has rows in `deals` — paint them instantly while the
-  // background refetch swaps in fresh data.
-  if (loading && deals.length === 0) return <p className="text-sm text-muted-foreground py-4">Загрузка паспорта...</p>;
+  // Only show the loader after the fetch has dragged past 800 ms —
+  // sub-second loads don't get a blocker at all, so the layout doesn't
+  // flash. With the SWR cache in useDeals navigating back to a
+  // previously-visited page also shows nothing because `deals` is
+  // already populated; the refetch then runs silently.
+  const showLoader = useDelayed(loading);
+  if (showLoader && deals.length === 0) return <p className="text-sm text-muted-foreground py-4">Загрузка паспорта...</p>;
   if (!loading && deals.length === 0) return (
     <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
       <p className="text-sm text-stone-500">Нет сделок{dealType !== "ALL" ? ` типа ${dealType}` : ""}</p>
