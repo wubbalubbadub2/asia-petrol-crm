@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,12 +18,21 @@ import {
 import { useDeals, type Deal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
-import { PassportTable } from "@/components/deals/passport-table";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useRole } from "@/lib/hooks/use-role";
 import { useGlobalRefs } from "@/lib/refs";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+
+// PassportTable + всё что оно тянет (EditableXXXCell × ~10,
+// VolumeBreakdownCell с createPortal, total row) — ~666 строк
+// клиентского кода. Раньше входило в /deals route chunk и тормозило
+// саму навигацию на страницу. Теперь догружается отдельным chunk'ом
+// после рендера chrome — фильтры показываются сразу.
+const PassportTable = dynamic(
+  () => import("@/components/deals/passport-table").then((m) => m.PassportTable),
+  { ssr: false, loading: () => null },
+);
 
 const tabs = [
   { key: "list", label: "Все сделки" },
