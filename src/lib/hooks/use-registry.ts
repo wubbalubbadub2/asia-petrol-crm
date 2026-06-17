@@ -46,23 +46,23 @@ export type ShipmentRecord = {
   additional_month: string | null;
   currency: string | null;
   created_at: string;
-  // Joined
-  destination_station?: { name: string } | null;
-  departure_station?: { name: string } | null;
-  fuel_type?: { name: string; color: string } | null;
+  // Joined — only `deal` is still embedded; deal_code / currency / year /
+  // month aren't in the global refs cache and the per-row cost is
+  // negligible. The other eight joins (destination_station,
+  // departure_station, fuel_type, factory, forwarder, company_group,
+  // supplier, buyer) used to ride this query too — they were eight
+  // single-row sub-selects per shipment, which on a 5000+-row registry
+  // cost the operator the 5–6 s cold paint. They've been dropped from
+  // REG_SELECT; the page resolves names from useGlobalRefs() instead.
   deal?: { deal_code: string; currency: string | null; year: number | null; month: string | null } | null;
-  factory?: { name: string } | null;
-  forwarder?: { name: string } | null;
-  company_group?: { name: string } | null;
-  supplier?: { short_name: string | null; full_name: string } | null;
-  buyer?: { short_name: string | null; full_name: string } | null;
 };
 
 // Explicit projection — was `*` pulling every shipment_registry
-// column whether the page uses it or not. Joins are kept (PostgREST
-// batches embedded resources via array-agg, so the per-row cost is
-// bounded); the win here is the smaller wire payload + JSON parse
-// per chunk.
+// column whether the page uses it or not. Eight of the nine joined
+// resources have been dropped (see ShipmentRecord above) — the
+// rendering layer resolves names from the warmed global-refs cache,
+// saving ~8 sub-selects × N rows of wire payload + JSON parse per
+// chunk.
 const REG_SELECT = `
   id, registry_type, row_number, quarter, month, date,
   waybill_number, wagon_number, shipment_volume, loading_volume,
@@ -75,15 +75,7 @@ const REG_SELECT = `
   rounded_volume_override, round_volume,
   supplier_appendix, buyer_appendix,
   invoice_number, comment, currency, created_at,
-  destination_station:stations!destination_station_id(name),
-  departure_station:stations!departure_station_id(name),
-  fuel_type:fuel_types(name, color),
-  deal:deals(deal_code, currency, year, month),
-  factory:factories(name),
-  forwarder:forwarders(name),
-  company_group:company_groups(name),
-  supplier:counterparties!supplier_id(short_name, full_name),
-  buyer:counterparties!buyer_id(short_name, full_name)
+  deal:deals(deal_code, currency, year, month)
 `;
 
 // Stale-while-revalidate cache keyed by tab (KG / KZ). Navigating back
