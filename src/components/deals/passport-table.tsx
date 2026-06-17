@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, createContext, useContext, memo }
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { type Deal, type ShipmentSnap, updateDeal, fetchDealShipments } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
@@ -566,6 +567,29 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   const refs = useRefs();
   const { refs: g } = useGlobalRefs();
 
+  // Virtualization: with 500+ deals × ~36 cells each, mounting every row
+  // synchronously blocks the route commit by 5+ seconds. We render only
+  // the rows visible in the viewport (+ overscan) and pad the rest with
+  // two phantom <tr> rows that reserve vertical space via colSpan=36.
+  //
+  // Why phantom rows instead of absolute positioning: native <table>
+  // layout doesn't accept absolutely-positioned <tr> children without
+  // breaking column-width inheritance from <thead>. A pair of spacer
+  // rows with explicit `height` keeps the table layout intact, which
+  // means the sticky <thead> column widths still cascade to the body
+  // (each <th> has min-w-[NN] declared above), and PassportTotalsRow
+  // can still sit at the natural bottom of <tbody>.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: deals.length,
+    getScrollElement: () => scrollRef.current,
+    // Body rows are tightly packed (~28 px). The virtualizer
+    // re-measures real rows post-mount so this only needs to be
+    // close — overscan absorbs any slop on initial scroll.
+    estimateSize: () => 28,
+    overscan: 8,
+  });
+
   // Resolver maps — passport rows used to read joined names from the
   // deals query (deal.supplier?.short_name etc), but those embeds were
   // 7 sub-selects per row. We dropped them from LIST_SELECT and look
@@ -616,7 +640,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
   return (
     <PassportRefsContext.Provider value={refsContextValue}>
-      <div className="overflow-auto h-full rounded-md border border-stone-200 bg-white">
+      <div ref={scrollRef} className="overflow-auto h-full rounded-md border border-stone-200 bg-white">
         {/* The wrapper has its OWN vertical + horizontal scroll context.
             The page above is non-scrollable; users scroll the table
             internally.
@@ -687,22 +711,93 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             </tr>
           </thead>
           <tbody>
-            {isColdLoad
-              ? Array.from({ length: 12 }).map((_, i) => <PassportSkeletonRow key={`sk-${i}`} />)
-              : deals.map((deal) => (
-                  <PassportRow key={deal.id} deal={deal} onDataChanged={onDataChanged} />
-                ))}
+            {isColdLoad ? (
+              Array.from({ length: 12 }).map((_, i) => <PassportSkeletonRow key={`sk-${i}`} />)
+            ) : (
+              <VirtualizedRows
+                deals={deals}
+                virtualizer={rowVirtualizer}
+                onDataChanged={onDataChanged}
+              />
+            )}
             {/* Totals: sum numeric columns across visible (filtered) rows.
                 Mirrors the column ordering above. Empty cells under
                 identity / contract-text columns keep the layout aligned.
                 Mixed currencies are summed as raw numbers — the dashboard
                 already does the same, and per-side currency picker is per
-                deal, not a global field. */}
+                deal, not a global field.
+
+                Sits OUTSIDE the virtualized range (after the bottom
+                spacer) so it always renders at the natural bottom of
+                the table regardless of scroll position. */}
             {!isColdLoad && <PassportTotalsRow deals={deals} />}
           </tbody>
         </table>
       </div>
     </PassportRefsContext.Provider>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  VirtualizedRows
+//
+//  Renders only the rows currently visible in the scroll container
+//  (plus an overscan of 8 above/below). The unrendered range is
+//  reserved with two spacer <tr>s carrying explicit heights so the
+//  table preserves its column widths and the totals row below sits
+//  at the correct natural bottom.
+//
+//  The total visible column count is 36 (5 Сделка + 10 Поставщик
+//  + 2 Группы компании + 11 Покупатель + 8 Логистика); the spacer
+//  rows use colSpan=36 to span the full table without disturbing
+//  any column.
+// ─────────────────────────────────────────────────────────────────────
+
+const TOTAL_COLS = 36;
+
+type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
+
+function VirtualizedRows({
+  deals,
+  virtualizer,
+  onDataChanged,
+}: {
+  deals: Deal[];
+  virtualizer: VirtualizerInstance;
+  onDataChanged: () => void;
+}) {
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? totalSize - virtualItems[virtualItems.length - 1].end
+      : 0;
+
+  return (
+    <>
+      {paddingTop > 0 && (
+        <tr aria-hidden style={{ height: paddingTop }}>
+          <td colSpan={TOTAL_COLS} />
+        </tr>
+      )}
+      {virtualItems.map((vi) => {
+        const deal = deals[vi.index];
+        if (!deal) return null;
+        return (
+          <PassportRow
+            key={deal.id}
+            deal={deal}
+            onDataChanged={onDataChanged}
+          />
+        );
+      })}
+      {paddingBottom > 0 && (
+        <tr aria-hidden style={{ height: paddingBottom }}>
+          <td colSpan={TOTAL_COLS} />
+        </tr>
+      )}
+    </>
   );
 }
 
