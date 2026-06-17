@@ -6,6 +6,7 @@ import { TopBar } from "@/components/layout/top-bar";
 import { AuthGuard } from "@/components/layout/auth-guard";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getGlobalRefs } from "@/lib/refs";
+import { prefetchDeals } from "@/lib/hooks/use-deals";
 
 export default function DashboardLayout({
   children,
@@ -14,11 +15,18 @@ export default function DashboardLayout({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Warm the global refs cache once the dashboard mounts. The first
-  // child page that calls useGlobalRefs() then reads synchronously
-  // instead of paying for 10 parallel ref queries on its own mount.
+  // Warm both caches the moment the dashboard chrome paints — while
+  // the operator is still on the dashboard, refs + the default deals
+  // query (current year, no other filters — the most-likely landing)
+  // are already streaming. By the time they click «Сделки» in the
+  // sidebar, the data is in dealsCache and useDeals paints
+  // synchronously: no «request fires after 4s» delay.
   useEffect(() => {
     void getGlobalRefs();
+    void prefetchDeals({
+      year: new Date().getFullYear(),
+      isArchived: false,
+    });
   }, []);
 
   return (

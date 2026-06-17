@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
-import NextTopLoader from "nextjs-toploader";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
+// nextjs-toploader removed (client feedback 2026-06-17): the orange
+// progress line was painting for 4+ seconds during route transitions,
+// reading as a blocker instead of progress. Without it the new page
+// content streams in directly — same nav speed, no false «still
+// loading» signal.
 
 export const metadata: Metadata = {
   title: "Singularity Trading CRM",
@@ -33,7 +37,6 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <NextTopLoader color="#D97706" height={2} showSpinner={false} />
         <TooltipProvider>
           {children}
         </TooltipProvider>

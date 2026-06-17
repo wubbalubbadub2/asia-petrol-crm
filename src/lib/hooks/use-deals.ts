@@ -295,6 +295,54 @@ const DEALS_TTL_MS = 60_000;
 const dealByIdCache = new Map<string, { data: Deal; ts: number }>();
 const DEAL_TTL_MS = 60_000;
 
+// Standalone fetcher — same logic as useDeals' internal load, but
+// callable from non-React contexts (e.g. the dashboard layout's
+// effect-less warm-up). Writes straight into dealsCache so the
+// subsequent useDeals call paints synchronously.
+export async function prefetchDeals(filters?: DealFilters): Promise<void> {
+  const cacheKey = JSON.stringify(filters ?? {});
+  const cached = dealsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < DEALS_TTL_MS) return;
+  const sb = createClient();
+  const PAGE = 1000;
+  const baseFilter = (qb: ReturnType<typeof sb.from>) => {
+    let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
+    q = q.eq("is_draft", false);
+    if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
+    if (filters?.year) q = q.eq("year", filters.year);
+    if (filters?.month) q = q.eq("month", filters.month);
+    if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
+    if (filters?.supplierId) q = q.eq("supplier_id", filters.supplierId);
+    if (filters?.buyerId) q = q.eq("buyer_id", filters.buyerId);
+    if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
+    if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
+    if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
+    if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
+    if (filters?.applicationContract) {
+      const c = filters.applicationContract.replace(/,/g, "\\,");
+      q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
+    }
+    if (filters?.searchCode && filters.searchCode.trim()) {
+      q = q.ilike("deal_code", `%${filters.searchCode.trim()}%`);
+    }
+    return q.order("deal_number", { ascending: true });
+  };
+  const all: unknown[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await baseFilter(sb.from("deals")).range(from, from + PAGE - 1);
+    if (error) return;
+    const batch = (data ?? []) as unknown[];
+    all.push(...batch);
+    if (batch.length < PAGE) break;
+    from += PAGE;
+  }
+  const rows = annotateLineCounts(all as WithLines[]) as unknown as Deal[];
+  dealsCache.set(cacheKey, { data: rows, total: rows.length, ts: Date.now() });
+  const now = Date.now();
+  for (const d of rows) dealByIdCache.set(d.id, { data: d, ts: now });
+}
+
 export function useDeals(filters?: DealFilters) {
   const cacheKey = JSON.stringify(filters ?? {});
   const cached = dealsCache.get(cacheKey);
