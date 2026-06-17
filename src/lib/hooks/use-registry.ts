@@ -58,8 +58,23 @@ export type ShipmentRecord = {
   buyer?: { short_name: string | null; full_name: string } | null;
 };
 
+// Explicit projection — was `*` pulling every shipment_registry
+// column whether the page uses it or not. Joins are kept (PostgREST
+// batches embedded resources via array-agg, so the per-row cost is
+// bounded); the win here is the smaller wire payload + JSON parse
+// per chunk.
 const REG_SELECT = `
-  *,
+  id, registry_type, row_number, quarter, month, date,
+  waybill_number, wagon_number, shipment_volume, loading_volume,
+  destination_station_id, departure_station_id,
+  fuel_type_id, deal_id, factory_id, supplier_id, forwarder_id,
+  buyer_id, company_group_id,
+  shipment_month, additional_month,
+  railway_tariff, rounded_tonnage_from_forwarder,
+  shipped_tonnage_amount, shipped_tonnage_amount_override,
+  rounded_volume_override, round_volume,
+  supplier_appendix, buyer_appendix,
+  invoice_number, comment, currency, created_at,
   destination_station:stations!destination_station_id(name),
   departure_station:stations!departure_station_id(name),
   fuel_type:fuel_types(name, color),
@@ -93,44 +108,49 @@ export function useRegistry(type: "KG" | "KZ") {
 
   const load = useCallback(async () => {
     const requestedType = type;
-    // PostgREST's default Max-Rows is 1000 and a hard `.limit(500)` here
-    // was silently dropping every shipment past the 500th most-recent
-    // date — entire deals would disappear from the table once the
-    // registry crossed that threshold. Page through `.range()` until a
-    // short page tells us we're done. Same fix as the quotation summary.
-    //
-    // We do NOT toggle loading back to true on background revalidation —
-    // the cached snapshot stays painted while we silently refresh.
-    const all: ShipmentRecord[] = [];
+    // Two-step load: (1) HEAD with count:exact to learn the size,
+    // (2) fire every page in parallel. Sequential pagination used to
+    // serialize N round-trips (the Network tab showed 5 chunks each
+    // taking 2–7 s, blocking each other). Parallel = max(RTT) instead
+    // of sum(RTT). We still don't toggle loading=true on background
+    // revalidation — cached snapshot stays painted while we refresh.
     const pageSize = 1000;
-    let from = 0;
-    for (;;) {
-      // If the tab changed while we were paginating, bail before issuing
-      // another network round-trip.
-      if (currentTypeRef.current !== requestedType) return;
-      const { data, error } = await supabase
+    const head = await supabase
+      .from("shipment_registry")
+      .select("id", { count: "exact", head: true })
+      .eq("registry_type", requestedType);
+    if (currentTypeRef.current !== requestedType) return;
+    if (head.error) {
+      toast.error(`Ошибка загрузки реестра: ${head.error.message}`);
+      return;
+    }
+    const total = head.count ?? 0;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const requests = Array.from({ length: pages }, (_, i) =>
+      supabase
         .from("shipment_registry")
         .select(REG_SELECT)
         .eq("registry_type", requestedType)
-        // Default null ordering for DESC in Postgres is NULLS FIRST,
-        // so freshly created shipments without a date appear at the top
-        // until the user fills the date in. The secondary sort on
-        // created_at keeps that group itself in newest-first order.
+        // NULLS FIRST so freshly created shipments without a date
+        // appear at the top until the user fills the date in. The
+        // secondary sort on created_at keeps that group newest-first.
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
-        .range(from, from + pageSize - 1);
-      if (error) {
-        toast.error(`Ошибка загрузки реестра: ${error.message}`);
-        break;
-      }
-      const rows = (data ?? []) as ShipmentRecord[];
-      all.push(...rows);
-      if (rows.length < pageSize) break;
-      from += pageSize;
-    }
-    // Final guard: if the tab flipped between the last page returning
-    // and this commit, drop the stale result on the floor.
+        .range(i * pageSize, (i + 1) * pageSize - 1),
+    );
+    const settled = await Promise.all(requests);
     if (currentTypeRef.current !== requestedType) return;
+    const all: ShipmentRecord[] = [];
+    for (const r of settled) {
+      if (r.error) {
+        toast.error(`Ошибка загрузки реестра: ${r.error.message}`);
+        continue;
+      }
+      // database.ts is stale on round_volume / supplier_appendix /
+      // buyer_appendix (added by migrations 00072/00086) — cast through
+      // unknown until `npm run types:db` is rerun.
+      all.push(...((r.data ?? []) as unknown as ShipmentRecord[]));
+    }
     setData(all);
     registryCache.set(requestedType, { data: all, ts: Date.now() });
     setLoading(false);
