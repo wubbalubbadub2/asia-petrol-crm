@@ -1,14 +1,20 @@
 /**
  * Parses a multi-line paste (from Excel or hand-typed) into wagon rows.
  *
- * Input examples (one row per line):
- *   51742534                                           → wagon only
- *   51742534\t54,719                                   → wagon + volume
- *   51742534\t54.719\t05.11.2025                       → wagon + volume + date
- *   51742534\t54.719\t05.11.2025\tЭД0012345            → wagon + volume + date + waybill #
+ * Column order (client request, 2026-06-17 — matches their Excel registries):
+ *   дата   №_накладной   №_вагона   объём
  *
- * Column order: wagon, volume, date, waybill. Volume column maps to either
- * `shipment_volume` or `loading_volume` at save time (UI toggle).
+ * Input examples (one row per line):
+ *   05.11.2025\tЭД0012345\t51742534\t54,719   → full row
+ *   05.11.2025\tЭД0012345\t51742534           → no volume
+ *   51742534                                    → bare wagon (legacy paste)
+ *
+ * Legacy auto-detection: if no cell on the row parses as a date, we
+ * fall back to the previous order (wagon, volume, date, waybill) so old
+ * pastes still work.
+ *
+ * Volume column maps to either `shipment_volume` or `loading_volume` at
+ * save time (UI toggle).
  *
  * Accepts:
  *   - Column separator: tab preferred; falls back to 2+ spaces, then single whitespace
@@ -103,10 +109,34 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
   const out: ParsedWagon[] = [];
   for (let i = startIdx; i < lines.length; i++) {
     const cells = splitLine(lines[i]);
-    const wagon = (cells[0] ?? "").replace(/\s/g, "");
-    const volumeRaw = cells[1];
-    const dateRaw = cells[2];
-    const waybillRaw = cells[3];
+
+    // Auto-detect order. The new (2026-06-17) Excel layout is
+    //   дата | накладная | вагон | объём
+    // The legacy layout was
+    //   вагон | объём | дата | накладная
+    // Sniff the first cell as a date — if it parses, the row is the
+    // new layout; if not, fall back to the legacy mapping so old
+    // pastes keep working. A bare wagon row (single cell) defaults to
+    // legacy.
+    const firstAsDate = parseDate(cells[0]);
+    const isNewLayout = firstAsDate !== null && cells.length >= 2;
+
+    let wagon: string;
+    let volumeRaw: string | undefined;
+    let dateRaw: string | undefined;
+    let waybillRaw: string | undefined;
+
+    if (isNewLayout) {
+      dateRaw = cells[0];
+      waybillRaw = cells[1];
+      wagon = (cells[2] ?? "").replace(/\s/g, "");
+      volumeRaw = cells[3];
+    } else {
+      wagon = (cells[0] ?? "").replace(/\s/g, "");
+      volumeRaw = cells[1];
+      dateRaw = cells[2];
+      waybillRaw = cells[3];
+    }
 
     const row: ParsedWagon = {
       wagon,

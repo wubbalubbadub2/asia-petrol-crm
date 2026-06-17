@@ -203,8 +203,27 @@ export async function fetchDealLinesForExport(
 // company_group name on each deal_company_groups row also resolves
 // from the refs cache — drop the nested join so the list query is
 // purely from the `deals` table + 3 lightweight `id`-only embeds.
+// Explicit column list — was `*` pulling all ~75 columns; passport-
+// table reads ~35. Halves wire payload + JSON parse cost (perf agent
+// audit, 2026-06-17).
 const LIST_SELECT = `
-  *,
+  id, deal_type, deal_number, year, deal_code, quarter, month,
+  factory_id, fuel_type_id, sulfur_percent,
+  supplier_id, supplier_contract, supplier_delivery_basis,
+  supplier_contracted_volume, supplier_contracted_amount, supplier_price,
+  supplier_shipped_amount, supplier_shipped_volume,
+  supplier_payment, supplier_payment_date, supplier_balance,
+  supplier_currency, supplier_manager_id,
+  buyer_id, buyer_contract, buyer_delivery_basis,
+  buyer_contracted_volume, buyer_contracted_amount, buyer_price,
+  buyer_ordered_volume, buyer_shipped_volume, buyer_shipped_amount,
+  buyer_payment, buyer_payment_date, buyer_debt,
+  buyer_currency, buyer_manager_id, trader_id,
+  buyer_destination_station_id, supplier_departure_station_id,
+  forwarder_id, logistics_company_group_id, logistics_shipment_month,
+  preliminary_tonnage, preliminary_amount, planned_tariff, actual_tariff,
+  actual_shipped_volume, invoice_amount, invoice_volume,
+  logistics_currency, currency, is_archived, is_draft, created_at,
   deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency),
   supplier_lines:deal_supplier_lines(id),
   buyer_lines:deal_buyer_lines(id)
@@ -297,8 +316,13 @@ export function useDeals(filters?: DealFilters) {
   const PAGE = 1000;
   const load = useCallback(async () => {
     const baseFilter = (qb: ReturnType<typeof supabaseRef.current.from>) => {
-      let q = qb.select(LIST_SELECT, { count: "exact" }) as ReturnType<typeof qb.select>;
-      q = q.or("is_draft.is.null,is_draft.eq.false");
+      // No count:"exact" — that forced a second full-predicate scan;
+      // total comes from `all.length` after the stream finishes.
+      let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
+      // is_draft is now backfilled NOT NULL DEFAULT false (migration
+      // 00091) so this is a sargable single-predicate filter instead
+      // of a NULLS OR.
+      q = q.eq("is_draft", false);
       if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
       if (filters?.year) q = q.eq("year", filters.year);
       if (filters?.month) q = q.eq("month", filters.month);
@@ -320,10 +344,9 @@ export function useDeals(filters?: DealFilters) {
     };
 
     const all: unknown[] = [];
-    let total = 0;
     let from = 0;
     for (;;) {
-      const { data, error, count } = await baseFilter(supabaseRef.current.from("deals"))
+      const { data, error } = await baseFilter(supabaseRef.current.from("deals"))
         .range(from, from + PAGE - 1);
       if (error) {
         toast.error(`Ошибка загрузки сделок: ${error.message}`);
@@ -331,12 +354,12 @@ export function useDeals(filters?: DealFilters) {
       }
       const batch = (data ?? []) as unknown[];
       all.push(...batch);
-      if (count != null) total = count;
       if (batch.length < PAGE) break;
       from += PAGE;
     }
     const rows = annotateLineCounts(all as WithLines[]) as unknown as Deal[];
     setData(rows);
+    const total = rows.length;
     setTotalCount(total);
     dealsCache.set(cacheKey, { data: rows, total, ts: Date.now() });
     const now = Date.now();

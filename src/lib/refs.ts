@@ -54,9 +54,10 @@ let cached: CacheState | null = null;
 
 function fetchAll(): Promise<GlobalRefs> {
   const sb = createClient();
-  // allSettled — one missing table (e.g. consignees before migration
-  // 00090 is applied) shouldn't tank every other dropdown on the page.
-  // Each query returns its own data array; failures become empty.
+  // Warm path = only the refs every /deals + /registry page touches.
+  // consignees + quotationTypes lazy-loaded by getLazyRefs() — they
+  // aren't on the critical path of the first page render.
+  // allSettled — one missing table shouldn't tank every other dropdown.
   const queries = [
     sb.from("counterparties").select("id, short_name, full_name").eq("type", "supplier").eq("is_active", true).order("full_name"),
     sb.from("counterparties").select("id, short_name, full_name").eq("type", "buyer").eq("is_active", true).order("full_name"),
@@ -66,9 +67,6 @@ function fetchAll(): Promise<GlobalRefs> {
     sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
     sb.from("factories").select("id, name").eq("is_active", true).order("name"),
     sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
-    sb.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (sb.from as any)("consignees").select("id, name").eq("is_active", true).order("name"),
   ];
   return Promise.allSettled(queries).then((rs) => {
     type Row = Record<string, unknown>;
@@ -78,7 +76,7 @@ function fetchAll(): Promise<GlobalRefs> {
       const v = (r.value as unknown as { data: Row[] | null }).data;
       return v ?? [];
     };
-    return {
+    const refs: GlobalRefs = {
       suppliers: pull(0) as unknown as CounterpartyRef[],
       buyers: pull(1) as unknown as CounterpartyRef[],
       forwarders: pull(2) as unknown as RefOpt[],
@@ -87,10 +85,33 @@ function fetchAll(): Promise<GlobalRefs> {
       companyGroups: pull(5) as unknown as RefOpt[],
       factories: pull(6) as unknown as RefOpt[],
       fuelTypes: pull(7) as unknown as FuelTypeRef[],
-      quotationTypes: pull(8) as unknown as RefOpt[],
-      consignees: pull(9) as unknown as RefOpt[],
+      quotationTypes: [],
+      consignees: [],
     };
+    // Lazy-fire the rarely-needed lookups in the background — they
+    // populate the cache so the few pages that consume them (e.g.
+    // /deals/[id] quotation variant picker, /spravochnik/consignees)
+    // already have them by the time the operator navigates there.
+    queueMicrotask(() => { void getLazyRefs(refs); });
+    return refs;
   });
+}
+
+async function getLazyRefs(target: GlobalRefs): Promise<void> {
+  const sb = createClient();
+  const [qt, co] = await Promise.allSettled([
+    sb.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (sb.from as any)("consignees").select("id, name").eq("is_active", true).order("name"),
+  ]);
+  type Row = Record<string, unknown>;
+  const pull = (r: PromiseSettledResult<unknown>): Row[] => {
+    if (r.status !== "fulfilled") return [];
+    const v = (r.value as unknown as { data: Row[] | null }).data;
+    return v ?? [];
+  };
+  target.quotationTypes = pull(qt) as unknown as RefOpt[];
+  target.consignees = pull(co) as unknown as RefOpt[];
 }
 
 export function getGlobalRefs(): Promise<GlobalRefs> {

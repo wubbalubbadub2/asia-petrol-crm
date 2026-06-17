@@ -686,9 +686,20 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (result) { onDone(); onClose(); resetAll(); }
   }
 
+  // Sel — раньше нативный <select>, теперь cmdk-backed picker с
+  // встроенным поиском. Списки экспедиторов / станций / групп компаний
+  // длинные, без поиска оператору приходилось скроллить пальцами.
   const Sel = ({ l, v, fn, opts }: { l: string; v: string; fn: (v: string) => void; opts: { value: string; label: string }[] }) => (
-    <div><Label className="text-[10px] text-stone-500">{l}</Label>
-      <select value={v} onChange={(e) => fn(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"><option value="">—</option>{opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+    <div>
+      <Label className="text-[10px] text-stone-500">{l}</Label>
+      <SearchableSelect
+        value={v}
+        onChange={fn}
+        options={opts}
+        placeholder="—"
+        searchPlaceholder={`Поиск ${l.toLowerCase()}…`}
+        triggerClassName="h-8 text-[12px]"
+      />
     </div>
   );
 
@@ -700,11 +711,19 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
           <div className="rounded border border-amber-200 bg-amber-50/30 p-3">
             <p className="text-[11px] font-medium text-amber-700 mb-2">Контекст сделки</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-              <div><Label className="text-[10px] text-stone-500">Сделка</Label>
-                <select value={dealId} onChange={(e) => { setDealId(e.target.value); setTariff(""); }} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
-                  <option value="">Выберите...</option>
-                  {deals.map((d) => <option key={d.id} value={d.id}>{d.deal_code} — {d.supplier?.short_name ?? ""} → {d.buyer?.short_name ?? ""}</option>)}
-                </select>
+              <div>
+                <Label className="text-[10px] text-stone-500">Сделка</Label>
+                <SearchableSelect
+                  value={dealId}
+                  onChange={(v) => { setDealId(v); setTariff(""); }}
+                  options={deals.map((d) => ({
+                    value: d.id,
+                    label: `${d.deal_code} — ${d.supplier?.short_name ?? ""} → ${d.buyer?.short_name ?? ""}`,
+                  }))}
+                  placeholder="Выберите..."
+                  searchPlaceholder="Поиск сделки…"
+                  triggerClassName="h-8 text-[12px]"
+                />
               </div>
               <div><Label className="text-[10px] text-stone-500">Месяц формир.</Label>
                 <select value={month} onChange={(e) => setMonth(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
@@ -844,7 +863,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
               className="w-full rounded-md border border-stone-200 bg-white p-2 text-[12px] font-mono focus:border-amber-400 focus:outline-none"
             />
             <p className="mt-1 text-[10px] text-stone-400">
-              Колонки: <code>№ вагона ⇥ объём ⇥ дата ⇥ № накладной</code>. Последние три — опциональны. Запятая и точка в числах поддерживаются.
+              Колонки: <code>дата ⇥ № накладной ⇥ № вагона ⇥ объём</code> (как в ваших Excel-реестрах). Старый порядок <code>вагон ⇥ объём ⇥ дата ⇥ накладная</code> тоже распознаётся. Запятая и точка в числах поддерживаются.
             </p>
           </div>
 
