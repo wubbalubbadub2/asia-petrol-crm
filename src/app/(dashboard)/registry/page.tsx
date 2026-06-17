@@ -274,37 +274,55 @@ type RGroup = {
   };
 };
 
-function groupRecs(records: ShipmentRecord[]): RGroup[] {
+// Label resolvers — names used to come from FK joins embedded into
+// REG_SELECT (8 sub-selects per row). They've been dropped; the
+// rendering layer now resolves names by id from the warmed global-refs
+// cache. The render site builds these maps once via useMemo and passes
+// them in.
+type GroupLabelMaps = {
+  fuelType: Map<string, { name: string; color: string }>;
+  factory: Map<string, string>;
+  supplier: Map<string, string>;
+  buyer: Map<string, string>;
+  forwarder: Map<string, string>;
+  companyGroup: Map<string, string>;
+  station: Map<string, string>;
+};
+
+function groupRecs(records: ShipmentRecord[], labels: GroupLabelMaps): RGroup[] {
   const m = new Map<string, RGroup>();
   for (const r of records) {
     const k = r.deal_id ?? `o-${r.id}`;
-    if (!m.has(k)) m.set(k, {
-      key: k, dealId: r.deal_id, dealCode: r.deal?.deal_code ?? "—",
-      dealYear: r.deal?.year ?? null,
-      month: r.month ?? "",
-      fuelType: r.fuel_type?.name ?? "", fuelColor: r.fuel_type?.color ?? "#6B7280",
-      factory: r.factory?.name ?? "",
-      supplier: r.supplier?.short_name ?? r.supplier?.full_name ?? "",
-      buyer: r.buyer?.short_name ?? r.buyer?.full_name ?? "",
-      forwarder: r.forwarder?.name ?? "",
-      companyGroup: r.company_group?.name ?? "",
-      destStation: r.destination_station?.name ?? "",
-      depStation: r.departure_station?.name ?? "",
-      tariff: r.railway_tariff,
-      records: [], totalVol: 0, totalAmt: 0,
-      ids: {
-        shipmentMonth: r.shipment_month,
-        fuelTypeId: r.fuel_type_id,
-        factoryId: r.factory_id,
-        supplierId: r.supplier_id,
-        buyerId: r.buyer_id,
-        forwarderId: r.forwarder_id,
-        companyGroupId: r.company_group_id,
-        destinationStationId: r.destination_station_id,
-        departureStationId: r.departure_station_id,
-        currency: r.currency ?? r.deal?.currency ?? null,
-      },
-    });
+    if (!m.has(k)) {
+      const ft = r.fuel_type_id ? labels.fuelType.get(r.fuel_type_id) : undefined;
+      m.set(k, {
+        key: k, dealId: r.deal_id, dealCode: r.deal?.deal_code ?? "—",
+        dealYear: r.deal?.year ?? null,
+        month: r.month ?? "",
+        fuelType: ft?.name ?? "", fuelColor: ft?.color ?? "#6B7280",
+        factory: (r.factory_id && labels.factory.get(r.factory_id)) || "",
+        supplier: (r.supplier_id && labels.supplier.get(r.supplier_id)) || "",
+        buyer: (r.buyer_id && labels.buyer.get(r.buyer_id)) || "",
+        forwarder: (r.forwarder_id && labels.forwarder.get(r.forwarder_id)) || "",
+        companyGroup: (r.company_group_id && labels.companyGroup.get(r.company_group_id)) || "",
+        destStation: (r.destination_station_id && labels.station.get(r.destination_station_id)) || "",
+        depStation: (r.departure_station_id && labels.station.get(r.departure_station_id)) || "",
+        tariff: r.railway_tariff,
+        records: [], totalVol: 0, totalAmt: 0,
+        ids: {
+          shipmentMonth: r.shipment_month,
+          fuelTypeId: r.fuel_type_id,
+          factoryId: r.factory_id,
+          supplierId: r.supplier_id,
+          buyerId: r.buyer_id,
+          forwarderId: r.forwarder_id,
+          companyGroupId: r.company_group_id,
+          destinationStationId: r.destination_station_id,
+          departureStationId: r.departure_station_id,
+          currency: r.currency ?? r.deal?.currency ?? null,
+        },
+      });
+    }
     const g = m.get(k)!; g.records.push(r); g.totalVol += r.shipment_volume ?? 0;
     // Sum exactly what the «сумма» column renders (raw shipped_tonnage_amount).
     // The old fallback to calcAmt(shipment_volume, tariff) phantom-filled rows
@@ -967,6 +985,54 @@ export default function RegistryPage() {
     setSelected(new Set());
     reload();
   }
+  // Page-level reference data — read from the shared cache so a tab
+  // flip or registry → deal → registry round-trip doesn't refire the
+  // seven parallel ref queries every time. Cache is warmed in the
+  // dashboard layout.
+  const { refs: globalRefs } = useGlobalRefs();
+  const refs = useMemo(() => ({
+    factories: globalRefs.factories as Ref[],
+    suppliers: globalRefs.suppliers as unknown as DRef2[],
+    buyers: globalRefs.buyers as unknown as DRef2[],
+    companyGroups: globalRefs.companyGroups as Ref[],
+    forwarders: globalRefs.forwarders as Ref[],
+    fuelTypes: globalRefs.fuelTypes as Ref[],
+    stations: globalRefs.stations as Ref[],
+  }), [globalRefs]);
+
+  // Resolver maps — registry rows used to read joined names from the
+  // shipment_registry query (r.supplier?.short_name etc), but those
+  // eight embeds were the cold-paint bottleneck on 5000+-row registries.
+  // REG_SELECT keeps only the `deal` embed; everything else resolves
+  // here from the already-warmed refs cache. O(1) per lookup, zero
+  // extra round-trips.
+  const supplierLabels = useMemo(
+    () => new Map(refs.suppliers.map((c) => [c.id, c.short_name ?? c.full_name])),
+    [refs.suppliers],
+  );
+  const buyerLabels = useMemo(
+    () => new Map(refs.buyers.map((c) => [c.id, c.short_name ?? c.full_name])),
+    [refs.buyers],
+  );
+  const factoryLabels = useMemo(() => new Map(refs.factories.map((r) => [r.id, r.name])), [refs.factories]);
+  const fuelTypeLabels = useMemo(
+    () => new Map(refs.fuelTypes.map((r) => [r.id, { name: r.name, color: (r as unknown as { color?: string | null }).color ?? "#6B7280" }])),
+    [refs.fuelTypes],
+  );
+  const forwarderLabels = useMemo(() => new Map(refs.forwarders.map((r) => [r.id, r.name])), [refs.forwarders]);
+  const cgLabels = useMemo(() => new Map(refs.companyGroups.map((r) => [r.id, r.name])), [refs.companyGroups]);
+  const stationLabels = useMemo(() => new Map(refs.stations.map((r) => [r.id, r.name])), [refs.stations]);
+
+  const labelMaps: GroupLabelMaps = useMemo(() => ({
+    fuelType: fuelTypeLabels,
+    factory: factoryLabels,
+    supplier: supplierLabels,
+    buyer: buyerLabels,
+    forwarder: forwarderLabels,
+    companyGroup: cgLabels,
+    station: stationLabels,
+  }), [fuelTypeLabels, factoryLabels, supplierLabels, buyerLabels, forwarderLabels, cgLabels, stationLabels]);
+
   // Apply header filters before grouping. Tab is already server-side
   // (useRegistry pulls KG xor KZ); the rest narrow the rendered set.
   const filteredRecords = useMemo(() => {
@@ -981,7 +1047,7 @@ export default function RegistryPage() {
       return true;
     });
   }, [records, forwarderFilter, dealFilter, companyGroupFilter, wagonFilter, waybillFilter]);
-  const groups = groupRecs(filteredRecords);
+  const groups = groupRecs(filteredRecords, labelMaps);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
 
   // Deals dropdown — derived from the current tab's records so we only
@@ -1005,21 +1071,6 @@ export default function RegistryPage() {
     setForwarderFilter(""); setDealFilter(""); setCompanyGroupFilter("");
     setWagonFilter(""); setWaybillFilter("");
   }
-
-  // Page-level reference data — read from the shared cache so a tab
-  // flip or registry → deal → registry round-trip doesn't refire the
-  // seven parallel ref queries every time. Cache is warmed in the
-  // dashboard layout.
-  const { refs: globalRefs } = useGlobalRefs();
-  const refs = useMemo(() => ({
-    factories: globalRefs.factories as Ref[],
-    suppliers: globalRefs.suppliers as unknown as DRef2[],
-    buyers: globalRefs.buyers as unknown as DRef2[],
-    companyGroups: globalRefs.companyGroups as Ref[],
-    forwarders: globalRefs.forwarders as Ref[],
-    fuelTypes: globalRefs.fuelTypes as Ref[],
-    stations: globalRefs.stations as Ref[],
-  }), [globalRefs]);
 
   const factoryOpts = useMemo(() => refs.factories.map((f) => ({ value: f.id, label: f.name })), [refs.factories]);
   const supplierOpts = useMemo(() => refs.suppliers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name })), [refs.suppliers]);
@@ -1190,13 +1241,13 @@ export default function RegistryPage() {
                               <td className="border-r px-2 py-0.5 font-mono text-amber-700 text-[10px]">{r.deal?.deal_code ?? ""}</td>
                               <td className="border-r px-1 py-0.5"><EM value={r.additional_month} recId={r.id} field="additional_month" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EM value={r.shipment_month} recId={r.id} field="shipment_month" onSaved={reload} /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.fuel_type_id} displayLabel={r.fuel_type?.name ?? ""} recId={r.id} field="fuel_type_id" options={ftOpts} onSaved={reload} /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={r.factory?.name ?? ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.supplier_id} displayLabel={r.supplier?.short_name ?? r.supplier?.full_name ?? ""} recId={r.id} field="supplier_id" options={supplierOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.fuel_type_id} displayLabel={(r.fuel_type_id && fuelTypeLabels.get(r.fuel_type_id)?.name) || ""} recId={r.id} field="fuel_type_id" options={ftOpts} onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={(r.factory_id && factoryLabels.get(r.factory_id)) || ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.supplier_id} displayLabel={(r.supplier_id && supplierLabels.get(r.supplier_id)) || ""} recId={r.id} field="supplier_id" options={supplierOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={r.company_group?.name ?? ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={r.buyer?.short_name ?? r.buyer?.full_name ?? ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.forwarder_id} displayLabel={r.forwarder?.name ?? ""} recId={r.id} field="forwarder_id" options={fwOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={(r.company_group_id && cgLabels.get(r.company_group_id)) || ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={(r.buyer_id && buyerLabels.get(r.buyer_id)) || ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.forwarder_id} displayLabel={(r.forwarder_id && forwarderLabels.get(r.forwarder_id)) || ""} recId={r.id} field="forwarder_id" options={fwOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.wagon_number} recId={r.id} field="wagon_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.waybill_number} recId={r.id} field="waybill_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
@@ -1230,8 +1281,8 @@ export default function RegistryPage() {
                                   onSaved={reload}
                                 />
                               </td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.destination_station_id} displayLabel={r.destination_station?.name ?? ""} recId={r.id} field="destination_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
-                              <td className="border-r px-1 py-0.5"><ES value={r.departure_station_id} displayLabel={r.departure_station?.name ?? ""} recId={r.id} field="departure_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.destination_station_id} displayLabel={(r.destination_station_id && stationLabels.get(r.destination_station_id)) || ""} recId={r.id} field="destination_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
+                              <td className="border-r px-1 py-0.5"><ES value={r.departure_station_id} displayLabel={(r.departure_station_id && stationLabels.get(r.departure_station_id)) || ""} recId={r.id} field="departure_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5">
                                 {/* Прил. — supplier-side label; buyer-side
                                     appears as a subscript when it differs.
