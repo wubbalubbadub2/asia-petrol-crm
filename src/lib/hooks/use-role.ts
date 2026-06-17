@@ -1,58 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-
-type UserRole = "admin" | "manager" | "logistics" | "accounting" | "readonly" | "finance" | "trader";
-
-type Profile = {
-  id: string;
-  full_name: string;
-  role: UserRole;
-  is_active: boolean;
-};
-
-export function useRole() {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    async function loadProfile() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, is_active")
-        .eq("id", user.id)
-        .single();
-
-      if (data) {
-        setProfile(data as Profile);
-      }
-      setLoading(false);
-    }
-
-    loadProfile();
-  }, []);
-
-  // Trader and accounting are read-only — they only view and export Excel
-  // (client decision, migration 00083).
-  const isWritable =
-    profile?.role === "admin" ||
-    profile?.role === "manager" ||
-    profile?.role === "logistics" ||
-    profile?.role === "finance";
-
-  const isAdmin = profile?.role === "admin";
-
-  return { profile, loading, isWritable, isAdmin };
-}
+// Thin re-export. The real implementation lives in `@/lib/role-context`
+// — it caches the auth round-trip at module level and shares the result
+// via React Context so Sidebar + TopBar + page components don't each
+// fire their own `auth.getUser()` + profiles select on mount.
+//
+// Existing call sites keep importing from `@/lib/hooks/use-role` and
+// don't need to change.
+export { useRole } from "@/lib/role-context";
+export type { Profile } from "@/lib/role-context";
