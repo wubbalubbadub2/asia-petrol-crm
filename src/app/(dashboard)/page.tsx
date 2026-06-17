@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,10 +12,16 @@ import {
   Package, Wallet,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend,
-} from "recharts";
+
+// recharts is ~110 KB gzip and was previously imported statically at
+// the top of the dashboard root — it landed in the shared bundle and
+// every route (incl. /deals, /registry) paid for it. dynamic() with
+// ssr:false splits it into its own chunk that only the dashboard
+// landing page downloads, after first paint.
+const DashboardChart = dynamic(
+  () => import("@/components/dashboard/dashboard-chart").then((m) => m.DashboardChart),
+  { ssr: false, loading: () => <div className="h-[220px] rounded-md bg-stone-50/50" /> },
+);
 
 const AMBER_COLORS = ["#D97706", "#F59E0B", "#FBBF24", "#FDE68A", "#FEF3C7", "#B45309"];
 const CHART_COLORS = ["#D97706", "#2563EB", "#16A34A", "#9333EA", "#DC2626", "#06B6D4", "#F97316", "#EC4899"];
@@ -51,14 +58,15 @@ type RefMap = Record<string, string>;
 const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 const MONTHS_FULL = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 
-function ChartTypeToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+type ChartKind = "pie" | "line" | "bar";
+function ChartTypeToggle({ value, onChange }: { value: ChartKind; onChange: (v: ChartKind) => void }) {
   return (
     <div className="flex gap-0.5 rounded-lg bg-stone-100 p-0.5">
-      {[
+      {([
         { key: "bar", icon: BarChart3 },
         { key: "line", icon: TrendingUp },
         { key: "pie", icon: PieChartIcon },
-      ].map(({ key, icon: Icon }) => (
+      ] as const).map(({ key, icon: Icon }) => (
         <button
           key={key}
           onClick={() => onChange(key)}
@@ -91,9 +99,9 @@ export default function DashboardPage() {
   const [dealTypeFilter, setDealTypeFilter] = useState<string>("all");
 
   // Chart type states
-  const [monthlyChartType, setMonthlyChartType] = useState("bar");
-  const [productChartType, setProductChartType] = useState("pie");
-  const [financialChartType, setFinancialChartType] = useState("bar");
+  const [monthlyChartType, setMonthlyChartType] = useState<"pie" | "line" | "bar">("bar");
+  const [productChartType, setProductChartType] = useState<"pie" | "line" | "bar">("pie");
+  const [financialChartType, setFinancialChartType] = useState<"pie" | "line" | "bar">("bar");
 
   useEffect(() => {
     async function load() {
@@ -215,50 +223,12 @@ export default function DashboardPage() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [deals]);
 
-  function renderChart(data: { name: string; value?: number; contracted?: number; shipped?: number }[], type: string, dataKeys?: string[]) {
-    const keys = dataKeys ?? ["value"];
-    if (type === "pie") {
-      return (
-        <ResponsiveContainer width="100%" height={220}>
-          <PieChart>
-            <Pie data={data} dataKey="value" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${formatNum(value)}`} labelLine={false}>
-              {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-            </Pie>
-            <Tooltip formatter={(v) => formatNum(Number(v))} />
-          </PieChart>
-        </ResponsiveContainer>
-      );
-    }
-    if (type === "line") {
-      return (
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatNum} />
-            <Tooltip formatter={(v) => formatNum(Number(v))} />
-            {keys.map((k, i) => (
-              <Line key={k} type="monotone" dataKey={k} stroke={CHART_COLORS[i]} strokeWidth={2} dot={{ r: 3 }} />
-            ))}
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-          </LineChart>
-        </ResponsiveContainer>
-      );
-    }
-    return (
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} tickFormatter={formatNum} />
-          <Tooltip formatter={(v) => formatNum(Number(v))} />
-          {keys.map((k, i) => (
-            <Bar key={k} dataKey={k} fill={CHART_COLORS[i]} radius={[3, 3, 0, 0]} />
-          ))}
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-        </BarChart>
-      </ResponsiveContainer>
-    );
+  function renderChart(
+    data: { name: string; value?: number; contracted?: number; shipped?: number }[],
+    type: "pie" | "line" | "bar",
+    dataKeys?: string[],
+  ) {
+    return <DashboardChart data={data} type={type} dataKeys={dataKeys} />;
   }
 
   return (
@@ -476,16 +446,7 @@ export default function DashboardPage() {
             ) : dealTypeSplit.length === 0 ? (
               <div className="h-[220px] flex items-center justify-center text-stone-400 text-sm">Нет данных</div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={dealTypeSplit} dataKey="value" cx="50%" cy="50%" outerRadius={80} innerRadius={40} label={({ name, value }) => `${name}: ${value}`}>
-                    {dealTypeSplit.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <DashboardChart data={dealTypeSplit} type="pie" />
             )}
           </CardContent>
         </Card>
