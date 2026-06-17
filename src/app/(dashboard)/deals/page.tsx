@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useDeferredValue } from "react";
 import Link from "next/link";
 import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,10 @@ export default function DealsPage() {
   }
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
+  // Lag the value handed to useDeals so we don't fire a new SWR key
+  // (and a full network round-trip) on every keystroke. The visible
+  // input stays bound to `search` so typing feels instant.
+  const deferredSearch = useDeferredValue(search);
   const [supplierFilter, setSupplierFilter] = useState("");
   const [buyerFilter, setBuyerFilter] = useState("");
   const [factoryFilter, setFactoryFilter] = useState("");
@@ -143,7 +147,7 @@ export default function DealsPage() {
     forwarderId: forwarderFilter || undefined,
     logisticsCompanyGroupId: companyGroupFilter || undefined,
     applicationContract: applicationFilter || undefined,
-    searchCode: search || undefined,
+    searchCode: deferredSearch || undefined,
   });
 
   // «Приложение» dropdown options — distinct contract numbers across
