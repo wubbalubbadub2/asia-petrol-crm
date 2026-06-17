@@ -259,6 +259,7 @@ export type DealFilters = {
   factoryId?: string;
   fuelTypeId?: string;
   forwarderId?: string;
+  logisticsCompanyGroupId?: string;
   applicationContract?: string;
   searchCode?: string;
   page?: number;     // 0-indexed; default 0
@@ -316,6 +317,7 @@ export function useDeals(filters?: DealFilters) {
     if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
     if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
     if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
+    if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
     if (filters?.applicationContract) {
       const c = filters.applicationContract.replace(/,/g, "\\,");
       q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);

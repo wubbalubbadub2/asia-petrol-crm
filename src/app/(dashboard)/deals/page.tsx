@@ -79,6 +79,7 @@ export default function DealsPage() {
   const [fuelTypeFilter, setFuelTypeFilter] = useState("");
   const [monthFilter, setMonthFilter] = useState("");
   const [forwarderFilter, setForwarderFilter] = useState("");
+  const [companyGroupFilter, setCompanyGroupFilter] = useState("");
   const [applicationFilter, setApplicationFilter] = useState("");
   // Filter dropdowns read from the shared refs cache so a navigation
   // back to /deals doesn't re-fire the 5 counterparty/factory/fuel/
@@ -91,6 +92,7 @@ export default function DealsPage() {
     factories: globalRefs.factories.map((r) => ({ id: r.id, label: r.name })),
     fuelTypes: globalRefs.fuelTypes.map((r) => ({ id: r.id, label: r.name })),
     forwarders: globalRefs.forwarders.map((r) => ({ id: r.id, label: r.name })),
+    companyGroups: globalRefs.companyGroups.map((r) => ({ id: r.id, label: r.name })),
   }), [globalRefs]);
   const { isAdmin } = useRole();
 
@@ -135,7 +137,7 @@ export default function DealsPage() {
     setPage(0);
   }, [
     activeTab, yearFilter, search, supplierFilter, buyerFilter, factoryFilter,
-    fuelTypeFilter, monthFilter, forwarderFilter, applicationFilter,
+    fuelTypeFilter, monthFilter, forwarderFilter, companyGroupFilter, applicationFilter,
   ]);
 
   // All filters now push down to PostgREST — useDeals returns only
@@ -151,6 +153,7 @@ export default function DealsPage() {
     fuelTypeId: fuelTypeFilter || undefined,
     month: monthFilter || undefined,
     forwarderId: forwarderFilter || undefined,
+    logisticsCompanyGroupId: companyGroupFilter || undefined,
     applicationContract: applicationFilter || undefined,
     searchCode: search || undefined,
     page,
@@ -177,12 +180,12 @@ export default function DealsPage() {
   const activeFilterCount =
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
     (fuelTypeFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (forwarderFilter ? 1 : 0) +
-    (applicationFilter ? 1 : 0);
+    (companyGroupFilter ? 1 : 0) + (applicationFilter ? 1 : 0);
 
   function clearAllFilters() {
     setSupplierFilter(""); setBuyerFilter(""); setFactoryFilter("");
     setFuelTypeFilter(""); setMonthFilter(""); setForwarderFilter("");
-    setApplicationFilter("");
+    setCompanyGroupFilter(""); setApplicationFilter("");
     setSearch("");
   }
 
@@ -257,7 +260,7 @@ export default function DealsPage() {
             )}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2">
           <SearchableSelect
             value={supplierFilter} onChange={setSupplierFilter}
             options={refs.suppliers.map((r) => ({ value: r.id, label: r.label }))}
@@ -287,6 +290,11 @@ export default function DealsPage() {
             value={forwarderFilter} onChange={setForwarderFilter}
             options={refs.forwarders.map((r) => ({ value: r.id, label: r.label }))}
             placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
+          />
+          <SearchableSelect
+            value={companyGroupFilter} onChange={setCompanyGroupFilter}
+            options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Все группы комп." searchPlaceholder="Поиск группы…"
           />
           <SearchableSelect
             value={applicationFilter} onChange={setApplicationFilter}

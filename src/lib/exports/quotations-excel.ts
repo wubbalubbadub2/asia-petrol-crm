@@ -31,6 +31,10 @@ type QuotationRow = {
   price_fob_med: number | null;
   price_fob_rotterdam: number | null;
   price_cif_nwe: number | null;
+  // CIF NWE standalone — отдельная колонка для ГАЗОЙЛЬ 0,1%. Раньше
+  // не селектилась → колонка «CIF NWE» в Excel выгружалась пустой
+  // хотя оператор видел её в /quotations и она хранилась в БД.
+  price_cif_nwe_standalone: number | null;
   comment: string | null;
 };
 
@@ -63,7 +67,7 @@ async function fetchAllQuotations(
   for (;;) {
     let q = sb
       .from("quotations")
-      .select("id, product_type_id, date, price, price_fob_med, price_fob_rotterdam, price_cif_nwe, comment")
+      .select("id, product_type_id, date, price, price_fob_med, price_fob_rotterdam, price_cif_nwe, price_cif_nwe_standalone, comment")
       .order("date", { ascending: true })
       .range(from, from + pageSize - 1);
     if (filter.year != null) {
