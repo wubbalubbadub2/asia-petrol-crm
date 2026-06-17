@@ -6,17 +6,17 @@
  * underlying fetch actually drags past the threshold; a sub-1s fetch
  * never shows the spinner at all, so the layout doesn't jump.
  *
- *   const showLoader = useDelayed(loading, 800);
+ *   const showLoader = useDelayed(loading);
  *   if (showLoader && !data) return <p>Загрузка…</p>;
  *
- * 800ms is the default — generally below the user's perceptual «is
- * this stuck?» threshold while still avoiding the flash on quick
- * fetches.
+ * Default 1000ms per client feedback 2026-06-17 («if the load is more
+ * than 1 second, we should show loader»). Sub-1s loads paint nothing,
+ * over-1s loads get the spinner.
  */
 
 import { useEffect, useState } from "react";
 
-export function useDelayed(active: boolean, delayMs = 800): boolean {
+export function useDelayed(active: boolean, delayMs = 1000): boolean {
   const [delayed, setDelayed] = useState(false);
   useEffect(() => {
     if (!active) {
