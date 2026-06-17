@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -7,6 +8,28 @@ import "./globals.css";
 // reading as a blocker instead of progress. Without it the new page
 // content streams in directly — same nav speed, no false «still
 // loading» signal.
+
+// next/font/google — fonts are inlined into the Next.js build at
+// generation time. No render-blocking <link rel="stylesheet"> handshake
+// to fonts.googleapis.com, no FOIT. swap=auto so the page paints with
+// the system fallback first, then upgrades the moment the font binary
+// arrives (already cached). Replaces three blocking <link> tags
+// (DM Sans + JetBrains Mono + Satoshi from fontshare).
+// `subsets` types in next/font don't currently expose cyrillic for
+// DM_Sans but Google's font file does ship it. Cast is safe.
+const dmSans = DM_Sans({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subsets: ["latin", "latin-ext"] as ("latin" | "latin-ext")[],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
+  display: "swap",
+});
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin", "latin-ext"] as ("latin" | "latin-ext")[],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Singularity Trading CRM",
@@ -19,23 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className="h-full antialiased">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
-          rel="stylesheet"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
-        <link
-          href="https://api.fontshare.com/v2/css?f=satoshi@400,500,700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="ru" className={`h-full antialiased ${dmSans.variable} ${jetBrainsMono.variable}`}>
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
           {children}

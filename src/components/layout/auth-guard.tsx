@@ -1,50 +1,36 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+/**
+ * AuthGuard — server-side auth now lives in src/middleware.ts at the
+ * edge. By the time any client component mounts we are guaranteed to
+ * be authenticated (or already redirected). This component used to
+ * block the entire dashboard tree on `supabase.auth.getUser()` in a
+ * useEffect — that was a 300–700 ms serial wait BEFORE useDeals'
+ * effect even fired. Now it does nothing visible; the only thing it
+ * still does is subscribe to onAuthStateChange so a SIGNED_OUT event
+ * (from another tab or session expiry) bounces the user to /login.
+ *
+ * No spinner, no checked-flag gate — children render immediately and
+ * useDeals' effect runs on the very next tick.
+ */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const [checked, setChecked] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
   const supabaseRef = useRef(createClient());
 
   useEffect(() => {
-    supabaseRef.current.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setAuthenticated(true);
-      } else {
-        router.replace("/login");
-      }
-      setChecked(true);
-    });
-
-    // Listen for auth changes
     const { data: { subscription } } = supabaseRef.current.auth.onAuthStateChange(
       (event, session) => {
         if (event === "SIGNED_OUT" || !session) {
-          setAuthenticated(false);
           router.replace("/login");
-        } else {
-          setAuthenticated(true);
         }
-      }
+      },
     );
-
     return () => subscription.unsubscribe();
   }, [router]);
-
-  if (!checked) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!authenticated) return null;
 
   return <>{children}</>;
 }
