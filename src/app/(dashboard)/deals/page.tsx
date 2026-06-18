@@ -73,18 +73,53 @@ export default function DealsPage() {
   }
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
-  // Lag the value handed to useDeals so we don't fire a new SWR key
-  // (and a full network round-trip) on every keystroke. The visible
-  // input stays bound to `search` so typing feels instant.
-  const deferredSearch = useDeferredValue(search);
   const [supplierFilter, setSupplierFilter] = useState("");
   const [buyerFilter, setBuyerFilter] = useState("");
   const [factoryFilter, setFactoryFilter] = useState("");
   const [fuelTypeFilter, setFuelTypeFilter] = useState("");
   const [monthFilter, setMonthFilter] = useState("");
   const [forwarderFilter, setForwarderFilter] = useState("");
+  // companyGroupFilter applies to the «Группа комп.» trading CHAIN
+  // (deal_company_groups table — the colspan=2 cell in the passport),
+  // NOT the deal-level deals.logistics_company_group_id FK. A deal
+  // matches if ANY of its deal_company_groups rows has this id. See
+  // useDeals → DealFilters.companyGroupId.
   const [companyGroupFilter, setCompanyGroupFilter] = useState("");
   const [applicationFilter, setApplicationFilter] = useState("");
+
+  // Lag every filter value handed to useDeals so dropdown clicks feel
+  // instant — the visible <SearchableSelect> updates synchronously, but
+  // the network refetch (a new JSON.stringify cache key) only fires on
+  // the next deferred-render pass. Without this, every dropdown change
+  // blocks the UI thread on a ~150 KB JSON fetch + row reconciliation.
+  // search already had this — extended to all filters per perf agent
+  // audit (2026-06-18).
+  const deferredSearch = useDeferredValue(search);
+  const deferredSupplier = useDeferredValue(supplierFilter);
+  const deferredBuyer = useDeferredValue(buyerFilter);
+  const deferredFactory = useDeferredValue(factoryFilter);
+  const deferredFuelType = useDeferredValue(fuelTypeFilter);
+  const deferredMonth = useDeferredValue(monthFilter);
+  const deferredForwarder = useDeferredValue(forwarderFilter);
+  const deferredCompanyGroup = useDeferredValue(companyGroupFilter);
+  const deferredApplication = useDeferredValue(applicationFilter);
+  const deferredYear = useDeferredValue(yearFilter);
+  // isFiltering is true while any filter input is ahead of its deferred
+  // shadow — i.e. the user just changed a filter and the network fetch
+  // for the new combo hasn't arrived yet. Drives the «Сбросить фильтры»
+  // amber pulse so the operator gets visual feedback that filtering is
+  // in progress (vs. nothing happening because the dropdown is broken).
+  const isFiltering =
+    search !== deferredSearch ||
+    supplierFilter !== deferredSupplier ||
+    buyerFilter !== deferredBuyer ||
+    factoryFilter !== deferredFactory ||
+    fuelTypeFilter !== deferredFuelType ||
+    monthFilter !== deferredMonth ||
+    forwarderFilter !== deferredForwarder ||
+    companyGroupFilter !== deferredCompanyGroup ||
+    applicationFilter !== deferredApplication ||
+    yearFilter !== deferredYear;
   // Filter dropdowns read from the shared refs cache so a navigation
   // back to /deals doesn't re-fire the 5 counterparty/factory/fuel/
   // forwarder queries every time. Cache is warmed in the dashboard
@@ -137,16 +172,20 @@ export default function DealsPage() {
   // every matching row in 1000-row chunks against PostgREST.
   const { data: deals, totalCount, loading, reload } = useDeals({
     dealType: dealTypeFilter,
-    year: yearFilter,
+    year: deferredYear,
     isArchived: false,
-    supplierId: supplierFilter || undefined,
-    buyerId: buyerFilter || undefined,
-    factoryId: factoryFilter || undefined,
-    fuelTypeId: fuelTypeFilter || undefined,
-    month: monthFilter || undefined,
-    forwarderId: forwarderFilter || undefined,
-    logisticsCompanyGroupId: companyGroupFilter || undefined,
-    applicationContract: applicationFilter || undefined,
+    supplierId: deferredSupplier || undefined,
+    buyerId: deferredBuyer || undefined,
+    factoryId: deferredFactory || undefined,
+    fuelTypeId: deferredFuelType || undefined,
+    month: deferredMonth || undefined,
+    forwarderId: deferredForwarder || undefined,
+    // The «Все группы комп.» dropdown filters the trading CHAIN
+    // (deal_company_groups) via a !inner join in fetchDealsList — see
+    // src/lib/hooks/use-deals.ts. NOT the deal-level
+    // logistics_company_group_id FK.
+    companyGroupId: deferredCompanyGroup || undefined,
+    applicationContract: deferredApplication || undefined,
     searchCode: deferredSearch || undefined,
   });
 
@@ -237,12 +276,26 @@ export default function DealsPage() {
             className="max-w-xs h-7 text-[12px]"
           />
           {activeFilterCount > 0 && (
-            <Button size="sm" variant="ghost" onClick={clearAllFilters} className="h-7 text-[11px] text-stone-500 hover:text-red-600">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearAllFilters}
+              // Amber pulse while a filter change is in-flight (the
+              // visible dropdown moved ahead of its deferred shadow).
+              // Operators said «фильтр очень долго фильтрует» — this
+              // gives them feedback that the query IS running.
+              className={`h-7 text-[11px] hover:text-red-600 transition-colors ${
+                isFiltering
+                  ? "text-amber-700 bg-amber-50 animate-pulse"
+                  : "text-stone-500"
+              }`}
+            >
               <X className="h-3 w-3 mr-0.5" />
               Сбросить фильтры ({activeFilterCount})
             </Button>
           )}
-          <span className="text-[11px] text-stone-400 ml-auto">
+          <span className="text-[11px] text-stone-400 ml-auto inline-flex items-center gap-1.5">
+            {isFiltering && <Loader2 className="h-3 w-3 animate-spin text-amber-600" />}
             {totalCount} {totalCount === 1 ? "сделка" : totalCount % 10 >= 2 && totalCount % 10 <= 4 && (totalCount % 100 < 10 || totalCount % 100 >= 20) ? "сделки" : "сделок"}
           </span>
         </div>
