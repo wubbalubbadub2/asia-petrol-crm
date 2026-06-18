@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -44,10 +45,17 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`h-full antialiased ${dmSans.variable} ${jetBrainsMono.variable}`}>
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>
-          {children}
-        </TooltipProvider>
-        <Toaster position="top-right" richColors />
+        {/* NuqsAdapter wires nuqs' useQueryState/useQueryStates to the
+            Next.js App Router so search-param state survives client
+            navigations (e.g. /deals → /registry → /deals keeps the
+            filter selections intact). Must wrap any client component
+            that calls useQueryState. */}
+        <NuqsAdapter>
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
+          <Toaster position="top-right" richColors />
+        </NuqsAdapter>
       </body>
     </html>
   );

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useDeferredValue, useTransition } from "react";
+import { useState, useMemo, useDeferredValue } from "react";
 import Link from "next/link";
+import { useQueryState, parseAsInteger, parseAsStringEnum } from "nuqs";
 import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,50 +60,59 @@ function formatNum(val: number | null | undefined): string {
 }
 
 export default function DealsPage() {
-  // Persist tab in URL hash so refresh keeps the tab
-  const [activeTab, setActiveTabState] = useState<"list" | "kg" | "kz">(() => {
-    if (typeof window !== "undefined") {
-      const hash = window.location.hash.replace("#", "");
-      if (hash === "kg" || hash === "kz") return hash;
-    }
-    return "list";
-  });
-  // Wrap the tab flip in startTransition so React treats the table
-  // re-render as a non-urgent update and exposes `isPending` — we feed
-  // that into PassportTable as `loading` for the few frames the new
-  // render is rendering, giving operators the «click → skeleton flash
-  // → new data» rhythm they asked for (2026-06-18 complaint #1: «table
-  // does not change immediately… should immediately show skeleton»).
-  const [isTabPending, startTabTransition] = useTransition();
+  // All filter + tab state lives in the URL via nuqs so that:
+  //   1. Navigating /deals → /registry → /deals restores the operator's
+  //      filter selections (mounting a fresh useState would wipe them —
+  //      operator complaint 2026-06-18 #1: «возвращаюсь в сделки —
+  //      фильтры сбрасываются»).
+  //   2. URLs become shareable: /deals?supplierFilter=…&activeTab=kg.
+  // nuqs defaults to history: "replace" so filter changes don't pollute
+  // the back stack. Each filter has a string default of "" to keep the
+  // existing SearchableSelect contract («"" means no filter»).
+  const [activeTab, setActiveTabState] = useQueryState(
+    "activeTab",
+    parseAsStringEnum<"list" | "kg" | "kz">(["list", "kg", "kz"]).withDefault("list"),
+  );
+  // Tab clicks must feel URGENT. Previously this was wrapped in
+  // React.startTransition, which (combined with the heavy initial
+  // /deals hydration — 50-col table + refs cache) starved the
+  // transition so the first 1-2 clicks visually did nothing
+  // (operator complaint 2026-06-18 #2: «нужно несколько раз кликать»).
+  // We now flip activeTab synchronously and drive PassportTable's
+  // skeleton flash via a plain boolean cleared on the next frame.
+  const [isTabSwitching, setIsTabSwitching] = useState(false);
   function setActiveTab(tab: "list" | "kg" | "kz") {
-    // URL hash is a synchronous side effect — do it outside the
-    // transition so the browser history reflects the click instantly.
-    window.location.hash = tab === "list" ? "" : tab;
-    startTabTransition(() => {
-      setActiveTabState(tab);
-    });
+    setIsTabSwitching(true);
+    setActiveTabState(tab);
+    // One animation frame is enough for PassportTable to show its
+    // skeleton chrome and feel responsive — the actual filter pass is
+    // <5 ms for ~500 deals so the data is ready by then.
+    setTimeout(() => setIsTabSwitching(false), 16);
   }
-  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
-  const [search, setSearch] = useState("");
-  const [supplierFilter, setSupplierFilter] = useState("");
-  const [buyerFilter, setBuyerFilter] = useState("");
-  const [factoryFilter, setFactoryFilter] = useState("");
-  const [fuelTypeFilter, setFuelTypeFilter] = useState("");
-  const [monthFilter, setMonthFilter] = useState("");
-  const [forwarderFilter, setForwarderFilter] = useState("");
+  const [yearFilter, setYearFilter] = useQueryState(
+    "yearFilter",
+    parseAsInteger.withDefault(new Date().getFullYear()),
+  );
+  const [search, setSearch] = useQueryState("search", { defaultValue: "" });
+  const [supplierFilter, setSupplierFilter] = useQueryState("supplierFilter", { defaultValue: "" });
+  const [buyerFilter, setBuyerFilter] = useQueryState("buyerFilter", { defaultValue: "" });
+  const [factoryFilter, setFactoryFilter] = useQueryState("factoryFilter", { defaultValue: "" });
+  const [fuelTypeFilter, setFuelTypeFilter] = useQueryState("fuelTypeFilter", { defaultValue: "" });
+  const [monthFilter, setMonthFilter] = useQueryState("monthFilter", { defaultValue: "" });
+  const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", { defaultValue: "" });
   // companyGroupFilter applies to the «Группа комп.» trading CHAIN
   // (deal_company_groups table — the colspan=2 cell in the passport),
   // NOT the deal-level deals.logistics_company_group_id FK. A deal
   // matches if ANY of its deal_company_groups rows has this id. See
   // useDeals → DealFilters.companyGroupId.
-  const [companyGroupFilter, setCompanyGroupFilter] = useState("");
+  const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "" });
   // Position-specific variants of the chain filter: «Группа 1»
   // matches deal_company_groups.position = 1, «Группа 2» = position 2.
   // Independent of (and AND-combined with) the any-position filter
   // above. See useDeals → DealFilters.companyGroupPos1Id/Pos2Id.
-  const [companyGroupPos1, setCompanyGroupPos1] = useState("");
-  const [companyGroupPos2, setCompanyGroupPos2] = useState("");
-  const [applicationFilter, setApplicationFilter] = useState("");
+  const [companyGroupPos1, setCompanyGroupPos1] = useQueryState("companyGroupPos1", { defaultValue: "" });
+  const [companyGroupPos2, setCompanyGroupPos2] = useQueryState("companyGroupPos2", { defaultValue: "" });
+  const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", { defaultValue: "" });
 
   // Lag every filter value handed to useDeals so dropdown clicks feel
   // instant — the visible <SearchableSelect> updates synchronously, but
@@ -470,14 +480,14 @@ export default function DealsPage() {
         {(activeTab === "kg" || activeTab === "kz" || activeTab === "list") && (
           <PassportTable
             deals={filtered}
-            // OR in `isTabPending` so the table flashes its skeleton
+            // OR in `isTabSwitching` so the table flashes its skeleton
             // chrome the moment the operator clicks a tab — addresses
             // 2026-06-18 complaint #1 («когда нажимаю Паспорт KG / KZ,
             // таблица не меняется сразу и показывает список сделок»).
             // Without this the new tab's filtered set would commit
             // synchronously and the operator would see no «click»
             // feedback at all.
-            loading={loading || isTabPending}
+            loading={loading || isTabSwitching}
             onDataChanged={reload}
             dealType={activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL"}
           />
