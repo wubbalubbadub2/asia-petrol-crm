@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  createContext,
+  useContext,
+  memo,
+} from "react";
 import { Plus, Filter, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,16 +22,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
+import { useGlobalRefs } from "@/lib/refs";
 import type { TablesUpdate } from "@/lib/types/database";
 
 type Station = { id: string; name: string };
@@ -30,6 +32,11 @@ type Forwarder = { id: string; name: string };
 type FuelType = { id: string; name: string; color?: string };
 type Factory = { id: string; name: string };
 
+// Tariff rows now carry only their FK ids — joined name embeds were
+// dropped from the SELECT. All displayable labels (station / forwarder
+// / fuel type / factory names) resolve through the global refs cache
+// via the label Maps built in TariffsPage. Cuts payload by ~5
+// sub-selects per row and matches the PassportTable pattern.
 type Tariff = {
   id: string;
   destination_station_id: string | null;
@@ -41,27 +48,12 @@ type Tariff = {
   planned_tariff: number | null;
   factory_id: string | null;
   norm_days: number | null;
-  destination_station?: { name: string } | null;
-  departure_station?: { name: string } | null;
-  forwarder?: { name: string } | null;
-  fuel_type?: { name: string; color?: string } | null;
-  factory?: { name: string } | null;
 };
-
-const MONTHS_RU_SHORT = [
-  "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
-  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
-];
 
 const MONTHS_RU_FULL = [
   "январь", "февраль", "март", "апрель", "май", "июнь",
   "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
 ];
-
-function formatNum(val: number | null | undefined): string {
-  if (val == null) return "—";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
-}
 
 function SelectField({
   label,
@@ -102,7 +94,6 @@ function AddTariffDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const supabase = createClient();
   const [stations, setStations] = useState<Station[]>([]);
   const [forwarders, setForwarders] = useState<Forwarder[]>([]);
   const [fuelTypes, setFuelTypes] = useState<FuelType[]>([]);
@@ -122,6 +113,8 @@ function AddTariffDialog({
   useEffect(() => {
     if (!open) return;
     const sb = createClient();
+    // Add-dialog still needs default_factory_id which isn't in the
+    // global refs cache, so keep this targeted fetch as-is.
     Promise.all([
       sb.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
@@ -323,6 +316,220 @@ function InlineNum({ value, onSave, d = 3 }: { value: number | null | undefined;
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+//  TariffRefsContext
+//
+//  Read-only lookup data (option arrays + label maps) shared by every
+//  row. Rows pull from it via useContext so the only React.memo-
+//  relevant prop a row receives is `tariff` (+ the stable callbacks
+//  from the parent). When `updateTariff` swaps a single tariff in the
+//  list, only that row's `tariff` reference changes; the rest of the
+//  array's references stay equal and React.memo bails them out.
+// ─────────────────────────────────────────────────────────────────────
+
+type Opt = { value: string; label: string };
+
+type TariffRefsValue = {
+  stationOpts: Opt[];
+  forwarderOpts: Opt[];
+  fuelOpts: Opt[];
+  factoryOpts: Opt[];
+  monthOpts: Opt[];
+  stationLabels: Map<string, string>;
+  forwarderLabels: Map<string, string>;
+  fuelLabels: Map<string, string>;
+  factoryLabels: Map<string, string>;
+};
+
+const TariffRefsContext = createContext<TariffRefsValue | null>(null);
+
+function useTariffRefs(): TariffRefsValue {
+  const ctx = useContext(TariffRefsContext);
+  if (!ctx) throw new Error("TariffRow must be rendered inside <TariffRefsContext>");
+  return ctx;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  TariffRow
+//
+//  React.memo'd so re-renders only happen when this row's `tariff` ref
+//  changes (or the stable callbacks). All ref/label data flows through
+//  context, so it doesn't participate in the memo comparison. With
+//  ~270 tariffs in view today and room to grow, this lets the
+//  virtualizer cheaply mount/unmount only the visible window without
+//  re-rendering off-screen rows.
+// ─────────────────────────────────────────────────────────────────────
+
+type TariffRowProps = {
+  t: Tariff;
+  onUpdate: (id: string, patch: TablesUpdate<"tariffs">) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+};
+
+const TariffRow = memo(function TariffRow({ t, onUpdate, onDelete }: TariffRowProps) {
+  const {
+    stationOpts,
+    forwarderOpts,
+    fuelOpts,
+    factoryOpts,
+    monthOpts,
+    stationLabels,
+    forwarderLabels,
+    fuelLabels,
+    factoryLabels,
+  } = useTariffRefs();
+
+  return (
+    <tr className="border-b hover:bg-amber-50/30">
+      <td className="text-[12px] text-stone-700 px-2 py-1 align-middle">
+        <InlineSelect
+          value={t.destination_station_id}
+          displayLabel={(t.destination_station_id && stationLabels.get(t.destination_station_id)) || ""}
+          options={stationOpts}
+          onSave={(v) => onUpdate(t.id, { destination_station_id: v })}
+        />
+      </td>
+      <td className="text-[12px] text-stone-700 px-2 py-1 align-middle">
+        <InlineSelect
+          value={t.departure_station_id}
+          displayLabel={(t.departure_station_id && stationLabels.get(t.departure_station_id)) || ""}
+          options={stationOpts}
+          onSave={(v) => onUpdate(t.id, { departure_station_id: v })}
+        />
+      </td>
+      <td className="text-[12px] text-stone-600 px-2 py-1 align-middle">
+        <InlineSelect
+          value={t.forwarder_id}
+          displayLabel={(t.forwarder_id && forwarderLabels.get(t.forwarder_id)) || ""}
+          options={forwarderOpts}
+          onSave={(v) => onUpdate(t.id, { forwarder_id: v })}
+        />
+      </td>
+      <td className="text-[12px] px-2 py-1 align-middle">
+        <InlineSelect
+          value={t.fuel_type_id}
+          displayLabel={(t.fuel_type_id && fuelLabels.get(t.fuel_type_id)) || ""}
+          options={fuelOpts}
+          onSave={(v) => onUpdate(t.id, { fuel_type_id: v })}
+        />
+      </td>
+      <td className="text-[12px] text-stone-600 px-2 py-1 align-middle">
+        <InlineSelect
+          value={t.month}
+          displayLabel={t.month ?? ""}
+          options={monthOpts}
+          onSave={(v) => onUpdate(t.id, { month: v ?? undefined })}
+        />
+      </td>
+      <td className="text-right px-2 py-1 align-middle">
+        <InlineNum value={t.planned_tariff} onSave={(v) => onUpdate(t.id, { planned_tariff: v })} />
+      </td>
+      <td className="text-[12px] text-stone-600 px-2 py-1 align-middle">
+        <InlineSelect
+          value={t.factory_id}
+          displayLabel={(t.factory_id && factoryLabels.get(t.factory_id)) || ""}
+          options={factoryOpts}
+          onSave={(v) => onUpdate(t.id, { factory_id: v })}
+        />
+      </td>
+      <td className="text-right px-2 py-1 align-middle">
+        <InlineNum value={t.norm_days} onSave={(v) => onUpdate(t.id, { norm_days: v })} d={0} />
+      </td>
+      <td className="px-2 py-1 align-middle">
+        <button
+          onClick={() => onDelete(t.id)}
+          className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────
+//  Skeleton row (warm reload only)
+//
+//  The route boundary (loading.tsx → PageSkeleton) covers cold paint.
+//  These rows show during a warm reload (filter change, mutation
+//  refetch) so the table chrome doesn't blank out under a spinner.
+//  Matches the 9-column geometry so column widths don't jump when
+//  real rows arrive.
+// ─────────────────────────────────────────────────────────────────────
+
+const TOTAL_COLS = 9;
+
+function TariffSkeletonRow() {
+  return (
+    <tr className="border-b animate-pulse">
+      {Array.from({ length: TOTAL_COLS }).map((_, i) => (
+        <td key={i} className="px-2 py-1.5">
+          <div className="h-3 rounded-sm bg-stone-100" />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  VirtualizedRows
+//
+//  Renders only the rows currently visible in the scroll container
+//  (+ overscan). Reserves the unrendered range with two spacer <tr>s
+//  carrying explicit heights so the <table> preserves its column
+//  widths (which cascade from <thead>) and avoids layout shift on
+//  scroll. Pattern lifted from PassportTable.
+// ─────────────────────────────────────────────────────────────────────
+
+type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
+
+function VirtualizedRows({
+  tariffs,
+  virtualizer,
+  onUpdate,
+  onDelete,
+}: {
+  tariffs: Tariff[];
+  virtualizer: VirtualizerInstance;
+  onUpdate: (id: string, patch: TablesUpdate<"tariffs">) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? totalSize - virtualItems[virtualItems.length - 1].end
+      : 0;
+
+  return (
+    <>
+      {paddingTop > 0 && (
+        <tr aria-hidden style={{ height: paddingTop }}>
+          <td colSpan={TOTAL_COLS} />
+        </tr>
+      )}
+      {virtualItems.map((vi) => {
+        const t = tariffs[vi.index];
+        if (!t) return null;
+        return (
+          <TariffRow
+            key={t.id}
+            t={t}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+          />
+        );
+      })}
+      {paddingBottom > 0 && (
+        <tr aria-hidden style={{ height: paddingBottom }}>
+          <td colSpan={TOTAL_COLS} />
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function TariffsPage() {
   const [tariffs, setTariffs] = useState<Tariff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -336,24 +543,10 @@ export default function TariffsPage() {
   const [monthFilter, setMonthFilter] = useState("");
   const [factoryFilter, setFactoryFilter] = useState("");
 
-  // References for inline edit dropdowns
-  const [refs, setRefs] = useState<{ stations: Station[]; forwarders: Forwarder[]; fuelTypes: FuelType[]; factories: Factory[] }>({ stations: [], forwarders: [], fuelTypes: [], factories: [] });
-  useEffect(() => {
-    const sb = createClient();
-    Promise.all([
-      sb.from("stations").select("id, name").eq("is_active", true).order("name"),
-      sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
-      sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
-      sb.from("factories").select("id, name").eq("is_active", true).order("name"),
-    ]).then(([st, fw, ft, fa]) => {
-      setRefs({
-        stations: (st.data ?? []) as Station[],
-        forwarders: (fw.data ?? []) as Forwarder[],
-        fuelTypes: (ft.data ?? []) as FuelType[],
-        factories: (fa.data ?? []) as Factory[],
-      });
-    });
-  }, []);
+  // Refs come from the global cache — same data, zero per-mount round
+  // trips. Stations / forwarders / fuel types / factories are exactly
+  // what InlineSelect dropdowns + label resolvers need.
+  const { refs: g } = useGlobalRefs();
 
   async function updateTariff(id: string, patch: TablesUpdate<"tariffs">) {
     const sb = createClient();
@@ -368,6 +561,12 @@ export default function TariffsPage() {
     // Paginate — a single year can easily exceed PostgREST's
     // Max-Rows=1000 across all (forwarder × route × fuel × month)
     // combinations, especially as fuel types and forwarders grow.
+    //
+    // Joined name embeds (destination_station / departure_station /
+    // forwarder / fuel_type / factory) were dropped — those 5 sub-
+    // selects per row were ~270×5 extra projections per refetch. All
+    // names resolve client-side from the global refs cache via the
+    // label Maps in this component.
     const { data, error } = await fetchAllPaginated((from, to) =>
       sb
         .from("tariffs")
@@ -381,12 +580,7 @@ export default function TariffsPage() {
            year,
            planned_tariff,
            factory_id,
-           norm_days,
-           destination_station:stations!destination_station_id(name),
-           departure_station:stations!departure_station_id(name),
-           forwarder:forwarders(name),
-           fuel_type:fuel_types(name, color),
-           factory:factories(name)`
+           norm_days`
         )
         .eq("year", yearFilter)
         .order("month")
@@ -417,6 +611,94 @@ export default function TariffsPage() {
     return true;
   }), [tariffs, destFilter, depFilter, forwarderFilter, fuelFilter, monthFilter, factoryFilter]);
 
+  // Option arrays + label maps built once from the global refs cache.
+  // O(1) lookups per row instead of joined-row reads. The Map values
+  // are stable as long as the underlying ref arrays are — refs change
+  // rarely (first load + manual reloads from /spravochnik), so per-
+  // row context reads don't churn on filter keystrokes.
+  const stationOpts = useMemo(
+    () => g.stations.map((s) => ({ value: s.id, label: s.name })),
+    [g.stations],
+  );
+  const forwarderOpts = useMemo(
+    () => g.forwarders.map((f) => ({ value: f.id, label: f.name })),
+    [g.forwarders],
+  );
+  const fuelOpts = useMemo(
+    () => g.fuelTypes.map((f) => ({ value: f.id, label: f.name })),
+    [g.fuelTypes],
+  );
+  const factoryOpts = useMemo(
+    () => g.factories.map((f) => ({ value: f.id, label: f.name })),
+    [g.factories],
+  );
+  const monthOpts = useMemo(
+    () => MONTHS_RU_FULL.map((m) => ({ value: m, label: m })),
+    [],
+  );
+  const stationLabels = useMemo(
+    () => new Map(g.stations.map((s) => [s.id, s.name])),
+    [g.stations],
+  );
+  const forwarderLabels = useMemo(
+    () => new Map(g.forwarders.map((f) => [f.id, f.name])),
+    [g.forwarders],
+  );
+  const fuelLabels = useMemo(
+    () => new Map(g.fuelTypes.map((f) => [f.id, f.name])),
+    [g.fuelTypes],
+  );
+  const factoryLabels = useMemo(
+    () => new Map(g.factories.map((f) => [f.id, f.name])),
+    [g.factories],
+  );
+
+  const refsContextValue = useMemo<TariffRefsValue>(() => ({
+    stationOpts,
+    forwarderOpts,
+    fuelOpts,
+    factoryOpts,
+    monthOpts,
+    stationLabels,
+    forwarderLabels,
+    fuelLabels,
+    factoryLabels,
+  }), [
+    stationOpts, forwarderOpts, fuelOpts, factoryOpts, monthOpts,
+    stationLabels, forwarderLabels, fuelLabels, factoryLabels,
+  ]);
+
+  // Virtualization: 270 tariffs × 9 cells today is borderline (~2.4k
+  // <td>s), but the table grows linearly with active forwarders ×
+  // routes × fuel types × months. Render only rows visible in the
+  // scroll container (+ overscan); two phantom <tr>s with explicit
+  // heights reserve the rest so the table layout stays intact.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollRef.current,
+    // Row geometry is ~32 px (text-[12px] + px-2 py-1). The virtual-
+    // izer re-measures real rows post-mount, so this only needs to
+    // be close; overscan=8 absorbs any slop on initial scroll.
+    estimateSize: () => 32,
+    overscan: 8,
+  });
+
+  // Stable delete callback — wraps confirm + delete so TariffRow can
+  // receive a single function reference that doesn't churn on every
+  // parent render (keeps React.memo effective for off-screen rows).
+  async function deleteTariff(id: string) {
+    if (!confirm("Удалить тариф?")) return;
+    const sb = createClient();
+    const { error } = await sb.from("tariffs").delete().eq("id", id);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Удалено");
+      loadTariffs();
+    }
+  }
+
   const activeFilterCount =
     (destFilter ? 1 : 0) + (depFilter ? 1 : 0) + (forwarderFilter ? 1 : 0)
     + (fuelFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (factoryFilter ? 1 : 0);
@@ -425,8 +707,14 @@ export default function TariffsPage() {
     setFuelFilter(""); setMonthFilter(""); setFactoryFilter("");
   }
 
+  const isColdLoad = loading && tariffs.length === 0;
+
   return (
-    <div className="space-y-4">
+    // flex/h-full mirrors /deals — the table's scroll container needs
+    // a bounded height to virtualize. The page itself doesn't scroll;
+    // the table does, and the sticky <thead> sticks against the
+    // table's own scroll context.
+    <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Тарифы</h1>
         <Button
@@ -466,39 +754,40 @@ export default function TariffsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
         <SearchableSelect
           value={destFilter} onChange={setDestFilter}
-          options={refs.stations.map((s) => ({ value: s.id, label: s.name }))}
+          options={stationOpts}
           placeholder="Все ст. назначения" searchPlaceholder="Поиск станции…"
         />
         <SearchableSelect
           value={depFilter} onChange={setDepFilter}
-          options={refs.stations.map((s) => ({ value: s.id, label: s.name }))}
+          options={stationOpts}
           placeholder="Все ст. отправления" searchPlaceholder="Поиск станции…"
         />
         <SearchableSelect
           value={forwarderFilter} onChange={setForwarderFilter}
-          options={refs.forwarders.map((f) => ({ value: f.id, label: f.name }))}
+          options={forwarderOpts}
           placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
         />
         <SearchableSelect
           value={fuelFilter} onChange={setFuelFilter}
-          options={refs.fuelTypes.map((f) => ({ value: f.id, label: f.name }))}
+          options={fuelOpts}
           placeholder="Все ГСМ" searchPlaceholder="Поиск ГСМ…"
         />
         <SearchableSelect
           value={monthFilter} onChange={setMonthFilter}
-          options={MONTHS_RU_FULL.map((m) => ({ value: m, label: m }))}
+          options={monthOpts}
           placeholder="Все месяцы" searchPlaceholder="Поиск месяца…"
         />
         <SearchableSelect
           value={factoryFilter} onChange={setFactoryFilter}
-          options={refs.factories.map((f) => ({ value: f.id, label: f.name }))}
+          options={factoryOpts}
           placeholder="Все заводы" searchPlaceholder="Поиск завода…"
         />
       </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Загрузка...</p>
-      ) : tariffs.length === 0 ? (
+      {/* Empty states (not cold-load) — keep showing the message when
+          the fetch finished and there's truly nothing. Cold-load
+          falls through to the skeleton branch. */}
+      {!loading && tariffs.length === 0 ? (
         <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
           <p className="text-sm text-stone-500">Нет тарифов за {yearFilter} год</p>
           <Button
@@ -511,7 +800,7 @@ export default function TariffsPage() {
             Добавить первый тариф
           </Button>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : !loading && filtered.length === 0 ? (
         <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
           <p className="text-sm text-stone-500">Под фильтры ничего не подошло</p>
           <Button
@@ -525,76 +814,49 @@ export default function TariffsPage() {
           </Button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-stone-50">
-                <TableHead className="text-[11px]">Ст. назначения</TableHead>
-                <TableHead className="text-[11px]">Ст. отправления</TableHead>
-                <TableHead className="text-[11px]">Экспедитор</TableHead>
-                <TableHead className="text-[11px]">Товар (ГСМ)</TableHead>
-                <TableHead className="text-[11px]">Месяц</TableHead>
-                <TableHead className="text-right text-[11px]">Тариф</TableHead>
-                <TableHead className="text-[11px]">Завод</TableHead>
-                <TableHead className="text-right text-[11px]">Норм. суток</TableHead>
-                <TableHead className="w-[30px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((t) => {
-                const stationOpts = refs.stations.map((s) => ({ value: s.id, label: s.name }));
-                const forwarderOpts = refs.forwarders.map((f) => ({ value: f.id, label: f.name }));
-                const fuelOpts = refs.fuelTypes.map((f) => ({ value: f.id, label: f.name }));
-                const factoryOpts = refs.factories.map((f) => ({ value: f.id, label: f.name }));
-                const monthOpts = MONTHS_RU_FULL.map((m) => ({ value: m, label: m }));
-                return (
-                  <TableRow key={t.id} className="hover:bg-amber-50/30">
-                    <TableCell className="text-[12px] text-stone-700">
-                      <InlineSelect value={t.destination_station_id} displayLabel={t.destination_station?.name ?? ""} options={stationOpts}
-                        onSave={(v) => updateTariff(t.id, { destination_station_id: v })} />
-                    </TableCell>
-                    <TableCell className="text-[12px] text-stone-700">
-                      <InlineSelect value={t.departure_station_id} displayLabel={t.departure_station?.name ?? ""} options={stationOpts}
-                        onSave={(v) => updateTariff(t.id, { departure_station_id: v })} />
-                    </TableCell>
-                    <TableCell className="text-[12px] text-stone-600">
-                      <InlineSelect value={t.forwarder_id} displayLabel={t.forwarder?.name ?? ""} options={forwarderOpts}
-                        onSave={(v) => updateTariff(t.id, { forwarder_id: v })} />
-                    </TableCell>
-                    <TableCell className="text-[12px]">
-                      <InlineSelect value={t.fuel_type_id} displayLabel={t.fuel_type?.name ?? ""} options={fuelOpts}
-                        onSave={(v) => updateTariff(t.id, { fuel_type_id: v })} />
-                    </TableCell>
-                    <TableCell className="text-[12px] text-stone-600">
-                      <InlineSelect value={t.month} displayLabel={t.month ?? ""} options={monthOpts}
-                        onSave={(v) => updateTariff(t.id, { month: v ?? undefined })} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <InlineNum value={t.planned_tariff} onSave={(v) => updateTariff(t.id, { planned_tariff: v })} />
-                    </TableCell>
-                    <TableCell className="text-[12px] text-stone-600">
-                      <InlineSelect value={t.factory_id} displayLabel={t.factory?.name ?? ""} options={factoryOpts}
-                        onSave={(v) => updateTariff(t.id, { factory_id: v })} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <InlineNum value={t.norm_days} onSave={(v) => updateTariff(t.id, { norm_days: v })} d={0} />
-                    </TableCell>
-                    <TableCell>
-                      <button onClick={async () => {
-                        if (!confirm("Удалить тариф?")) return;
-                        const s = createClient();
-                        const { error } = await s.from("tariffs").delete().eq("id", t.id);
-                        if (error) toast.error(error.message); else { toast.success("Удалено"); loadTariffs(); }
-                      }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <TariffRefsContext.Provider value={refsContextValue}>
+          {/* The scroll container owns the virtualizer's height. The
+              sticky <thead> sticks against this container's top
+              edge — that's why we use a raw <table> here (the shadcn
+              <Table> wrapper adds its own overflow-x-auto div which
+              breaks per-cell sticky positioning).
+
+              flex-1 min-h-0 lets the container take all remaining
+              vertical space from the page's flex column without
+              overflowing the parent <main>. */}
+          <div
+            ref={scrollRef}
+            className="flex-1 min-h-0 overflow-auto rounded-md border border-stone-200 bg-white"
+          >
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-stone-50 border-b">
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Ст. назначения</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Ст. отправления</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Экспедитор</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Товар (ГСМ)</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Месяц</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-right align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Тариф</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Завод</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-right align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Норм. суток</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 w-[30px]"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {isColdLoad ? (
+                  Array.from({ length: 10 }).map((_, i) => <TariffSkeletonRow key={`sk-${i}`} />)
+                ) : (
+                  <VirtualizedRows
+                    tariffs={filtered}
+                    virtualizer={rowVirtualizer}
+                    onUpdate={updateTariff}
+                    onDelete={deleteTariff}
+                  />
+                )}
+              </tbody>
+            </table>
+          </div>
+        </TariffRefsContext.Provider>
       )}
 
       <AddTariffDialog
