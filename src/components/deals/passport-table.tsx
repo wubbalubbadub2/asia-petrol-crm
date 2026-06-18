@@ -751,6 +751,24 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   const refs = useRefs();
   const { refs: g } = useGlobalRefs();
 
+  // Tab-switch skeleton flash. When `dealType` changes (operator
+  // clicked «Паспорт KG» / «Паспорт KZ» / «Все сделки»), we briefly
+  // show the skeleton rows even if the filtered data is ready
+  // synchronously — addresses 2026-06-18 complaint #1: «таблица не
+  // меняется сразу… должны сразу показывать skeleton». The flash is
+  // cleared after a single paint via setTimeout(…, 0) so the real
+  // rows commit on the very next frame; total perceived delay ~16 ms.
+  const prevDealTypeRef = useRef<string>(dealType);
+  const [tabFlash, setTabFlash] = useState(false);
+  useEffect(() => {
+    if (prevDealTypeRef.current !== dealType) {
+      prevDealTypeRef.current = dealType;
+      setTabFlash(true);
+      const t = setTimeout(() => setTabFlash(false), 16);
+      return () => clearTimeout(t);
+    }
+  }, [dealType]);
+
   // Virtualization: with 500+ deals × ~36 cells each, mounting every row
   // synchronously blocks the route commit by 5+ seconds. We render only
   // the rows visible in the viewport (+ overscan) and pad the rest with
@@ -813,14 +831,20 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 
   // Empty-state stays — when the fetch finished and there are 0 deals
   // we want the actual message, not skeleton rows. Cold-load (loading
-  // && deals.length === 0) falls through to the skeleton branch below.
-  if (!loading && deals.length === 0) return (
+  // && deals.length === 0) and tab-flash both fall through to the
+  // skeleton branch below.
+  if (!loading && !tabFlash && deals.length === 0) return (
     <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
       <p className="text-sm text-stone-500">Нет сделок{dealType !== "ALL" ? ` типа ${dealType}` : ""}</p>
     </div>
   );
 
-  const isColdLoad = loading && deals.length === 0;
+  // Skeleton branch — true on initial cold load OR during the brief
+  // tab-switch flash. Even if `deals` already contains rows for the
+  // new tab (it will, since filtering is client-side and instant),
+  // tabFlash forces the skeleton for one render so the operator gets
+  // immediate «click» feedback.
+  const isColdLoad = (loading && deals.length === 0) || tabFlash;
 
   return (
     <PassportRefsContext.Provider value={refsContextValue}>
