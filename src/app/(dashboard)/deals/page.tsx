@@ -85,6 +85,12 @@ export default function DealsPage() {
   // matches if ANY of its deal_company_groups rows has this id. See
   // useDeals → DealFilters.companyGroupId.
   const [companyGroupFilter, setCompanyGroupFilter] = useState("");
+  // Position-specific variants of the chain filter: «Группа 1»
+  // matches deal_company_groups.position = 1, «Группа 2» = position 2.
+  // Independent of (and AND-combined with) the any-position filter
+  // above. See useDeals → DealFilters.companyGroupPos1Id/Pos2Id.
+  const [companyGroupPos1, setCompanyGroupPos1] = useState("");
+  const [companyGroupPos2, setCompanyGroupPos2] = useState("");
   const [applicationFilter, setApplicationFilter] = useState("");
 
   // Lag every filter value handed to useDeals so dropdown clicks feel
@@ -102,6 +108,8 @@ export default function DealsPage() {
   const deferredMonth = useDeferredValue(monthFilter);
   const deferredForwarder = useDeferredValue(forwarderFilter);
   const deferredCompanyGroup = useDeferredValue(companyGroupFilter);
+  const deferredCompanyGroupPos1 = useDeferredValue(companyGroupPos1);
+  const deferredCompanyGroupPos2 = useDeferredValue(companyGroupPos2);
   const deferredApplication = useDeferredValue(applicationFilter);
   const deferredYear = useDeferredValue(yearFilter);
   // isFiltering is true while any filter input is ahead of its deferred
@@ -118,6 +126,8 @@ export default function DealsPage() {
     monthFilter !== deferredMonth ||
     forwarderFilter !== deferredForwarder ||
     companyGroupFilter !== deferredCompanyGroup ||
+    companyGroupPos1 !== deferredCompanyGroupPos1 ||
+    companyGroupPos2 !== deferredCompanyGroupPos2 ||
     applicationFilter !== deferredApplication ||
     yearFilter !== deferredYear;
   // Filter dropdowns read from the shared refs cache so a navigation
@@ -185,6 +195,11 @@ export default function DealsPage() {
     // src/lib/hooks/use-deals.ts. NOT the deal-level
     // logistics_company_group_id FK.
     companyGroupId: deferredCompanyGroup || undefined,
+    // «Группа 1» / «Группа 2» — same trading chain, but narrowed to
+    // the row whose deal_company_groups.position matches. AND-combined
+    // with companyGroupId server-side inside useDeals.
+    companyGroupPos1Id: deferredCompanyGroupPos1 || undefined,
+    companyGroupPos2Id: deferredCompanyGroupPos2 || undefined,
     applicationContract: deferredApplication || undefined,
     searchCode: deferredSearch || undefined,
   });
@@ -208,12 +223,16 @@ export default function DealsPage() {
   const activeFilterCount =
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
     (fuelTypeFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (forwarderFilter ? 1 : 0) +
-    (companyGroupFilter ? 1 : 0) + (applicationFilter ? 1 : 0);
+    (companyGroupFilter ? 1 : 0) +
+    (companyGroupPos1 ? 1 : 0) + (companyGroupPos2 ? 1 : 0) +
+    (applicationFilter ? 1 : 0);
 
   function clearAllFilters() {
     setSupplierFilter(""); setBuyerFilter(""); setFactoryFilter("");
     setFuelTypeFilter(""); setMonthFilter(""); setForwarderFilter("");
-    setCompanyGroupFilter(""); setApplicationFilter("");
+    setCompanyGroupFilter("");
+    setCompanyGroupPos1(""); setCompanyGroupPos2("");
+    setApplicationFilter("");
     setSearch("");
   }
 
@@ -299,7 +318,7 @@ export default function DealsPage() {
             {totalCount} {totalCount === 1 ? "сделка" : totalCount % 10 >= 2 && totalCount % 10 <= 4 && (totalCount % 100 < 10 || totalCount % 100 >= 20) ? "сделки" : "сделок"}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2">
           <SearchableSelect
             value={supplierFilter} onChange={setSupplierFilter}
             options={refs.suppliers.map((r) => ({ value: r.id, label: r.label }))}
@@ -334,6 +353,16 @@ export default function DealsPage() {
             value={companyGroupFilter} onChange={setCompanyGroupFilter}
             options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
             placeholder="Все группы комп." searchPlaceholder="Поиск группы…"
+          />
+          <SearchableSelect
+            value={companyGroupPos1} onChange={setCompanyGroupPos1}
+            options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Группа 1" searchPlaceholder="Поиск группы 1…"
+          />
+          <SearchableSelect
+            value={companyGroupPos2} onChange={setCompanyGroupPos2}
+            options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
+            placeholder="Группа 2" searchPlaceholder="Поиск группы 2…"
           />
           <SearchableSelect
             value={applicationFilter} onChange={setApplicationFilter}
