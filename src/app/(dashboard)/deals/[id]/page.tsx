@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useDeal, updateDeal } from "@/lib/hooks/use-deals";
+import { updateDeal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { createClient } from "@/lib/supabase/client";
@@ -23,11 +23,14 @@ import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
 import { DealShipments } from "@/components/deals/deal-shipments";
 import { DealCompanyChain } from "@/components/deals/deal-company-chain";
 import { AuditHistory } from "@/components/shared/audit-history";
-import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { ChangeDealNumberDialog } from "@/components/deals/change-deal-number-dialog";
 import { useRole } from "@/lib/hooks/use-role";
-import { useDealSupplierLines, useDealBuyerLines, useDealLineRollups } from "@/lib/hooks/use-deal-lines";
 import { SupplierLinesEditor, BuyerLinesEditor } from "@/components/deals/deal-lines-editor";
+// Single-RPC bundle хук, заменяющий useDeal / useDealSupplierLines /
+// useDealBuyerLines / useDealLineRollups / useDealActivity + четыре
+// DocumentsSection fetch'а в одном round-trip (migration 00093).
+import { useDealBundle, useDealActivityLive } from "@/lib/hooks/use-deal-bundle";
+import type { ActivityMessage } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
   { value: "contract", label: "Договор / Приложение" },
@@ -316,7 +319,28 @@ function EditableSelect({ label, value, displayValue, editing, field, dealId, op
 
 export default function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: deal, loading, reload } = useDeal(id);
+  // Один RPC вместо семи параллельных fetch'ей. Bundle отдаёт сделку +
+  // линии + аггрегации + вложения по секциям + первичную ленту
+  // активности. Реалтайм-канал поднимается лениво ниже в
+  // DealActivityWrapper (см. useDealActivityLive).
+  const {
+    deal,
+    supplierLines,
+    buyerLines,
+    lineRollups,
+    attachments: bundleAttachments,
+    activity: bundleActivity,
+    loading,
+    reload,
+  } = useDealBundle(id);
+  // Узкие reload-обёртки — UI-сайты, которые раньше дергали отдельные
+  // {reloadSupplierLines, reloadBuyerLines, reloadLineRollups},
+  // получают одну функцию-обёртку поверх bundle reload. Это незначительно
+  // тяжелее одиночного refetch, но в одном round-trip обновляются ВСЕ
+  // зависимости (rollups считаются по тем же линиям + shipment_registry).
+  const reloadSupplierLines = reload;
+  const reloadBuyerLines = reload;
+  const reloadLineRollups = reload;
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -339,10 +363,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     quotationTypes: globalRefs.quotationTypes.map((r) => ({ value: r.id, label: r.name })),
   }), [globalRefs]);
 
-  // Pricing variants per side (multi-line, 00053+00054)
-  const { data: supplierLines, reload: reloadSupplierLines } = useDealSupplierLines(id);
-  const { data: buyerLines,    reload: reloadBuyerLines }    = useDealBuyerLines(id);
-  const { data: lineRollups,   reload: reloadLineRollups }   = useDealLineRollups(id);
+  // Pricing variants per side (multi-line, 00053+00054) — теперь приходят
+  // из bundle выше.
 
   const priceConditionOptions = [
     { value: "average_month", label: "Средний месяц" },
@@ -513,8 +535,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       )}
       {/* Supplier payments */}
       <DealPayments dealId={deal.id} currencySymbol={supplierCurrencySymbol} side="supplier" />
-      {/* Supplier documents */}
-      <DocumentsSection dealId={deal.id} section="supplier" title="Документы — Поставщик" />
+      {/* Supplier documents — initial set приехал в bundle.attachments;
+          DocumentsSection делает свой re-fetch только при mutation. */}
+      <DocumentsSection dealId={deal.id} section="supplier" title="Документы — Поставщик" initialAttachments={bundleAttachments["supplier"] ?? []} />
 
       {/* ===== BUYER SECTION (fields + pricing + payments) ===== */}
       <Card>
@@ -581,7 +604,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {/* Buyer payments */}
       <DealPayments dealId={deal.id} currencySymbol={buyerCurrencySymbol} side="buyer" />
       {/* Buyer documents */}
-      <DocumentsSection dealId={deal.id} section="buyer" title="Документы — Покупатель" />
+      <DocumentsSection dealId={deal.id} section="buyer" title="Документы — Покупатель" initialAttachments={bundleAttachments["buyer"] ?? []} />
 
       {/* ===== COMPANY CHAIN ===== */}
       <DealCompanyChain
@@ -604,7 +627,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         onReload={reload}
       />
       {/* Company chain documents */}
-      <DocumentsSection dealId={deal.id} section="company_chain" title="Документы — Цепочка компании" />
+      <DocumentsSection dealId={deal.id} section="company_chain" title="Документы — Цепочка компании" initialAttachments={bundleAttachments["company_chain"] ?? []} />
 
       {/* ===== LOGISTICS ===== */}
       <Card>
@@ -642,7 +665,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </CardContent>
       </Card>
       {/* Logistics documents */}
-      <DocumentsSection dealId={deal.id} section="logistics" title="Документы — Логистика" />
+      <DocumentsSection dealId={deal.id} section="logistics" title="Документы — Логистика" initialAttachments={bundleAttachments["logistics"] ?? []} />
 
       {/* ===== MANAGERS ===== */}
       <Card>
@@ -680,25 +703,28 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <CardTitle className="text-[14px]">Активность</CardTitle>
           </CardHeader>
           <CardContent className="p-3 h-[calc(100%-3rem)]">
-            <DealActivityWrapper dealId={deal.id} />
+            <DealActivityWrapper dealId={deal.id} seed={bundleActivity} />
           </CardContent>
         </Card>
       </div>
     </div>
 
     {/* Mobile: floating chat button */}
-    <MobileChatButton dealId={deal.id} />
+    <MobileChatButton dealId={deal.id} seed={bundleActivity} />
     </div>
     </DealReloadContext.Provider>
   );
 }
 
-function DealActivityWrapper({ dealId }: { dealId: string }) {
-  const { messages, loading, sendMessage } = useDealActivity(dealId);
-  return <ActivityFeed messages={messages} loading={loading} sendMessage={sendMessage} />;
+function DealActivityWrapper({ dealId, seed }: { dealId: string; seed: ActivityMessage[] }) {
+  // bundle.activity = seed. useDealActivityLive поднимает realtime-канал
+  // лениво, оставляя первый paint без WS handshake.
+  const { messages, sendMessage } = useDealActivityLive(dealId, seed);
+  // loading=false: seed уже от bundle, реалтайм-канал только наращивает.
+  return <ActivityFeed messages={messages} loading={false} sendMessage={sendMessage} />;
 }
 
-function MobileChatButton({ dealId }: { dealId: string }) {
+function MobileChatButton({ dealId, seed }: { dealId: string; seed: ActivityMessage[] }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -720,7 +746,7 @@ function MobileChatButton({ dealId }: { dealId: string }) {
             </button>
           </div>
           <div className="flex-1 p-3 overflow-hidden">
-            <DealActivityWrapper dealId={dealId} />
+            <DealActivityWrapper dealId={dealId} seed={seed} />
           </div>
         </div>
       )}
@@ -730,22 +756,44 @@ function MobileChatButton({ dealId }: { dealId: string }) {
 
 type DocSection = "supplier" | "buyer" | "company_chain" | "logistics";
 
-function DocumentsSection({ dealId, section, title }: {
+function DocumentsSection({ dealId, section, title, initialAttachments }: {
   dealId: string;
   section: DocSection;
   title: string;
+  // Pre-seeded из bundle.attachments[section]. Если поле есть — рисуем
+  // мгновенно без отдельного запроса. Если undefined (например, секции
+  // нет в bundle, либо bundle ещё не загрузился) — фолбэк на старый
+  // self-fetch, чтобы не зависеть жёстко от родителя.
+  initialAttachments?: Attachment[];
 }) {
   const supabase = createClient();
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const seedRef = useRef(initialAttachments);
+  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments ?? []);
+  const [loading, setLoading] = useState(initialAttachments == null);
   const [uploading, setUploading] = useState(false);
   const [category, setCategory] = useState("contract");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Seed приехал из родителя — рисуем сразу, без round-trip'а.
+    if (seedRef.current != null) {
+      setAttachments(seedRef.current);
+      setLoading(false);
+      return;
+    }
     loadAttachments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, section]);
+
+  // Если bundle обновился после первичной отрисовки (например, родитель
+  // дёрнул reload) — синхронизируем. NB: не подкладываем seed в
+  // зависимости первого useEffect, чтобы старая привязка [dealId, section]
+  // не цеплялась к референсной нестабильности initialAttachments.
+  useEffect(() => {
+    if (initialAttachments != null) {
+      setAttachments(initialAttachments);
+    }
+  }, [initialAttachments]);
 
   async function loadAttachments() {
     setLoading(true);
