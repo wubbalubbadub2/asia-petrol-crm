@@ -1,38 +1,82 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { ChevronDown, Fuel } from "lucide-react";
+import { Fuel, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navItems, type NavItem } from "@/lib/constants/nav-items";
 import { useRole } from "@/lib/hooks/use-role";
 
-function NavLink({ item, pathname, onNavigate }: { item: NavItem; pathname: string; onNavigate?: () => void }) {
+/**
+ * Inner child of <Link>. `useLinkStatus()` returns the pending state
+ * for THIS Link instance — Next.js sets it the moment the user
+ * clicks, before the destination route's chunk has finished
+ * downloading. We render an «armed» visual state (slightly brighter
+ * bg + pulsing dot) so the operator sees that the click landed,
+ * even if the route takes a second to mount. Without this, dense
+ * dashboard pages can feel like the click did nothing.
+ *
+ * Hook contract (Next 15.3+): MUST be in a descendant component of
+ * <Link>, not on Link itself.
+ */
+function NavLinkBody({
+  Icon,
+  label,
+  isActive,
+}: {
+  Icon: LucideIcon;
+  label: string;
+  isActive: boolean;
+}) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <span
+      className={cn(
+        "group/body flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200",
+        // Pending overrides active styling so the «armed» feedback
+        // is unmistakable on the currently-active link too.
+        pending
+          ? "bg-amber-500/25 text-amber-300"
+          : isActive
+            ? "bg-amber-500/15 text-amber-400"
+            : "text-slate-400 hover:bg-white/5 hover:text-slate-200",
+      )}
+    >
+      <Icon
+        className={cn(
+          "h-[18px] w-[18px] shrink-0 transition-colors",
+          pending || isActive
+            ? "text-amber-400"
+            : "text-slate-500 group-hover/body:text-slate-300",
+        )}
+      />
+      <span>{label}</span>
+      {pending ? (
+        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+      ) : isActive ? (
+        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />
+      ) : null}
+    </span>
+  );
+}
+
+function NavLink({
+  item,
+  pathname,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  onNavigate?: () => void;
+}) {
   const isActive =
     pathname === item.href ||
     (item.href !== "/" && pathname.startsWith(item.href));
-  const Icon = item.icon;
 
   return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200",
-        isActive
-          ? "bg-amber-500/15 text-amber-400"
-          : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-      )}
-    >
-      <Icon className={cn(
-        "h-[18px] w-[18px] shrink-0 transition-colors",
-        isActive ? "text-amber-400" : "text-slate-500 group-hover:text-slate-300"
-      )} />
-      <span>{item.label}</span>
-      {isActive && (
-        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />
-      )}
+    <Link href={item.href} onClick={onNavigate} className="block">
+      <NavLinkBody Icon={item.icon} label={item.label} isActive={isActive} />
     </Link>
   );
 }
