@@ -121,7 +121,8 @@ function ConsigneeForm({ item, onSave, onClose }: FormProps) {
 export default function ConsigneesPage() {
   const { data, loading, save, remove } = useSupabaseTable<Consignee>(
     "consignees",
-    "name"
+    "name",
+    "id, name, bin_iin, is_active"
   );
 
   if (loading) {

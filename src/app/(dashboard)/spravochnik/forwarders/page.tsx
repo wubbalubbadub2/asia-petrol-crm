@@ -121,7 +121,8 @@ function ForwarderForm({ item, onSave, onClose }: FormProps) {
 export default function ForwardersPage() {
   const { data, loading, save, remove } = useSupabaseTable<Forwarder>(
     "forwarders",
-    "name"
+    "name",
+    "id, name, bin_iin, is_active"
   );
 
   if (loading) {

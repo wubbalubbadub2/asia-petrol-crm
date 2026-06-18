@@ -157,7 +157,7 @@ export default function SuppliersPage() {
     setLoading(true);
     const { data: rows, error } = await supabase
       .from("counterparties")
-      .select("*")
+      .select("id, full_name, short_name, bin_iin, legal_address, is_active, type")
       .eq("type", "supplier")
       .order("full_name", { ascending: true });
 

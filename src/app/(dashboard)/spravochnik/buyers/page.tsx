@@ -157,7 +157,7 @@ export default function BuyersPage() {
     setLoading(true);
     const { data: rows, error } = await supabase
       .from("counterparties")
-      .select("*")
+      .select("id, full_name, short_name, bin_iin, legal_address, is_active, type")
       .eq("type", "buyer")
       .order("full_name", { ascending: true });
 

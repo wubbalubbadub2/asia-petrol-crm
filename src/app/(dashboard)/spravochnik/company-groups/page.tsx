@@ -173,7 +173,8 @@ function CompanyGroupForm({ item, onSave, onClose }: FormProps) {
 export default function CompanyGroupsPage() {
   const { data, loading, save, remove } = useSupabaseTable<CompanyGroup>(
     "company_groups",
-    "name"
+    "name",
+    "id, name, full_name, short_name, bin_iin, legal_address, is_active"
   );
 
   if (loading) {
