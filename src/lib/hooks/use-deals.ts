@@ -354,6 +354,16 @@ export type DealFilters = {
   factoryId?: string;
   fuelTypeId?: string;
   forwarderId?: string;
+  // companyGroupId filters the deal's TRADING CHAIN (deal_company_groups
+  // table — 1-to-many «Группа комп.» colspan=2 cell in the passport).
+  // A deal matches if ANY of its deal_company_groups rows has a
+  // company_group_id equal to the filter value. This is what operators
+  // expect when they pick «Все группы комп.»
+  companyGroupId?: string;
+  // logisticsCompanyGroupId filters the deal-level
+  // deals.logistics_company_group_id FK (freight forwarder's group).
+  // Optional, only wired into the page if a dedicated «Логистика —
+  // группа» dropdown is added.
   logisticsCompanyGroupId?: string;
   applicationContract?: string;
   searchCode?: string;
@@ -394,6 +404,37 @@ async function fetchDealsList(
 ): Promise<{ data: Deal[]; total: number }> {
   const sb = createClient();
   const PAGE = 1000;
+  // When companyGroupId is set, do a two-step query:
+  //   1) Find every deal_id in deal_company_groups where
+  //      company_group_id = filter. (one small index-only roundtrip)
+  //   2) Fetch the deals with the LEFT join embed so the passport row
+  //      still shows the FULL chain, not just the matching slot.
+  // The naive PostgREST approach — `deal_company_groups!inner` with
+  // `.eq("deal_company_groups.company_group_id", x)` — would correctly
+  // narrow the parent rows but ALSO truncate the embed to only the
+  // matching child. That breaks the passport's «Группа комп.» chain
+  // rendering (operators need to see all 6 slots of context).
+  let chainMatchIds: string[] | null = null;
+  if (filters?.companyGroupId) {
+    const { data: matches, error: matchErr } = await sb
+      .from("deal_company_groups")
+      .select("deal_id")
+      .eq("company_group_id", filters.companyGroupId);
+    if (matchErr) {
+      const entry = dealsCache.get(cacheKey);
+      if (entry) dealsCache.set(cacheKey, { ...entry, promise: null });
+      throw matchErr;
+    }
+    // Dedup — a single deal can have the same group in multiple slots.
+    chainMatchIds = [...new Set((matches ?? []).map((r) => r.deal_id as string))];
+    // Empty matching set — short-circuit, the eq("id", in(...)) below
+    // would otherwise hit PostgREST with an empty IN list (which it
+    // rejects). Returning early keeps the cache + total in sync.
+    if (chainMatchIds.length === 0) {
+      dealsCache.set(cacheKey, { promise: null, data: [], total: 0, ts: Date.now() });
+      return { data: [], total: 0 };
+    }
+  }
   const baseFilter = (qb: ReturnType<typeof sb.from>) => {
     let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
     // is_draft is now backfilled NOT NULL DEFAULT false (migration
@@ -410,6 +451,8 @@ async function fetchDealsList(
     if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
     if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
     if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
+    // Chain-membership filter resolved upstream (see chainMatchIds).
+    if (chainMatchIds) q = q.in("id", chainMatchIds);
     if (filters?.applicationContract) {
       const c = filters.applicationContract.replace(/,/g, "\\,");
       q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
@@ -518,7 +561,7 @@ export function useDeals(filters?: DealFilters) {
   }, [
     filters?.dealType, filters?.year, filters?.month, filters?.isArchived,
     filters?.supplierId, filters?.buyerId, filters?.factoryId, filters?.fuelTypeId,
-    filters?.forwarderId, filters?.logisticsCompanyGroupId,
+    filters?.forwarderId, filters?.logisticsCompanyGroupId, filters?.companyGroupId,
     filters?.applicationContract, filters?.searchCode,
   ]);
 
