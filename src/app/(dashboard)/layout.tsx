@@ -7,7 +7,6 @@ import { TopBar } from "@/components/layout/top-bar";
 import { AuthGuard } from "@/components/layout/auth-guard";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getGlobalRefs } from "@/lib/refs";
-import { prefetchDeals } from "@/lib/hooks/use-deals";
 import { RoleProvider } from "@/lib/role-context";
 
 export default function DashboardLayout({
@@ -19,24 +18,27 @@ export default function DashboardLayout({
 
   const router = useRouter();
 
-  // Warm both caches the moment the dashboard chrome paints — while
-  // the operator is still on the dashboard, refs + the default deals
-  // query (current year, no other filters — the most-likely landing)
-  // are already streaming. By the time they click «Сделки» in the
-  // sidebar, the data is in dealsCache and useDeals paints
-  // synchronously.
+  // Warm the refs cache the moment the dashboard chrome paints — by
+  // the time the operator clicks any sidebar link, refs are already
+  // streaming. Refs are cheap (a handful of small SELECTs in parallel)
+  // so they don't compete with whatever the destination page fetches.
   //
   // ALSO prefetch the route bundles themselves. <Link prefetch> only
   // fires on hover and was the cause of the «click → URL waits 3s →
   // page waits 4s» symptom: Next.js was downloading each route's
   // client chunk after the click. router.prefetch() forces it now,
   // before the user even hovers.
+  //
+  // NOTE: prefetchDeals() was REMOVED here (2026-06-18). It monopolized
+  // the Supabase REST connection pool for 2-3s on every dashboard route
+  // mount, which made /applications, /spravochnik and /dt-kt cold loads
+  // 15-22s instead of 2-3s — those routes were stuck behind the deals
+  // prefetch holding all the connections. The deals page now warms its
+  // own cache on mount via useDeals; the prefetch was only an
+  // optimization for the «click /deals from sidebar» path and the
+  // overall cost-vs-benefit was strongly negative.
   useEffect(() => {
     void getGlobalRefs();
-    void prefetchDeals({
-      year: new Date().getFullYear(),
-      isArchived: false,
-    });
     router.prefetch("/deals");
     router.prefetch("/registry");
     router.prefetch("/applications");

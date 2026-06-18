@@ -79,9 +79,13 @@ export type Deal = {
   logistics_currency: string;
   is_archived: boolean;
   created_at: string;
-  // Variant counts — populated post-fetch from the embedded line arrays.
-  supplier_lines_count?: number;
-  buyer_lines_count?: number;
+  // Variant counts — denormalized onto the `deals` row by migration
+  // 00092 (trigger-maintained). Always present from list/detail
+  // queries; annotateLineCounts also back-fills them from the legacy
+  // `supplier_lines.length` / `buyer_lines.length` arrays so older
+  // cached payloads keep working.
+  supplier_lines_count: number;
+  buyer_lines_count: number;
   // Joined fields
   factory?: { name: string } | null;
   fuel_type?: { name: string; color: string } | null;
@@ -94,7 +98,10 @@ export type Deal = {
   buyer_destination_station?: { name: string } | null;
   supplier_departure_station?: { name: string } | null;
   logistics_company_group?: { name: string } | null;
-  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; quotation_comment: string | null; discount: number | null; contract_ref: string | null; currency: string | null; company_group: { name: string } | null }[];
+  // Trimmed to the columns the passport-table list view actually reads
+  // (LIST_SELECT). useDeal/DETAIL_SELECT still embeds the full set —
+  // see DEAL_SELECT below — so the detail page keeps every field.
+  deal_company_groups?: { id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation?: number | null; quotation_comment?: string | null; discount?: number | null; contract_ref?: string | null; currency?: string | null; company_group?: { name: string } | null }[];
   // Loaded for Excel export — pulls preliminary_price snapshot per variant.
   // Always carries at least the default line; we annotate counts post-fetch
   // (see annotateLineCounts).
@@ -149,6 +156,60 @@ export function invalidateDealShipments(dealId: string) {
   shipmentsCache.delete(dealId);
 }
 
+// Payment shape used by the click-popover breakdown on the passport
+// payment cells. Loaded lazily per (deal, side); same Promise-cached
+// pattern as fetchDealShipments — keeps the list query lean and avoids
+// double-fetches on rapid clicks.
+export type PaymentSnap = {
+  id: string;
+  payment_date: string;
+  amount: number | null;
+  currency: string | null;
+  description: string | null;
+  payment_type: string | null;
+};
+
+// Keyed by `${dealId}:${side}` — supplier/buyer payments live in the
+// same table with a `side` discriminator, so the cache key has to
+// distinguish them. In-flight promises live here too so a double-click
+// on the same cell doesn't fan out into two requests.
+const paymentsCache = new Map<string, Promise<PaymentSnap[]>>();
+export function fetchDealPayments(
+  dealId: string,
+  side: "supplier" | "buyer",
+): Promise<PaymentSnap[]> {
+  const key = `${dealId}:${side}`;
+  const cached = paymentsCache.get(key);
+  if (cached) return cached;
+  const sb = createClient();
+  const p = Promise.resolve(
+    sb
+      .from("deal_payments")
+      .select("id, payment_date, amount, currency, description, payment_type")
+      .eq("deal_id", dealId)
+      .eq("side", side)
+      .order("payment_date", { ascending: true }),
+  ).then(({ data, error }) => {
+    if (error) {
+      // Same retry-friendly policy as shipments — drop on failure so
+      // the next click hits the network instead of the dead promise.
+      paymentsCache.delete(key);
+      throw error;
+    }
+    return (data ?? []) as PaymentSnap[];
+  });
+  paymentsCache.set(key, p);
+  return p;
+}
+export function invalidateDealPayments(dealId: string, side?: "supplier" | "buyer") {
+  if (side) {
+    paymentsCache.delete(`${dealId}:${side}`);
+  } else {
+    paymentsCache.delete(`${dealId}:supplier`);
+    paymentsCache.delete(`${dealId}:buyer`);
+  }
+}
+
 // Most fields are optional because DEAL_SELECT only fetches `id` for
 // the list view's count badge. The Excel export enriches deals via
 // fetchDealLinesForExport (below) before reading these fields.
@@ -198,14 +259,21 @@ export async function fetchDealLinesForExport(
 // (see lib/refs.ts). Every dropped join was a sub-select per row on
 // PostgREST; removing them cuts the deals query latency
 // significantly. deal_company_groups stays embedded — it carries
-// per-deal data (price/discount/etc) that isn't in any reference
-// table.
+// per-deal data (price/price_kind) that isn't in any reference
+// table — but the embed is trimmed to ONLY the columns the list view
+// reads. quotation / quotation_comment / discount / contract_ref /
+// currency are detail-only and read via DEAL_SELECT on the deal page.
+//
+// supplier_lines:deal_supplier_lines(id) and buyer_lines:deal_buyer_lines(id)
+// embeds were dropped entirely (migration 00092). The passport list only
+// uses these to render the "+N лин." count badge — that count now lives
+// directly on the `deals` row as supplier_lines_count / buyer_lines_count,
+// maintained by AFTER INSERT/UPDATE/DELETE triggers on the lines tables.
+// Dropping the embeds cuts the wire payload from ~1.28 MB to ~250 KB
+// for a typical 500-deal list (perf agent audit, 2026-06-18).
+//
 // company_group name on each deal_company_groups row also resolves
-// from the refs cache — drop the nested join so the list query is
-// purely from the `deals` table + 3 lightweight `id`-only embeds.
-// Explicit column list — was `*` pulling all ~75 columns; passport-
-// table reads ~35. Halves wire payload + JSON parse cost (perf agent
-// audit, 2026-06-17).
+// from the refs cache — no nested join needed.
 const LIST_SELECT = `
   id, deal_type, deal_number, year, deal_code, quarter, month,
   factory_id, fuel_type_id, sulfur_percent,
@@ -224,9 +292,8 @@ const LIST_SELECT = `
   preliminary_tonnage, preliminary_amount, planned_tariff, actual_tariff,
   actual_shipped_volume, invoice_amount, invoice_volume,
   logistics_currency, currency, is_archived, is_draft, created_at,
-  deal_company_groups(id, position, company_group_id, price, price_kind, quotation, quotation_comment, discount, contract_ref, currency),
-  supplier_lines:deal_supplier_lines(id),
-  buyer_lines:deal_buyer_lines(id)
+  supplier_lines_count, buyer_lines_count,
+  deal_company_groups(id, position, company_group_id, price, price_kind)
 `;
 
 // DETAIL_SELECT — full join set, used by useDeal on the deal-detail
@@ -254,14 +321,24 @@ const DEAL_SELECT = `
 // Excel export enriches them on demand via fetchDealLinesForExport so
 // the list payload stays small.
 
-// Annotate fetched deals with simple line counts so the passport table
-// can render a "+N линий" badge without a second round trip.
-type WithLines = { supplier_lines?: { id: string }[]; buyer_lines?: { id: string }[] };
+// Line counts now come straight from the deals row (supplier_lines_count /
+// buyer_lines_count columns, maintained by triggers — see migration
+// 00092_deal_lines_counts.sql). DETAIL_SELECT still pulls the id-only
+// arrays so legacy code paths read `.supplier_lines?.length ?? 0` work.
+// We keep this helper around for backwards compatibility so callers
+// don't all need refactoring; it falls back to array length if the
+// columns aren't present (e.g. a stale cache from before the migration).
+type WithLines = {
+  supplier_lines?: { id: string }[];
+  buyer_lines?: { id: string }[];
+  supplier_lines_count?: number;
+  buyer_lines_count?: number;
+};
 function annotateLineCounts<T extends WithLines>(rows: T[]): (T & Deal)[] {
   return rows.map((r) => ({
     ...(r as unknown as Deal),
-    supplier_lines_count: r.supplier_lines?.length ?? 0,
-    buyer_lines_count: r.buyer_lines?.length ?? 0,
+    supplier_lines_count: r.supplier_lines_count ?? r.supplier_lines?.length ?? 0,
+    buyer_lines_count: r.buyer_lines_count ?? r.buyer_lines?.length ?? 0,
   })) as (T & Deal)[];
 }
 
@@ -288,25 +365,40 @@ export type DealFilters = {
 // refreshes it. 60s TTL — quick enough that mutations made on the
 // detail page are picked up after a short revisit, slow enough that
 // navigating between sibling pages feels native.
-const dealsCache = new Map<string, { data: Deal[]; total: number; ts: number }>();
+//
+// `promise` is the in-flight fetch (if any). When the layout-level
+// prefetch is mid-air and the page-level useDeals mounts, both used to
+// fire the same query and double the backend load. Now the second
+// caller awaits the same promise — true single-flight dedup. The
+// promise resolves to the settled result, which is the same data
+// written into `data` + `total` + `ts` once the fetch finishes.
+type DealsCacheEntry = {
+  promise: Promise<{ data: Deal[]; total: number }> | null;
+  data: Deal[] | null;
+  total: number;
+  ts: number;
+};
+const dealsCache = new Map<string, DealsCacheEntry>();
 const DEALS_TTL_MS = 60_000;
 // dealByIdCache is also used by useDeals to pre-seed each visible row
 // so the detail page opens instantly when clicked from the list.
 const dealByIdCache = new Map<string, { data: Deal; ts: number }>();
 const DEAL_TTL_MS = 60_000;
 
-// Standalone fetcher — same logic as useDeals' internal load, but
-// callable from non-React contexts (e.g. the dashboard layout's
-// effect-less warm-up). Writes straight into dealsCache so the
-// subsequent useDeals call paints synchronously.
-export async function prefetchDeals(filters?: DealFilters): Promise<void> {
-  const cacheKey = JSON.stringify(filters ?? {});
-  const cached = dealsCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < DEALS_TTL_MS) return;
+// Run the actual paged fetch and write the result into dealsCache.
+// Factored out so prefetchDeals and useDeals can share a single promise
+// via the cache's `promise` slot (true single-flight dedup).
+async function fetchDealsList(
+  cacheKey: string,
+  filters?: DealFilters,
+): Promise<{ data: Deal[]; total: number }> {
   const sb = createClient();
   const PAGE = 1000;
   const baseFilter = (qb: ReturnType<typeof sb.from>) => {
     let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
+    // is_draft is now backfilled NOT NULL DEFAULT false (migration
+    // 00091) so this is a sargable single-predicate filter instead
+    // of a NULLS OR.
     q = q.eq("is_draft", false);
     if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
     if (filters?.year) q = q.eq("year", filters.year);
@@ -327,92 +419,101 @@ export async function prefetchDeals(filters?: DealFilters): Promise<void> {
     }
     return q.order("deal_number", { ascending: true });
   };
+
   const all: unknown[] = [];
   let from = 0;
   for (;;) {
     const { data, error } = await baseFilter(sb.from("deals")).range(from, from + PAGE - 1);
-    if (error) return;
+    if (error) {
+      // Drop the in-flight promise on failure so a retry can fire.
+      const entry = dealsCache.get(cacheKey);
+      if (entry) dealsCache.set(cacheKey, { ...entry, promise: null });
+      throw error;
+    }
     const batch = (data ?? []) as unknown[];
     all.push(...batch);
     if (batch.length < PAGE) break;
     from += PAGE;
   }
   const rows = annotateLineCounts(all as WithLines[]) as unknown as Deal[];
-  dealsCache.set(cacheKey, { data: rows, total: rows.length, ts: Date.now() });
+  const total = rows.length;
+  dealsCache.set(cacheKey, { promise: null, data: rows, total, ts: Date.now() });
   const now = Date.now();
   for (const d of rows) dealByIdCache.set(d.id, { data: d, ts: now });
+  return { data: rows, total };
+}
+
+// Standalone fetcher — same logic as useDeals' internal load, but
+// callable from non-React contexts (e.g. the dashboard layout's
+// effect-less warm-up). Writes straight into dealsCache so the
+// subsequent useDeals call paints synchronously. If a fetch is already
+// in-flight for this key (from useDeals or another prefetch call), we
+// reuse that promise instead of issuing a duplicate request.
+export async function prefetchDeals(filters?: DealFilters): Promise<void> {
+  const cacheKey = JSON.stringify(filters ?? {});
+  const cached = dealsCache.get(cacheKey);
+  if (cached) {
+    if (cached.data && Date.now() - cached.ts < DEALS_TTL_MS) return;
+    if (cached.promise) {
+      // Someone else is already fetching this key — piggyback.
+      try { await cached.promise; } catch { /* swallowed — caller's problem */ }
+      return;
+    }
+  }
+  const promise = fetchDealsList(cacheKey, filters);
+  // Seed the cache with the in-flight promise BEFORE awaiting so
+  // concurrent callers (useDeals, second prefetchDeals) can find it.
+  dealsCache.set(cacheKey, {
+    promise,
+    data: cached?.data ?? null,
+    total: cached?.total ?? 0,
+    ts: cached?.ts ?? 0,
+  });
+  try { await promise; } catch { /* errors surfaced via toast inside useDeals; prefetch is best-effort */ }
 }
 
 export function useDeals(filters?: DealFilters) {
   const cacheKey = JSON.stringify(filters ?? {});
   const cached = dealsCache.get(cacheKey);
-  const isFresh = !!cached && Date.now() - cached.ts < DEALS_TTL_MS;
+  const isFresh = !!cached?.data && Date.now() - cached.ts < DEALS_TTL_MS;
 
   const [data, setData] = useState<Deal[]>(cached?.data ?? []);
   const [totalCount, setTotalCount] = useState(cached?.total ?? 0);
   // Only show a top-level «loading» when we have nothing to render —
   // a cached snapshot, even slightly stale, beats a blocker.
-  const [loading, setLoading] = useState(!cached);
-  const supabaseRef = useRef(createClient());
+  const [loading, setLoading] = useState(!cached?.data);
 
   // Client wanted the passport back as one scrollable list — no
   // pagination controls. We still paginate INTERNALLY against the
-  // 1000-row PostgREST cap, but stream every page into a single array
-  // and only flip loading=false once. LIST_SELECT is now lean enough
-  // (no FK joins, just three id-only embeds) that even ~500 rows
-  // come back well under a second.
-  const PAGE = 1000;
+  // 1000-row PostgREST cap inside fetchDealsList, streaming every
+  // page into a single array and only flipping loading=false once.
+  // LIST_SELECT is now lean enough (no FK joins, no line-array embeds —
+  // the line counts are denormalized columns maintained by triggers,
+  // migration 00092) that even ~500 rows come back well under a second.
   const load = useCallback(async () => {
-    const baseFilter = (qb: ReturnType<typeof supabaseRef.current.from>) => {
-      // No count:"exact" — that forced a second full-predicate scan;
-      // total comes from `all.length` after the stream finishes.
-      let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
-      // is_draft is now backfilled NOT NULL DEFAULT false (migration
-      // 00091) so this is a sargable single-predicate filter instead
-      // of a NULLS OR.
-      q = q.eq("is_draft", false);
-      if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
-      if (filters?.year) q = q.eq("year", filters.year);
-      if (filters?.month) q = q.eq("month", filters.month);
-      if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
-      if (filters?.supplierId) q = q.eq("supplier_id", filters.supplierId);
-      if (filters?.buyerId) q = q.eq("buyer_id", filters.buyerId);
-      if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
-      if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
-      if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
-      if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
-      if (filters?.applicationContract) {
-        const c = filters.applicationContract.replace(/,/g, "\\,");
-        q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
-      }
-      if (filters?.searchCode && filters.searchCode.trim()) {
-        q = q.ilike("deal_code", `%${filters.searchCode.trim()}%`);
-      }
-      return q.order("deal_number", { ascending: true });
-    };
-
-    const all: unknown[] = [];
-    let from = 0;
-    for (;;) {
-      const { data, error } = await baseFilter(supabaseRef.current.from("deals"))
-        .range(from, from + PAGE - 1);
-      if (error) {
-        toast.error(`Ошибка загрузки сделок: ${error.message}`);
-        break;
-      }
-      const batch = (data ?? []) as unknown[];
-      all.push(...batch);
-      if (batch.length < PAGE) break;
-      from += PAGE;
+    // Single-flight dedup: if there's already an in-flight fetch for
+    // this filter combo (e.g. dashboard layout fired prefetchDeals a
+    // few ms ago), await IT instead of starting a duplicate.
+    const existing = dealsCache.get(cacheKey);
+    let promise = existing?.promise;
+    if (!promise) {
+      promise = fetchDealsList(cacheKey, filters);
+      dealsCache.set(cacheKey, {
+        promise,
+        data: existing?.data ?? null,
+        total: existing?.total ?? 0,
+        ts: existing?.ts ?? 0,
+      });
     }
-    const rows = annotateLineCounts(all as WithLines[]) as unknown as Deal[];
-    setData(rows);
-    const total = rows.length;
-    setTotalCount(total);
-    dealsCache.set(cacheKey, { data: rows, total, ts: Date.now() });
-    const now = Date.now();
-    for (const d of rows) dealByIdCache.set(d.id, { data: d, ts: now });
-    setLoading(false);
+    try {
+      const { data: rows, total } = await promise;
+      setData(rows);
+      setTotalCount(total);
+    } catch (err) {
+      toast.error(`Ошибка загрузки сделок: ${(err as Error).message}`);
+    } finally {
+      setLoading(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filters?.dealType, filters?.year, filters?.month, filters?.isArchived,
