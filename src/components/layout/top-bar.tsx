@@ -1,5 +1,6 @@
 "use client";
 
+import Link, { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, ChevronDown, Bell, Archive, Settings, Menu } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +11,35 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+/**
+ * Child of <Link> — reads pending state of THIS link. Same pattern
+ * as the sidebar: amber pulsing dot shows the click landed even when
+ * the destination route takes a moment to mount, so the operator
+ * never sees the «I clicked, nothing happened» dead beat that the
+ * dropdown's `router.push` previously caused.
+ */
+function TopBarMenuItemBody({
+  Icon,
+  label,
+}: {
+  Icon: typeof Archive;
+  label: string;
+}) {
+  const { pending } = useLinkStatus();
+  return (
+    <>
+      <Icon className="mr-2 h-3.5 w-3.5" />
+      <span>{label}</span>
+      <span
+        aria-hidden
+        className={`ml-auto h-1.5 w-1.5 rounded-full bg-amber-500 transition-opacity ${
+          pending ? "animate-pulse opacity-100" : "opacity-0"
+        }`}
+      />
+    </>
+  );
+}
 
 export function TopBar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { profile } = useRole();
@@ -66,13 +96,18 @@ export function TopBar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
             <DropdownMenuContent align="end">
               {profile.role === "admin" && (
                 <>
-                  <DropdownMenuItem onClick={() => router.push("/archive")}>
-                    <Archive className="mr-2 h-3.5 w-3.5" />
-                    Архив
+                  {/*
+                   * Render menu item as a Next <Link>. The useLinkStatus
+                   * hook inside TopBarMenuItemBody picks up the pending
+                   * state for this specific Link instance, giving the
+                   * operator instant feedback while the dashboard route
+                   * is still streaming in.
+                   */}
+                  <DropdownMenuItem render={<Link href="/archive" />}>
+                    <TopBarMenuItemBody Icon={Archive} label="Архив" />
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/settings")}>
-                    <Settings className="mr-2 h-3.5 w-3.5" />
-                    Настройки
+                  <DropdownMenuItem render={<Link href="/settings" />}>
+                    <TopBarMenuItemBody Icon={Settings} label="Настройки" />
                   </DropdownMenuItem>
                 </>
               )}
