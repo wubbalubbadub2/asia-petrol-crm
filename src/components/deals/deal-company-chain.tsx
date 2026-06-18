@@ -20,9 +20,13 @@ type DealCompanyGroup = {
   quotation?: number | null;
   quotation_comment?: string | null;
   discount?: number | null;
-  contract_ref: string | null;
-  currency: string | null;
-  company_group: { name: string } | null;
+  // contract_ref / currency / company_group are optional on the Deal
+  // type because LIST_SELECT trims the embed (only the detail page's
+  // DEAL_SELECT pulls them). On this detail-page card they're always
+  // present because we mount only after DEAL_SELECT resolves.
+  contract_ref?: string | null;
+  currency?: string | null;
+  company_group?: { name: string } | null;
 };
 
 type Props = {

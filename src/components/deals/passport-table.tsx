@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type Deal, type ShipmentSnap, updateDeal, fetchDealShipments } from "@/lib/hooks/use-deals";
+import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
@@ -166,6 +166,178 @@ function VolumeBreakdownCell({
           className="fixed z-50 min-w-[200px] max-w-[300px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl whitespace-pre-line font-mono tabular-nums"
         >
           {loading || shipments === null ? "Загрузка…" : shipmentLines(shipments, field)}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+// Russian pluralization for «оплата / оплаты / оплат» — Russian uses
+// three forms (1, 2-4, 5+) with the usual mod-10/mod-100 exceptions
+// for teens. Used by the payment-breakdown popover header.
+function pluralizePayments(n: number): string {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return `${n} оплат`;
+  if (mod10 === 1) return `${n} оплата`;
+  if (mod10 >= 2 && mod10 <= 4) return `${n} оплаты`;
+  return `${n} оплат`;
+}
+
+// Format the lazy-loaded payments into the popover body. Matches the
+// volume popover's layout: header «N оплат», then one row per payment
+// in the form «DD.MM.YYYY: <amount> <currency>», followed by the
+// description on the next line if present. Sorted by payment_date asc
+// (the query already returns them in that order, but be defensive in
+// case of cache reuse).
+function paymentLines(
+  payments: PaymentSnap[],
+  fallbackCurrency: string,
+): string {
+  const rows = payments
+    .slice()
+    .sort((a, b) => (a.payment_date ?? "").localeCompare(b.payment_date ?? ""))
+    .flatMap((p) => {
+      const amt = p.amount != null
+        ? p.amount.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "—";
+      const cur = p.currency ?? fallbackCurrency ?? "";
+      const d = p.payment_date
+        ? p.payment_date.slice(0, 10).split("-").reverse().join(".")
+        : "—";
+      const head = `${d}: ${amt}${cur ? ` ${cur}` : ""}`;
+      return p.description ? [head, `  ${p.description}`] : [head];
+    });
+  if (payments.length === 0) return "Нет оплат";
+  return `${pluralizePayments(payments.length)}\n${rows.join("\n")}`;
+}
+
+// UX choice (2026-06-18): single click opens the breakdown popover;
+// the popover carries an «Изменить итог» button at the bottom which
+// switches the cell into the existing inline-edit input. Rationale —
+// splitting the cell into a number-zone + pencil-icon zone would
+// reduce the click target for both actions in an already-dense table
+// (~11px font, 36 columns), and we'd need to also split the totals
+// row column. The popover-button keeps the cell width constant and
+// keeps the inline-edit affordance discoverable (visible whenever the
+// popover is open).
+function PaymentBreakdownCell({
+  dealId, value, side, currency, className,
+}: {
+  dealId: string;
+  value: number | null | undefined;
+  side: "supplier" | "buyer";
+  currency: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [localVal, setLocalVal] = useState("");
+  const pendingVal = useRef<number | null | undefined>(undefined);
+  const shown = pendingVal.current !== undefined ? pendingVal.current : value;
+  if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
+  const [payments, setPayments] = useState<PaymentSnap[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const cellRef = useRef<HTMLTableCellElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (cellRef.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
+      setEditing(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
+  async function toggle() {
+    // When editing, ignore cell-click — the inner <input> handles its
+    // own blur. Otherwise behave like VolumeBreakdownCell: click to
+    // open, click again to close, lazy-fetch on first open.
+    if (editing) return;
+    if (open) { setOpen(false); return; }
+    const rect = cellRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
+    setOpen(true);
+    if (payments !== null) return;
+    setLoading(true);
+    try {
+      const data = await fetchDealPayments(dealId, side);
+      setPayments(data);
+    } catch {
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startEdit() {
+    setLocalVal(shown?.toString() ?? "");
+    setEditing(true);
+    // Don't close the popover — the user might want to glance at the
+    // breakdown while typing the summary value. It closes when they
+    // commit (Enter / blur) or hit Escape.
+  }
+
+  function commitEdit() {
+    setEditing(false);
+    setOpen(false);
+    const num = localVal.trim() === "" ? null : parseFloat(localVal);
+    if (num !== value) {
+      pendingVal.current = num;
+      const field = side === "supplier" ? "supplier_payment" : "buyer_payment";
+      updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; });
+    }
+  }
+
+  return (
+    <>
+      <td
+        ref={cellRef}
+        onClick={toggle}
+        className={`${className ?? ""} cursor-pointer ${open ? "ring-2 ring-amber-300/70" : ""}`}
+      >
+        {editing ? (
+          <input
+            autoFocus
+            type="number"
+            step="0.01"
+            value={localVal}
+            onChange={(e) => setLocalVal(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") { setEditing(false); setOpen(false); }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-16 border border-amber-400 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50 focus:outline-none focus:border-amber-500"
+          />
+        ) : (
+          formatNum(shown)
+        )}
+      </td>
+      {open && pos && typeof window !== "undefined" && createPortal(
+        <div
+          ref={popRef}
+          style={{ top: pos.top, right: pos.right }}
+          className="fixed z-50 min-w-[220px] max-w-[320px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl"
+        >
+          <div className="whitespace-pre-line font-mono tabular-nums">
+            {loading || payments === null ? "Загрузка…" : paymentLines(payments, currency)}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); startEdit(); }}
+            className="mt-2 w-full rounded bg-amber-500/90 px-2 py-1 text-[10px] font-medium text-stone-900 hover:bg-amber-400 focus:outline-none"
+          >
+            Изменить итог
+          </button>
         </div>,
         document.body,
       )}
@@ -441,7 +613,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
         field="loading_volume"
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500"
       />
-      <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_payment} dealId={deal.id} field="supplier_payment" /></td>
+      <PaymentBreakdownCell
+        dealId={deal.id}
+        value={deal.supplier_payment}
+        side="supplier"
+        currency={deal.supplier_currency ?? ""}
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
+      />
       <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">
         <ComputedNumSigned value={deal.supplier_balance} />
       </td>
@@ -488,7 +666,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500"
       />
       <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_payment} dealId={deal.id} field="buyer_payment" /></td>
+      <PaymentBreakdownCell
+        dealId={deal.id}
+        value={deal.buyer_payment}
+        side="buyer"
+        currency={deal.buyer_currency ?? ""}
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
+      />
       <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: оплата − отгружено">
         <ComputedNumSigned value={deal.buyer_debt} />
       </td>
