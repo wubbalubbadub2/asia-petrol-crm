@@ -360,6 +360,13 @@ export type DealFilters = {
   // company_group_id equal to the filter value. This is what operators
   // expect when they pick «Все группы комп.»
   companyGroupId?: string;
+  // Position-specific chain filters. The trading chain rows in
+  // deal_company_groups carry a `position` column (1..6). Operators
+  // want to filter «deals whose chain has group X at slot 1» (or 2)
+  // separately from the any-position companyGroupId above. All three
+  // are AND-combined — a deal must satisfy every active filter.
+  companyGroupPos1Id?: string | null;
+  companyGroupPos2Id?: string | null;
   // logisticsCompanyGroupId filters the deal-level
   // deals.logistics_company_group_id FK (freight forwarder's group).
   // Optional, only wired into the page if a dedicated «Логистика —
@@ -404,9 +411,9 @@ async function fetchDealsList(
 ): Promise<{ data: Deal[]; total: number }> {
   const sb = createClient();
   const PAGE = 1000;
-  // When companyGroupId is set, do a two-step query:
-  //   1) Find every deal_id in deal_company_groups where
-  //      company_group_id = filter. (one small index-only roundtrip)
+  // When any chain-membership filter is set, do a two-step query:
+  //   1) Find every deal_id in deal_company_groups matching the filter
+  //      (one small index-only roundtrip per active filter).
   //   2) Fetch the deals with the LEFT join embed so the passport row
   //      still shows the FULL chain, not just the matching slot.
   // The naive PostgREST approach — `deal_company_groups!inner` with
@@ -414,19 +421,76 @@ async function fetchDealsList(
   // narrow the parent rows but ALSO truncate the embed to only the
   // matching child. That breaks the passport's «Группа комп.» chain
   // rendering (operators need to see all 6 slots of context).
+  //
+  // Three filters can independently narrow deal_ids:
+  //   * companyGroupId       — any position in the chain
+  //   * companyGroupPos1Id   — position = 1
+  //   * companyGroupPos2Id   — position = 2
+  // When more than one is active, we intersect the resulting id sets
+  // client-side (cheap — these come back as dedup'd arrays of UUIDs).
   let chainMatchIds: string[] | null = null;
-  if (filters?.companyGroupId) {
-    const { data: matches, error: matchErr } = await sb
-      .from("deal_company_groups")
-      .select("deal_id")
-      .eq("company_group_id", filters.companyGroupId);
-    if (matchErr) {
-      const entry = dealsCache.get(cacheKey);
-      if (entry) dealsCache.set(cacheKey, { ...entry, promise: null });
-      throw matchErr;
+  const anyChainFilter =
+    !!filters?.companyGroupId ||
+    !!filters?.companyGroupPos1Id ||
+    !!filters?.companyGroupPos2Id;
+  if (anyChainFilter) {
+    const queries: Promise<{ data: { deal_id: string }[] | null; error: unknown }>[] = [];
+    if (filters?.companyGroupId) {
+      queries.push(
+        Promise.resolve(
+          sb
+            .from("deal_company_groups")
+            .select("deal_id")
+            .eq("company_group_id", filters.companyGroupId),
+        ) as Promise<{ data: { deal_id: string }[] | null; error: unknown }>,
+      );
     }
-    // Dedup — a single deal can have the same group in multiple slots.
-    chainMatchIds = [...new Set((matches ?? []).map((r) => r.deal_id as string))];
+    if (filters?.companyGroupPos1Id) {
+      queries.push(
+        Promise.resolve(
+          sb
+            .from("deal_company_groups")
+            .select("deal_id")
+            .eq("company_group_id", filters.companyGroupPos1Id)
+            .eq("position", 1),
+        ) as Promise<{ data: { deal_id: string }[] | null; error: unknown }>,
+      );
+    }
+    if (filters?.companyGroupPos2Id) {
+      queries.push(
+        Promise.resolve(
+          sb
+            .from("deal_company_groups")
+            .select("deal_id")
+            .eq("company_group_id", filters.companyGroupPos2Id)
+            .eq("position", 2),
+        ) as Promise<{ data: { deal_id: string }[] | null; error: unknown }>,
+      );
+    }
+    const results = await Promise.all(queries);
+    const idSets: Set<string>[] = [];
+    for (const r of results) {
+      if (r.error) {
+        const entry = dealsCache.get(cacheKey);
+        if (entry) dealsCache.set(cacheKey, { ...entry, promise: null });
+        throw r.error;
+      }
+      // Dedup — a single deal can have the same group in multiple slots.
+      idSets.push(new Set((r.data ?? []).map((row) => row.deal_id as string)));
+    }
+    // Intersect — a deal must appear in every active filter's id set.
+    let intersection: Set<string> | null = null;
+    for (const s of idSets) {
+      if (intersection === null) {
+        intersection = new Set(s);
+      } else {
+        const next = new Set<string>();
+        for (const id of intersection) if (s.has(id)) next.add(id);
+        intersection = next;
+      }
+      if (intersection.size === 0) break;
+    }
+    chainMatchIds = intersection ? [...intersection] : [];
     // Empty matching set — short-circuit, the eq("id", in(...)) below
     // would otherwise hit PostgREST with an empty IN list (which it
     // rejects). Returning early keeps the cache + total in sync.
@@ -562,6 +626,7 @@ export function useDeals(filters?: DealFilters) {
     filters?.dealType, filters?.year, filters?.month, filters?.isArchived,
     filters?.supplierId, filters?.buyerId, filters?.factoryId, filters?.fuelTypeId,
     filters?.forwarderId, filters?.logisticsCompanyGroupId, filters?.companyGroupId,
+    filters?.companyGroupPos1Id, filters?.companyGroupPos2Id,
     filters?.applicationContract, filters?.searchCode,
   ]);
 
