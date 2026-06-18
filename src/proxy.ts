@@ -16,6 +16,11 @@ export async function proxy(request: NextRequest) {
   if (isRscRequest(request)) {
     return NextResponse.next();
   }
+  // Public API endpoints — keep them out of the auth gate so the Vercel
+  // cron + client-side keepalive don't get bounced to /login.
+  if (request.nextUrl.pathname.startsWith("/api/keepalive")) {
+    return NextResponse.next();
+  }
   return await updateSession(request);
 }
 
