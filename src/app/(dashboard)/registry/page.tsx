@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
-import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X } from "lucide-react";
+import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
+import { useQueryState, parseAsJson } from "nuqs";
+import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { useRegistry, createRegistryEntry, updateRegistryEntry, bulkInsertRegistry, type ShipmentRecord, type RegistryUpdate } from "@/lib/hooks/use-registry";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -14,6 +24,7 @@ import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useGlobalRefs } from "@/lib/refs";
 import { useDelayed } from "@/lib/hooks/use-delayed";
+import { MONTHS_RU } from "@/lib/constants/months-ru";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -934,6 +945,136 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   );
 }
 
+// --- Column-header funnel filter ---
+// Per-column popover that lists the unique values from the column and
+// lets the operator pick one. Used as a tiny funnel icon next to the
+// table header cell. Click → popover with a cmdk search input + list.
+//
+// The value column is the actual stored value used for matching (e.g.
+// an id for fk fields, the raw string for currency/month). The label
+// column is what the operator sees — for fk fields we resolve via the
+// refs cache; for plain strings it's the value itself.
+type CFOption = { value: string; label: string };
+function ColumnFilterPopover({
+  colKey,
+  options,
+  currentValue,
+  onChange,
+  align = "start",
+}: {
+  colKey: string;
+  options: CFOption[];
+  currentValue: string;
+  onChange: (next: string) => void;
+  align?: "start" | "center" | "end";
+}) {
+  const [open, setOpen] = useState(false);
+  const active = !!currentValue;
+  const sorted = useMemo(
+    () => [...options].sort((a, b) => a.label.localeCompare(b.label, "ru")),
+    [options],
+  );
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        title={`Фильтр по столбцу${active ? " (активен)" : ""}`}
+        aria-label={`Фильтр ${colKey}`}
+        className={`inline-flex items-center justify-center rounded p-0.5 transition-colors shrink-0 ${
+          active ? "text-amber-600 hover:text-amber-700" : "text-stone-400 hover:text-amber-600"
+        }`}
+      >
+        <Filter className="h-3 w-3" />
+        {active && (
+          <span className="ml-0.5 inline-block h-1 w-1 rounded-full bg-amber-600" aria-hidden="true" />
+        )}
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[240px]" align={align} sideOffset={4}>
+        <Command
+          shouldFilter
+          // CommandItem.value is `${label} ${value}` so cmdk's internal
+          // key dedup doesn't drop options that share a resolved label
+          // (e.g. two suppliers with identical short_name). The filter
+          // below only matches against the label portion so typing
+          // doesn't accidentally match characters inside an id.
+          filter={(itemValue, search) => {
+            const needle = search.trim().toLowerCase();
+            if (!needle) return 1;
+            const lastSpace = itemValue.lastIndexOf(" ");
+            const label = (lastSpace > 0 ? itemValue.slice(0, lastSpace) : itemValue).toLowerCase();
+            return label.includes(needle) ? 1 : 0;
+          }}
+        >
+          <CommandInput placeholder="Поиск…" className="text-[12px]" />
+          <CommandList className="max-h-[260px]">
+            <CommandEmpty className="text-[11px] py-3 text-center text-stone-400">
+              Нет значений
+            </CommandEmpty>
+            <CommandGroup>
+              {sorted.map((o) => (
+                <CommandItem
+                  key={o.value}
+                  value={`${o.label} ${o.value}`}
+                  onSelect={() => {
+                    onChange(o.value === currentValue ? "" : o.value);
+                    setOpen(false);
+                  }}
+                  className="text-[11px]"
+                >
+                  <span
+                    className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${
+                      o.value === currentValue ? "bg-amber-600" : "bg-transparent"
+                    }`}
+                  />
+                  <span className="truncate">{o.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+        <div className="border-t border-stone-100 p-1">
+          <button
+            type="button"
+            onClick={() => { onChange(""); setOpen(false); }}
+            disabled={!active}
+            className="w-full text-left text-[11px] text-stone-500 hover:text-red-600 disabled:text-stone-300 disabled:hover:text-stone-300 px-2 py-1 rounded transition-colors"
+          >
+            Сбросить фильтр
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Validator for the URL-persisted column-filter map. parseAsJson accepts
+// the raw decoded JSON; we reject anything that isn't a flat
+// string→string object so a malformed URL doesn't crash the page.
+function validateColumnFilters(v: unknown): Record<string, string> | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof k === "string" && typeof val === "string" && val) out[k] = val;
+  }
+  return out;
+}
+
+// Column keys eligible for header-funnel filters. Used both for
+// rendering the icon and for the records-filter pass.
+const COL_FILTER_KEYS = [
+  "additional_month",
+  "shipment_month",
+  "fuel_type_id",
+  "factory_id",
+  "supplier_id",
+  "company_group_id",
+  "buyer_id",
+  "forwarder_id",
+  "currency",
+  "destination_station_id",
+  "departure_station_id",
+] as const;
+type ColFilterKey = (typeof COL_FILTER_KEYS)[number];
+
 // --- Main page ---
 export default function RegistryPage() {
   const [tab, setTab] = useState<"kg" | "kz">("kg");
@@ -946,13 +1087,41 @@ export default function RegistryPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Header filters — narrow visible shipments without round-tripping
   // the server. Combined with the tab (KG/KZ) which is server-side.
-  const [forwarderFilter, setForwarderFilter] = useState("");
-  const [dealFilter, setDealFilter] = useState("");
-  const [companyGroupFilter, setCompanyGroupFilter] = useState("");
+  //
+  // All filters are URL-persisted via nuqs so that:
+  //   1. Navigating /registry → /deals → /registry restores the
+  //      operator's selections (operator complaint 2026-06-18 same
+  //      pattern as /deals page).
+  //   2. URLs become shareable: /registry?forwarderFilter=…&columnFilters=…
+  // history: "replace" (nuqs default) keeps the back stack clean.
+  const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", { defaultValue: "" });
+  const [dealFilter, setDealFilter] = useQueryState("dealFilter", { defaultValue: "" });
+  const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "" });
   // Substring filters on wagon / waybill numbers — operator needs to
   // jump straight to a specific shipment without scrolling groups.
-  const [wagonFilter, setWagonFilter] = useState("");
-  const [waybillFilter, setWaybillFilter] = useState("");
+  const [wagonFilter, setWagonFilter] = useQueryState("wagonFilter", { defaultValue: "" });
+  const [waybillFilter, setWaybillFilter] = useQueryState("waybillFilter", { defaultValue: "" });
+  // New: page-level month-of-shipment filter — separate from the
+  // per-column funnel filter because the operator's primary
+  // narrow-by axis is месяц отгрузки (client req 2026-06-18).
+  const [shipmentMonthFilter, setShipmentMonthFilter] = useQueryState("shipmentMonthFilter", { defaultValue: "" });
+  // Per-column funnel filters — single map keyed by column name. Stored
+  // as URL-encoded JSON so the operator can share a filtered view.
+  // useDeferredValue isolates the heavy filter pass from the cmdk
+  // popover keystrokes (~5000 shipments per registry).
+  const [columnFilters, setColumnFilters] = useQueryState(
+    "columnFilters",
+    parseAsJson<Record<string, string>>(validateColumnFilters).withDefault({}),
+  );
+  const deferredColumnFilters = useDeferredValue(columnFilters);
+  function setColumnFilter(col: ColFilterKey, value: string) {
+    const next = { ...columnFilters };
+    if (value) next[col] = value; else delete next[col];
+    // nuqs serializer treats an empty object the same as null → clears
+    // the URL param. Setting to null explicitly when empty keeps the
+    // URL tidy.
+    setColumnFilters(Object.keys(next).length === 0 ? null : next);
+  }
 
   // Reset selection when tab switches — selected ids belong to the previous tab.
   useEffect(() => { setSelected(new Set()); }, [tab]);
@@ -1035,18 +1204,40 @@ export default function RegistryPage() {
 
   // Apply header filters before grouping. Tab is already server-side
   // (useRegistry pulls KG xor KZ); the rest narrow the rendered set.
+  // Column-header funnel filters are folded into the same pass; using
+  // deferredColumnFilters so cmdk popover keystrokes don't block the
+  // big filter loop on ~5000-row registries.
   const filteredRecords = useMemo(() => {
     const wq = wagonFilter.trim().toLowerCase();
     const bq = waybillFilter.trim().toLowerCase();
+    const cf = deferredColumnFilters;
+    const cfEntries = Object.entries(cf);
     return records.filter((r) => {
       if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
       if (dealFilter && r.deal_id !== dealFilter) return false;
       if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
+      if (shipmentMonthFilter && r.shipment_month !== shipmentMonthFilter) return false;
       if (wq && !(r.wagon_number ?? "").toLowerCase().includes(wq)) return false;
       if (bq && !(r.waybill_number ?? "").toLowerCase().includes(bq)) return false;
+      for (const [col, val] of cfEntries) {
+        // Each column maps to a top-level field on ShipmentRecord. A
+        // strict equality check is correct for both string ids (uuids)
+        // and the plain-string fields (currency, *_month).
+        const rv = (r as unknown as Record<string, unknown>)[col];
+        if ((rv ?? "") !== val) return false;
+      }
       return true;
     });
-  }, [records, forwarderFilter, dealFilter, companyGroupFilter, wagonFilter, waybillFilter]);
+  }, [
+    records,
+    forwarderFilter,
+    dealFilter,
+    companyGroupFilter,
+    shipmentMonthFilter,
+    wagonFilter,
+    waybillFilter,
+    deferredColumnFilters,
+  ]);
   const groups = groupRecs(filteredRecords, labelMaps);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
 
@@ -1066,10 +1257,16 @@ export default function RegistryPage() {
 
   const activeFilterCount =
     (forwarderFilter ? 1 : 0) + (dealFilter ? 1 : 0) + (companyGroupFilter ? 1 : 0) +
-    (wagonFilter.trim() ? 1 : 0) + (waybillFilter.trim() ? 1 : 0);
+    (shipmentMonthFilter ? 1 : 0) +
+    (wagonFilter.trim() ? 1 : 0) + (waybillFilter.trim() ? 1 : 0) +
+    Object.keys(columnFilters).length;
   function clearRegistryFilters() {
+    // Empty string matches each filter's default, so nuqs drops the
+    // param from the URL. Same idiom the /deals page uses.
     setForwarderFilter(""); setDealFilter(""); setCompanyGroupFilter("");
     setWagonFilter(""); setWaybillFilter("");
+    setShipmentMonthFilter("");
+    setColumnFilters(null);
   }
 
   const factoryOpts = useMemo(() => refs.factories.map((f) => ({ value: f.id, label: f.name })), [refs.factories]);
@@ -1079,6 +1276,47 @@ export default function RegistryPage() {
   const fwOpts = useMemo(() => refs.forwarders.map((c) => ({ value: c.id, label: c.name })), [refs.forwarders]);
   const ftOpts = useMemo(() => refs.fuelTypes.map((c) => ({ value: c.id, label: c.name })), [refs.fuelTypes]);
   const stOpts = useMemo(() => refs.stations.map((c) => ({ value: c.id, label: c.name })), [refs.stations]);
+  const monthOpts = useMemo(() => MONTHS_RU.map((m) => ({ value: m, label: m })), []);
+
+  // Per-column funnel options — distinct values currently present in
+  // the loaded `records`, resolved to labels via the refs cache for fk
+  // columns. Building from the records (not from the full refs list)
+  // keeps the dropdown short: only values actually used in this tab's
+  // shipments show up.
+  const columnFilterOpts = useMemo(() => {
+    type V = { value: string; label: string };
+    const make = (key: ColFilterKey, resolve: (id: string) => string): V[] => {
+      const seen = new Map<string, string>();
+      for (const r of records) {
+        const v = (r as unknown as Record<string, unknown>)[key];
+        if (typeof v !== "string" || !v) continue;
+        if (!seen.has(v)) seen.set(v, resolve(v));
+      }
+      return [...seen.entries()].map(([value, label]) => ({ value, label }));
+    };
+    return {
+      additional_month: make("additional_month", (v) => v),
+      shipment_month: make("shipment_month", (v) => v),
+      fuel_type_id: make("fuel_type_id", (id) => fuelTypeLabels.get(id)?.name ?? id),
+      factory_id: make("factory_id", (id) => factoryLabels.get(id) ?? id),
+      supplier_id: make("supplier_id", (id) => supplierLabels.get(id) ?? id),
+      company_group_id: make("company_group_id", (id) => cgLabels.get(id) ?? id),
+      buyer_id: make("buyer_id", (id) => buyerLabels.get(id) ?? id),
+      forwarder_id: make("forwarder_id", (id) => forwarderLabels.get(id) ?? id),
+      currency: make("currency", (v) => v),
+      destination_station_id: make("destination_station_id", (id) => stationLabels.get(id) ?? id),
+      departure_station_id: make("departure_station_id", (id) => stationLabels.get(id) ?? id),
+    } as Record<ColFilterKey, CFOption[]>;
+  }, [
+    records,
+    fuelTypeLabels,
+    factoryLabels,
+    supplierLabels,
+    cgLabels,
+    buyerLabels,
+    forwarderLabels,
+    stationLabels,
+  ]);
 
   return (
     <div className="space-y-4">
@@ -1097,11 +1335,14 @@ export default function RegistryPage() {
       </div>
 
       {/* Header filters — narrow the visible shipments by forwarder /
-          deal / company group + substring search by вагон / накладная.
-          Tab (KG/KZ) is already a separate axis. Dropdowns are
-          cmdk-backed so long lists stay navigable; the two text inputs
-          filter via case-insensitive includes. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+          deal / company group / month of shipment + substring search
+          by вагон / накладная. Tab (KG/KZ) is already a separate axis.
+          Dropdowns are cmdk-backed so long lists stay navigable; the
+          two text inputs filter via case-insensitive includes.
+          The «месяц отгрузки» (shipment_month) filter is the primary
+          axis the operator narrows by — added 2026-06-18 per client
+          request. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
         <SearchableSelect
           value={forwarderFilter} onChange={setForwarderFilter}
           options={fwOpts}
@@ -1116,6 +1357,11 @@ export default function RegistryPage() {
           value={companyGroupFilter} onChange={setCompanyGroupFilter}
           options={cgOpts}
           placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
+        />
+        <SearchableSelect
+          value={shipmentMonthFilter} onChange={setShipmentMonthFilter}
+          options={monthOpts}
+          placeholder="Все месяцы отгр." searchPlaceholder="Поиск месяца…"
         />
         <Input
           value={wagonFilter}
@@ -1203,15 +1449,95 @@ export default function RegistryPage() {
                             />
                           </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[60px]">№ сделки</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">мес. доп</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[75px]">мес. отгр.</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">ГСМ</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">завод</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">поставщик</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">
+                            <span className="inline-flex items-center gap-1">
+                              мес. доп
+                              <ColumnFilterPopover
+                                colKey="additional_month"
+                                options={columnFilterOpts.additional_month}
+                                currentValue={columnFilters.additional_month ?? ""}
+                                onChange={(v) => setColumnFilter("additional_month", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[75px]">
+                            <span className="inline-flex items-center gap-1">
+                              мес. отгр.
+                              <ColumnFilterPopover
+                                colKey="shipment_month"
+                                options={columnFilterOpts.shipment_month}
+                                currentValue={columnFilters.shipment_month ?? ""}
+                                onChange={(v) => setColumnFilter("shipment_month", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">
+                            <span className="inline-flex items-center gap-1">
+                              ГСМ
+                              <ColumnFilterPopover
+                                colKey="fuel_type_id"
+                                options={columnFilterOpts.fuel_type_id}
+                                currentValue={columnFilters.fuel_type_id ?? ""}
+                                onChange={(v) => setColumnFilter("fuel_type_id", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">
+                            <span className="inline-flex items-center gap-1">
+                              завод
+                              <ColumnFilterPopover
+                                colKey="factory_id"
+                                options={columnFilterOpts.factory_id}
+                                currentValue={columnFilters.factory_id ?? ""}
+                                onChange={(v) => setColumnFilter("factory_id", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">
+                            <span className="inline-flex items-center gap-1">
+                              поставщик
+                              <ColumnFilterPopover
+                                colKey="supplier_id"
+                                options={columnFilterOpts.supplier_id}
+                                currentValue={columnFilters.supplier_id ?? ""}
+                                onChange={(v) => setColumnFilter("supplier_id", v)}
+                              />
+                            </span>
+                          </th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Налив</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">группа комп.</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">покупатель</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">экспедитор</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
+                            <span className="inline-flex items-center gap-1">
+                              группа комп.
+                              <ColumnFilterPopover
+                                colKey="company_group_id"
+                                options={columnFilterOpts.company_group_id}
+                                currentValue={columnFilters.company_group_id ?? ""}
+                                onChange={(v) => setColumnFilter("company_group_id", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">
+                            <span className="inline-flex items-center gap-1">
+                              покупатель
+                              <ColumnFilterPopover
+                                colKey="buyer_id"
+                                options={columnFilterOpts.buyer_id}
+                                currentValue={columnFilters.buyer_id ?? ""}
+                                onChange={(v) => setColumnFilter("buyer_id", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
+                            <span className="inline-flex items-center gap-1">
+                              экспедитор
+                              <ColumnFilterPopover
+                                colKey="forwarder_id"
+                                options={columnFilterOpts.forwarder_id}
+                                currentValue={columnFilters.forwarder_id ?? ""}
+                                onChange={(v) => setColumnFilter("forwarder_id", v)}
+                              />
+                            </span>
+                          </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">№ ЖД накл.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Тонн</th>
@@ -1219,9 +1545,39 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">валюта</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. назн.</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">ст. отпр.</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">
+                            <span className="inline-flex items-center gap-1">
+                              валюта
+                              <ColumnFilterPopover
+                                colKey="currency"
+                                options={columnFilterOpts.currency}
+                                currentValue={columnFilters.currency ?? ""}
+                                onChange={(v) => setColumnFilter("currency", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">
+                            <span className="inline-flex items-center gap-1">
+                              ст. назн.
+                              <ColumnFilterPopover
+                                colKey="destination_station_id"
+                                options={columnFilterOpts.destination_station_id}
+                                currentValue={columnFilters.destination_station_id ?? ""}
+                                onChange={(v) => setColumnFilter("destination_station_id", v)}
+                              />
+                            </span>
+                          </th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">
+                            <span className="inline-flex items-center gap-1">
+                              ст. отпр.
+                              <ColumnFilterPopover
+                                colKey="departure_station_id"
+                                options={columnFilterOpts.departure_station_id}
+                                currentValue={columnFilters.departure_station_id ?? ""}
+                                onChange={(v) => setColumnFilter("departure_station_id", v)}
+                              />
+                            </span>
+                          </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">прил.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
                           <th className="px-2 py-1 text-left font-medium min-w-[130px]">коммент.</th>
