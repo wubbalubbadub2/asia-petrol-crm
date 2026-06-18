@@ -121,7 +121,8 @@ function FactoryForm({ item, onSave, onClose }: FormProps) {
 export default function FactoriesPage() {
   const { data, loading, save, remove } = useSupabaseTable<Factory>(
     "factories",
-    "name"
+    "name",
+    "id, name, code, is_active"
   );
 
   if (loading) {

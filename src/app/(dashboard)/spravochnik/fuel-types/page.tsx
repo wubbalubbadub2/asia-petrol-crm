@@ -203,7 +203,8 @@ function FuelTypeForm({ item, onSave, onClose }: FormProps) {
 export default function FuelTypesPage() {
   const { data, loading, save, remove } = useSupabaseTable<FuelType>(
     "fuel_types",
-    "sort_order"
+    "sort_order",
+    "id, name, sulfur_percent, color, sort_order, is_active"
   );
 
   if (loading) {

@@ -192,7 +192,7 @@ export default function StationsPage() {
   const { data, loading, save, remove } = useSupabaseTable<Station>(
     "stations",
     "name",
-    "*, factory:factories!default_factory_id(name)"
+    "id, name, code, type, is_active, default_factory_id, factory:factories!default_factory_id(name)"
   );
   const [typeFilter, setTypeFilter] = useState<"all" | "departure" | "destination" | "both">("all");
 
