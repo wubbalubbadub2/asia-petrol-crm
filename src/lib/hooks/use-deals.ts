@@ -343,34 +343,31 @@ function annotateLineCounts<T extends WithLines>(rows: T[]): (T & Deal)[] {
 }
 
 export type DealFilters = {
-  dealType?: "KG" | "KZ" | "OIL";
+  // ── Server-axis filters (round-trip required) ─────────────────────
+  // Only `year` and `isArchived` actually affect the network query
+  // and the SWR cache key. Everything else in this type is CLIENT-ONLY
+  // (see below) — kept here for backwards compat with existing callers,
+  // but ignored by fetchDealsList / useDeals.
   year?: number;
-  month?: string;
   isArchived?: boolean;
-  // Server-side filters — push down to the SELECT instead of fetching
-  // every deal and filtering in JS.
+  // ── Client-only filters (ignored by useDeals/fetchDealsList) ──────
+  // These fields are NOT pushed to PostgREST and do NOT participate in
+  // the cache key. The page (src/app/(dashboard)/deals/page.tsx) applies
+  // them in-memory via a useMemo against the cached year's deal set.
+  // For 500-ish deals an array .filter() runs in <5 ms — orders of
+  // magnitude faster than a 1.5–2 s network refetch per filter change.
+  // The fields stay on the type so existing call sites compile; they're
+  // simply dead args at this layer.
+  dealType?: "KG" | "KZ" | "OIL";
+  month?: string;
   supplierId?: string;
   buyerId?: string;
   factoryId?: string;
   fuelTypeId?: string;
   forwarderId?: string;
-  // companyGroupId filters the deal's TRADING CHAIN (deal_company_groups
-  // table — 1-to-many «Группа комп.» colspan=2 cell in the passport).
-  // A deal matches if ANY of its deal_company_groups rows has a
-  // company_group_id equal to the filter value. This is what operators
-  // expect when they pick «Все группы комп.»
   companyGroupId?: string;
-  // Position-specific chain filters. The trading chain rows in
-  // deal_company_groups carry a `position` column (1..6). Operators
-  // want to filter «deals whose chain has group X at slot 1» (or 2)
-  // separately from the any-position companyGroupId above. All three
-  // are AND-combined — a deal must satisfy every active filter.
   companyGroupPos1Id?: string | null;
   companyGroupPos2Id?: string | null;
-  // logisticsCompanyGroupId filters the deal-level
-  // deals.logistics_company_group_id FK (freight forwarder's group).
-  // Optional, only wired into the page if a dedicated «Логистика —
-  // группа» dropdown is added.
   logisticsCompanyGroupId?: string;
   applicationContract?: string;
   searchCode?: string;
@@ -405,125 +402,29 @@ const DEAL_TTL_MS = 60_000;
 // Run the actual paged fetch and write the result into dealsCache.
 // Factored out so prefetchDeals and useDeals can share a single promise
 // via the cache's `promise` slot (true single-flight dedup).
+//
+// Architecture (2026-06-18 perf overhaul): we only round-trip the
+// year/archive axes. Every other filter — dealType (tab), supplier,
+// buyer, factory, fuel, month, forwarder, company-group (any/pos1/pos2),
+// application contract, search — runs CLIENT-SIDE in the page layer
+// against the deals array. For ~500 deals this is <5 ms, vs. ~1.5–2 s
+// per network refetch on every dropdown change. The cache is keyed
+// only on (year, isArchived) so the operator can toggle filters
+// freely without invalidating it.
 async function fetchDealsList(
   cacheKey: string,
   filters?: DealFilters,
 ): Promise<{ data: Deal[]; total: number }> {
   const sb = createClient();
   const PAGE = 1000;
-  // When any chain-membership filter is set, do a two-step query:
-  //   1) Find every deal_id in deal_company_groups matching the filter
-  //      (one small index-only roundtrip per active filter).
-  //   2) Fetch the deals with the LEFT join embed so the passport row
-  //      still shows the FULL chain, not just the matching slot.
-  // The naive PostgREST approach — `deal_company_groups!inner` with
-  // `.eq("deal_company_groups.company_group_id", x)` — would correctly
-  // narrow the parent rows but ALSO truncate the embed to only the
-  // matching child. That breaks the passport's «Группа комп.» chain
-  // rendering (operators need to see all 6 slots of context).
-  //
-  // Three filters can independently narrow deal_ids:
-  //   * companyGroupId       — any position in the chain
-  //   * companyGroupPos1Id   — position = 1
-  //   * companyGroupPos2Id   — position = 2
-  // When more than one is active, we intersect the resulting id sets
-  // client-side (cheap — these come back as dedup'd arrays of UUIDs).
-  let chainMatchIds: string[] | null = null;
-  const anyChainFilter =
-    !!filters?.companyGroupId ||
-    !!filters?.companyGroupPos1Id ||
-    !!filters?.companyGroupPos2Id;
-  if (anyChainFilter) {
-    const queries: Promise<{ data: { deal_id: string }[] | null; error: unknown }>[] = [];
-    if (filters?.companyGroupId) {
-      queries.push(
-        Promise.resolve(
-          sb
-            .from("deal_company_groups")
-            .select("deal_id")
-            .eq("company_group_id", filters.companyGroupId),
-        ) as Promise<{ data: { deal_id: string }[] | null; error: unknown }>,
-      );
-    }
-    if (filters?.companyGroupPos1Id) {
-      queries.push(
-        Promise.resolve(
-          sb
-            .from("deal_company_groups")
-            .select("deal_id")
-            .eq("company_group_id", filters.companyGroupPos1Id)
-            .eq("position", 1),
-        ) as Promise<{ data: { deal_id: string }[] | null; error: unknown }>,
-      );
-    }
-    if (filters?.companyGroupPos2Id) {
-      queries.push(
-        Promise.resolve(
-          sb
-            .from("deal_company_groups")
-            .select("deal_id")
-            .eq("company_group_id", filters.companyGroupPos2Id)
-            .eq("position", 2),
-        ) as Promise<{ data: { deal_id: string }[] | null; error: unknown }>,
-      );
-    }
-    const results = await Promise.all(queries);
-    const idSets: Set<string>[] = [];
-    for (const r of results) {
-      if (r.error) {
-        const entry = dealsCache.get(cacheKey);
-        if (entry) dealsCache.set(cacheKey, { ...entry, promise: null });
-        throw r.error;
-      }
-      // Dedup — a single deal can have the same group in multiple slots.
-      idSets.push(new Set((r.data ?? []).map((row) => row.deal_id as string)));
-    }
-    // Intersect — a deal must appear in every active filter's id set.
-    let intersection: Set<string> | null = null;
-    for (const s of idSets) {
-      if (intersection === null) {
-        intersection = new Set(s);
-      } else {
-        const next = new Set<string>();
-        for (const id of intersection) if (s.has(id)) next.add(id);
-        intersection = next;
-      }
-      if (intersection.size === 0) break;
-    }
-    chainMatchIds = intersection ? [...intersection] : [];
-    // Empty matching set — short-circuit, the eq("id", in(...)) below
-    // would otherwise hit PostgREST with an empty IN list (which it
-    // rejects). Returning early keeps the cache + total in sync.
-    if (chainMatchIds.length === 0) {
-      dealsCache.set(cacheKey, { promise: null, data: [], total: 0, ts: Date.now() });
-      return { data: [], total: 0 };
-    }
-  }
   const baseFilter = (qb: ReturnType<typeof sb.from>) => {
     let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
     // is_draft is now backfilled NOT NULL DEFAULT false (migration
     // 00091) so this is a sargable single-predicate filter instead
     // of a NULLS OR.
     q = q.eq("is_draft", false);
-    if (filters?.dealType) q = q.eq("deal_type", filters.dealType);
     if (filters?.year) q = q.eq("year", filters.year);
-    if (filters?.month) q = q.eq("month", filters.month);
     if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
-    if (filters?.supplierId) q = q.eq("supplier_id", filters.supplierId);
-    if (filters?.buyerId) q = q.eq("buyer_id", filters.buyerId);
-    if (filters?.factoryId) q = q.eq("factory_id", filters.factoryId);
-    if (filters?.fuelTypeId) q = q.eq("fuel_type_id", filters.fuelTypeId);
-    if (filters?.forwarderId) q = q.eq("forwarder_id", filters.forwarderId);
-    if (filters?.logisticsCompanyGroupId) q = q.eq("logistics_company_group_id", filters.logisticsCompanyGroupId);
-    // Chain-membership filter resolved upstream (see chainMatchIds).
-    if (chainMatchIds) q = q.in("id", chainMatchIds);
-    if (filters?.applicationContract) {
-      const c = filters.applicationContract.replace(/,/g, "\\,");
-      q = q.or(`supplier_contract.eq.${c},buyer_contract.eq.${c}`);
-    }
-    if (filters?.searchCode && filters.searchCode.trim()) {
-      q = q.ilike("deal_code", `%${filters.searchCode.trim()}%`);
-    }
     return q.order("deal_number", { ascending: true });
   };
 
@@ -550,6 +451,19 @@ async function fetchDealsList(
   return { data: rows, total };
 }
 
+// Cache key is intentionally narrow: only the SERVER-axis filters
+// participate. dealType / supplierId / buyerId / factory / fuel /
+// month / forwarder / company-group(*) / applicationContract /
+// searchCode are now client-side (see DealFilters comments) and must
+// NOT invalidate the cache when they change — that was the cause of
+// the ~2 s filter lag reported on 2026-06-18.
+function buildCacheKey(filters?: DealFilters): string {
+  return JSON.stringify({
+    year: filters?.year ?? null,
+    isArchived: filters?.isArchived ?? null,
+  });
+}
+
 // Standalone fetcher — same logic as useDeals' internal load, but
 // callable from non-React contexts (e.g. the dashboard layout's
 // effect-less warm-up). Writes straight into dealsCache so the
@@ -557,7 +471,7 @@ async function fetchDealsList(
 // in-flight for this key (from useDeals or another prefetch call), we
 // reuse that promise instead of issuing a duplicate request.
 export async function prefetchDeals(filters?: DealFilters): Promise<void> {
-  const cacheKey = JSON.stringify(filters ?? {});
+  const cacheKey = buildCacheKey(filters);
   const cached = dealsCache.get(cacheKey);
   if (cached) {
     if (cached.data && Date.now() - cached.ts < DEALS_TTL_MS) return;
@@ -580,7 +494,7 @@ export async function prefetchDeals(filters?: DealFilters): Promise<void> {
 }
 
 export function useDeals(filters?: DealFilters) {
-  const cacheKey = JSON.stringify(filters ?? {});
+  const cacheKey = buildCacheKey(filters);
   const cached = dealsCache.get(cacheKey);
   const isFresh = !!cached?.data && Date.now() - cached.ts < DEALS_TTL_MS;
 
@@ -622,13 +536,7 @@ export function useDeals(filters?: DealFilters) {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    filters?.dealType, filters?.year, filters?.month, filters?.isArchived,
-    filters?.supplierId, filters?.buyerId, filters?.factoryId, filters?.fuelTypeId,
-    filters?.forwarderId, filters?.logisticsCompanyGroupId, filters?.companyGroupId,
-    filters?.companyGroupPos1Id, filters?.companyGroupPos2Id,
-    filters?.applicationContract, filters?.searchCode,
-  ]);
+  }, [filters?.year, filters?.isArchived]);
 
   // Skip the background revalidation when the cached snapshot is still
   // fresh and we already painted it — saves a round-trip on rapid

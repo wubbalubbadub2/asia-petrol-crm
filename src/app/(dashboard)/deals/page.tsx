@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useDeferredValue } from "react";
+import { useState, useMemo, useDeferredValue, useTransition } from "react";
 import Link from "next/link";
-import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
+import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -67,9 +67,20 @@ export default function DealsPage() {
     }
     return "list";
   });
+  // Wrap the tab flip in startTransition so React treats the table
+  // re-render as a non-urgent update and exposes `isPending` — we feed
+  // that into PassportTable as `loading` for the few frames the new
+  // render is rendering, giving operators the «click → skeleton flash
+  // → new data» rhythm they asked for (2026-06-18 complaint #1: «table
+  // does not change immediately… should immediately show skeleton»).
+  const [isTabPending, startTabTransition] = useTransition();
   function setActiveTab(tab: "list" | "kg" | "kz") {
-    setActiveTabState(tab);
+    // URL hash is a synchronous side effect — do it outside the
+    // transition so the browser history reflects the click instantly.
     window.location.hash = tab === "list" ? "" : tab;
+    startTabTransition(() => {
+      setActiveTabState(tab);
+    });
   }
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
@@ -177,37 +188,112 @@ export default function DealsPage() {
 
   const dealTypeFilter = activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : undefined;
 
-  // Pagination removed at client request — operators want one
-  // scrollable list. Server-side filters still apply, useDeals streams
-  // every matching row in 1000-row chunks against PostgREST.
-  const { data: deals, totalCount, loading, reload } = useDeals({
-    dealType: dealTypeFilter,
+  // ARCHITECTURE (2026-06-18 — operator complaint «фильтр 2-3 секунды»):
+  // useDeals only round-trips year/archive. All other axes — tab,
+  // supplier, buyer, factory, fuel, month, forwarder, company-group,
+  // application, search — are applied client-side via the filteredDeals
+  // useMemo below. For 500-ish rows a .filter() pass is <5 ms; that
+  // beats a 1.5–2 s PostgREST refetch by three orders of magnitude.
+  // The deferred values still drive the FILTERED list (so SearchableSelect
+  // inputs feel snappy and the heavy memo runs on the next React pass),
+  // but no network call is involved.
+  const { data: deals, loading, reload } = useDeals({
     year: deferredYear,
     isArchived: false,
-    supplierId: deferredSupplier || undefined,
-    buyerId: deferredBuyer || undefined,
-    factoryId: deferredFactory || undefined,
-    fuelTypeId: deferredFuelType || undefined,
-    month: deferredMonth || undefined,
-    forwarderId: deferredForwarder || undefined,
-    // The «Все группы комп.» dropdown filters the trading CHAIN
-    // (deal_company_groups) via a !inner join in fetchDealsList — see
-    // src/lib/hooks/use-deals.ts. NOT the deal-level
-    // logistics_company_group_id FK.
-    companyGroupId: deferredCompanyGroup || undefined,
-    // «Группа 1» / «Группа 2» — same trading chain, but narrowed to
-    // the row whose deal_company_groups.position matches. AND-combined
-    // with companyGroupId server-side inside useDeals.
-    companyGroupPos1Id: deferredCompanyGroupPos1 || undefined,
-    companyGroupPos2Id: deferredCompanyGroupPos2 || undefined,
-    applicationContract: deferredApplication || undefined,
-    searchCode: deferredSearch || undefined,
   });
 
+  // Label maps — same lookup tables PassportTable builds, mirrored here
+  // so the search box can match against the joined name (supplier /
+  // buyer / forwarder / factory / fuel) without a per-deal sub-lookup
+  // on every keystroke. Reads from the warmed refs cache so this is
+  // O(refs) once per refs change, then O(1) per deal during filtering.
+  const labelMaps = useMemo(() => {
+    const supplier = new Map<string, string>();
+    for (const c of globalRefs.suppliers) supplier.set(c.id, (c.short_name || c.full_name || "").toLowerCase());
+    const buyer = new Map<string, string>();
+    for (const c of globalRefs.buyers) buyer.set(c.id, (c.short_name || c.full_name || "").toLowerCase());
+    const forwarder = new Map<string, string>();
+    for (const r of globalRefs.forwarders) forwarder.set(r.id, (r.name || "").toLowerCase());
+    const factory = new Map<string, string>();
+    for (const r of globalRefs.factories) factory.set(r.id, (r.name || "").toLowerCase());
+    const fuelType = new Map<string, string>();
+    for (const r of globalRefs.fuelTypes) fuelType.set(r.id, (r.name || "").toLowerCase());
+    return { supplier, buyer, forwarder, factory, fuelType };
+  }, [globalRefs]);
+
+  // Client-side filter pass. Every predicate is a pure read off the
+  // already-loaded `deals` array — no network, no state churn. Runs in
+  // a useMemo on the DEFERRED filter values so typing in the search
+  // box (or rapidly clicking SearchableSelect items) doesn't block the
+  // input thread.
+  const filtered = useMemo(() => {
+    if (deals.length === 0) return deals;
+    const dt = dealTypeFilter;
+    const sup = deferredSupplier;
+    const buy = deferredBuyer;
+    const fac = deferredFactory;
+    const fuel = deferredFuelType;
+    const mon = deferredMonth;
+    const fwd = deferredForwarder;
+    const cg = deferredCompanyGroup;
+    const cg1 = deferredCompanyGroupPos1;
+    const cg2 = deferredCompanyGroupPos2;
+    const app = deferredApplication;
+    const q = deferredSearch.trim().toLowerCase();
+
+    return deals.filter((d) => {
+      if (dt && d.deal_type !== dt) return false;
+      if (sup && d.supplier_id !== sup) return false;
+      if (buy && d.buyer_id !== buy) return false;
+      if (fac && d.factory_id !== fac) return false;
+      if (fuel && d.fuel_type_id !== fuel) return false;
+      if (mon && d.month !== mon) return false;
+      if (fwd && d.forwarder_id !== fwd) return false;
+      if (cg) {
+        const rows = d.deal_company_groups ?? [];
+        if (!rows.some((r) => r.company_group_id === cg)) return false;
+      }
+      if (cg1) {
+        const rows = d.deal_company_groups ?? [];
+        if (!rows.some((r) => r.position === 1 && r.company_group_id === cg1)) return false;
+      }
+      if (cg2) {
+        const rows = d.deal_company_groups ?? [];
+        if (!rows.some((r) => r.position === 2 && r.company_group_id === cg2)) return false;
+      }
+      if (app && d.supplier_contract !== app && d.buyer_contract !== app) return false;
+      if (q) {
+        // Substring search across deal code + joined names. We
+        // lowercase the haystack pieces lazily via the labelMaps,
+        // which were pre-lowercased above. `q` is already lowercase.
+        const code = d.deal_code.toLowerCase();
+        if (code.includes(q)) return true;
+        const sLbl = d.supplier_id ? labelMaps.supplier.get(d.supplier_id) : undefined;
+        if (sLbl && sLbl.includes(q)) return true;
+        const bLbl = d.buyer_id ? labelMaps.buyer.get(d.buyer_id) : undefined;
+        if (bLbl && bLbl.includes(q)) return true;
+        const fLbl = d.forwarder_id ? labelMaps.forwarder.get(d.forwarder_id) : undefined;
+        if (fLbl && fLbl.includes(q)) return true;
+        const facLbl = d.factory_id ? labelMaps.factory.get(d.factory_id) : undefined;
+        if (facLbl && facLbl.includes(q)) return true;
+        const fuLbl = d.fuel_type_id ? labelMaps.fuelType.get(d.fuel_type_id) : undefined;
+        if (fuLbl && fuLbl.includes(q)) return true;
+        return false;
+      }
+      return true;
+    });
+  }, [
+    deals, dealTypeFilter,
+    deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
+    deferredMonth, deferredForwarder, deferredCompanyGroup,
+    deferredCompanyGroupPos1, deferredCompanyGroupPos2,
+    deferredApplication, deferredSearch, labelMaps,
+  ]);
+
   // «Приложение» dropdown options — distinct contract numbers across
-  // both supplier and buyer sides of the *visible page*. With paging on
-  // this list is narrower than the full year; in practice the operator
-  // picks the application label first, so it's good enough.
+  // the full year's deal set (no longer narrowed by server-side filters
+  // since those are gone). Operator picks the application label, the
+  // client-side filter does the rest.
   const contractOpts = useMemo(() => {
     const set = new Set<string>();
     for (const d of deals) {
@@ -217,8 +303,11 @@ export default function DealsPage() {
     return [...set].sort((a, b) => a.localeCompare(b, "ru"));
   }, [deals]);
 
-  // No client-side filtering left — data is already filtered server-side.
-  const filtered = deals;
+  // Visible-count for the «N сделок» badge. With the architecture
+  // change `totalCount` from useDeals now reflects the cached YEAR
+  // (everything for the year) — what the operator actually wants in
+  // the badge is the filtered count. Cheap to derive.
+  const totalCount = filtered.length;
 
   const activeFilterCount =
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
@@ -381,7 +470,14 @@ export default function DealsPage() {
         {(activeTab === "kg" || activeTab === "kz" || activeTab === "list") && (
           <PassportTable
             deals={filtered}
-            loading={loading}
+            // OR in `isTabPending` so the table flashes its skeleton
+            // chrome the moment the operator clicks a tab — addresses
+            // 2026-06-18 complaint #1 («когда нажимаю Паспорт KG / KZ,
+            // таблица не меняется сразу и показывает список сделок»).
+            // Without this the new tab's filtered set would commit
+            // synchronously and the operator would see no «click»
+            // feedback at all.
+            loading={loading || isTabPending}
             onDataChanged={reload}
             dealType={activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL"}
           />
