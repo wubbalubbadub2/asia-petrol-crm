@@ -528,6 +528,8 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-1 py-1">
         <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
       </td>
+      {/* дубликат — read-only зеркало «группа комп.» для выравнивания с шапкой */}
+      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{group.companyGroup}</td>
       <td className="px-1 py-1">
         <div className="flex gap-1">
           <input value={cm} onChange={(e) => setCm(e.target.value)} placeholder="коммент." className="flex-1 h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" />
@@ -1580,6 +1582,18 @@ export default function RegistryPage() {
                           </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">прил.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
+                          {/* дубликат — пользователь просил вторую колонку «Группа комп.» рядом с коммент. для удобства */}
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
+                            <span className="inline-flex items-center gap-1">
+                              Группа комп.
+                              <ColumnFilterPopover
+                                colKey="company_group_id"
+                                options={columnFilterOpts.company_group_id}
+                                currentValue={columnFilters.company_group_id ?? ""}
+                                onChange={(v) => setColumnFilter("company_group_id", v)}
+                              />
+                            </span>
+                          </th>
                           <th className="px-2 py-1 text-left font-medium min-w-[130px]">коммент.</th>
                           <th className="px-1 py-1 w-[25px]"></th>
                         </tr></thead>
@@ -1654,6 +1668,8 @@ export default function RegistryPage() {
                                 </div>
                               </td>
                               <td className="border-r px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
+                              {/* дубликат — read-only зеркало «группа комп.» для удобства просмотра рядом с коммент. */}
+                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{(r.company_group_id && cgLabels.get(r.company_group_id)) || ""}</td>
                               <td className="px-1 py-0.5"><EC value={r.comment} recId={r.id} field="comment" onSaved={reload} /></td>
                               <td className="px-1 py-0.5">
                                 <button onClick={async () => {
