@@ -43,6 +43,21 @@ export default function DashboardLayout({
     router.prefetch("/quotations");
     router.prefetch("/dt-kt");
     router.prefetch("/tariffs");
+
+    // Client-side fallback for the Supabase keepalive. The Vercel
+    // cron at /api/keepalive only fires per-minute on Pro tier; on
+    // Hobby it's daily and won't keep the PostgREST pool warm. While
+    // an operator is on the dashboard, this interval pings the same
+    // route every 4 minutes (under the ~5 min idle timeout) so the
+    // first query after a coffee break doesn't pay the 1.5 s cold-
+    // start penalty.
+    const keepalive = setInterval(() => {
+      void fetch("/api/keepalive", { cache: "no-store" }).catch(() => {});
+    }, 240_000);
+
+    return () => {
+      clearInterval(keepalive);
+    };
   }, [router]);
 
   return (
