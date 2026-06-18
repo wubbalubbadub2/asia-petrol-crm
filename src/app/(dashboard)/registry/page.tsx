@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
 import { useQueryState, parseAsJson } from "nuqs";
-import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X, Filter } from "lucide-react";
+import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X, Filter, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -743,7 +743,25 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
             <p className="text-[11px] font-medium text-amber-700 mb-2">Контекст сделки</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               <div>
-                <Label className="text-[10px] text-stone-500">Сделка</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-stone-500">Сделка</Label>
+                  {/* «Провалиться в сделку» — клиент 18.06.2026: чтобы быстро
+                      проверить контекст сделки не теряя введённые данные в
+                      этом диалоге. Открывается в новой вкладке только когда
+                      сделка выбрана. */}
+                  {dealId && (
+                    <a
+                      href={`/deals/${dealId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Открыть сделку в новой вкладке"
+                      className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 hover:text-amber-700"
+                    >
+                      Открыть
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                </div>
                 <SearchableSelect
                   value={dealId}
                   onChange={(v) => { setDealId(v); setTariff(""); }}
