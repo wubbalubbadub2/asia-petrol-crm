@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, createContext, useContext, memo } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { Trash2, ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
@@ -69,7 +69,7 @@ function ComputedNumSigned({ value, className = "" }: { value: number | null | u
   if (value == null) return null;
   const isNegative = value < 0;
   return (
-    <span className={`${className} ${isNegative ? "text-red-600 font-medium" : ""}`}>
+    <span className={`${className} ${isNegative ? "text-red-600" : ""}`}>
       {formatComputedNum(value)}
     </span>
   );
@@ -430,7 +430,7 @@ function EditableSelectCell({ value, displayLabel, dealId, field, options, color
   const colorClass =
     color === "amber" ? "text-stone-700" :
     color === "blue" ? "text-stone-700" :
-    "text-stone-600";
+    "text-stone-700";
   return (
     <select
       value={shownVal ?? ""}
@@ -479,6 +479,103 @@ function EditableCGPrice({ cgId, value, onSaved }: { cgId: string; value: number
       }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
       className="w-14 border border-purple-300 rounded px-0.5 py-0 text-[9px] font-mono text-right bg-purple-50 focus:outline-none" />
+  );
+}
+
+// Module-level cache for contract_ref lookups (keyed by deal_company_groups.id).
+// Avoids re-querying when the same chip popover is opened repeatedly. Cleared
+// on full page reload — staleness here is acceptable because contract_ref is
+// edited from the deal detail page and operators don't expect live sync in
+// the passport list.
+const contractRefCache = new Map<string, string | null>();
+
+// Click-toggle popover on a company-group chip's name. First open fires a
+// lazy `deal_company_groups.contract_ref` query (cached at module level);
+// subsequent opens for the same chip hit the cache and render instantly.
+// Click outside closes. Uses createPortal so the popover escapes the
+// table's overflow-auto clipping context and isn't trimmed near viewport
+// edges — same pattern as VolumeBreakdownCell / PaymentBreakdownCell.
+function ContractRefPopover({ cgId, label }: { cgId: string; label: string }) {
+  const [open, setOpen] = useState(false);
+  const [contractRef, setContractRef] = useState<string | null | undefined>(
+    contractRefCache.has(cgId) ? contractRefCache.get(cgId) : undefined,
+  );
+  const [loading, setLoading] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
+  async function toggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 4, left: rect.left });
+    setOpen(true);
+    if (contractRef !== undefined) return;
+    setLoading(true);
+    try {
+      const sb = createClient();
+      const { data } = await sb
+        .from("deal_company_groups")
+        .select("contract_ref")
+        .eq("id", cgId)
+        .single();
+      const ref = (data?.contract_ref ?? null) as string | null;
+      contractRefCache.set(cgId, ref);
+      setContractRef(ref);
+    } catch {
+      setContractRef(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const hasRef = typeof contractRef === "string" && contractRef.trim().length > 0;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        title="Открыть № договора"
+        className={`inline-flex items-center gap-0.5 rounded px-0.5 hover:bg-purple-200/60 ${open ? "bg-purple-200/80" : ""}`}
+      >
+        <span>{label}</span>
+        <ChevronDown className="h-2.5 w-2.5 text-purple-500" />
+      </button>
+      {open && pos && typeof window !== "undefined" && createPortal(
+        <div
+          ref={popRef}
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-50 min-w-[180px] max-w-[320px] rounded-md bg-stone-800 px-3 py-2 text-stone-100 shadow-xl"
+        >
+          {loading || contractRef === undefined ? (
+            <div className="text-[11px]">Загрузка…</div>
+          ) : hasRef ? (
+            <>
+              <div className="text-[10px] uppercase tracking-wide text-stone-400">№ договора</div>
+              <div className="mt-0.5 text-[13px] font-mono">{contractRef}</div>
+            </>
+          ) : (
+            <div className="text-[11px] text-stone-300">Договор не указан</div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -559,9 +656,10 @@ function usePassportRefs(): PassportRefsValue {
 type PassportRowProps = {
   deal: Deal;
   onDataChanged: () => void;
+  rowIndex: number;
 };
 
-const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportRowProps) {
+const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }: PassportRowProps) {
   const {
     refs,
     supplierLabels,
@@ -573,20 +671,30 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
     cgLabels,
   } = usePassportRefs();
 
+  // Subtle zebra striping on data rows for readability. Column-level
+  // tints (amber-50/10, blue-50/10, purple-50/10) layer on top of the
+  // row tint because per-<td> backgrounds paint over per-<tr>; the
+  // neutral columns (identity + logistics) take the zebra. The sticky
+  // identity cell needs its own matching background since its `bg-white`
+  // would otherwise override the row tint on the frozen column.
+  const isZebra = rowIndex % 2 === 1;
+  const zebraRow = isZebra ? "bg-stone-50/40" : "";
+  const stickyBg = isZebra ? "bg-stone-50" : "bg-white";
+
   return (
-    <tr className="border-b hover:bg-amber-50/20">
+    <tr className={`border-b hover:bg-amber-50/20 ${zebraRow}`}>
       {/* Identity */}
-      <td className="sticky left-0 z-10 bg-white border-r px-2 py-1 font-mono font-medium">
+      <td className={`sticky left-0 z-10 ${stickyBg} border-r px-2 py-1 font-mono text-stone-700`}>
         <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">{deal.deal_code}</Link>
         <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
       </td>
-      <td className="border-r px-1 py-0.5">
+      <td className="border-r px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.month} displayLabel={deal.month ?? ""} dealId={deal.id} field="month" options={MONTH_OPTS} />
       </td>
-      <td className="border-r px-1 py-0.5">
+      <td className="border-r px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.factory_id} displayLabel={(deal.factory_id && factoryLabels.get(deal.factory_id)) || ""} dealId={deal.id} field="factory_id" options={refs.factories} />
       </td>
-      <td className="border-r px-1 py-0.5">
+      <td className="border-r px-1 py-0.5 text-stone-700">
         <EditableSelectCell
           value={deal.fuel_type_id}
           displayLabel={(deal.fuel_type_id && fuelTypeLabels.get(deal.fuel_type_id)?.name) || ""}
@@ -595,23 +703,23 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
           options={refs.fuelTypes}
         />
       </td>
-      <td className="border-r border-stone-300 px-1 py-0.5"><EditableTextCell value={deal.sulfur_percent} dealId={deal.id} field="sulfur_percent" /></td>
+      <td className="border-r border-stone-300 px-1 py-0.5 text-stone-700"><EditableTextCell value={deal.sulfur_percent} dealId={deal.id} field="sulfur_percent" /></td>
 
       {/* Supplier: 9 cols */}
-      <td className="border-r px-1 py-0.5 bg-amber-50/10">
+      <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700">
         <EditableSelectCell value={deal.supplier_id} displayLabel={(deal.supplier_id && supplierLabels.get(deal.supplier_id)) || ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" />
       </td>
-      <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" /></td>
-      <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableTextCell value={deal.supplier_delivery_basis} dealId={deal.id} field="supplier_delivery_basis" /></td>
-      <td className="border-r px-1 py-0.5 bg-amber-50/10"><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
+      <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" /></td>
+      <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"><EditableTextCell value={deal.supplier_delivery_basis} dealId={deal.id} field="supplier_delivery_basis" /></td>
+      <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" /></td>
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
       <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.supplier_price)}</td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
       <VolumeBreakdownCell
         dealId={deal.id}
         value={deal.supplier_shipped_volume}
         field="loading_volume"
-        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
       />
       <PaymentBreakdownCell
         dealId={deal.id}
@@ -620,7 +728,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
         currency={deal.supplier_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
       />
-      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-500" title="auto: отгружено − оплата">
+      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: отгружено − оплата">
         <ComputedNumSigned value={deal.supplier_balance} />
       </td>
 
@@ -631,7 +739,10 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
             <span key={cg.id} className="inline-flex items-center gap-0.5">
               {idx > 0 && <span className="text-stone-300 mx-0.5">→</span>}
               <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700 whitespace-nowrap inline-flex items-center gap-1">
-                <span>{cgLabels.get(cg.company_group_id) ?? cg.company_group?.name ?? ""}</span>
+                <ContractRefPopover
+                  cgId={cg.id}
+                  label={cgLabels.get(cg.company_group_id) ?? cg.company_group?.name ?? ""}
+                />
                 <EditableCGPrice cgId={cg.id} value={cg.price} onSaved={onDataChanged} />
                 <span
                   className={`rounded px-1 py-px text-[8px] font-semibold uppercase tracking-wide ${
@@ -650,22 +761,22 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
       </td>
 
       {/* Buyer: 10 cols */}
-      <td className="border-r px-1 py-0.5 bg-blue-50/10">
+      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700">
         <EditableSelectCell value={deal.buyer_id} displayLabel={(deal.buyer_id && buyerLabels.get(deal.buyer_id)) || ""} dealId={deal.id} field="buyer_id" options={refs.buyers} color="blue" />
       </td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" /></td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableTextCell value={deal.buyer_delivery_basis} dealId={deal.id} field="buyer_delivery_basis" /></td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
+      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" /></td>
+      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableTextCell value={deal.buyer_delivery_basis} dealId={deal.id} field="buyer_delivery_basis" /></td>
+      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" /></td>
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
       <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.buyer_price)}</td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
+      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
       <VolumeBreakdownCell
         dealId={deal.id}
         value={deal.buyer_shipped_volume}
         field="shipment_volume"
-        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
       />
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
       <PaymentBreakdownCell
         dealId={deal.id}
         value={deal.buyer_payment}
@@ -673,27 +784,27 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged }: PassportR
         currency={deal.buyer_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
       />
-      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-500" title="auto: оплата − отгружено">
+      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: оплата − отгружено">
         <ComputedNumSigned value={deal.buyer_debt} />
       </td>
 
       {/* Logistics */}
-      <td className="border-r px-1 py-0.5">
+      <td className="border-r px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.forwarder_id} displayLabel={(deal.forwarder_id && forwarderLabels.get(deal.forwarder_id)) || ""} dealId={deal.id} field="forwarder_id" options={refs.forwarders} />
       </td>
-      <td className="border-r px-1 py-0.5">
+      <td className="border-r px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={(deal.logistics_company_group_id && cgLabels.get(deal.logistics_company_group_id)) || ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} />
       </td>
-      <td className="border-r px-1 py-0.5"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
+      <td className="border-r px-1 py-0.5 text-stone-700"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
       <VolumeBreakdownCell
         dealId={deal.id}
         value={deal.actual_shipped_volume}
         field="shipment_volume"
-        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
       />
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-500" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
-      <td className="px-1 py-0.5">
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
+      <td className="px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
       <td className="px-1 py-1">
@@ -997,6 +1108,7 @@ function VirtualizedRows({
             key={deal.id}
             deal={deal}
             onDataChanged={onDataChanged}
+            rowIndex={vi.index}
           />
         );
       })}
