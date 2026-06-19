@@ -6,7 +6,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil, Eye, Download, RefreshCw } from "lucide-react";
+import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil, Eye, Download, RefreshCw, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -345,6 +345,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const [editing, setEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [numberDialogOpen, setNumberDialogOpen] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const { isAdmin, isWritable } = useRole();
   // All form selectors read from the shared refs cache (warmed by
   // /lib/refs.ts in the dashboard layout). On a navigation back to a
@@ -381,6 +382,244 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const showLoader = useDelayed(loading);
   if (showLoader && !deal) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
   if (!deal) return <p className="text-sm text-destructive py-8">Сделка не найдена</p>;
+
+  // ── Дублирование сделки ────────────────────────────────────────────
+  // Создаёт новую сделку, скопировав из текущей все скалярные поля + цепочку
+  // groups + supplier/buyer варианты. НЕ копируются:
+  //   * derived from registry/payments fields (balance/debt/shipped*/invoice*),
+  //   * supplier/buyer payment totals и даты (оплаты сами по себе не копируются),
+  //   * lines_count (триггеры пересчитают после копирования вариантов),
+  //   * is_draft / is_archived — новая сделка всегда активная.
+  // Реестр отгрузок, оплаты, активность и документы не копируются — это
+  // намеренно: операционные сущности привязаны к конкретной сделке.
+  //
+  // PostgREST не отдаёт транзакции — если один из последующих INSERT'ов
+  // упадёт, новая сделка уже будет существовать без линий/групп. Оператор
+  // может либо повторно нажать «Дублировать» (новая сделка с новым номером),
+  // либо вручную почистить пустую сделку. Это явно проговорено в confirm-диалоге.
+  async function duplicateDeal() {
+    if (!deal || duplicating) return;
+    const ok = confirm(
+      "Скопировать сделку как новую? Будут продублированы все поля, варианты, цепочка групп компании. Реестр отгрузок, оплаты, активность и документы не копируются.",
+    );
+    if (!ok) return;
+    setDuplicating(true);
+    try {
+      const supabase = createClient();
+
+      // 1. Generate new deal_number (same RPC as createDeal).
+      const { data: numData, error: numError } = await supabase.rpc(
+        "generate_deal_number",
+        { p_type: deal.deal_type, p_year: deal.year },
+      );
+      if (numError) {
+        toast.error(`Ошибка генерации номера: ${numError.message}`);
+        return;
+      }
+      const newDealNumber = numData as number;
+
+      // 2. Build INSERT payload for `deals`. Strip joined/derived/runtime
+      // fields; let triggers regenerate deal_code, supplier_lines_count,
+      // buyer_lines_count, created_at, updated_at.
+      const dealInsert = {
+        deal_type: deal.deal_type,
+        deal_number: newDealNumber,
+        year: deal.year,
+        quarter: deal.quarter,
+        month: deal.month,
+        factory_id: deal.factory_id,
+        fuel_type_id: deal.fuel_type_id,
+        sulfur_percent: deal.sulfur_percent,
+        avg_month_date: deal.avg_month_date,
+        // Supplier scalars (pricing config copied, derived totals reset).
+        supplier_id: deal.supplier_id,
+        supplier_contract: deal.supplier_contract,
+        supplier_contracted_volume: deal.supplier_contracted_volume,
+        supplier_contracted_amount: deal.supplier_contracted_amount,
+        supplier_delivery_basis: deal.supplier_delivery_basis,
+        supplier_quotation: deal.supplier_quotation,
+        supplier_quotation_comment: deal.supplier_quotation_comment,
+        supplier_discount: deal.supplier_discount,
+        supplier_price: deal.supplier_price,
+        supplier_price_condition: deal.supplier_price_condition,
+        supplier_departure_station_id: deal.supplier_departure_station_id,
+        supplier_currency: deal.supplier_currency,
+        supplier_manager_id: deal.supplier_manager_id,
+        // Buyer scalars.
+        buyer_id: deal.buyer_id,
+        buyer_contract: deal.buyer_contract,
+        buyer_contracted_volume: deal.buyer_contracted_volume,
+        buyer_contracted_amount: deal.buyer_contracted_amount,
+        buyer_delivery_basis: deal.buyer_delivery_basis,
+        buyer_destination_station_id: deal.buyer_destination_station_id,
+        buyer_quotation: deal.buyer_quotation,
+        buyer_quotation_comment: deal.buyer_quotation_comment,
+        buyer_discount: deal.buyer_discount,
+        buyer_price: deal.buyer_price,
+        buyer_price_condition: deal.buyer_price_condition,
+        buyer_ordered_volume: deal.buyer_ordered_volume,
+        buyer_currency: deal.buyer_currency,
+        buyer_manager_id: deal.buyer_manager_id,
+        buyer_ship_date: deal.buyer_ship_date,
+        buyer_multi_deal_payments: deal.buyer_multi_deal_payments,
+        buyer_snt_written: deal.buyer_snt_written,
+        // Logistics scalars.
+        forwarder_id: deal.forwarder_id,
+        logistics_company_group_id: deal.logistics_company_group_id,
+        logistics_shipment_month: deal.logistics_shipment_month ?? null,
+        logistics_currency: deal.logistics_currency,
+        logistics_notes: deal.logistics_notes,
+        planned_tariff: deal.planned_tariff,
+        preliminary_tonnage: deal.preliminary_tonnage,
+        actual_tariff: deal.actual_tariff,
+        railway_in_price: deal.railway_in_price,
+        surcharge_amount: deal.surcharge_amount,
+        surcharge_reinvoiced_to: deal.surcharge_reinvoiced_to,
+        // Managers / trader.
+        trader_id: deal.trader_id,
+        // Legacy single currency (kept in sync with supplier_currency).
+        currency: deal.currency,
+        // Reset flags & lifecycle.
+        is_archived: false,
+        is_draft: false,
+      };
+
+      // Local `Deal` type widens *_price_condition to `string | null`, but the
+      // generated Insert type insists on the enum union. The values came
+      // straight off a deals row so they're already valid — narrow cast at
+      // the insert site rather than narrowing every property up-stream.
+      const { data: inserted, error: insertError } = await supabase
+        .from("deals")
+        .insert(dealInsert as never)
+        .select("id, deal_code")
+        .single();
+      if (insertError || !inserted) {
+        toast.error(`Ошибка создания копии: ${insertError?.message ?? "неизвестная ошибка"}`);
+        return;
+      }
+      const newDealId = inserted.id as string;
+      const newDealCode = inserted.deal_code as string;
+
+      // 3. Copy deal_company_groups chain.
+      // Generated database.ts is one migration behind (00089 added
+      // quotation/quotation_comment/discount). Bypass Insert type checks
+      // with a narrow cast — the columns exist in the live DB schema.
+      const groupsSource = deal.deal_company_groups ?? [];
+      const groupsInsert = groupsSource.map((g) => ({
+        deal_id: newDealId,
+        company_group_id: g.company_group_id,
+        position: g.position,
+        price: g.price,
+        price_kind: g.price_kind,
+        contract_ref: g.contract_ref ?? null,
+        currency: g.currency ?? null,
+        quotation: g.quotation ?? null,
+        quotation_comment: g.quotation_comment ?? null,
+        discount: g.discount ?? null,
+      }));
+
+      // 4 + 5 + 6. Copy supplier + buyer lines.
+      // Reset `id` (let Supabase generate fresh UUIDs) and
+      // `preliminary_set_at` (the finalize snapshot timestamp is
+      // per-shipment-stage on the original — new lines start fresh).
+      // Drop `created_at` / `updated_at` so DEFAULT now() applies.
+      // Drop `deal_id` from source (we set the new one explicitly).
+      const supplierInsert = supplierLines.map((l) => ({
+        deal_id: newDealId,
+        position: l.position,
+        is_default: l.is_default,
+        price_condition: l.price_condition,
+        trigger_basis: l.trigger_basis ?? null,
+        trigger_days: l.trigger_days ?? null,
+        quotation_type_id: l.quotation_type_id,
+        quotation: l.quotation,
+        quotation_comment: l.quotation_comment,
+        discount: l.discount,
+        price: l.price,
+        delivery_basis: l.delivery_basis,
+        departure_station_id: l.departure_station_id,
+        appendix: l.appendix ?? null,
+        price_stage: l.price_stage ?? "preliminary",
+        preliminary_quotation: l.preliminary_quotation ?? null,
+        preliminary_price: l.preliminary_price ?? null,
+        preliminary_fx_rate: l.preliminary_fx_rate ?? null,
+        preliminary_set_at: null,
+        selected_month: l.selected_month ?? null,
+        fx_rate: l.fx_rate ?? null,
+      }));
+
+      const buyerInsert = buyerLines.map((l) => ({
+        deal_id: newDealId,
+        position: l.position,
+        is_default: l.is_default,
+        price_condition: l.price_condition,
+        trigger_basis: l.trigger_basis ?? null,
+        trigger_days: l.trigger_days ?? null,
+        quotation_type_id: l.quotation_type_id,
+        quotation: l.quotation,
+        quotation_comment: l.quotation_comment,
+        discount: l.discount,
+        price: l.price,
+        delivery_basis: l.delivery_basis,
+        destination_station_id: l.destination_station_id,
+        appendix: l.appendix ?? null,
+        price_stage: l.price_stage ?? "preliminary",
+        preliminary_quotation: l.preliminary_quotation ?? null,
+        preliminary_price: l.preliminary_price ?? null,
+        preliminary_fx_rate: l.preliminary_fx_rate ?? null,
+        preliminary_set_at: null,
+        selected_month: l.selected_month ?? null,
+        fx_rate: l.fx_rate ?? null,
+      }));
+
+      // groups + supplier_lines + buyer_lines are independent — fire all
+      // three in parallel. PostgREST has no transactions, so the new deal
+      // already exists; if any insert errors we still navigate to the
+      // copy and surface the error so the operator can decide whether
+      // to fix or delete it.
+      // PostgREST query builders return a PromiseLike, not a Promise — wrap
+      // with Promise.resolve(...) so Promise.all() typing stays clean.
+      const tasks: Promise<{ error: { message: string } | null }>[] = [];
+      if (groupsInsert.length > 0) {
+        tasks.push(
+          Promise.resolve(
+            supabase
+              .from("deal_company_groups")
+              .insert(groupsInsert as never),
+          ).then(({ error }) => ({ error: error ? { message: error.message } : null })),
+        );
+      }
+      if (supplierInsert.length > 0) {
+        tasks.push(
+          Promise.resolve(
+            supabase
+              .from("deal_supplier_lines")
+              .insert(supplierInsert as never),
+          ).then(({ error }) => ({ error: error ? { message: error.message } : null })),
+        );
+      }
+      if (buyerInsert.length > 0) {
+        tasks.push(
+          Promise.resolve(
+            supabase
+              .from("deal_buyer_lines")
+              .insert(buyerInsert as never),
+          ).then(({ error }) => ({ error: error ? { message: error.message } : null })),
+        );
+      }
+      const results = await Promise.all(tasks);
+      const firstErr = results.find((r) => r.error)?.error;
+      if (firstErr) {
+        toast.error(`Сделка создана, но часть данных не скопировалась: ${firstErr.message}`);
+      } else {
+        toast.success(`Сделка ${newDealCode} создана как копия ${deal.deal_code}`);
+      }
+
+      router.push(`/deals/${newDealId}`);
+    } finally {
+      setDuplicating(false);
+    }
+  }
 
   const symbolOf = (code: string) =>
     code === "KZT" ? "₸" : code === "KGS" ? "сом" : code === "RUB" ? "₽" : "$";
@@ -423,6 +662,18 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
                 <History className="mr-1 h-3.5 w-3.5" />
                 История
               </Button>
+              {isWritable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={duplicateDeal}
+                  disabled={duplicating}
+                  title="Скопировать сделку как новую (поля, варианты, цепочка групп)"
+                >
+                  <Copy className="mr-1 h-3.5 w-3.5" />
+                  {duplicating ? "Копирую..." : "Скопировать сделку"}
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant={editing ? "default" : "outline"}
