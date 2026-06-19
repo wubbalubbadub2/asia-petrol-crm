@@ -244,7 +244,17 @@ export default function NewDealPage() {
       factory_id: factoryId || null,
       fuel_type_id: fuelTypeId || null,
       sulfur_percent: sulfurPercent || null,
+      // Legacy single-currency column stays in sync with the supplier
+      // side (dashboard / passport-table still read it). The three
+      // per-section columns are the source of truth for the detail page —
+      // without explicitly writing them they fall back to the NOT NULL
+      // DEFAULT 'USD' from migration 00043, which silently flipped a
+      // KZT-picked deal back to USD as soon as the bundle refetched
+      // (e.g. after «Изменить номер сделки»).
       currency,
+      supplier_currency: currency,
+      buyer_currency: currency,
+      logistics_currency: currency,
       supplier_id: supplierId || null,
       supplier_contract: supplierContract || null,
       supplier_contracted_volume: supplierVolume ? parseFloat(supplierVolume) : null,
