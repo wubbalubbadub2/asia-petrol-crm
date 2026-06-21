@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, ArrowLeft, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -179,12 +179,17 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     return Array.from(set).sort();
   }, [days, quotMap, extraDays]);
   // The next addable day = first weekday in the month that isn't
-  // already visible. Used by the «+ день» button to advance one day
-  // at a time without forcing the operator to open a date picker.
+  // already visible. Fallback for browsers that don't expose
+  // `input.showPicker()` — the «+ день» button just adds the next
+  // empty weekday in that case.
   const nextAddableDay = useMemo(() => {
     const visible = new Set(visibleDays);
     return days.find((d) => !isWeekend(d) && !visible.has(d)) ?? null;
   }, [days, visibleDays]);
+  // The hidden date input that the «+ день» button drives via
+  // showPicker(). Kept off-screen with sr-only so screen readers
+  // still find it.
+  const addDayInputRef = useRef<HTMLInputElement>(null);
   // Index of the column where Excel parks every per-column average
   // value (the first editable numeric column — column C in the
   // operator's spreadsheets, regardless of which column the data
@@ -294,19 +299,46 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
           {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
           Excel
         </Button>
-        {/* «+ день» surfaces an empty row for the next unquoted
-            weekday so the operator can backfill a day Excel-style
-            (only days that have data are otherwise visible). */}
-        {isWritable && nextAddableDay && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setExtraDays((prev) => new Set([...prev, nextAddableDay]))}
-            title={`Добавить строку на ${nextAddableDay.split("-").reverse().join(".")}`}
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            день
-          </Button>
+        {/* «+ день»: button opens the native HTML date picker pinned
+            to the visible month — so the operator can insert ANY
+            date (Excel-style backfill), including a gap between
+            existing rows or a weekend. Falls back to «next unquoted
+            weekday» if the browser doesn't support showPicker(). */}
+        {isWritable && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const input = addDayInputRef.current;
+                if (input && typeof input.showPicker === "function") {
+                  try { input.showPicker(); return; } catch { /* fall through */ }
+                }
+                if (nextAddableDay) {
+                  setExtraDays((prev) => new Set([...prev, nextAddableDay]));
+                }
+              }}
+              title="Добавить строку для конкретной даты"
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              день
+            </Button>
+            <input
+              ref={addDayInputRef}
+              type="date"
+              min={`${year}-${String(month).padStart(2, "0")}-01`}
+              max={`${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`}
+              className="sr-only"
+              aria-label="Добавить день в котировки"
+              tabIndex={-1}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val) return;
+                setExtraDays((prev) => new Set([...prev, val]));
+                e.target.value = "";
+              }}
+            />
+          </>
         )}
 
         <Dialog open={columnDialogOpen} onOpenChange={setColumnDialogOpen}>
