@@ -40,13 +40,17 @@ function formatDay(dateStr: string): string { return String(new Date(dateStr + "
 function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00:00:00").getDay(); return d === 0 || d === 6; }
 
 // --- Editable Text Cell (for comments) ---
+// Free-form text is the only column that stays left-aligned (Excel
+// would do the same — only numerics get centered). Same font size as
+// the numeric cells so the grid reads as one rhythm instead of mixed
+// tiers.
 function EditableTextQCell({ value, onSave, disabled }: { value: string | null; onSave: (val: string | null) => void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
-  if (disabled) return <span className="text-[10px] text-stone-400 truncate max-w-[80px]">{value ?? ""}</span>;
+  if (disabled) return <span className="text-[11px] text-stone-500 truncate block">{value ?? ""}</span>;
   if (!editing) return (
     <button onClick={() => { setLocalVal(value ?? ""); setEditing(true); }}
-      className="w-full text-left text-[10px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] truncate max-w-[100px] text-stone-500">
+      className="w-full text-left text-[11px] hover:bg-amber-100/40 cursor-text min-h-[18px] truncate text-stone-700">
       {value ?? ""}
     </button>
   );
@@ -54,19 +58,24 @@ function EditableTextQCell({ value, onSave, disabled }: { value: string | null; 
     <input autoFocus value={localVal} onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const v = localVal.trim() || null; if (v !== value) onSave(v as unknown as string | null); }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      className="w-24 border border-amber-400 rounded px-1 py-0 text-[10px] bg-amber-50 focus:outline-none" />
+      className="w-full border border-amber-400 px-1 py-0 text-[11px] bg-amber-50 focus:outline-none" />
   );
 }
 
 // --- Editable Cell ---
+// Excel parity: numbers center-aligned, 2 decimals (Excel files in
+// files/Котировки/*.xlsx display 1–2 dp, never 3), no decoration in
+// the resting state so the grid reads as flat-Excel rather than as a
+// CRM form. The hover hint comes from a subtle amber tint only.
 function EditableCell({ value, onSave, disabled }: { value: number | null; onSave: (val: number | null) => void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
-  if (disabled) return <span className="font-mono text-[11px] tabular-nums text-stone-400">{value != null ? value.toFixed(3) : ""}</span>;
+  const display = value != null ? value.toFixed(2) : "";
+  if (disabled) return <span className="font-mono text-[11px] tabular-nums text-stone-500">{display}</span>;
   if (!editing) return (
     <button onClick={() => { setLocalVal(value?.toString() ?? ""); setEditing(true); }}
-      className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px]">
-      {value != null ? value.toFixed(3) : ""}
+      className="w-full text-center font-mono text-[11px] tabular-nums hover:bg-amber-100/40 cursor-text min-h-[18px]">
+      {display}
     </button>
   );
   return (
@@ -74,7 +83,7 @@ function EditableCell({ value, onSave, disabled }: { value: number | null; onSav
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const num = localVal.trim() === "" ? null : parseFloat(localVal); if (num !== value) onSave(num); }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      className="w-16 border border-amber-400 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50 focus:outline-none" />
+      className="w-full border border-amber-400 px-0.5 py-0 text-[11px] font-mono text-center bg-amber-50 focus:outline-none" />
   );
 }
 
@@ -293,13 +302,50 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
         </div>
       </div>
 
-      <div className="overflow-x-auto border rounded-md bg-white">
+      {/*
+        Excel parity layout. Every choice here is anchored in the
+        actual `files/Котировки/*.xlsx` source files inspected via
+        openpyxl:
+        — Row 1 = merged title band («Котировки на … (средняя)»),
+          dark on light per Excel.
+        — Header row = bold, centered, white-on-stone-800 — matches
+          the Excel «дата + спейсер + price cols + Среднее» band.
+        — Data rows = flat white, ~22px high, all cells center-
+          aligned (Excel uses center for both Дата and prices). No
+          zebra and no weekend tint — Excel doesn't do either, and
+          the tint was what made the grid read as «размазано».
+        — Сетка = thin stone-200 borders on every side, so the table
+          reads as a grid rather than a list with hairlines.
+        — Footer Среднее = full-width amber band, bold, centered.
+      */}
+      <div className="overflow-x-auto border border-stone-300 bg-white">
         <table className="w-full border-collapse" style={{ fontSize: "11px" }}>
+          <colgroup>
+            <col style={{ width: "44px" }} />
+            {PRICE_COLS.map((col) => (
+              <col key={col.key} style={{ width: col.key === "comment" ? "140px" : "auto" }} />
+            ))}
+          </colgroup>
           <thead>
-            <tr className="bg-stone-50 border-b">
-              <th className="sticky left-0 z-10 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[36px]">День</th>
+            <tr>
+              <th
+                colSpan={PRICE_COLS.length + 1}
+                className="bg-stone-900 text-stone-50 text-center font-semibold py-1.5 px-2 border-b border-stone-700"
+                style={{ fontSize: "12px" }}
+              >
+                Котировки на {productType.name} (средняя) · {MONTHS_RU[month - 1]} {year}
+              </th>
+            </tr>
+            <tr className="bg-stone-800 text-stone-50 border-b border-stone-700">
+              <th className="sticky left-0 z-10 bg-stone-800 border-r border-stone-700 px-1 py-1 text-center font-semibold">Дата</th>
               {PRICE_COLS.map((col) => (
-                <th key={col.key} className="border-r px-2 py-1.5 text-center font-medium text-stone-600 min-w-[90px]">{col.label}</th>
+                <th
+                  key={col.key}
+                  className="border-r border-stone-700 px-1 py-1 text-center font-semibold whitespace-pre-line leading-tight"
+                  style={{ fontSize: col.label.length > 22 ? "10px" : "11px" }}
+                >
+                  {col.label}
+                </th>
               ))}
             </tr>
           </thead>
@@ -307,15 +353,15 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
             {days.map((day) => {
               const q = quotMap[day];
               return (
-                <tr key={day} className={`border-b ${isWeekend(day) ? "bg-stone-50/50" : "hover:bg-amber-50/30"}`}>
-                  <td className={`sticky left-0 z-10 border-r px-2 py-0.5 font-mono tabular-nums ${isWeekend(day) ? "bg-stone-50/50 text-stone-400" : "bg-white text-stone-700"}`}>
+                <tr key={day} className="border-b border-stone-200 hover:bg-amber-50/30">
+                  <td className="sticky left-0 z-10 bg-white border-r border-stone-200 px-1 py-px font-mono tabular-nums text-center text-stone-700">
                     {formatDay(day)}
                   </td>
                   {PRICE_COLS.map((col) => {
                     if (col.key === "comment") {
                       const textVal = (q as Record<string, unknown> | undefined)?.[col.key] as string | null ?? null;
                       return (
-                        <td key={col.key} className="border-r px-1 py-0.5">
+                        <td key={col.key} className="border-r border-stone-200 px-1 py-px">
                           <EditableTextQCell value={textVal} disabled={!isWritable || !col.editable}
                             onSave={(val) => upsert(productType.id, day, "comment", val as unknown as number | null)} />
                         </td>
@@ -328,7 +374,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                       cellVal = vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
                     }
                     return (
-                      <td key={col.key} className={`border-r px-1 py-0.5 text-right ${col.formula ? "bg-amber-50/30" : ""}`}>
+                      <td key={col.key} className={`border-r border-stone-200 px-1 py-px text-center ${col.formula ? "bg-stone-50" : ""}`}>
                         <EditableCell value={cellVal} disabled={!isWritable || !col.editable}
                           onSave={(val) => handleCellSave(day, col.key, val)} />
                       </td>
@@ -337,14 +383,14 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                 </tr>
               );
             })}
-            <tr className="bg-amber-50/50 border-t-2 border-amber-200 font-medium">
-              <td className="sticky left-0 z-10 bg-amber-50/50 border-r px-2 py-1 text-amber-800">Среднее</td>
+            <tr className="bg-amber-100 border-t-2 border-amber-400 font-semibold">
+              <td className="sticky left-0 z-10 bg-amber-100 border-r border-amber-300 px-1 py-1 text-center text-amber-900">Среднее</td>
               {PRICE_COLS.map((col) => {
-                if (col.key === "comment") return <td key={col.key} className="border-r px-1 py-1"></td>;
+                if (col.key === "comment") return <td key={col.key} className="border-r border-amber-300 px-1 py-1 bg-amber-100"></td>;
                 const avg = getAvg(col.key);
                 return (
-                  <td key={col.key} className="border-r px-1 py-1 text-right font-mono tabular-nums text-amber-800">
-                    {avg != null ? avg.toFixed(3) : "—"}
+                  <td key={col.key} className="border-r border-amber-300 px-1 py-1 text-center font-mono tabular-nums text-amber-900">
+                    {avg != null ? avg.toFixed(2) : "—"}
                   </td>
                 );
               })}
