@@ -379,8 +379,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   // sub-second loads don't get a blocker. Cached snapshots paint
   // instantly so the blocker only ever appears on the very first cold
   // visit.
+  // «Сделка не найдена» is shown ONLY after the fetch finishes — while
+  // loading is still true we render nothing (or the delayed loader),
+  // otherwise the user sees a red «не найдена» flash during the first
+  // 800 ms of every cold load before the data arrives.
   const showLoader = useDelayed(loading);
-  if (showLoader && !deal) return <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p>;
+  if (loading) return showLoader ? <p className="text-sm text-muted-foreground py-8">Загрузка сделки...</p> : null;
   if (!deal) return <p className="text-sm text-destructive py-8">Сделка не найдена</p>;
 
   // ── Дублирование сделки ────────────────────────────────────────────
