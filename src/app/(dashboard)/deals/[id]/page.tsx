@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useRef, useContext, createContext, useMemo } from "react";
 import { useGlobalRefs } from "@/lib/refs";
 import { useDelayed } from "@/lib/hooks/use-delayed";
+import { useSetTabTitle } from "@/lib/contexts/tabs-context";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -333,6 +334,10 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     loading,
     reload,
   } = useDealBundle(id);
+  // Update the workspace-tab title once the deal code is known —
+  // until then the tab reads «Сделка»; after load it becomes
+  // «Сделка KZ/26/123».
+  useSetTabTitle(`/deals/${id}`, deal?.deal_code ? `Сделка ${deal.deal_code}` : null);
   // Узкие reload-обёртки — UI-сайты, которые раньше дергали отдельные
   // {reloadSupplierLines, reloadBuyerLines, reloadLineRollups},
   // получают одну функцию-обёртку поверх bundle reload. Это незначительно

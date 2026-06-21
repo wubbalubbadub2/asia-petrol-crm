@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
 import { useDelayed } from "@/lib/hooks/use-delayed";
+import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
@@ -77,6 +78,45 @@ function ComputedNumSigned({ value, className = "" }: { value: number | null | u
 
 function FuelDot({ color }: { color?: string }) {
   return <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color ?? "#6B7280" }} />;
+}
+
+// Identity column link — clicking a deal code adds the deal as a
+// new workspace tab (foreground), Ctrl/Cmd/middle-click adds it
+// as a background tab. Falls back to a regular Link href so
+// right-click → «Open in new browser tab» still works and the URL
+// is meaningful for sharing.
+function DealCodeLink({ dealId, dealCode }: { dealId: string; dealCode: string | null }) {
+  const { openTab } = useTabs();
+  const href = `/deals/${dealId}`;
+  const placeholderTitle = dealCode ? `Сделка ${dealCode}` : "Сделка";
+  const handle = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // Let the browser handle real new-tab requests so right-click /
+    // shift-click keep working.
+    if (e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      openTab(href, { background: true, title: placeholderTitle });
+      return;
+    }
+    e.preventDefault();
+    openTab(href, { title: placeholderTitle });
+  };
+  return (
+    <Link
+      href={href}
+      onClick={handle}
+      onAuxClick={(e) => {
+        // Middle-click → background tab (matches browser convention).
+        if (e.button === 1) {
+          e.preventDefault();
+          openTab(href, { background: true, title: placeholderTitle });
+        }
+      }}
+      className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors"
+    >
+      {dealCode}
+    </Link>
+  );
 }
 
 // "+N лин." chip — only renders when at least one side has multiple
@@ -683,9 +723,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
 
   return (
     <tr className={`border-b hover:bg-amber-50/20 ${zebraRow}`}>
-      {/* Identity */}
+      {/* Identity. Clicking the deal code opens the deal as a new
+          workspace tab so the operator never loses the list view
+          they came from. Ctrl/Cmd/middle-click keeps the click
+          targeted at the list (background tab) — matches browser
+          tab UX. */}
       <td className={`sticky left-0 z-10 ${stickyBg} border-r px-2 py-1 font-mono text-stone-700`}>
-        <Link href={`/deals/${deal.id}`} className="text-amber-600 underline decoration-amber-300 hover:decoration-amber-500 hover:text-amber-800 transition-colors">{deal.deal_code}</Link>
+        <DealCodeLink dealId={deal.id} dealCode={deal.deal_code} />
         <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
       </td>
       <td className="border-r px-1 py-0.5 text-stone-700">

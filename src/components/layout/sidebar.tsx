@@ -6,6 +6,7 @@ import { Fuel, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navItems, type NavItem } from "@/lib/constants/nav-items";
 import { useRole } from "@/lib/hooks/use-role";
+import { useTabs } from "@/lib/contexts/tabs-context";
 
 /**
  * Inner child of <Link>. `useLinkStatus()` returns the pending state
@@ -74,8 +75,25 @@ function NavLink({
     pathname === item.href ||
     (item.href !== "/" && pathname.startsWith(item.href));
 
+  const { openTab } = useTabs();
+
+  // Sidebar nav opens/activates the singleton workspace tab for
+  // this section. Ctrl/Cmd-click opens it in the background — used
+  // to set up multiple contexts in one go.
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      e.preventDefault();
+      openTab(item.href, { background: true });
+      onNavigate?.();
+      return;
+    }
+    e.preventDefault();
+    openTab(item.href);
+    onNavigate?.();
+  };
+
   return (
-    <Link href={item.href} onClick={onNavigate} className="block">
+    <Link href={item.href} onClick={handleClick} className="block">
       <NavLinkBody Icon={item.icon} label={item.label} isActive={isActive} />
     </Link>
   );
