@@ -1,20 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 
-// Each preset appends a "Комментарии" column; FULL additionally has a
-// standalone CIF NWE column. Counts reflect the current config.
+// Each preset appends a "Комментарии" column. FULL_PRICE_COLS matches
+// the Excel files in files/Котировки/: 3 editable bases + Среднее
+// (formula) + comment = 5 columns total.
 
 describe("Quotation Column Mapping", () => {
-  it("ГАЗОЙЛЬ 0,1% gets full layout (5 prices + comment)", () => {
+  it("ГАЗОЙЛЬ 0,1% gets full layout (3 bases + Среднее + comment)", () => {
     const cols = getColumnsForProduct("ГАЗОЙЛЬ 0,1%");
-    expect(cols).toHaveLength(6);
+    expect(cols).toHaveLength(5);
     expect(cols[0].label).toContain("CIF NWE");
     expect(cols[1].label).toContain("FOB MED");
     expect(cols[2].label).toContain("FOB Rotterdam");
     expect(cols[3].label).toContain("Среднее");
     expect(cols[3].editable).toBe(false);
     expect(cols[3].formula).toBe("avg");
-    expect(cols[5].key).toBe("comment");
+    expect(cols[4].key).toBe("comment");
   });
 
   it("ВГО 0,5-0,6% gets cargo/barge layout (2 prices + avg + comment)", () => {
@@ -58,12 +59,12 @@ describe("Quotation Column Mapping", () => {
 
   it("НАФТА gets full layout", () => {
     const cols = getColumnsForProduct("НАФТА");
-    expect(cols).toHaveLength(6);
+    expect(cols).toHaveLength(5);
   });
 
   it("Jet gets full layout", () => {
     const cols = getColumnsForProduct("Jet");
-    expect(cols).toHaveLength(6);
+    expect(cols).toHaveLength(5);
   });
 
   it("ULSD 10 ppm gets CIF + FOB MED + comment", () => {
@@ -77,14 +78,27 @@ describe("Quotation Column Mapping", () => {
     expect(cols[0].label).toContain("FOB NWE");
   });
 
-  it("МАЗУТ 0,5% Marine Fuel gets single price + comment", () => {
+  it("МАЗУТ 0,5% Marine Fuel gets single FOB Rotterdam barge + comment", () => {
     const cols = getColumnsForProduct("МАЗУТ 0,5% Marine Fuel");
     expect(cols).toHaveLength(2);
+    expect(cols[0].label).toBe("FOB Rotterdam barge");
+  });
+
+  it("МАЗУТ 1,0% FOB Rotterdam carries the «1,0%» sulphur tag in its label", () => {
+    const cols = getColumnsForProduct("МАЗУТ 1,0% FOB Rotterdam");
+    expect(cols).toHaveLength(2);
+    expect(cols[0].label).toBe("FOB Rotterdam 1,0%");
+  });
+
+  it("МАЗУТ 3,5% FOB Rotterdam carries the «3,5%» sulphur tag in its label", () => {
+    const cols = getColumnsForProduct("МАЗУТ 3,5% FOB Rotterdam");
+    expect(cols).toHaveLength(2);
+    expect(cols[0].label).toBe("FOB Rotterdam 3,5%");
   });
 
   it("unknown product gets default full layout", () => {
     const cols = getColumnsForProduct("Новый продукт");
-    expect(cols).toHaveLength(6);
+    expect(cols).toHaveLength(5);
   });
 
   it("all editable columns never have a formula", () => {
