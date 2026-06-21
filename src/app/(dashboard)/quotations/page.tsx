@@ -36,8 +36,25 @@ function getDaysInMonth(year: number, month: number): string[] {
   }
   return days;
 }
-function formatDay(dateStr: string): string { return String(new Date(dateStr + "T00:00:00").getDate()); }
+// Excel-style DD.MM.YYYY date label; matches the operator's source
+// files (`01.06.2026`, not `1`). Keeps the column narrow because the
+// number remains tabular and same-width across rows.
+function formatDateDMY(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-");
+  return `${d}.${m}.${y}`;
+}
 function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00:00:00").getDay(); return d === 0 || d === 6; }
+// Russian-locale 3-decimal format with comma separator
+// («896,500» instead of «896.500») — copied from Excel's General
+// number format on the source files.
+const NUM_FMT = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 3,
+  maximumFractionDigits: 3,
+  useGrouping: false,
+});
+function fmtNum(n: number | null | undefined): string {
+  return n == null ? "" : NUM_FMT.format(n);
+}
 
 // --- Editable Text Cell (for comments) ---
 // Free-form text is the only column that stays left-aligned (Excel
@@ -63,14 +80,13 @@ function EditableTextQCell({ value, onSave, disabled }: { value: string | null; 
 }
 
 // --- Editable Cell ---
-// Excel parity: numbers center-aligned, 2 decimals (Excel files in
-// files/Котировки/*.xlsx display 1–2 dp, never 3), no decoration in
-// the resting state so the grid reads as flat-Excel rather than as a
-// CRM form. The hover hint comes from a subtle amber tint only.
+// Excel parity: numbers center-aligned, 3 decimals with Russian
+// comma decimal separator («896,500») — matches the operator's
+// `files/Котировки/*.xlsx` display format exactly.
 function EditableCell({ value, onSave, disabled }: { value: number | null; onSave: (val: number | null) => void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
-  const display = value != null ? value.toFixed(2) : "";
+  const display = fmtNum(value);
   if (disabled) return <span className="font-mono text-[11px] tabular-nums text-stone-500">{display}</span>;
   if (!editing) return (
     <button onClick={() => { setLocalVal(value?.toString() ?? ""); setEditing(true); }}
@@ -130,7 +146,26 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
   }, [quotations, productType.id]);
 
   // Product-specific columns from Excel format
-  const PRICE_COLS = getColumnsForProduct(productType.name);
+  const PRICE_COLS = useMemo(() => getColumnsForProduct(productType.name), [productType.name]);
+  // Editable numeric (≠ comment, ≠ formula) and formula columns are
+  // surfaced separately in the footer — split here so the render stays
+  // declarative. Recomputed only when PRICE_COLS changes (product
+  // switch), not on every keystroke.
+  const editableNumericCols = useMemo(
+    () => PRICE_COLS.filter((c) => c.editable && c.key !== "comment"),
+    [PRICE_COLS],
+  );
+  const formulaCols = useMemo(
+    () => PRICE_COLS.filter((c) => c.formula === "avg"),
+    [PRICE_COLS],
+  );
+  // Show only trading days (Mon–Fri). Weekend rows would only add
+  // empty rows to a tightly-packed sheet. If a weekend value happens
+  // to exist (legacy data), we still surface it so nothing is hidden.
+  const visibleDays = useMemo(
+    () => days.filter((d) => !isWeekend(d) || !!quotMap[d]),
+    [days, quotMap],
+  );
 
   function getAvg(field: string): number | null {
     if (field === "comment") return null;
@@ -303,45 +338,63 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
       </div>
 
       {/*
-        Excel parity layout. Every choice here is anchored in the
-        actual `files/Котировки/*.xlsx` source files inspected via
-        openpyxl:
-        — Row 1 = merged title band («Котировки на … (средняя)»),
-          dark on light per Excel.
-        — Header row = bold, centered, white-on-stone-800 — matches
-          the Excel «дата + спейсер + price cols + Среднее» band.
-        — Data rows = flat white, ~22px high, all cells center-
-          aligned (Excel uses center for both Дата and prices). No
-          zebra and no weekend tint — Excel doesn't do either, and
-          the tint was what made the grid read as «размазано».
-        — Сетка = thin stone-200 borders on every side, so the table
-          reads as a grid rather than a list with hairlines.
-        — Footer Среднее = full-width amber band, bold, centered.
+        Excel-parity layout. Operator feedback: the previous table was
+        «размазано» — full-screen wide, every day of the month rendered
+        as its own row including weekends, one combined Среднее footer
+        instead of the per-column labelled rows the operator reads from
+        Excel. All of those are fixed here against the source files in
+        `files/Котировки/*.xlsx` inspected via openpyxl:
+        — Width: fixed colgroup (~110px per numeric col, ~130px Date,
+          ~180px comment). Table is left-anchored, NOT w-full, so the
+          whole sheet fits on a normal monitor without horizontal scroll.
+        — Days: only trading days (Mon–Fri) are rendered. Weekend rows
+          stay invisible unless a value happens to exist on them (then
+          they show up so we don't hide existing data).
+        — Date label: «01.06.2026» monospace, mirrors Excel.
+        — Numbers: 3 dp with Russian comma separator («896,500»).
+        — Footer:
+          • one «in-column» row for each formula column (avg of that
+            column's daily values, sits under the column);
+          • then one row per editable numeric column with the label
+            «Среднее {col.label}» on the left and the value centred in
+            the column itself. Matches the row 20/22 pattern in the
+            operator's spreadsheets.
       */}
-      <div className="overflow-x-auto border border-stone-300 bg-white">
-        <table className="w-full border-collapse" style={{ fontSize: "11px" }}>
+      <div className="overflow-x-auto">
+        <table className="border-collapse border border-stone-400 bg-white" style={{ fontSize: "11px", width: "max-content" }}>
           <colgroup>
-            <col style={{ width: "44px" }} />
+            <col style={{ width: "94px" }} />
             {PRICE_COLS.map((col) => (
-              <col key={col.key} style={{ width: col.key === "comment" ? "140px" : "auto" }} />
+              <col key={col.key} style={{ width: col.key === "comment" ? "180px" : "110px" }} />
             ))}
           </colgroup>
           <thead>
             <tr>
               <th
                 colSpan={PRICE_COLS.length + 1}
-                className="bg-stone-900 text-stone-50 text-center font-semibold py-1.5 px-2 border-b border-stone-700"
+                className="bg-stone-900 text-stone-50 text-center font-semibold py-1.5 px-2 border border-stone-700"
                 style={{ fontSize: "12px" }}
               >
-                Котировки на {productType.name} (средняя) · {MONTHS_RU[month - 1]} {year}
+                Котировки на {productType.name} (средняя)
               </th>
             </tr>
-            <tr className="bg-stone-800 text-stone-50 border-b border-stone-700">
-              <th className="sticky left-0 z-10 bg-stone-800 border-r border-stone-700 px-1 py-1 text-center font-semibold">Дата</th>
+            {productType.sub_name && (
+              <tr>
+                <th
+                  colSpan={PRICE_COLS.length + 1}
+                  className="bg-stone-100 text-stone-700 text-center font-medium py-0.5 px-2 border border-stone-400"
+                  style={{ fontSize: "11px" }}
+                >
+                  {productType.sub_name}
+                </th>
+              </tr>
+            )}
+            <tr className="bg-stone-100">
+              <th className="border border-stone-400 px-1 py-1 text-center font-bold text-stone-800">Дата</th>
               {PRICE_COLS.map((col) => (
                 <th
                   key={col.key}
-                  className="border-r border-stone-700 px-1 py-1 text-center font-semibold whitespace-pre-line leading-tight"
+                  className="border border-stone-400 px-1 py-1 text-center font-bold text-stone-800 leading-tight"
                   style={{ fontSize: col.label.length > 22 ? "10px" : "11px" }}
                 >
                   {col.label}
@@ -350,18 +403,18 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
             </tr>
           </thead>
           <tbody>
-            {days.map((day) => {
+            {visibleDays.map((day) => {
               const q = quotMap[day];
               return (
-                <tr key={day} className="border-b border-stone-200 hover:bg-amber-50/30">
-                  <td className="sticky left-0 z-10 bg-white border-r border-stone-200 px-1 py-px font-mono tabular-nums text-center text-stone-700">
-                    {formatDay(day)}
+                <tr key={day} className="hover:bg-amber-50/30">
+                  <td className="border border-stone-300 px-1 py-px font-mono tabular-nums text-center text-stone-800">
+                    {formatDateDMY(day)}
                   </td>
                   {PRICE_COLS.map((col) => {
                     if (col.key === "comment") {
                       const textVal = (q as Record<string, unknown> | undefined)?.[col.key] as string | null ?? null;
                       return (
-                        <td key={col.key} className="border-r border-stone-200 px-1 py-px">
+                        <td key={col.key} className="border border-stone-300 px-1 py-px">
                           <EditableTextQCell value={textVal} disabled={!isWritable || !col.editable}
                             onSave={(val) => upsert(productType.id, day, "comment", val as unknown as number | null)} />
                         </td>
@@ -374,7 +427,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                       cellVal = vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
                     }
                     return (
-                      <td key={col.key} className={`border-r border-stone-200 px-1 py-px text-center ${col.formula ? "bg-stone-50" : ""}`}>
+                      <td key={col.key} className={`border border-stone-300 px-1 py-px text-center ${col.formula ? "bg-stone-50" : ""}`}>
                         <EditableCell value={cellVal} disabled={!isWritable || !col.editable}
                           onSave={(val) => handleCellSave(day, col.key, val)} />
                       </td>
@@ -383,18 +436,51 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                 </tr>
               );
             })}
-            <tr className="bg-amber-100 border-t-2 border-amber-400 font-semibold">
-              <td className="sticky left-0 z-10 bg-amber-100 border-r border-amber-300 px-1 py-1 text-center text-amber-900">Среднее</td>
-              {PRICE_COLS.map((col) => {
-                if (col.key === "comment") return <td key={col.key} className="border-r border-amber-300 px-1 py-1 bg-amber-100"></td>;
-                const avg = getAvg(col.key);
-                return (
-                  <td key={col.key} className="border-r border-amber-300 px-1 py-1 text-center font-mono tabular-nums text-amber-900">
-                    {avg != null ? avg.toFixed(2) : "—"}
+
+            {/* Per-formula-column average (Excel row 18) — value sits
+                directly under the formula column, label-less so the
+                column heading already tells the reader what it is. */}
+            {formulaCols.length > 0 && (
+              <tr className="bg-amber-50 border-t-2 border-amber-300">
+                <td className="border border-stone-300 px-1 py-1"></td>
+                {PRICE_COLS.map((col) => {
+                  const isFormula = formulaCols.some((c) => c.key === col.key);
+                  return (
+                    <td
+                      key={col.key}
+                      className={`border border-stone-300 px-1 py-1 text-center font-mono tabular-nums ${isFormula ? "text-amber-900 font-bold" : ""}`}
+                    >
+                      {isFormula ? fmtNum(getAvg(col.key)) : ""}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
+
+            {/* Per-editable-column averages (Excel rows 20, 22, …) —
+                label in the Date column, value under that column's
+                own position. One row per editable numeric column. */}
+            {editableNumericCols.map((col) => {
+              const avg = getAvg(col.key);
+              return (
+                <tr key={`avg-${col.key}`} className="bg-amber-100 font-semibold">
+                  <td className="border border-amber-300 px-1.5 py-1 text-left text-amber-900 leading-tight">
+                    Среднее {col.label}
                   </td>
-                );
-              })}
-            </tr>
+                  {PRICE_COLS.map((c) => {
+                    const isTarget = c.key === col.key;
+                    return (
+                      <td
+                        key={c.key}
+                        className="border border-amber-300 px-1 py-1 text-center font-mono tabular-nums text-amber-900"
+                      >
+                        {isTarget ? fmtNum(avg) : ""}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
