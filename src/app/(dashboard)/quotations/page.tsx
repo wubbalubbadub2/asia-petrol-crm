@@ -159,12 +159,40 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     () => PRICE_COLS.filter((c) => c.formula === "avg"),
     [PRICE_COLS],
   );
-  // Show only trading days (Mon–Fri). Weekend rows would only add
-  // empty rows to a tightly-packed sheet. If a weekend value happens
-  // to exist (legacy data), we still surface it so nothing is hidden.
-  const visibleDays = useMemo(
-    () => days.filter((d) => !isWeekend(d) || !!quotMap[d]),
-    [days, quotMap],
+  // Show days that already have data + days the user manually added
+  // via «+ день». If the month has nothing yet (initial population),
+  // fall back to all weekdays so the user has something to click
+  // into. Matches Excel: the operator's spreadsheets only list days
+  // that were actually quoted — empty rows for unquoted trading days
+  // are skipped entirely.
+  const [extraDays, setExtraDays] = useState<Set<string>>(new Set());
+  useEffect(() => { setExtraDays(new Set()); }, [year, month]);
+  const visibleDays = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of days) {
+      if (quotMap[d]) set.add(d);
+      if (extraDays.has(d)) set.add(d);
+    }
+    if (set.size === 0) {
+      for (const d of days) if (!isWeekend(d)) set.add(d);
+    }
+    return Array.from(set).sort();
+  }, [days, quotMap, extraDays]);
+  // The next addable day = first weekday in the month that isn't
+  // already visible. Used by the «+ день» button to advance one day
+  // at a time without forcing the operator to open a date picker.
+  const nextAddableDay = useMemo(() => {
+    const visible = new Set(visibleDays);
+    return days.find((d) => !isWeekend(d) && !visible.has(d)) ?? null;
+  }, [days, visibleDays]);
+  // Index of the column where Excel parks every per-column average
+  // value (the first editable numeric column — column C in the
+  // operator's spreadsheets, regardless of which column the data
+  // actually comes from). Adjusts automatically for products with a
+  // different lead column.
+  const firstNumericColIdx = useMemo(
+    () => PRICE_COLS.findIndex((c) => c.editable && c.key !== "comment"),
+    [PRICE_COLS],
   );
 
   function getAvg(field: string): number | null {
@@ -266,6 +294,20 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
           {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
           Excel
         </Button>
+        {/* «+ день» surfaces an empty row for the next unquoted
+            weekday so the operator can backfill a day Excel-style
+            (only days that have data are otherwise visible). */}
+        {isWritable && nextAddableDay && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setExtraDays((prev) => new Set([...prev, nextAddableDay]))}
+            title={`Добавить строку на ${nextAddableDay.split("-").reverse().join(".")}`}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            день
+          </Button>
+        )}
 
         <Dialog open={columnDialogOpen} onOpenChange={setColumnDialogOpen}>
           <DialogContent>
@@ -378,17 +420,9 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                 Котировки на {productType.name} (средняя)
               </th>
             </tr>
-            {productType.sub_name && (
-              <tr>
-                <th
-                  colSpan={PRICE_COLS.length + 1}
-                  className="bg-stone-100 text-stone-700 text-center font-medium py-0.5 px-2 border border-stone-400"
-                  style={{ fontSize: "11px" }}
-                >
-                  {productType.sub_name}
-                </th>
-              </tr>
-            )}
+            {/* sub_name row removed — values like «Средняя» duplicated
+                the «(средняя)» in the title above and the operator's
+                spreadsheets don't carry it as its own row either. */}
             <tr className="bg-stone-100">
               <th className="border border-stone-400 px-1 py-1 text-center font-bold text-stone-800">Дата</th>
               {PRICE_COLS.map((col) => (
@@ -457,9 +491,13 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
               </tr>
             )}
 
-            {/* Per-editable-column averages (Excel rows 20, 22, …) —
-                label in the Date column, value under that column's
-                own position. One row per editable numeric column. */}
+            {/* Per-editable-column averages (Excel rows 27, 29, …) —
+                label in the Date column, value parked in the FIRST
+                numeric column for every average row. The operator's
+                spreadsheets do exactly this: «Среднее CIF NWE Cargo»
+                and «Среднее FOB Rotterdam» both land in column C,
+                not under each column's own data — visually all the
+                averages line up in one vertical stripe. */}
             {editableNumericCols.map((col) => {
               const avg = getAvg(col.key);
               return (
@@ -467,8 +505,8 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
                   <td className="border border-amber-300 px-1.5 py-1 text-left text-amber-900 leading-tight">
                     Среднее {col.label}
                   </td>
-                  {PRICE_COLS.map((c) => {
-                    const isTarget = c.key === col.key;
+                  {PRICE_COLS.map((c, idx) => {
+                    const isTarget = idx === firstNumericColIdx;
                     return (
                       <td
                         key={c.key}
