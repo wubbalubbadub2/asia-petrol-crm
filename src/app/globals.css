@@ -148,18 +148,20 @@
   }
 }
 
-/* SLASHED ZERO — operator complaint «0 и 8 сливаются в таблице».
- * Placed OUTSIDE @layer base so this rule sits in the unlayered top
- * stratum of the cascade and wins against Tailwind's own .tabular-nums
- * utility (which lives in @layer utilities and otherwise overrides
- * font-variant-numeric back to plain "tabular-nums" without the
- * slashed-zero keyword). The duplicate font-feature-settings is
- * defensive: older browsers may honour only one of the two. */
+/* Tabular numerics only (no slashed-zero). Operator complaint
+ * 2026-06-22 round 2: «0 в цифрах отличается от 0 в тексте» — the
+ * slashed-zero we added in e0b97aa rendered fine in JetBrains Mono
+ * table cells but DM Sans (the body font) has no slashed-zero glyph
+ * available, so text dates («05.12.2025») kept the round 0 and the
+ * mismatch was distracting. JetBrains Mono's own 0 (without the
+ * slash) is still distinguishable from 8 at our table sizes; we
+ * trade a marginal 0/8 clarity gain for column-wide consistency
+ * between numeric and text cells. */
 .font-data,
 .font-mono,
 table td[data-numeric],
 .tabular-nums,
 [class*="tabular"] {
-  font-variant-numeric: tabular-nums slashed-zero !important;
-  font-feature-settings: "tnum" 1, "zero" 1 !important;
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" 1 !important;
 }
