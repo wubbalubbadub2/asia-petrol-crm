@@ -11,8 +11,17 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   /* --font-sans and --font-mono are provided by next/font/google in
-     src/app/layout.tsx as CSS vars on <html>. The literal names below
-     would otherwise override them and break the inlined-font path. */
+     src/app/layout.tsx as CSS vars on <html>. Re-exporting them here
+     under Tailwind's canonical theme keys (--font-sans, --font-mono)
+     is what makes the `font-sans` and `font-mono` utility classes
+     resolve to the JetBrains Mono / DM Sans variable fonts instead
+     of the OS default stack — without this remap, `.font-mono` fell
+     back to ui-monospace (SF Mono on macOS, Consolas on Windows),
+     neither of which ships with a slashed-zero glyph, and the
+     operator complaint «0 и 8 сливаются» persisted even after we
+     turned on `font-variant-numeric: slashed-zero`. */
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
   --font-heading: var(--font-sans);
   --font-data: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -114,18 +123,15 @@
     font-weight: 700;
   }
 
-  /* Data tables: monospace for all numeric content.
-   * `slashed-zero` makes the digit 0 visually distinct from 8 in dense
-   * passport/registry tables — operator complaint 2026-06-22: «0 и 8
-   * сливаются». JetBrains Mono ships the OpenType `zero` feature; the
-   * variant CSS property turns it on across all numeric cells. */
+  /* Data tables: monospace family for all numeric content. The
+   * font-variant-numeric rule that activates slashed-zero is moved
+   * OUT of @layer base below, otherwise Tailwind's own .tabular-nums
+   * utility (which lives in @layer utilities) clobbers it. */
   .font-data,
   .font-mono,
   table td[data-numeric],
   .tabular-nums {
     font-family: var(--font-mono), ui-monospace, monospace;
-    font-variant-numeric: tabular-nums slashed-zero;
-    font-feature-settings: "tnum", "zero";
   }
 
   /* Hide native number-input spinner arrows globally — they distract
@@ -140,4 +146,20 @@
     -moz-appearance: textfield;
     appearance: textfield;
   }
+}
+
+/* SLASHED ZERO — operator complaint «0 и 8 сливаются в таблице».
+ * Placed OUTSIDE @layer base so this rule sits in the unlayered top
+ * stratum of the cascade and wins against Tailwind's own .tabular-nums
+ * utility (which lives in @layer utilities and otherwise overrides
+ * font-variant-numeric back to plain "tabular-nums" without the
+ * slashed-zero keyword). The duplicate font-feature-settings is
+ * defensive: older browsers may honour only one of the two. */
+.font-data,
+.font-mono,
+table td[data-numeric],
+.tabular-nums,
+[class*="tabular"] {
+  font-variant-numeric: tabular-nums slashed-zero !important;
+  font-feature-settings: "tnum" 1, "zero" 1 !important;
 }
