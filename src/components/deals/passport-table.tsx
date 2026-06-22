@@ -847,7 +847,19 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
         field="shipment_volume"
         className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
       />
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="сумма из реестра">{formatComputedNum(deal.invoice_amount)}</td>
+      {/* Логистика → Сумма (invoice_amount). Was read-only; operator
+          Symbat 2026-06-22: «можем сразу здесь писать сумму по
+          экспедитору, не заходя в каждую сделку?». Made editable —
+          writing the cell PERSISTS the value (no derived-field
+          trigger touches invoice_amount on a deal UPDATE). The value
+          WILL be overwritten the next time the trigger fires on
+          shipment_registry / esf_documents (sum is recomputed from
+          source rows), so this is for quick manual entry on deals
+          that haven't been shipped yet. Title makes the rule
+          visible on hover. */}
+      <td className="border-r px-1 py-0.5 text-stone-700" title="Сумма по экспедитору. Перезапишется при следующей правке реестра/ЭСФ.">
+        <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
+      </td>
       <td className="px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
