@@ -114,13 +114,18 @@
     font-weight: 700;
   }
 
-  /* Data tables: monospace for all numeric content */
+  /* Data tables: monospace for all numeric content.
+   * `slashed-zero` makes the digit 0 visually distinct from 8 in dense
+   * passport/registry tables — operator complaint 2026-06-22: «0 и 8
+   * сливаются». JetBrains Mono ships the OpenType `zero` feature; the
+   * variant CSS property turns it on across all numeric cells. */
   .font-data,
   .font-mono,
   table td[data-numeric],
   .tabular-nums {
     font-family: var(--font-mono), ui-monospace, monospace;
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "tnum", "zero";
   }
 
   /* Hide native number-input spinner arrows globally — they distract
