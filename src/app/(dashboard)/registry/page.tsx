@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
-import { useQueryState, parseAsJson } from "nuqs";
+import { useQueryState, parseAsJson, parseAsArrayOf, parseAsString } from "nuqs";
 import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X, Filter, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1102,7 +1102,19 @@ export default function RegistryPage() {
   const showRegistryLoader = useDelayed(loading);
   const [showAdd, setShowAdd] = useState(false);
   const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Expanded deal-group keys are persisted to the URL via nuqs so that
+  // switching workspace tabs and coming back (or sharing the URL) keeps
+  // the same groups open — operator complaint 2026-06-22: «expanded
+  // groups collapsed on tab switch». Stored as a comma-separated string
+  // in `?expanded=KG/26/002,KZ/26/001`.
+  const [expandedList, setExpandedList] = useQueryState(
+    "expanded",
+    parseAsArrayOf(parseAsString).withDefault([]),
+  );
+  const expanded = useMemo(() => new Set(expandedList), [expandedList]);
+  const setExpanded = (updater: (prev: Set<string>) => Set<string>) => {
+    setExpandedList(Array.from(updater(new Set(expandedList))));
+  };
   const [addingIn, setAddingIn] = useState<string | null>(null); // which group is adding
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Header filters — narrow visible shipments without round-tripping
@@ -1627,7 +1639,12 @@ export default function RegistryPage() {
                                 />
                               </td>
                               <td className="border-r px-2 py-0.5 font-mono text-amber-700 text-[10px]">{r.deal?.deal_code ?? ""}</td>
-                              <td className="border-r px-1 py-0.5"><EM value={r.additional_month} recId={r.id} field="additional_month" onSaved={reload} /></td>
+                              {/* мес. доп defaults to the parent deal's month —
+                                  operator request: this column IS the deal's
+                                  month unless explicitly overridden. The
+                                  override is still written into the row's
+                                  own additional_month field on edit. */}
+                              <td className="border-r px-1 py-0.5"><EM value={r.additional_month ?? r.deal?.month ?? null} recId={r.id} field="additional_month" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EM value={r.shipment_month} recId={r.id} field="shipment_month" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.fuel_type_id} displayLabel={(r.fuel_type_id && fuelTypeLabels.get(r.fuel_type_id)?.name) || ""} recId={r.id} field="fuel_type_id" options={ftOpts} onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={(r.factory_id && factoryLabels.get(r.factory_id)) || ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
