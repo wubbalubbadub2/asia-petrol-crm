@@ -202,8 +202,16 @@ export function ActivityFeed({ messages, loading, sendMessage }: {
                 {isComment ? (msg.user?.full_name?.charAt(0)?.toUpperCase() ?? "?") : <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  {isComment && msg.user?.full_name && <span className="text-[12px] font-medium text-stone-800">{msg.user.full_name}</span>}
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  {/* Show author ФИО for EVERY entry that has a user_id —
+                      not just comments. Operator request 2026-06-22:
+                      need to see who recorded a payment / changed a
+                      field, not only who wrote a chat message.
+                      Falls back silently if user_id is NULL (system-
+                      bound writes via service_role; or pre-00094
+                      payment events whose trigger didn't record the
+                      author yet). */}
+                  {msg.user?.full_name && <span className="text-[12px] font-medium text-stone-800">{msg.user.full_name}</span>}
                   <span className="text-[10px] text-stone-400">{formatTime(msg.created_at)}</span>
                 </div>
                 <p className={`text-[12px] leading-relaxed mt-0.5 ${isComment ? "text-stone-700" : "text-stone-500 italic"}`}>{renderActivityContent(msg)}</p>
