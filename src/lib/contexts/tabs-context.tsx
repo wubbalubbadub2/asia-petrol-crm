@@ -24,6 +24,7 @@
  */
 
 import {
+  Suspense,
   createContext,
   useCallback,
   useContext,
@@ -131,14 +132,35 @@ function saveToStorage(state: { tabs: Tab[]; activeId: string | null }) {
   }
 }
 
+/**
+ * Inner tracker that calls `useSearchParams()` — wrapped in a
+ * Suspense boundary inside TabsProvider so Next.js can still
+ * statically prerender pages that sit beneath this provider. The
+ * tracker writes the resolved «pathname + ?query» into a state
+ * setter on the provider; the rest of the provider operates on
+ * that state and never touches the search-params hook directly.
+ */
+function PathTracker({ onChange }: { onChange: (path: string) => void }) {
+  const pathname = usePathname();
+  const search = useSearchParams();
+  useEffect(() => {
+    const qs = search?.toString() ?? "";
+    onChange(qs ? `${pathname}?${qs}` : pathname);
+  }, [pathname, search, onChange]);
+  return null;
+}
+
 export function TabsProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const search = useSearchParams();
-  const currentPath = useMemo(() => {
-    const qs = search?.toString() ?? "";
-    return qs ? `${pathname}?${qs}` : pathname;
-  }, [pathname, search]);
+  // Initial path: prefer the real URL on the client; SSR gets just
+  // the pathname (PathTracker fills the query string after mount).
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== "undefined" && window.location) {
+      return window.location.pathname + window.location.search;
+    }
+    return pathname || "/";
+  });
 
   // Initial state: try storage, ensure the currently visible URL
   // is represented as a tab and is active.
@@ -298,7 +320,20 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     [tabs, activeId, openTab, closeTab, switchTab, setTabTitle]
   );
 
-  return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;
+  return (
+    <TabsContext.Provider value={value}>
+      {/* PathTracker is the only consumer of useSearchParams. Wrapping
+          it in Suspense isolates the static-generation bailout so the
+          rest of the layout can still be prerendered (the v1 build
+          failed at /deals/new precisely because the hook leaked one
+          level higher). Fallback is null because the tracker renders
+          nothing visible — it only writes state. */}
+      <Suspense fallback={null}>
+        <PathTracker onChange={setCurrentPath} />
+      </Suspense>
+      {children}
+    </TabsContext.Provider>
+  );
 }
 
 export function useTabs(): TabsContextValue {
