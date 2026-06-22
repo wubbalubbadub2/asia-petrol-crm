@@ -424,8 +424,19 @@ export default function DealsPage() {
         }
       }
       if (allButApp) {
-        if (d.supplier_contract) allowedApplications.add(d.supplier_contract);
-        if (d.buyer_contract) allowedApplications.add(d.buyer_contract);
+        // Side-aware narrowing: when the operator has filtered by ONE
+        // side only (supplier OR buyer), the «приложение» dropdown
+        // should surface contract numbers from that SAME side. Mixing
+        // in the other side's contracts produced ghost options that
+        // could never match the filter — operator complaint
+        // 2026-06-22: «фильтруем покупателя должны выходить
+        // приложения только покупателя».
+        const supplierFiltered = deferredSupplier.length > 0;
+        const buyerFiltered = deferredBuyer.length > 0;
+        const includeSupplier = !buyerFiltered || supplierFiltered;
+        const includeBuyer = !supplierFiltered || buyerFiltered;
+        if (includeSupplier && d.supplier_contract) allowedApplications.add(d.supplier_contract);
+        if (includeBuyer && d.buyer_contract) allowedApplications.add(d.buyer_contract);
       }
     }
 
@@ -441,7 +452,7 @@ export default function DealsPage() {
       companyGroupsPos2: allowedCompanyGroupsPos2,
       applications: allowedApplications,
     };
-  }, [deals, predicates]);
+  }, [deals, predicates, deferredSupplier, deferredBuyer]);
 
   // Option lists handed to each SearchableSelect — narrowed by the
   // cascade above, plus a fallback that includes the currently-selected
