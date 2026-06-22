@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useDeferredValue } from "react";
 import Link from "next/link";
-import { useQueryState, parseAsInteger, parseAsStringEnum } from "nuqs";
+import { useQueryState, parseAsInteger, parseAsStringEnum, parseAsArrayOf, parseAsString } from "nuqs";
 import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,25 +94,31 @@ export default function DealsPage() {
     parseAsInteger.withDefault(new Date().getFullYear()),
   );
   const [search, setSearch] = useQueryState("search", { defaultValue: "" });
-  const [supplierFilter, setSupplierFilter] = useQueryState("supplierFilter", { defaultValue: "" });
-  const [buyerFilter, setBuyerFilter] = useQueryState("buyerFilter", { defaultValue: "" });
-  const [factoryFilter, setFactoryFilter] = useQueryState("factoryFilter", { defaultValue: "" });
-  const [fuelTypeFilter, setFuelTypeFilter] = useQueryState("fuelTypeFilter", { defaultValue: "" });
-  const [monthFilter, setMonthFilter] = useQueryState("monthFilter", { defaultValue: "" });
-  const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", { defaultValue: "" });
+  // 2026-06-22 — every dropdown filter is now MULTI-select (Excel-style:
+  // OR within a filter, AND between filters). Operator complaint:
+  // «нельзя когда фильтр ставишь выбирать несколько вариантов сразу?»
+  // Empty array == no filter. parseAsArrayOf serializes to the URL as
+  // ?supplierFilter=uuid1,uuid2 and omits the param when [].
+  const multi = parseAsArrayOf(parseAsString).withDefault([]);
+  const [supplierFilter, setSupplierFilter] = useQueryState("supplierFilter", multi);
+  const [buyerFilter, setBuyerFilter] = useQueryState("buyerFilter", multi);
+  const [factoryFilter, setFactoryFilter] = useQueryState("factoryFilter", multi);
+  const [fuelTypeFilter, setFuelTypeFilter] = useQueryState("fuelTypeFilter", multi);
+  const [monthFilter, setMonthFilter] = useQueryState("monthFilter", multi);
+  const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", multi);
   // companyGroupFilter applies to the «Группа комп.» trading CHAIN
   // (deal_company_groups table — the colspan=2 cell in the passport),
   // NOT the deal-level deals.logistics_company_group_id FK. A deal
   // matches if ANY of its deal_company_groups rows has this id. See
   // useDeals → DealFilters.companyGroupId.
-  const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "" });
+  const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", multi);
   // Position-specific variants of the chain filter: «Группа 1»
   // matches deal_company_groups.position = 1, «Группа 2» = position 2.
   // Independent of (and AND-combined with) the any-position filter
   // above. See useDeals → DealFilters.companyGroupPos1Id/Pos2Id.
-  const [companyGroupPos1, setCompanyGroupPos1] = useQueryState("companyGroupPos1", { defaultValue: "" });
-  const [companyGroupPos2, setCompanyGroupPos2] = useQueryState("companyGroupPos2", { defaultValue: "" });
-  const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", { defaultValue: "" });
+  const [companyGroupPos1, setCompanyGroupPos1] = useQueryState("companyGroupPos1", multi);
+  const [companyGroupPos2, setCompanyGroupPos2] = useQueryState("companyGroupPos2", multi);
+  const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", multi);
 
   // Lag every filter value handed to useDeals so dropdown clicks feel
   // instant — the visible <SearchableSelect> updates synchronously, but
@@ -138,18 +144,25 @@ export default function DealsPage() {
   // for the new combo hasn't arrived yet. Drives the «Сбросить фильтры»
   // amber pulse so the operator gets visual feedback that filtering is
   // in progress (vs. nothing happening because the dropdown is broken).
+  //
+  // For array filters we can't use reference equality (`!==`) — clicking
+  // a checkbox creates a new array even when the operator immediately
+  // reverts. Compare by serialised content instead. Cheap: ~10 short
+  // joins per render.
+  const arrEq = (a: string[], b: string[]) =>
+    a === b || (a.length === b.length && a.every((v, i) => v === b[i]));
   const isFiltering =
     search !== deferredSearch ||
-    supplierFilter !== deferredSupplier ||
-    buyerFilter !== deferredBuyer ||
-    factoryFilter !== deferredFactory ||
-    fuelTypeFilter !== deferredFuelType ||
-    monthFilter !== deferredMonth ||
-    forwarderFilter !== deferredForwarder ||
-    companyGroupFilter !== deferredCompanyGroup ||
-    companyGroupPos1 !== deferredCompanyGroupPos1 ||
-    companyGroupPos2 !== deferredCompanyGroupPos2 ||
-    applicationFilter !== deferredApplication ||
+    !arrEq(supplierFilter, deferredSupplier) ||
+    !arrEq(buyerFilter, deferredBuyer) ||
+    !arrEq(factoryFilter, deferredFactory) ||
+    !arrEq(fuelTypeFilter, deferredFuelType) ||
+    !arrEq(monthFilter, deferredMonth) ||
+    !arrEq(forwarderFilter, deferredForwarder) ||
+    !arrEq(companyGroupFilter, deferredCompanyGroup) ||
+    !arrEq(companyGroupPos1, deferredCompanyGroupPos1) ||
+    !arrEq(companyGroupPos2, deferredCompanyGroupPos2) ||
+    !arrEq(applicationFilter, deferredApplication) ||
     yearFilter !== deferredYear;
   // Filter dropdowns read from the shared refs cache so a navigation
   // back to /deals doesn't re-fire the 5 counterparty/factory/fuel/
@@ -231,14 +244,14 @@ export default function DealsPage() {
     return { supplier, buyer, forwarder, factory, fuelType };
   }, [globalRefs]);
 
-  // Client-side filter pass. Every predicate is a pure read off the
-  // already-loaded `deals` array — no network, no state churn. Runs in
-  // a useMemo on the DEFERRED filter values so typing in the search
-  // box (or rapidly clicking SearchableSelect items) doesn't block the
-  // input thread.
-  const filtered = useMemo(() => {
-    if (deals.length === 0) return deals;
-    const dt = dealTypeFilter;
+  // Per-deal predicate factory. Each filter is keyed by a short name so
+  // the narrowed-options memo below can build «every predicate EXCEPT
+  // F» in O(n × predicates). For 800 deals × 10 filters that's ~80k
+  // checks/render — well under the 5 ms budget on M-class hardware.
+  //
+  // Each predicate returns true if the deal PASSES that filter. Empty
+  // arrays short-circuit to true (no filter applied).
+  const predicates = useMemo(() => {
     const sup = deferredSupplier;
     const buy = deferredBuyer;
     const fac = deferredFactory;
@@ -250,32 +263,37 @@ export default function DealsPage() {
     const cg2 = deferredCompanyGroupPos2;
     const app = deferredApplication;
     const q = deferredSearch.trim().toLowerCase();
-
-    return deals.filter((d) => {
-      if (dt && d.deal_type !== dt) return false;
-      if (sup && d.supplier_id !== sup) return false;
-      if (buy && d.buyer_id !== buy) return false;
-      if (fac && d.factory_id !== fac) return false;
-      if (fuel && d.fuel_type_id !== fuel) return false;
-      if (mon && d.month !== mon) return false;
-      if (fwd && d.forwarder_id !== fwd) return false;
-      if (cg) {
+    return {
+      dealType: (d: Deal) => !dealTypeFilter || d.deal_type === dealTypeFilter,
+      supplier: (d: Deal) => sup.length === 0 || (d.supplier_id != null && sup.includes(d.supplier_id)),
+      buyer: (d: Deal) => buy.length === 0 || (d.buyer_id != null && buy.includes(d.buyer_id)),
+      factory: (d: Deal) => fac.length === 0 || (d.factory_id != null && fac.includes(d.factory_id)),
+      fuelType: (d: Deal) => fuel.length === 0 || (d.fuel_type_id != null && fuel.includes(d.fuel_type_id)),
+      month: (d: Deal) => mon.length === 0 || (d.month != null && mon.includes(d.month)),
+      forwarder: (d: Deal) => fwd.length === 0 || (d.forwarder_id != null && fwd.includes(d.forwarder_id)),
+      companyGroup: (d: Deal) => {
+        if (cg.length === 0) return true;
         const rows = d.deal_company_groups ?? [];
-        if (!rows.some((r) => r.company_group_id === cg)) return false;
-      }
-      if (cg1) {
+        return rows.some((r) => r.company_group_id != null && cg.includes(r.company_group_id));
+      },
+      companyGroupPos1: (d: Deal) => {
+        if (cg1.length === 0) return true;
         const rows = d.deal_company_groups ?? [];
-        if (!rows.some((r) => r.position === 1 && r.company_group_id === cg1)) return false;
-      }
-      if (cg2) {
+        return rows.some((r) => r.position === 1 && r.company_group_id != null && cg1.includes(r.company_group_id));
+      },
+      companyGroupPos2: (d: Deal) => {
+        if (cg2.length === 0) return true;
         const rows = d.deal_company_groups ?? [];
-        if (!rows.some((r) => r.position === 2 && r.company_group_id === cg2)) return false;
-      }
-      if (app && d.supplier_contract !== app && d.buyer_contract !== app) return false;
-      if (q) {
-        // Substring search across deal code + joined names. We
-        // lowercase the haystack pieces lazily via the labelMaps,
-        // which were pre-lowercased above. `q` is already lowercase.
+        return rows.some((r) => r.position === 2 && r.company_group_id != null && cg2.includes(r.company_group_id));
+      },
+      application: (d: Deal) => {
+        if (app.length === 0) return true;
+        const a = d.supplier_contract;
+        const b = d.buyer_contract;
+        return (a != null && app.includes(a)) || (b != null && app.includes(b));
+      },
+      search: (d: Deal) => {
+        if (!q) return true;
         const code = d.deal_code.toLowerCase();
         if (code.includes(q)) return true;
         const sLbl = d.supplier_id ? labelMaps.supplier.get(d.supplier_id) : undefined;
@@ -289,29 +307,182 @@ export default function DealsPage() {
         const fuLbl = d.fuel_type_id ? labelMaps.fuelType.get(d.fuel_type_id) : undefined;
         if (fuLbl && fuLbl.includes(q)) return true;
         return false;
-      }
-      return true;
-    });
+      },
+    };
   }, [
-    deals, dealTypeFilter,
+    dealTypeFilter,
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
     deferredCompanyGroupPos1, deferredCompanyGroupPos2,
     deferredApplication, deferredSearch, labelMaps,
   ]);
 
-  // «Приложение» dropdown options — distinct contract numbers across
-  // the full year's deal set (no longer narrowed by server-side filters
-  // since those are gone). Operator picks the application label, the
-  // client-side filter does the rest.
-  const contractOpts = useMemo(() => {
-    const set = new Set<string>();
+  // Client-side filter pass. All predicates AND-combined.
+  const filtered = useMemo(() => {
+    if (deals.length === 0) return deals;
+    const ps = Object.values(predicates);
+    return deals.filter((d) => {
+      for (const p of ps) if (!p(d)) return false;
+      return true;
+    });
+  }, [deals, predicates]);
+
+  // Feature A (2026-06-22) — DEPENDENT dropdown options. Each filter F's
+  // options narrow to only values present in deals matching ALL OTHER
+  // active filters (Excel auto-filter cascade). Operator complaint:
+  // «при фильтрации завода, гсм, хотела выбрать № допа, он дает все
+  // допы, а надо которые относятся к данному поставщику».
+  //
+  // Algorithm: for every filter key F, walk `deals` once with every
+  // predicate EXCEPT F applied, collect the distinct values for F's
+  // field. Build all sets in a single pass for efficiency. The deal-
+  // type tab predicate is always applied (it's not a dropdown). The
+  // free-text search is also kept (operator already typed it).
+  //
+  // If the operator's current selection disappears from a narrowed set
+  // we DO NOT auto-clear — we just keep the value (filter still applies,
+  // possibly to zero deals). Operator can hit «Сбросить фильтры».
+  const narrowed = useMemo(() => {
+    const allowedSuppliers = new Set<string>();
+    const allowedBuyers = new Set<string>();
+    const allowedFactories = new Set<string>();
+    const allowedFuelTypes = new Set<string>();
+    const allowedMonths = new Set<string>();
+    const allowedForwarders = new Set<string>();
+    const allowedCompanyGroups = new Set<string>();
+    const allowedCompanyGroupsPos1 = new Set<string>();
+    const allowedCompanyGroupsPos2 = new Set<string>();
+    const allowedApplications = new Set<string>();
+
+    // For perf: pre-extract the predicate values once.
+    const {
+      supplier: pSupplier,
+      buyer: pBuyer,
+      factory: pFactory,
+      fuelType: pFuel,
+      month: pMonth,
+      forwarder: pForwarder,
+      companyGroup: pCg,
+      companyGroupPos1: pCg1,
+      companyGroupPos2: pCg2,
+      application: pApp,
+      dealType: pDealType,
+      search: pSearch,
+    } = predicates;
+
     for (const d of deals) {
-      if (d.supplier_contract) set.add(d.supplier_contract);
-      if (d.buyer_contract) set.add(d.buyer_contract);
+      // dealType + search always apply (they aren't dropdowns).
+      if (!pDealType(d)) continue;
+      if (!pSearch(d)) continue;
+
+      const okSup = pSupplier(d);
+      const okBuy = pBuyer(d);
+      const okFac = pFactory(d);
+      const okFuel = pFuel(d);
+      const okMon = pMonth(d);
+      const okFwd = pForwarder(d);
+      const okCg = pCg(d);
+      const okCg1 = pCg1(d);
+      const okCg2 = pCg2(d);
+      const okApp = pApp(d);
+
+      // For each dropdown F, the deal contributes to F's option set
+      // iff every OTHER dropdown predicate passes.
+      const allButSupplier = okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
+      const allButBuyer = okSup && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
+      const allButFactory = okSup && okBuy && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
+      const allButFuel = okSup && okBuy && okFac && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
+      const allButMonth = okSup && okBuy && okFac && okFuel && okFwd && okCg && okCg1 && okCg2 && okApp;
+      const allButForwarder = okSup && okBuy && okFac && okFuel && okMon && okCg && okCg1 && okCg2 && okApp;
+      const allButCg = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg1 && okCg2 && okApp;
+      const allButCg1 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg2 && okApp;
+      const allButCg2 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okApp;
+      const allButApp = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2;
+
+      if (allButSupplier && d.supplier_id) allowedSuppliers.add(d.supplier_id);
+      if (allButBuyer && d.buyer_id) allowedBuyers.add(d.buyer_id);
+      if (allButFactory && d.factory_id) allowedFactories.add(d.factory_id);
+      if (allButFuel && d.fuel_type_id) allowedFuelTypes.add(d.fuel_type_id);
+      if (allButMonth && d.month) allowedMonths.add(d.month);
+      if (allButForwarder && d.forwarder_id) allowedForwarders.add(d.forwarder_id);
+
+      // Company-group sets — pull from deal_company_groups rows that
+      // would have matched the position-specific predicate.
+      if (allButCg) {
+        for (const r of d.deal_company_groups ?? []) {
+          if (r.company_group_id) allowedCompanyGroups.add(r.company_group_id);
+        }
+      }
+      if (allButCg1) {
+        for (const r of d.deal_company_groups ?? []) {
+          if (r.position === 1 && r.company_group_id) allowedCompanyGroupsPos1.add(r.company_group_id);
+        }
+      }
+      if (allButCg2) {
+        for (const r of d.deal_company_groups ?? []) {
+          if (r.position === 2 && r.company_group_id) allowedCompanyGroupsPos2.add(r.company_group_id);
+        }
+      }
+      if (allButApp) {
+        if (d.supplier_contract) allowedApplications.add(d.supplier_contract);
+        if (d.buyer_contract) allowedApplications.add(d.buyer_contract);
+      }
     }
-    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
-  }, [deals]);
+
+    return {
+      suppliers: allowedSuppliers,
+      buyers: allowedBuyers,
+      factories: allowedFactories,
+      fuelTypes: allowedFuelTypes,
+      months: allowedMonths,
+      forwarders: allowedForwarders,
+      companyGroups: allowedCompanyGroups,
+      companyGroupsPos1: allowedCompanyGroupsPos1,
+      companyGroupsPos2: allowedCompanyGroupsPos2,
+      applications: allowedApplications,
+    };
+  }, [deals, predicates]);
+
+  // Option lists handed to each SearchableSelect — narrowed by the
+  // cascade above, plus a fallback that includes the currently-selected
+  // values so the operator's pick never silently vanishes from the
+  // popover (they may want to UNCHECK it).
+  const filterOpts = useMemo(() => {
+    const fkOpts = (
+      refList: { id: string; label: string }[],
+      allowed: Set<string>,
+      selected: string[],
+    ) => {
+      const keep = new Set(allowed);
+      for (const s of selected) keep.add(s);
+      return refList.filter((r) => keep.has(r.id)).map((r) => ({ value: r.id, label: r.label }));
+    };
+    const strOpts = (allowed: Set<string>, selected: string[], all?: string[]) => {
+      const keep = new Set(allowed);
+      for (const s of selected) keep.add(s);
+      // For month dropdown we want to preserve the canonical ordering
+      // (Jan..Dec) — `all` carries the source order.
+      if (all) return all.filter((v) => keep.has(v)).map((v) => ({ value: v, label: v }));
+      return [...keep].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+    };
+    return {
+      supplier: fkOpts(refs.suppliers, narrowed.suppliers, deferredSupplier),
+      buyer: fkOpts(refs.buyers, narrowed.buyers, deferredBuyer),
+      factory: fkOpts(refs.factories, narrowed.factories, deferredFactory),
+      fuelType: fkOpts(refs.fuelTypes, narrowed.fuelTypes, deferredFuelType),
+      forwarder: fkOpts(refs.forwarders, narrowed.forwarders, deferredForwarder),
+      companyGroup: fkOpts(refs.companyGroups, narrowed.companyGroups, deferredCompanyGroup),
+      companyGroupPos1: fkOpts(refs.companyGroups, narrowed.companyGroupsPos1, deferredCompanyGroupPos1),
+      companyGroupPos2: fkOpts(refs.companyGroups, narrowed.companyGroupsPos2, deferredCompanyGroupPos2),
+      month: strOpts(narrowed.months, deferredMonth, [...MONTHS_RU]),
+      application: strOpts(narrowed.applications, deferredApplication),
+    };
+  }, [
+    refs, narrowed,
+    deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
+    deferredMonth, deferredForwarder, deferredCompanyGroup,
+    deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredApplication,
+  ]);
 
   // Visible-count for the «N сделок» badge. With the architecture
   // change `totalCount` from useDeals now reflects the cached YEAR
@@ -319,19 +490,28 @@ export default function DealsPage() {
   // the badge is the filtered count. Cheap to derive.
   const totalCount = filtered.length;
 
+  // A filter «counts» as active iff it has at least one selected value.
+  // The badge in «Сбросить фильтры (N)» reflects the number of axes
+  // narrowing the result, not the total number of selected values
+  // (operator picking 3 suppliers is still one axis of filtering).
   const activeFilterCount =
-    (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) + (factoryFilter ? 1 : 0) +
-    (fuelTypeFilter ? 1 : 0) + (monthFilter ? 1 : 0) + (forwarderFilter ? 1 : 0) +
-    (companyGroupFilter ? 1 : 0) +
-    (companyGroupPos1 ? 1 : 0) + (companyGroupPos2 ? 1 : 0) +
-    (applicationFilter ? 1 : 0);
+    (supplierFilter.length > 0 ? 1 : 0) +
+    (buyerFilter.length > 0 ? 1 : 0) +
+    (factoryFilter.length > 0 ? 1 : 0) +
+    (fuelTypeFilter.length > 0 ? 1 : 0) +
+    (monthFilter.length > 0 ? 1 : 0) +
+    (forwarderFilter.length > 0 ? 1 : 0) +
+    (companyGroupFilter.length > 0 ? 1 : 0) +
+    (companyGroupPos1.length > 0 ? 1 : 0) +
+    (companyGroupPos2.length > 0 ? 1 : 0) +
+    (applicationFilter.length > 0 ? 1 : 0);
 
   function clearAllFilters() {
-    setSupplierFilter(""); setBuyerFilter(""); setFactoryFilter("");
-    setFuelTypeFilter(""); setMonthFilter(""); setForwarderFilter("");
-    setCompanyGroupFilter("");
-    setCompanyGroupPos1(""); setCompanyGroupPos2("");
-    setApplicationFilter("");
+    setSupplierFilter([]); setBuyerFilter([]); setFactoryFilter([]);
+    setFuelTypeFilter([]); setMonthFilter([]); setForwarderFilter([]);
+    setCompanyGroupFilter([]);
+    setCompanyGroupPos1([]); setCompanyGroupPos2([]);
+    setApplicationFilter([]);
     setSearch("");
   }
 
@@ -418,54 +598,58 @@ export default function DealsPage() {
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2">
+          {/* All dropdowns are MULTI-select + DEPENDENT (2026-06-22).
+              Options come from filterOpts, which already narrowed each
+              list to values present in the deals matching every OTHER
+              active filter — Excel auto-filter cascade. */}
           <SearchableSelect
-            value={supplierFilter} onChange={setSupplierFilter}
-            options={refs.suppliers.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={supplierFilter} onChange={setSupplierFilter}
+            options={filterOpts.supplier}
             placeholder="Все поставщики" searchPlaceholder="Поиск поставщика…"
           />
           <SearchableSelect
-            value={buyerFilter} onChange={setBuyerFilter}
-            options={refs.buyers.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={buyerFilter} onChange={setBuyerFilter}
+            options={filterOpts.buyer}
             placeholder="Все покупатели" searchPlaceholder="Поиск покупателя…"
           />
           <SearchableSelect
-            value={factoryFilter} onChange={setFactoryFilter}
-            options={refs.factories.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={factoryFilter} onChange={setFactoryFilter}
+            options={filterOpts.factory}
             placeholder="Все заводы" searchPlaceholder="Поиск завода…"
           />
           <SearchableSelect
-            value={fuelTypeFilter} onChange={setFuelTypeFilter}
-            options={refs.fuelTypes.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={fuelTypeFilter} onChange={setFuelTypeFilter}
+            options={filterOpts.fuelType}
             placeholder="Все ГСМ" searchPlaceholder="Поиск ГСМ…"
           />
           <SearchableSelect
-            value={monthFilter} onChange={setMonthFilter}
-            options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
+            multi value={monthFilter} onChange={setMonthFilter}
+            options={filterOpts.month}
             placeholder="Все месяцы" searchPlaceholder="Поиск месяца…"
           />
           <SearchableSelect
-            value={forwarderFilter} onChange={setForwarderFilter}
-            options={refs.forwarders.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={forwarderFilter} onChange={setForwarderFilter}
+            options={filterOpts.forwarder}
             placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
           />
           <SearchableSelect
-            value={companyGroupFilter} onChange={setCompanyGroupFilter}
-            options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={companyGroupFilter} onChange={setCompanyGroupFilter}
+            options={filterOpts.companyGroup}
             placeholder="Все группы комп." searchPlaceholder="Поиск группы…"
           />
           <SearchableSelect
-            value={companyGroupPos1} onChange={setCompanyGroupPos1}
-            options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={companyGroupPos1} onChange={setCompanyGroupPos1}
+            options={filterOpts.companyGroupPos1}
             placeholder="Группа 1" searchPlaceholder="Поиск группы 1…"
           />
           <SearchableSelect
-            value={companyGroupPos2} onChange={setCompanyGroupPos2}
-            options={refs.companyGroups.map((r) => ({ value: r.id, label: r.label }))}
+            multi value={companyGroupPos2} onChange={setCompanyGroupPos2}
+            options={filterOpts.companyGroupPos2}
             placeholder="Группа 2" searchPlaceholder="Поиск группы 2…"
           />
           <SearchableSelect
-            value={applicationFilter} onChange={setApplicationFilter}
-            options={contractOpts.map((c) => ({ value: c, label: c }))}
+            multi value={applicationFilter} onChange={setApplicationFilter}
+            options={filterOpts.application}
             placeholder="Все приложения" searchPlaceholder="Поиск договора…"
           />
         </div>
