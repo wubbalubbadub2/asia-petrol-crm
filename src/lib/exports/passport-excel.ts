@@ -39,6 +39,32 @@ function companyAtPosition(deal: Deal, position: number): string {
   return row?.company_group?.name ?? "";
 }
 
+// Mix the fuel-type color into the band's existing fill color at low
+// alpha (operator request 2026-06-23: «при выгрузке в Excel чтобы
+// цветовая гамма сохранялась»). Returns an ExcelJS-shaped 8-char
+// ARGB hex. Defaults to the bare `baseArgb` if any value is missing
+// or malformed, so a deal without a fuel color falls back to the
+// original band-zebra look.
+function blendArgbWithFuel(baseArgb: string, fuelHex: string | null | undefined, fuelAlpha: number): string {
+  const base = baseArgb.startsWith("FF") || baseArgb.startsWith("ff") ? baseArgb.slice(2) : baseArgb;
+  if (base.length !== 6 || !fuelHex || typeof fuelHex !== "string" || !fuelHex.startsWith("#")) return `FF${base.toUpperCase()}`;
+  const fuelStripped = fuelHex.length === 4
+    ? fuelHex.slice(1).split("").map((c) => c + c).join("")
+    : fuelHex.slice(1);
+  if (fuelStripped.length !== 6) return `FF${base.toUpperCase()}`;
+  const br = parseInt(base.slice(0, 2), 16);
+  const bg = parseInt(base.slice(2, 4), 16);
+  const bb = parseInt(base.slice(4, 6), 16);
+  const fr = parseInt(fuelStripped.slice(0, 2), 16);
+  const fg = parseInt(fuelStripped.slice(2, 4), 16);
+  const fb = parseInt(fuelStripped.slice(4, 6), 16);
+  if ([br, bg, bb, fr, fg, fb].some(Number.isNaN)) return `FF${base.toUpperCase()}`;
+  const a = Math.max(0, Math.min(1, fuelAlpha));
+  const mix = (b: number, f: number) => Math.round(f * a + b * (1 - a));
+  const hex = (n: number) => n.toString(16).padStart(2, "0").toUpperCase();
+  return `FF${hex(mix(br, fr))}${hex(mix(bg, fg))}${hex(mix(bb, fb))}`;
+}
+
 function avgGroupPrice(deal: Deal): number | null {
   const prices = (deal.deal_company_groups ?? [])
     .map((g) => g.price)
@@ -276,6 +302,10 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
     const r = rowIdx + 4;
     const row = ws.getRow(r);
     row.height = 18;
+    // Fuel-type color tints every cell on this row — mirrors the UI
+    // row-background introduced in 7e989e9. Same alpha curve as the
+    // web (8% even / 16% zebra) so the exported sheet feels familiar.
+    const fuelHex = deal.fuel_type?.color ?? null;
     COLUMNS.forEach((col, colIdx) => {
       const cell = row.getCell(colIdx + 1);
       const v = col.read(deal);
@@ -287,10 +317,12 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
       };
       const isZebra = rowIdx % 2 === 1;
       const band = BAND_STYLE[col.band];
+      const baseArgb = isZebra ? band.bg : "FFFFFFFF";
+      const fuelAlpha = isZebra ? 0.16 : 0.08;
       cell.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: isZebra ? band.bg : "FFFFFFFF" },
+        fgColor: { argb: blendArgbWithFuel(baseArgb, fuelHex, fuelAlpha) },
       };
       cell.border = {
         right: { style: "thin", color: { argb: "FFE7E5E4" } },
