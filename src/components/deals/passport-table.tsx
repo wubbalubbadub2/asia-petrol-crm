@@ -839,6 +839,12 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       <td className="border-r px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.logistics_company_group_id} displayLabel={(deal.logistics_company_group_id && cgLabels.get(deal.logistics_company_group_id)) || ""} dealId={deal.id} field="logistics_company_group_id" options={refs.companyGroups} />
       </td>
+      {/* Тариф — operator request 2026-06-23: «в паспорте в основном
+          где видны все сделки, в разделе логистика нужно добавить
+          тариф». planned_tariff is the per-ton rate used to compute
+          preliminary_amount = тариф × объем план; editing it here
+          recomputes the next column via the existing trigger. */}
+      <td className="border-r px-1 py-0.5 text-stone-700"><EditableNumCell value={deal.planned_tariff} dealId={deal.id} field="planned_tariff" /></td>
       <td className="border-r px-1 py-0.5 text-stone-700"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
       <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
       <VolumeBreakdownCell
@@ -888,13 +894,14 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
 // ─────────────────────────────────────────────────────────────────────
 
 function PassportSkeletonRow() {
-  // 36 visible columns: 5 identity + 10 supplier + 2 company-groups
-  // (merged via colSpan=2 in real rows) + 11 buyer + 8 logistics.
+  // 37 visible columns: 5 identity + 10 supplier + 2 company-groups
+  // (merged via colSpan=2 in real rows) + 11 buyer + 9 logistics
+  // (the Тариф column was added 2026-06-23).
   // We render them as plain cells (no colSpan merging) so the column
   // widths line up exactly with the header.
   return (
     <tr className="border-b animate-pulse">
-      {Array.from({ length: 36 }).map((_, i) => (
+      {Array.from({ length: 37 }).map((_, i) => (
         <td key={i} className="border-r px-2 py-1.5 bg-stone-50/50">
           <div className="h-3 rounded-sm bg-stone-100" />
         </td>
@@ -1040,7 +1047,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50">Поставщик</th>
               <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50">Группы компании</th>
               <th colSpan={11} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50">Покупатель</th>
-              <th colSpan={8} className="sticky top-0 z-20 h-7 px-2 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Логистика</th>
+              <th colSpan={9} className="sticky top-0 z-20 h-7 px-2 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Логистика</th>
             </tr>
             <tr className="bg-stone-50 border-b">
               <th className="sticky top-7 left-0 z-30 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
@@ -1077,6 +1084,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               {/* Logistics: 8 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Экспедитор</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Группа комп.</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Тариф</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Объем план</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Предв. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Факт объем</th>
@@ -1238,8 +1246,10 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
       {num("blue", sum((d) => d.buyer_shipped_amount))}
       {num("blue", sum((d) => d.buyer_payment))}
       {num("blue", sum((d) => d.buyer_debt))}
-      {/* Логистика (8 cols): expeditor / group blank, then numbers */}
-      {blank("stone")}{blank("stone")}
+      {/* Логистика (9 cols): expeditor / group / tariff blank-cells,
+          then summable numbers. Тариф is per-deal rate, not a sum —
+          leave blank. */}
+      {blank("stone")}{blank("stone")}{blank("stone")}
       {num("stone", sum((d) => d.preliminary_tonnage), 3)}
       {num("stone", sum((d) => d.preliminary_amount))}
       {num("stone", sum((d) => d.actual_shipped_volume), 3)}

@@ -187,6 +187,16 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
       forwarder: fw ? { name: fw.name } : d.forwarder ?? null,
       supplier_manager: sm ? { full_name: sm.full_name } : d.supplier_manager ?? null,
       logistics_company_group: lcg ? { name: lcg.name } : d.logistics_company_group ?? null,
+      // Enrich each company-group row in the chain with its name —
+      // LIST_SELECT only embeds (id, position, company_group_id, price,
+      // price_kind) for perf, so without this map-lookup fmtCompanyChain
+      // would render empty strings (operator complaint 2026-06-23: «при
+      // выгрузке в Excel не выходят наименования группы компании»).
+      deal_company_groups: (d.deal_company_groups ?? []).map((g) => {
+        if (g.company_group?.name) return g;
+        const cg = g.company_group_id ? cgById.get(g.company_group_id) : null;
+        return cg ? { ...g, company_group: { name: cg.name } } : g;
+      }),
       supplier_lines: lines.supplier.get(d.id) ?? d.supplier_lines ?? [],
       buyer_lines: lines.buyer.get(d.id) ?? d.buyer_lines ?? [],
     };
