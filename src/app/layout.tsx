@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, JetBrains_Mono } from "next/font/google";
+import { Carlito } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,24 +10,26 @@ import "./globals.css";
 // content streams in directly — same nav speed, no false «still
 // loading» signal.
 
-// next/font/google — fonts are inlined into the Next.js build at
-// generation time. No render-blocking <link rel="stylesheet"> handshake
-// to fonts.googleapis.com, no FOIT. swap=auto so the page paints with
-// the system fallback first, then upgrades the moment the font binary
-// arrives (already cached). Replaces three blocking <link> tags
-// (DM Sans + JetBrains Mono + Satoshi from fontshare).
-// `subsets` types in next/font don't currently expose cyrillic for
-// DM_Sans but Google's font file does ship it. Cast is safe.
-const dmSans = DM_Sans({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  subsets: ["latin", "latin-ext"] as ("latin" | "latin-ext")[],
-  weight: ["400", "500", "600", "700"],
+// Carlito is the open-source font that exactly matches Calibri's
+// metrics (same glyph widths, same line-height) — operators 2026-06-23:
+// «шрифт надо поменять. все говорят что 0 и 8 сливаются, но везде
+// должен быть один и тот же стиль/шрифт. пользователи привыкли к
+// Excel». Switching from DM Sans (text) + JetBrains Mono (numbers) to
+// a single Carlito stack across both --font-sans and --font-mono
+// gives the operator the Excel look they're used to without dragging
+// in Microsoft's proprietary font file. Subsets include cyrillic.
+// The variable points to the same family so `font-mono` utility class
+// still resolves to a defined value but renders the same glyph as
+// `font-sans` — tabular-nums on data cells keeps columns aligned.
+const carlito = Carlito({
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  weight: ["400", "700"],
   variable: "--font-sans",
   display: "swap",
 });
-const jetBrainsMono = JetBrains_Mono({
-  subsets: ["latin", "latin-ext"] as ("latin" | "latin-ext")[],
-  weight: ["400", "500", "600"],
+const carlitoMono = Carlito({
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  weight: ["400", "700"],
   variable: "--font-mono",
   display: "swap",
 });
@@ -43,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`h-full antialiased ${dmSans.variable} ${jetBrainsMono.variable}`}>
+    <html lang="ru" className={`h-full antialiased ${carlito.variable} ${carlitoMono.variable}`}>
       <body className="min-h-full flex flex-col">
         {/* NuqsAdapter wires nuqs' useQueryState/useQueryStates to the
             Next.js App Router so search-param state survives client

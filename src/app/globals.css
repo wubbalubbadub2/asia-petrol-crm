@@ -148,19 +148,20 @@
   }
 }
 
-/* Slashed-zero for tabular numerics. Operator request 2026-06-22:
- * «0 в цене и во всех int полях с черточкой». DM Sans (body text)
- * has no slashed-zero glyph in Google Fonts, so text dates keep the
- * round 0 — that asymmetry was flagged but the operator's stronger
- * preference is slashed-zero in numeric cells (the 0/8 confusion in
- * dense passport columns is the real cost). JetBrains Mono ships the
- * `zero` OpenType feature; both font-variant-numeric and
- * font-feature-settings activate it defensively. */
+/* Tabular numerics only (no slashed-zero). Operator 2026-06-23 round
+ * 3: «шрифт надо поменять… везде должен быть один и тот же стиль».
+ * The whole UI now ships Carlito (Calibri-equivalent), the same font
+ * Excel uses by default — so the 0/8 ambiguity that triggered the
+ * earlier slashed-zero experiment is now «what users are used to in
+ * Excel» and we accept it. The slashed-zero variant is dropped
+ * because Carlito has no such glyph and we want one consistent style
+ * everywhere. Tabular-nums stays for column alignment in dense
+ * tables. */
 .font-data,
 .font-mono,
 table td[data-numeric],
 .tabular-nums,
 [class*="tabular"] {
-  font-variant-numeric: tabular-nums slashed-zero !important;
-  font-feature-settings: "tnum" 1, "zero" 1 !important;
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" 1 !important;
 }
