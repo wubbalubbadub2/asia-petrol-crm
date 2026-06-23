@@ -36,6 +36,23 @@ const CURRENCIES: { value: string; label: string }[] = [
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", KZT: "₸", KGS: "сом", RUB: "₽" };
 const tabs = [{ key: "kg" as const, label: "KG (Экспорт)" }, { key: "kz" as const, label: "KZ (Внутренний)" }];
 
+// Translucent fuel-type tint for registry rows — mirrors the passport
+// row coloring introduced 2026-06-23 (commit 7e989e9 / d4a6390).
+// Single uniform alpha (0.12) per operator's «не нужно чередовать
+// цвета, использовать только цвета ГСМ, но чтобы было читабельно».
+function hexToRgba(hex: string | null | undefined, alpha: number): string {
+  if (!hex || typeof hex !== "string" || !hex.startsWith("#")) return "transparent";
+  const h = hex.length === 4
+    ? hex.slice(1).split("").map((c) => c + c).join("")
+    : hex.slice(1);
+  if (h.length !== 6) return "transparent";
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return "transparent";
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
 // Tonnage display: always 3 decimals, even for whole / 2-decimal values.
 // Per client request — "после запятой 3 ноля должно быть".
@@ -1641,8 +1658,28 @@ export default function RegistryPage() {
                           <th className="px-1 py-1 w-[25px]"></th>
                         </tr></thead>
                         <tbody>
-                          {g.records.map((r) => (
-                            <tr key={r.id} className={`border-b border-stone-100 hover:bg-amber-50/20 ${selected.has(r.id) ? "bg-amber-50/60" : ""}`}>
+                          {g.records.map((r) => {
+                            // Fuel-type tint per row (operator request
+                            // 2026-06-23: «цветовая гамма должна быть
+                            // ещё в реестре»). Selection highlight
+                            // (amber-50/60) wins over the tint —
+                            // selection is the operator's intent so
+                            // they need it clearly visible. Hover stays
+                            // amber too for the same reason.
+                            const fuel = r.fuel_type_id ? fuelTypeLabels.get(r.fuel_type_id) : null;
+                            const rowBg = hexToRgba(fuel?.color, 0.12);
+                            const rowBgHover = hexToRgba(fuel?.color, 0.22);
+                            const isSelected = selected.has(r.id);
+                            return (
+                            <tr
+                              key={r.id}
+                              style={isSelected ? undefined : { "--row-bg": rowBg, "--row-bg-hover": rowBgHover } as React.CSSProperties}
+                              className={`border-b border-stone-100 ${
+                                isSelected
+                                  ? "bg-amber-50/60 hover:bg-amber-50/80"
+                                  : "bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]"
+                              }`}
+                            >
                               <td className="border-r px-1 py-0.5 text-center">
                                 <input
                                   type="checkbox"
@@ -1728,7 +1765,8 @@ export default function RegistryPage() {
                                 }} className="rounded p-0.5 text-stone-300 hover:text-red-500 transition-colors"><Trash2 className="h-3 w-3" /></button>
                               </td>
                             </tr>
-                          ))}
+                          );
+                          })}
                           {addingIn === g.key && (
                             <InlineAdd dealId={g.dealId} group={g} regType={tab === "kg" ? "KG" : "KZ"} onDone={() => { reload(); setAddingIn(null); }} onCancel={() => setAddingIn(null)} />
                           )}

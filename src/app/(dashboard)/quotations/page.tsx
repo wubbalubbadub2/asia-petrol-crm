@@ -260,24 +260,21 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productType.id]);
 
-  function openExportDialog() {
+  // Column selection used to be operator-chosen before export
+  // (checkbox dialog), but operator 2026-06-23: «Столбцы при выгрузке
+  // должны оставаться. Столбцы не изменны, а выбор идёт тока строки».
+  // Always export every column the product carries — only month / row
+  // scope is variable. The dialog and checkbox state stay around to
+  // avoid a wider refactor but no longer gate the export.
+  async function openExportDialog() {
     if (exporting) return;
-    setColumnDialogOpen(true);
-  }
-
-  async function runExport() {
-    if (selectedColumns.length === 0) {
-      toast.error("Выберите хотя бы одну колонку");
-      return;
-    }
-    setColumnDialogOpen(false);
     setExporting(true);
     try {
       const { exportQuotationsToExcel } = await import("@/lib/exports/quotations-excel");
       const n = await exportQuotationsToExcel({
         productTypeId: productType.id,
         productName: productType.name,
-        columnKeys: selectedColumns,
+        // No columnKeys override → export all PRICE_COLS for the product.
       });
       toast.success(`Файл готов: ${n} строк`);
     } catch (e) {
@@ -285,6 +282,12 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
     } finally {
       setExporting(false);
     }
+  }
+
+  // Kept for backward-compat with any inline dialog references that
+  // weren't ripped out — no longer reachable via UI.
+  async function runExport() {
+    await openExportDialog();
   }
 
   return (
