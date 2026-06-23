@@ -730,18 +730,17 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
     cgLabels,
   } = usePassportRefs();
 
-  // Row background is tinted by the deal's ГСМ color — operator
-  // request 2026-06-23. Two CSS vars set inline carry the base tint
-  // (low alpha for readability) and a slightly darker variant for
-  // :hover. Tailwind arbitrary-value utilities then reference those
-  // vars so :hover still works (inline style alone would beat the
-  // hover class on specificity).
-  // Zebra is folded into the fuel tint: odd rows get a darker alpha
-  // so adjacent rows in the same product still alternate.
-  const isZebra = rowIndex % 2 === 1;
+  // Row background is tinted by the deal's ГСМ color (uniform across
+  // all rows, no zebra — operator request 2026-06-23 round 2: «нам
+  // теперь не нужно чередовать цвета, использовать только цвета ГСМ,
+  // но чтобы было читабельно»). Single alpha picked to sit between
+  // the previous even (0.08, barely visible) and zebra (0.16, too
+  // strong on bright fuels) values. CSS vars drive both the base
+  // tint and the :hover state — Tailwind utility classes referencing
+  // them keep :hover winning on specificity.
   const fuel = deal.fuel_type_id ? fuelTypeLabels.get(deal.fuel_type_id) : null;
-  const rowBg = hexToRgba(fuel?.color, isZebra ? 0.16 : 0.08);
-  const rowBgHover = hexToRgba(fuel?.color, 0.26);
+  const rowBg = hexToRgba(fuel?.color, 0.12);
+  const rowBgHover = hexToRgba(fuel?.color, 0.22);
   const rowStyle = { "--row-bg": rowBg, "--row-bg-hover": rowBgHover } as React.CSSProperties;
 
   return (

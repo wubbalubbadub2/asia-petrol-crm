@@ -302,9 +302,12 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
     const r = rowIdx + 4;
     const row = ws.getRow(r);
     row.height = 18;
-    // Fuel-type color tints every cell on this row — mirrors the UI
-    // row-background introduced in 7e989e9. Same alpha curve as the
-    // web (8% even / 16% zebra) so the exported sheet feels familiar.
+    // Fuel-type color tints every cell on this row, single uniform
+    // alpha — operator 2026-06-23 round 2: «нам теперь не нужно
+    // чередовать цвета, использовать только цвета ГСМ, но чтобы было
+    // читабельно». Dropped both the band-bg overlay and the zebra
+    // alternation; rows now read as flat tinted strips of the
+    // product's color, white where the fuel type has no color set.
     const fuelHex = deal.fuel_type?.color ?? null;
     COLUMNS.forEach((col, colIdx) => {
       const cell = row.getCell(colIdx + 1);
@@ -315,14 +318,10 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
         vertical: "middle",
         horizontal: col.numFmt ? "right" : "left",
       };
-      const isZebra = rowIdx % 2 === 1;
-      const band = BAND_STYLE[col.band];
-      const baseArgb = isZebra ? band.bg : "FFFFFFFF";
-      const fuelAlpha = isZebra ? 0.16 : 0.08;
       cell.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: blendArgbWithFuel(baseArgb, fuelHex, fuelAlpha) },
+        fgColor: { argb: blendArgbWithFuel("FFFFFFFF", fuelHex, 0.12) },
       };
       cell.border = {
         right: { style: "thin", color: { argb: "FFE7E5E4" } },
