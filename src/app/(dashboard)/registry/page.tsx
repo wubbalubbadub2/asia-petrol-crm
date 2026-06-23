@@ -1464,7 +1464,19 @@ export default function RegistryPage() {
                   <div className="border-t border-stone-200">
                     <div className="overflow-x-auto">
                       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
-                        <thead><tr className="bg-stone-100/70 border-b text-stone-500">
+                        {/* Sticky header band — operator request
+                            2026-06-23: «при прокрутке чтобы было
+                            видно наименования столбцов». Sticky on
+                            the <tr> latches each group's column row
+                            to the top of the main scroll container
+                            (<main> is the nearest y-scroll ancestor;
+                            the outer overflow-x-auto only catches the
+                            x axis, so vertical sticky resolves past
+                            it). Background flipped to opaque so the
+                            data rows scrolling behind don't show
+                            through. z-10 keeps it below the
+                            mass-action toolbar (z-30 at line ~1422). */}
+                        <thead><tr className="sticky top-0 z-10 bg-stone-100 border-b text-stone-500">
                           <th className="border-r px-2 py-1 w-[28px] text-center">
                             <input
                               type="checkbox"
