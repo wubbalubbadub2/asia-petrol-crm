@@ -76,6 +76,25 @@ function ComputedNumSigned({ value, className = "" }: { value: number | null | u
   );
 }
 
+// Convert a #RRGGBB / #RGB hex to an rgba() string with the given
+// alpha. Used to derive translucent row tints from each fuel type's
+// own color — operator request 2026-06-23: «every ГСМ has its own
+// color. Fill the rows ... with the color of selected ГСМ». Returns
+// `transparent` for missing / malformed input so the row falls back
+// to the page background.
+function hexToRgba(hex: string | null | undefined, alpha: number): string {
+  if (!hex || typeof hex !== "string" || !hex.startsWith("#")) return "transparent";
+  const h = hex.length === 4
+    ? hex.slice(1).split("").map((c) => c + c).join("")
+    : hex.slice(1);
+  if (h.length !== 6) return "transparent";
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "transparent";
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function FuelDot({ color }: { color?: string }) {
   return <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color ?? "#6B7280" }} />;
 }
@@ -711,24 +730,38 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
     cgLabels,
   } = usePassportRefs();
 
-  // Subtle zebra striping on data rows for readability. Column-level
-  // tints (amber-50/10, blue-50/10, purple-50/10) layer on top of the
-  // row tint because per-<td> backgrounds paint over per-<tr>; the
-  // neutral columns (identity + logistics) take the zebra. The sticky
-  // identity cell needs its own matching background since its `bg-white`
-  // would otherwise override the row tint on the frozen column.
+  // Row background is tinted by the deal's ГСМ color — operator
+  // request 2026-06-23. Two CSS vars set inline carry the base tint
+  // (low alpha for readability) and a slightly darker variant for
+  // :hover. Tailwind arbitrary-value utilities then reference those
+  // vars so :hover still works (inline style alone would beat the
+  // hover class on specificity).
+  // Zebra is folded into the fuel tint: odd rows get a darker alpha
+  // so adjacent rows in the same product still alternate.
   const isZebra = rowIndex % 2 === 1;
-  const zebraRow = isZebra ? "bg-stone-50/40" : "";
-  const stickyBg = isZebra ? "bg-stone-50" : "bg-white";
+  const fuel = deal.fuel_type_id ? fuelTypeLabels.get(deal.fuel_type_id) : null;
+  const rowBg = hexToRgba(fuel?.color, isZebra ? 0.16 : 0.08);
+  const rowBgHover = hexToRgba(fuel?.color, 0.26);
+  const rowStyle = { "--row-bg": rowBg, "--row-bg-hover": rowBgHover } as React.CSSProperties;
 
   return (
-    <tr className={`border-b hover:bg-amber-50/20 ${zebraRow}`}>
+    <tr
+      style={rowStyle}
+      className="border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]"
+    >
       {/* Identity. Clicking the deal code opens the deal as a new
           workspace tab so the operator never loses the list view
           they came from. Ctrl/Cmd/middle-click keeps the click
           targeted at the list (background tab) — matches browser
           tab UX. */}
-      <td className={`sticky left-0 z-10 ${stickyBg} border-r px-2 py-1 font-mono text-stone-700`}>
+      {/* Sticky identity cell — its own bg has to match the row tint
+          otherwise it would render white over the colored row when
+          frozen on horizontal scroll. The opaque white fallback
+          (added on top of --row-bg) keeps text readable when the
+          row tint is very strong; the row tint then sits at the
+          aforementioned 8%/16% alpha on top, just like every other
+          cell. */}
+      <td className="sticky left-0 z-10 bg-white before:absolute before:inset-0 before:bg-[var(--row-bg)] before:-z-10 border-r px-2 py-1 font-mono text-stone-700 relative">
         <DealCodeLink dealId={deal.id} dealCode={deal.deal_code} />
         <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
       </td>

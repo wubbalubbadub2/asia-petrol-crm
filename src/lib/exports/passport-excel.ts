@@ -29,19 +29,14 @@ const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_PRICE = "#,##0.0000";
 
-function fmtCompanyChain(deal: Deal): string {
-  const groups = (deal.deal_company_groups ?? [])
-    .slice()
-    .sort((a, b) => a.position - b.position);
-  return groups
-    .map((g) => {
-      const name = g.company_group?.name ?? "";
-      if (g.price == null) return name;
-      const kind = g.price_kind === "final" ? "оконч." : "предв.";
-      return `${name} ${g.price} (${kind})`;
-    })
-    .filter(Boolean)
-    .join(" → ");
+// Group name at a specific chain position (1..6) on a deal. Returns
+// "" if that position is empty — Excel's auto-filter treats blanks as
+// their own choice. Replaced the «Цепочка» one-string output 2026-06-23
+// per operator request: «one column for each группа компании, не
+// цепочка, so we can filter in exported excel by группа компании».
+function companyAtPosition(deal: Deal, position: number): string {
+  const row = (deal.deal_company_groups ?? []).find((g) => g.position === position);
+  return row?.company_group?.name ?? "";
 }
 
 function avgGroupPrice(deal: Deal): number | null {
@@ -102,7 +97,15 @@ const COLUMNS: Column[] = [
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
   // ── Группы компании ────────────────────────────────────
-  { key: "company_chain", header: "Цепочка", width: 28, band: "groups", read: (d) => fmtCompanyChain(d) },
+  // One column per chain position (1..6) so the operator can apply
+  // Excel auto-filter on a specific group at a specific step in the
+  // chain. The avg-price summary stays as the last col in the band.
+  { key: "company_group_1", header: "Группа 1", width: 18, band: "groups", read: (d) => companyAtPosition(d, 1) },
+  { key: "company_group_2", header: "Группа 2", width: 18, band: "groups", read: (d) => companyAtPosition(d, 2) },
+  { key: "company_group_3", header: "Группа 3", width: 18, band: "groups", read: (d) => companyAtPosition(d, 3) },
+  { key: "company_group_4", header: "Группа 4", width: 18, band: "groups", read: (d) => companyAtPosition(d, 4) },
+  { key: "company_group_5", header: "Группа 5", width: 18, band: "groups", read: (d) => companyAtPosition(d, 5) },
+  { key: "company_group_6", header: "Группа 6", width: 18, band: "groups", read: (d) => companyAtPosition(d, 6) },
   { key: "company_avg_price", header: "Цена гр. (avg)", width: 13, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPrice(d) },
 
   // ── Покупатель ─────────────────────────────────────────
