@@ -119,6 +119,10 @@ const COLUMNS: Column[] = [
   { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
   { key: "buyer_price", header: "Цена оконч.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
+  // Остаток = отгружено − заявлено (operator 2026-06-23). Computed
+  // on the fly from the loaded scalars so the export stays in sync
+  // with the same number rendered in the passport list.
+  { key: "buyer_remainder", header: "Остаток, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0) },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment },

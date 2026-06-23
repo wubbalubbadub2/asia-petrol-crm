@@ -279,11 +279,13 @@ const LIST_SELECT = `
   factory_id, fuel_type_id, sulfur_percent,
   supplier_id, supplier_contract, supplier_delivery_basis,
   supplier_contracted_volume, supplier_contracted_amount, supplier_price,
+  supplier_quotation, supplier_discount,
   supplier_shipped_amount, supplier_shipped_volume,
   supplier_payment, supplier_payment_date, supplier_balance,
   supplier_currency, supplier_manager_id,
   buyer_id, buyer_contract, buyer_delivery_basis,
   buyer_contracted_volume, buyer_contracted_amount, buyer_price,
+  buyer_quotation, buyer_discount,
   buyer_ordered_volume, buyer_shipped_volume, buyer_shipped_amount,
   buyer_payment, buyer_payment_date, buyer_debt,
   buyer_currency, buyer_manager_id, trader_id,
@@ -295,6 +297,13 @@ const LIST_SELECT = `
   supplier_lines_count, buyer_lines_count,
   deal_company_groups(id, position, company_group_id, price, price_kind)
 `;
+// quotation + discount were missing from this projection — operator
+// 2026-06-23: «при выгрузке в Excel не выгружаются данные если есть
+// скидка». The Excel exporter reads d.supplier_discount /
+// d.buyer_discount and friends, but absent fields came back as
+// `undefined`, surfacing as empty cells in the .xlsx. Now included so
+// the export carries the same numbers the operator sees on the
+// passport tile.
 
 // DETAIL_SELECT — full join set, used by useDeal on the deal-detail
 // page where every relation is rendered and resolving via refs cache
