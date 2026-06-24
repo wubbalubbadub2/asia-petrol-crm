@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
 import { useQueryState, parseAsJson, parseAsArrayOf, parseAsString } from "nuqs";
-import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X, Filter, ExternalLink } from "lucide-react";
+import { Plus, Upload, Truck, ChevronDown, Trash2, ClipboardPaste, X, Filter, ExternalLink, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1143,6 +1143,10 @@ export default function RegistryPage() {
   const showRegistryLoader = useDelayed(loading);
   const [showAdd, setShowAdd] = useState(false);
   const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
+  // Excel export — disabled while the workbook is being built so a
+  // double-click can't trigger two downloads. Operator request
+  // 2026-06-24: «Добавь выгрузку Реестр отгрузок отдельно эксель файлом».
+  const [exporting, setExporting] = useState(false);
   // Expanded deal-group keys are persisted to the URL via nuqs so that
   // switching workspace tabs and coming back (or sharing the URL) keeps
   // the same groups open — operator complaint 2026-06-22: «expanded
@@ -1216,6 +1220,40 @@ export default function RegistryPage() {
       return s;
     });
   }
+  async function handleExportExcel() {
+    if (exporting) return;
+    if (filteredRecords.length === 0) {
+      toast.error("Нет записей для выгрузки");
+      return;
+    }
+    setExporting(true);
+    try {
+      const { exportRegistryToExcel } = await import("@/lib/exports/registry-excel");
+      // No yearFilter on this page — pick the most common deal.year
+      // across the currently filtered records, falling back to the
+      // current calendar year if nothing resolves. Filename only;
+      // doesn't constrain the export contents.
+      const yearCounts = new Map<number, number>();
+      for (const r of filteredRecords) {
+        const y = r.deal?.year;
+        if (typeof y === "number") yearCounts.set(y, (yearCounts.get(y) ?? 0) + 1);
+      }
+      let year = new Date().getFullYear();
+      let best = 0;
+      for (const [y, n] of yearCounts) if (n > best) { year = y; best = n; }
+      await exportRegistryToExcel(filteredRecords, {
+        type: tab === "kg" ? "KG" : "KZ",
+        year,
+        labels: labelMaps,
+      });
+      toast.success(`Выгружено ${filteredRecords.length} строк`);
+    } catch (e) {
+      toast.error(`Ошибка выгрузки: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleBulkDelete() {
     const n = selected.size;
     if (n === 0) return;
@@ -1398,6 +1436,10 @@ export default function RegistryPage() {
         <div className="flex gap-2">
           <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Добавить</Button>
           <Button size="sm" variant="outline" onClick={() => window.location.href = "/import"}><Upload className="mr-1.5 h-3.5 w-3.5" />Импорт</Button>
+          <Button size="sm" variant="outline" onClick={handleExportExcel} disabled={exporting}>
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            {exporting ? "Выгрузка…" : "Excel"}
+          </Button>
         </div>
       </div>
       <div className="flex gap-1 border-b border-stone-200">
