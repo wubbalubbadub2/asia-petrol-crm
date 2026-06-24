@@ -34,7 +34,11 @@ export type GlobalRefs = {
   forwarders: RefOpt[];
   managers: ProfileRef[];
   stations: RefOpt[];
-  companyGroups: RefOpt[];
+  // full_name carries the legal-form prefix («ОсОО "АБ Линк"»,
+  // «Singularity Trading GmbH»). Needed by the registry bulk-add
+  // dialog to auto-tick «Продублировать отгрузку» on ОсОО↔ОсОО /
+  // ОсОО↔Singularity chains (operator request 2026-06-24).
+  companyGroups: (RefOpt & { full_name?: string | null })[];
   factories: RefOpt[];
   fuelTypes: FuelTypeRef[];
   quotationTypes: RefOpt[];
@@ -64,7 +68,7 @@ function fetchAll(): Promise<GlobalRefs> {
     sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
     sb.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     sb.from("stations").select("id, name").eq("is_active", true).order("name"),
-    sb.from("company_groups").select("id, name").eq("is_active", true).order("name"),
+    sb.from("company_groups").select("id, name, full_name").eq("is_active", true).order("name"),
     sb.from("factories").select("id, name").eq("is_active", true).order("name"),
     sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
   ];

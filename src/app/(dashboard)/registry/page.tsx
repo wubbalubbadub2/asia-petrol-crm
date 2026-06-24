@@ -562,7 +562,32 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 type Ref = { id: string; name: string };
 type DRef2 = { id: string; short_name: string | null; full_name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
-type DRef = { id: string; deal_code: string; year: number | null; month: string | null; logistics_shipment_month?: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null };
+type DRef = { id: string; deal_code: string; year: number | null; month: string | null; logistics_shipment_month?: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null; deal_company_groups?: { position: number; company_group?: { name?: string | null; full_name?: string | null } | null }[] };
+
+// «Продублировать отгрузку» auto-rule (operator 2026-06-24): if chain
+// positions 1 AND 2 are BOTH «ОсОО» or «Singularity» companies, default
+// the checkbox to ON. Latin + Cyrillic variants checked for both
+// — paranoid coverage of how the legal-form prefix might appear in
+// company_groups.full_name. Case-insensitive via .toLowerCase() which
+// in JS handles Unicode case-folding correctly.
+function isOsooOrSingularityGroup(g: { name?: string | null; full_name?: string | null } | null | undefined): boolean {
+  if (!g) return false;
+  const haystack = `${g.full_name ?? ""} ${g.name ?? ""}`.toLowerCase();
+  return (
+    haystack.includes("осоо") ||      // Cyrillic
+    haystack.includes("osoo") ||      // Latin
+    haystack.includes("singularity") ||
+    haystack.includes("сингулярити")
+  );
+}
+
+function shouldAutoDupShipment(deal: DRef | undefined | null): boolean {
+  if (!deal?.deal_company_groups) return false;
+  const pos1 = deal.deal_company_groups.find((g) => g.position === 1)?.company_group;
+  const pos2 = deal.deal_company_groups.find((g) => g.position === 2)?.company_group;
+  if (!pos1 || !pos2) return false;
+  return isOsooOrSingularityGroup(pos1) && isOsooOrSingularityGroup(pos2);
+}
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
   const sb = useRef(createClient());
@@ -582,7 +607,14 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   // written into BOTH shipment_volume and loading_volume. Useful for
   // KG export deals where the same tonnage is the исходящая + входящая
   // СНТ on the same wagon — operator request 2026-06-24.
+  // Auto-toggled to ON when the picked deal's chain has positions 1
+  // AND 2 BOTH occupied by an ОсОО/Singularity entity — see
+  // shouldAutoDupShipment(). The operator can still flip it manually.
   const [dupShipment, setDupShipment] = useState<boolean>(false);
+  // True once the operator has manually toggled the checkbox for the
+  // current deal selection. Suppresses the auto-rule from clobbering
+  // their explicit choice until they pick a different deal.
+  const [dupShipmentUserTouched, setDupShipmentUserTouched] = useState<boolean>(false);
 
   // Multi-line variant selection. Loaded for the selected deal; auto-picks
   // the default line. User can switch to another variant and we mirror the
@@ -597,7 +629,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      sb.current.from("deals").select("id, deal_code, year, month, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name)").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
+      sb.current.from("deals").select("id, deal_code, year, month, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), deal_company_groups(position, company_group:company_groups(name, full_name))").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
       sb.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
@@ -626,6 +658,11 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
     if (d.forwarder_id) setFwId(d.forwarder_id);
     if (d.buyer_destination_station_id) setDestId(d.buyer_destination_station_id);
     if (d.supplier_departure_station_id) setDepId(d.supplier_departure_station_id);
+    // Auto-tick «Продублировать отгрузку» for ОсОО↔Singularity chains.
+    // Reset the user-touched flag too: a different deal means the
+    // operator's previous override no longer applies.
+    setDupShipment(shouldAutoDupShipment(d));
+    setDupShipmentUserTouched(false);
   }, [dealId, deals]);
 
   // Load pricing variants for the selected deal — preselect the defaults.
@@ -698,7 +735,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   function resetAll() {
     setDealId(""); setMonth(""); setShipMonth("");
     setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
-    setPasted(""); setVolumeTarget("ship"); setDupShipment(false);
+    setPasted(""); setVolumeTarget("ship"); setDupShipment(false); setDupShipmentUserTouched(false);
     setSupplierLineId(""); setBuyerLineId("");
     setSupplierLines([]); setBuyerLines([]);
   }
@@ -919,7 +956,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
                   <input
                     type="checkbox"
                     checked={dupShipment}
-                    onChange={(e) => setDupShipment(e.target.checked)}
+                    onChange={(e) => { setDupShipment(e.target.checked); setDupShipmentUserTouched(true); }}
                     className="h-3.5 w-3.5 cursor-pointer accent-amber-600"
                   />
                   Продублировать отгрузку
