@@ -448,37 +448,39 @@ function VariantRow({
           </div>
         )}
 
-        {/* «Котировка» (тип из таблицы) — only for auto-formula. Manual
-            entry tier doesn't need it, and manual_formula gets its
-            quotation value typed by hand. */}
-        {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && (
-          <div>
-            <Label className="text-[12px] text-stone-500">Котировка</Label>
-            <select
-              value={v.quotationTypeId}
-              onChange={(e) => {
-                const nextId = e.target.value;
-                // If the newly-picked parent has a single price column,
-                // auto-seed priceSource so the auto-fetch effect can fire
-                // without an explicit «Подкотировка» pick.
-                const parent = quotationTypes.find((q) => q.id === nextId);
-                const cols = parent
-                  ? getColumnsForProduct(parent.name).filter((c) => c.key !== "comment")
-                  : [];
-                onChange({
-                  quotationTypeId: nextId,
-                  priceSource: cols.length === 1 ? cols[0].key : "",
-                  quotation: "", price: "",
-                  quotationManualEdited: false, priceManualEdited: false,
-                });
-              }}
-              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-            >
-              <option value="">Выбрать котировку...</option>
-              {quotationTypes.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-            </select>
-          </div>
-        )}
+        {/* «Котировка» (тип из таблицы) — surfaced for every tier.
+            Operator 2026-06-24: «пропали котировки, скидки» — this
+            picker used to be hidden under manual / manual_formula, but
+            the operator still needs the reference type recorded even
+            when the numeric value is typed by hand. Auto-fetch effects
+            below are gated on price_condition so picking a type on a
+            manual tier is harmless (audit-only). */}
+        <div>
+          <Label className="text-[12px] text-stone-500">Котировка</Label>
+          <select
+            value={v.quotationTypeId}
+            onChange={(e) => {
+              const nextId = e.target.value;
+              // If the newly-picked parent has a single price column,
+              // auto-seed priceSource so the auto-fetch effect can fire
+              // without an explicit «Подкотировка» pick.
+              const parent = quotationTypes.find((q) => q.id === nextId);
+              const cols = parent
+                ? getColumnsForProduct(parent.name).filter((c) => c.key !== "comment")
+                : [];
+              onChange({
+                quotationTypeId: nextId,
+                priceSource: cols.length === 1 ? cols[0].key : "",
+                quotation: "", price: "",
+                quotationManualEdited: false, priceManualEdited: false,
+              });
+            }}
+            className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+          >
+            <option value="">Выбрать котировку...</option>
+            {quotationTypes.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
+          </select>
+        </div>
 
         {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && (() => {
           // Derive the column options from quotation-columns.ts using the
@@ -557,46 +559,22 @@ function VariantRow({
           </div>
         )}
 
-        {/* ───── Manual-formula trio ─────
-            Wrapped in a md:col-span-3 sub-grid so the three inputs land
-            together on a single row directly under the type picker, no
-            matter how the outer grid has flowed so far. Replaces the
-            default Котировка значение / Скидка cells for this tier
-            (price cell is still rendered below). */}
+        {/* Курс валют — only for manual_formula. The matching
+            Котировка значение / Скидка cells are rendered alongside
+            every other tier below, so they stay visible regardless of
+            price mode. Operator 2026-06-24 — see corresponding fix in
+            deal-lines-editor.tsx. */}
         {v.priceMode === "manual_formula" && (
-          <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <Label className="text-[12px] text-stone-500">Котировка значение</Label>
-              <Input
-                type="number"
-                step="0.0001"
-                value={v.quotation}
-                onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
-                placeholder="вручную"
-                className="h-8 text-[13px] font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">Скидка</Label>
-              <Input
-                type="number"
-                step="0.0001"
-                value={v.discount}
-                onChange={(e) => onChange({ discount: e.target.value })}
-                className="h-8 text-[13px] font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">Курс валют</Label>
-              <Input
-                type="number"
-                step="0.0001"
-                value={v.fxRate}
-                onChange={(e) => onChange({ fxRate: e.target.value })}
-                placeholder="(котировка − скидка) × курс"
-                className="h-8 text-[13px] font-mono"
-              />
-            </div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Курс валют</Label>
+            <Input
+              type="number"
+              step="0.0001"
+              value={v.fxRate}
+              onChange={(e) => onChange({ fxRate: e.target.value })}
+              placeholder="(котировка − скидка) × курс"
+              className="h-8 text-[13px] font-mono"
+            />
           </div>
         )}
 
@@ -636,41 +614,45 @@ function VariantRow({
           </div>
         )}
 
-        {/* Котировка значение + Скидка — default placement for the
-            non-manual_formula tiers. manual_formula renders these
-            (plus Курс валют) in a dedicated row above. */}
-        {v.priceMode !== "manual_formula" && (
-          <>
-            <div>
-              <Label className="text-[12px] text-stone-500">
-                Котировка значение {decoded.price_condition !== "manual" && v.quotationTypeId ? (
-                  v.quotationManualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
-                    : v.quotation ? <span className="text-[10px] text-green-600">(из таблицы)</span>
-                    : <span className="text-[10px] text-red-500">(нет данных)</span>
-                ) : ""}
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={v.quotation}
-                onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
-                placeholder={decoded.price_condition !== "manual" ? "авто или вручную" : "вручную"}
-                className="h-8 text-[13px] font-mono"
-              />
-            </div>
+        {/* Котировка значение + Скидка — surfaced for every tier
+            (manual / fixed / average_month / trigger / manual_formula).
+            Operator 2026-06-24: «пропали котировки, скидки» — the
+            previous layout routed these through a manual_formula-only
+            sub-grid, which left the slots invisible to operators
+            switching between modes. They now render as plain grid
+            cells alongside the other variant fields. */}
+        <div>
+          <Label className="text-[12px] text-stone-500">
+            Котировка значение {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && v.quotationTypeId ? (
+              v.quotationManualEdited ? <span className="text-[10px] text-amber-600">(вручную)</span>
+                : v.quotation ? <span className="text-[10px] text-green-600">(из таблицы)</span>
+                : <span className="text-[10px] text-red-500">(нет данных)</span>
+            ) : ""}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={v.quotation}
+            onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
+            placeholder={
+              v.priceMode === "manual_formula" ? "вручную"
+                : decoded.price_condition !== "manual" ? "авто или вручную"
+                : "вручную"
+            }
+            className="h-8 text-[13px] font-mono"
+          />
+        </div>
 
-            <div>
-              <Label className="text-[12px] text-stone-500">Скидка</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={v.discount}
-                onChange={(e) => onChange({ discount: e.target.value })}
-                className="h-8 text-[13px] font-mono"
-              />
-            </div>
-          </>
-        )}
+        <div>
+          <Label className="text-[12px] text-stone-500">Скидка</Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={v.discount}
+            onChange={(e) => onChange({ discount: e.target.value })}
+            className="h-8 text-[13px] font-mono"
+          />
+        </div>
 
         {/* Цена — авто = котировка − скидка, можно перебить руками. */}
         <div>

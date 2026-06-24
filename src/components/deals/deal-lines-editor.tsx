@@ -497,46 +497,33 @@ function LinesEditorView({
               />
             )}
 
-            {/* «Котировка» (тип из таблицы) — only for auto-formula.
-                Hidden for manual_formula since the manager types the
-                quotation value directly without referencing a type. */}
-            {tier !== "manual_formula" && (
-              <SelectCell
-                label="Котировка"
-                value={l.quotation_type_id}
-                displayValue={l.quotation_type_label ?? "—"}
-                editing={editing}
-                options={quotationTypes}
-                onChange={(v) => onUpdate(l.id, { quotation_type_id: v || null })}
-              />
-            )}
+            {/* «Котировка» (тип из таблицы) — surfaced for every tier so
+                the operator always has a consistent slot for the
+                reference quotation, even on «Фикс/Вручную» or
+                «Формульная вручную» lines where the value is typed by
+                hand. Operator 2026-06-24: «пропали котировки, скидки» —
+                this cell was previously hidden under manual_formula. */}
+            <SelectCell
+              label="Котировка"
+              value={l.quotation_type_id}
+              displayValue={l.quotation_type_label ?? "—"}
+              editing={editing}
+              options={quotationTypes}
+              onChange={(v) => onUpdate(l.id, { quotation_type_id: v || null })}
+            />
 
-            {/* ───── Manual-formula trio ─────
-                Wrapped in md:col-span-3 so Котировка значение / Скидка /
-                Курс валют land on a single dedicated row right under
-                the type picker + stage. Replaces the default Котировка
-                значение and Скидка cells for this tier. */}
+            {/* Курс валют — only meaningful for manual_formula
+                (multiplier in (q − d) × fx). Displayed as a regular grid
+                cell so it flows alongside Котировка значение / Скидка
+                rather than living in a separate sub-grid that could push
+                the inputs off the visible row. */}
             {tier === "manual_formula" && (
-              <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2">
-                <NumberCell
-                  label="Котировка значение"
-                  value={l.quotation}
-                  editing={editing}
-                  onChange={(v) => onUpdate(l.id, { quotation: v })}
-                />
-                <NumberCell
-                  label="Скидка"
-                  value={l.discount}
-                  editing={editing}
-                  onChange={(v) => onUpdate(l.id, { discount: v })}
-                />
-                <NumberCell
-                  label="Курс валют"
-                  value={l.fx_rate}
-                  editing={editing}
-                  onChange={(v) => onUpdate(l.id, { fx_rate: v })}
-                />
-              </div>
+              <NumberCell
+                label="Курс валют"
+                value={l.fx_rate}
+                editing={editing}
+                onChange={(v) => onUpdate(l.id, { fx_rate: v })}
+              />
             )}
 
             {/* Дни триггера — only when this variant uses a trigger */}
@@ -583,27 +570,28 @@ function LinesEditorView({
               )}
             </div>
 
-            {/* Котировка значение + Скидка — default placement for
-                tiers other than manual_formula. manual_formula renders
-                its own dedicated row (Котировка значение / Скидка /
-                Курс валют) right under the picker. */}
-            {tier !== "manual_formula" && (
-              <>
-                <NumberCell
-                  label="Котировка значение"
-                  value={l.quotation}
-                  editing={editing}
-                  onChange={(v) => onUpdate(l.id, { quotation: v })}
-                />
+            {/* Котировка значение + Скидка — surfaced for every tier
+                (manual / fixed / average_month / trigger / manual_formula).
+                Operator 2026-06-24 complaint: «пропали котировки,
+                скидки» — these fields were previously routed through a
+                col-span-3 sub-grid only for manual_formula, which under
+                some breakpoints (or with the «Тип котировки» cell now
+                always present) was easy to miss. Rendering them as
+                regular grid cells keeps the layout uniform across all
+                price modes. */}
+            <NumberCell
+              label="Котировка значение"
+              value={l.quotation}
+              editing={editing}
+              onChange={(v) => onUpdate(l.id, { quotation: v })}
+            />
 
-                <NumberCell
-                  label="Скидка"
-                  value={l.discount}
-                  editing={editing}
-                  onChange={(v) => onUpdate(l.id, { discount: v })}
-                />
-              </>
-            )}
+            <NumberCell
+              label="Скидка"
+              value={l.discount}
+              editing={editing}
+              onChange={(v) => onUpdate(l.id, { discount: v })}
+            />
 
             {/* Комментарий котировки */}
             <TextCell
