@@ -908,15 +908,17 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
                     type="button"
                     onClick={() => setVolumeTarget("ship")}
                     className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец shipment_volume"
                   >
-                    Отгрузка
+                    Исходящее СНТ
                   </button>
                   <button
                     type="button"
                     onClick={() => setVolumeTarget("load")}
                     className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец loading_volume"
                   >
-                    Налив
+                    Входящее СНТ
                   </button>
                 </div>
               </div>
@@ -948,7 +950,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
                     <tr>
                       <th className="text-left px-2 py-1 w-8">#</th>
                       <th className="text-left px-2 py-1">№ вагона</th>
-                      <th className="text-right px-2 py-1">{volumeTarget === "ship" ? "Отгрузка" : "Налив"}</th>
+                      <th className="text-right px-2 py-1">{volumeTarget === "ship" ? "Исходящее СНТ" : "Входящее СНТ"}</th>
                       <th className="text-left px-2 py-1">Дата (стр.)</th>
                       <th className="text-left px-2 py-1">№ накладной</th>
                       <th className="text-left px-2 py-1">Ошибка</th>
@@ -1566,7 +1568,7 @@ export default function RegistryPage() {
                               />
                             </span>
                           </th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Налив</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="loading_volume — был «Налив», переименован 2026-06-23">Входящее СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
                             <span className="inline-flex items-center gap-1">
                               группа комп.
@@ -1602,7 +1604,7 @@ export default function RegistryPage() {
                           </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">№ ЖД накл.</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">Тонн</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="shipment_volume — был «Тонн / Отгрузка», переименован 2026-06-23">Исходящее СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>

@@ -258,15 +258,17 @@ export default function ImportPage() {
                       type="button"
                       onClick={() => setVolumeTarget("ship")}
                       className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                      title="столбец shipment_volume"
                     >
-                      Отгрузка
+                      Исходящее СНТ
                     </button>
                     <button
                       type="button"
                       onClick={() => setVolumeTarget("load")}
                       className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                      title="столбец loading_volume"
                     >
-                      Налив
+                      Входящее СНТ
                     </button>
                   </div>
                 </div>
