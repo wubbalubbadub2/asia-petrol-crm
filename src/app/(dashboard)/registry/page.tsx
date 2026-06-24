@@ -578,6 +578,11 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   // Which parsed-volume column to write — "ship" (отгрузка / shipment_volume) is the
   // factory-to-us side, "load" (налив / loading_volume) is the us-to-buyer side.
   const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
+  // «Продублировать отгрузку» — when checked, the parsed volume is
+  // written into BOTH shipment_volume and loading_volume. Useful for
+  // KG export deals where the same tonnage is the исходящая + входящая
+  // СНТ on the same wagon — operator request 2026-06-24.
+  const [dupShipment, setDupShipment] = useState<boolean>(false);
 
   // Multi-line variant selection. Loaded for the selected deal; auto-picks
   // the default line. User can switch to another variant and we mirror the
@@ -693,7 +698,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   function resetAll() {
     setDealId(""); setMonth(""); setShipMonth("");
     setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
-    setPasted(""); setVolumeTarget("ship");
+    setPasted(""); setVolumeTarget("ship"); setDupShipment(false);
     setSupplierLineId(""); setBuyerLineId("");
     setSupplierLines([]); setBuyerLines([]);
   }
@@ -720,8 +725,11 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
       company_group_id: cgId || null,
       railway_tariff: tariffNum,
       wagon_number: p.wagon,
-      shipment_volume: volumeTarget === "ship" ? p.volume : null,
-      loading_volume: volumeTarget === "load" ? p.volume : null,
+      // dupShipment overrides the single-target rule: write the same
+      // volume into BOTH sides. Useful when исходящее СНТ == входящее
+      // СНТ on a wagon (KG export pattern).
+      shipment_volume: dupShipment ? p.volume : (volumeTarget === "ship" ? p.volume : null),
+      loading_volume:  dupShipment ? p.volume : (volumeTarget === "load" ? p.volume : null),
       date: p.date || null,
       waybill_number: p.waybill || null,
       supplier_line_id: supplierLineId || null,
@@ -901,9 +909,23 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
               <Label className="text-[11px] text-stone-600 flex items-center gap-1">
                 <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB или пробелы между колонками)
               </Label>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-stone-500">Объём идёт в:</span>
-                <div className="inline-flex rounded border border-stone-200 bg-white overflow-hidden">
+              <div className="flex items-center gap-3">
+                {/* Шорткат для случая когда обе СНТ совпадают по
+                    объёму (типовой для KG-экспорта). Когда галка
+                    стоит, мы пишем значение в обе колонки и тоггл
+                    Исходящее/Входящее перестаёт иметь значение —
+                    приглушаем его. Операторский запрос 2026-06-24. */}
+                <label className="flex items-center gap-1.5 text-[11px] text-stone-600 select-none cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dupShipment}
+                    onChange={(e) => setDupShipment(e.target.checked)}
+                    className="h-3.5 w-3.5 cursor-pointer accent-amber-600"
+                  />
+                  Продублировать отгрузку
+                </label>
+                <span className={`text-[10px] ${dupShipment ? "text-stone-300" : "text-stone-500"}`}>Объём идёт в:</span>
+                <div className={`inline-flex rounded border border-stone-200 bg-white overflow-hidden ${dupShipment ? "opacity-40 pointer-events-none" : ""}`}>
                   <button
                     type="button"
                     onClick={() => setVolumeTarget("ship")}
