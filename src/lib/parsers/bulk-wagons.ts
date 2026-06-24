@@ -88,6 +88,18 @@ function parseDate(raw: string | undefined): string | null {
   return null;
 }
 
+// Pattern-only check (not value validity). «10.15.2026» matches because
+// it has the DD.MM.YYYY shape even though month 15 isn't real. Used by
+// the layout sniffer so that an invalid date in position 0 STILL routes
+// the row through the new (дата → накладная → вагон → объём) layout —
+// otherwise the row silently falls back to the legacy mapping and the
+// user gets a confusing «wagon = 10.15.2026» error.
+function looksLikeDate(raw: string | undefined): boolean {
+  if (!raw) return false;
+  const t = raw.trim();
+  return /^\d{4}-\d{1,2}-\d{1,2}$/.test(t) || /^\d{1,2}[./]\d{1,2}[./]\d{2,4}$/.test(t);
+}
+
 function looksLikeHeader(cells: string[]): boolean {
   // A header row has zero numeric content. If any cell carries a digit
   // (wagon number, volume, date, waybill) the row is data, not a header.
@@ -114,12 +126,14 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
     //   дата | накладная | вагон | объём
     // The legacy layout was
     //   вагон | объём | дата | накладная
-    // Sniff the first cell as a date — if it parses, the row is the
-    // new layout; if not, fall back to the legacy mapping so old
-    // pastes keep working. A bare wagon row (single cell) defaults to
-    // legacy.
-    const firstAsDate = parseDate(cells[0]);
-    const isNewLayout = firstAsDate !== null && cells.length >= 2;
+    // Sniff position 0 against the DATE PATTERN (not full validity).
+    // An invalid date like «10.15.2026» still SHAPED like a date, so
+    // operator who typed it that way clearly meant the new layout —
+    // we route through the new layout and surface a date-format error
+    // in the date column instead of silently treating the date string
+    // as the wagon number (operator complaint 2026-06-24). Legacy
+    // pastes (bare wagon first) still hit the fallback.
+    const isNewLayout = looksLikeDate(cells[0]) && cells.length >= 2;
 
     let wagon: string;
     let volumeRaw: string | undefined;

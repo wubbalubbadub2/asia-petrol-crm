@@ -948,7 +948,7 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
             <textarea
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
-              placeholder={"51742534\t54,719\t05.11.2025\tЭД0012345\n51667558\t54,719\t05.11.2025\n75040170\t54,719"}
+              placeholder={"05.11.2025\tЭД0012345\t51742534\t54,719\n05.11.2025\tЭД0012346\t51667558\t54,719\n05.11.2025\t\t75040170\t54,719"}
               rows={6}
               className="w-full rounded-md border border-stone-200 bg-white p-2 text-[12px] font-mono focus:border-amber-400 focus:outline-none"
             />
