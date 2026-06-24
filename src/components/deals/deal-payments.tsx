@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
+import { invalidateDealBundle } from "@/lib/hooks/use-deal-bundle";
+import { invalidateDeal, invalidateDealPayments } from "@/lib/hooks/use-deals";
 
 type PaymentType = "payment" | "refund" | "offset";
 
@@ -184,6 +186,19 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     setLoading(false);
   }
 
+  // After any payment write, the AFTER INSERT/UPDATE/DELETE trigger on
+  // deal_payments recomputes the deal's supplier_payment / buyer_payment
+  // rollup column. The local payments list reloads itself via
+  // loadPayments(), but the parent's deal-bundle (used by the per-deal
+  // header rollup cells) was holding the pre-write total. Same for the
+  // passport-table popover payment cache. Invalidate them all so the
+  // operator's «нужно постоянно обновлять страницу» complaint goes away.
+  function notifyDealCachesAfterPaymentWrite() {
+    invalidateDealPayments(dealId);
+    invalidateDealBundle(dealId);
+    invalidateDeal(dealId);
+  }
+
   async function addPayment() {
     if (!addingSide || !newAmount || !newDate) return;
     const { error } = await supabaseRef.current.from("deal_payments").insert({
@@ -202,17 +217,20 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     setNewCurrency("");
     setNewType("payment");
     await loadPayments();
+    notifyDealCachesAfterPaymentWrite();
   }
 
   async function deletePayment(id: string) {
     await supabaseRef.current.from("deal_payments").delete().eq("id", id);
     await loadPayments();
+    notifyDealCachesAfterPaymentWrite();
   }
 
   async function updatePayment(id: string, patch: Partial<Payment>) {
     const { error } = await supabaseRef.current.from("deal_payments").update(patch).eq("id", id);
     if (error) { toast.error(`Ошибка: ${error.message}`); return; }
     await loadPayments();
+    notifyDealCachesAfterPaymentWrite();
   }
 
   const filteredPayments = side ? payments.filter((p) => p.side === side) : payments;

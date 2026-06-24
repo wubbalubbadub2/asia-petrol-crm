@@ -42,6 +42,35 @@ const APP_SELECT = `
 let appsCache: { data: Application[]; ts: number } | null = null;
 const APPS_TTL_MS = 60_000;
 
+// Pub-sub for mutations — see use-deals.ts for the same pattern. Any
+// applications write below bumps every mounted useApplications so the
+// list re-renders without a manual page refresh.
+const appsListeners = new Set<() => void>();
+function notifyApps() { for (const fn of appsListeners) fn(); }
+function subscribeApps(fn: () => void): () => void {
+  appsListeners.add(fn);
+  return () => { appsListeners.delete(fn); };
+}
+
+// Apply a partial patch to the cached row optimistically + notify
+// subscribers. The list paints the new value immediately without a
+// round-trip. If the row isn't in the cache (very first visit) we
+// just bump the cache timestamp so the next mount refetches.
+function patchAppCache(id: string, patch: Partial<Application>) {
+  if (!appsCache) return;
+  const idx = appsCache.data.findIndex((a) => a.id === id);
+  if (idx === -1) return;
+  const next = appsCache.data.slice();
+  next[idx] = { ...next[idx], ...patch };
+  appsCache = { data: next, ts: appsCache.ts };
+  notifyApps();
+}
+
+function invalidateAppsCache() {
+  if (appsCache) appsCache = { ...appsCache, ts: 0 };
+  notifyApps();
+}
+
 export function useApplications() {
   const fresh = !!appsCache && Date.now() - appsCache.ts < APPS_TTL_MS;
   const [data, setData] = useState<Application[]>(appsCache?.data ?? []);
@@ -73,6 +102,16 @@ export function useApplications() {
 
   useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
+  // Subscribe to cache patches/invalidations. Optimistic patches paint
+  // the new snapshot from memory; invalidations (ts=0) force a refetch.
+  useEffect(() => {
+    return subscribeApps(() => {
+      if (!appsCache) return;
+      if (appsCache.ts === 0) load();
+      else setData(appsCache.data);
+    });
+  }, [load]);
+
   return { data, loading, reload: load };
 }
 
@@ -89,6 +128,9 @@ export async function createApplication(values: TablesInsert<"applications">) {
     return null;
   }
   toast.success("Заявка создана");
+  // Inserts can't be optimistically patched without the joined ref
+  // labels (fuel_type / station / manager names) — force a refetch.
+  invalidateAppsCache();
   return data;
 }
 
@@ -99,6 +141,14 @@ export async function updateApplication(id: string, values: TablesUpdate<"applic
     toast.error(`Ошибка: ${error.message}`);
     return false;
   }
+  // Scalar fields can be patched optimistically; foreign-key columns
+  // (fuel_type_id / destination_station_id / assigned_manager_id) need
+  // a refetch to repopulate the joined label, otherwise the dialog
+  // shows the new id but the row still renders the old name. We patch
+  // scalars in place AND invalidate so the background reload picks up
+  // joined refs — best of both: instant feedback + correct labels.
+  patchAppCache(id, values as Partial<Application>);
+  invalidateAppsCache();
   return true;
 }
 
@@ -113,5 +163,6 @@ export async function toggleOrdered(id: string, currentValue: boolean) {
     return false;
   }
   toast.success(!currentValue ? "Заявка отмечена как заявлено" : "Заявка отмечена как не заявлено");
+  patchAppCache(id, { is_ordered: !currentValue });
   return true;
 }

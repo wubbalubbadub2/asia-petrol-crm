@@ -84,6 +84,33 @@ const REG_SELECT = `
 const registryCache = new Map<string, { data: ShipmentRecord[]; ts: number }>();
 const REGISTRY_TTL_MS = 60_000;
 
+// Pub-sub so a write from one tab/page propagates everywhere. The
+// inline-edit handlers on /registry already call `reload()` after each
+// updateRegistryEntry, but cross-page effects (a registry write should
+// also invalidate the deal-bundle rollups for the affected deal) need
+// this central hook.
+const registryListeners = new Set<() => void>();
+function notifyRegistry() {
+  for (const fn of registryListeners) fn();
+}
+function subscribeRegistry(fn: () => void): () => void {
+  registryListeners.add(fn);
+  return () => { registryListeners.delete(fn); };
+}
+
+// Invalidate every cached tab snapshot — both KG and KZ — and force
+// mounted useRegistry instances to refetch. Cheap because the page
+// already painted the cached snapshot; the refetch happens in
+// background and replaces silently.
+export function invalidateRegistry() {
+  for (const [k, entry] of registryCache) {
+    // Drop ts to 0 so the next mount refetches but the painted data
+    // stays visible during background reload.
+    registryCache.set(k, { ...entry, ts: 0 });
+  }
+  notifyRegistry();
+}
+
 export function useRegistry(type: "KG" | "KZ") {
   const cached = registryCache.get(type);
   const isFresh = !!cached && Date.now() - cached.ts < REGISTRY_TTL_MS;
@@ -150,10 +177,20 @@ export function useRegistry(type: "KG" | "KZ") {
 
   useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
+  // External-mutation listener: any write below (or from another page
+  // editing the same shipments) bumps the registry pub-sub and we
+  // refetch in background. The cached snapshot stays painted until the
+  // new rows land.
+  useEffect(() => {
+    return subscribeRegistry(() => { load(); });
+  }, [load]);
+
   return { data, loading, reload: load };
 }
 
 import type { TablesInsert, TablesUpdate } from "@/lib/types/database";
+import { invalidateDealBundle } from "./use-deal-bundle";
+import { invalidateAllDealsLists, invalidateDeal } from "./use-deals";
 
 // Migration 00072 added supplier_appendix / buyer_appendix on
 // shipment_registry. Until the generated database.ts is regenerated,
@@ -185,11 +222,30 @@ export async function createRegistryEntry(values: RegistryInsert) {
     return null;
   }
   toast.success("Запись добавлена в реестр");
+  // Refresh every consumer that reads from these caches. The insert
+  // affects: registry list (both tabs — same shipment_registry table),
+  // deal bundle rollups (trigger updates deals.* totals), deals list
+  // (shipped totals get denormalized onto the deals row).
+  invalidateRegistry();
+  if (data?.deal_id) {
+    invalidateDealBundle(data.deal_id);
+    invalidateDeal(data.deal_id);
+  }
+  invalidateAllDealsLists();
   return data;
 }
 
 export async function updateRegistryEntry(id: string, values: RegistryUpdate) {
   const supabase = createClient();
+  // Read deal_id from the row BEFORE the update so the cross-cache
+  // invalidation knows which deal bundle / deal row to refresh. We do
+  // the read once up front rather than after the update to avoid an
+  // extra round-trip; deal_id changes are rare.
+  const { data: existingRow } = await supabase
+    .from("shipment_registry")
+    .select("deal_id")
+    .eq("id", id)
+    .maybeSingle();
   const { error } = await supabase
     .from("shipment_registry")
     .update(values)
@@ -198,6 +254,15 @@ export async function updateRegistryEntry(id: string, values: RegistryUpdate) {
     toast.error(`Ошибка: ${error.message}`);
     throw error;
   }
+  invalidateRegistry();
+  // Invalidate both old and new deal if deal_id moved.
+  const oldDealId = existingRow?.deal_id ?? null;
+  const newDealId = (values as Record<string, unknown>).deal_id as string | undefined;
+  for (const dId of new Set([oldDealId, newDealId].filter(Boolean) as string[])) {
+    invalidateDealBundle(dId);
+    invalidateDeal(dId);
+  }
+  invalidateAllDealsLists();
   return true;
 }
 
@@ -213,5 +278,15 @@ export async function bulkInsertRegistry(records: RegistryInsert[]) {
     return null;
   }
   toast.success(`Импортировано ${data?.length ?? 0} записей`);
+  invalidateRegistry();
+  const dealIds = new Set<string>();
+  for (const r of (data ?? []) as { deal_id?: string | null }[]) {
+    if (r.deal_id) dealIds.add(r.deal_id);
+  }
+  for (const dId of dealIds) {
+    invalidateDealBundle(dId);
+    invalidateDeal(dId);
+  }
+  invalidateAllDealsLists();
   return data;
 }

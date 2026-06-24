@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Deal } from "./use-deals";
+import { registerBundleInvalidator } from "./use-deals";
 import type { DealSupplierLine, DealBuyerLine, LineRollups, LineRollup } from "./use-deal-lines";
 import type { ActivityMessage } from "./use-deal-activity";
 
@@ -91,6 +92,27 @@ export function computeLineRollups(
 // памяти, пока фоновый fetch обновляет.
 const bundleCache = new Map<string, { data: DealBundle; ts: number }>();
 const BUNDLE_TTL_MS = 60_000;
+
+// Pub-sub so external mutations (registry edits, payments, attachments,
+// line edits) can force every mounted useDealBundle for the affected
+// deal to refetch — without it the deal-detail page kept showing the
+// stale rollups / lines / attachments until a manual page refresh.
+const bundleListeners = new Map<string, Set<() => void>>();
+function notifyBundle(dealId: string) {
+  const ls = bundleListeners.get(dealId);
+  if (ls) for (const fn of ls) fn();
+}
+function subscribeBundle(dealId: string, fn: () => void): () => void {
+  let ls = bundleListeners.get(dealId);
+  if (!ls) { ls = new Set(); bundleListeners.set(dealId, ls); }
+  ls.add(fn);
+  return () => {
+    const set = bundleListeners.get(dealId);
+    if (!set) return;
+    set.delete(fn);
+    if (set.size === 0) bundleListeners.delete(dealId);
+  };
+}
 
 type BundleRpcShape = {
   deal: Record<string, unknown> | null;
@@ -180,6 +202,26 @@ export function useDealBundle(dealId: string | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
+  // Subscribe to invalidate/patch events for this dealId. After a
+  // mutation elsewhere (updateDeal, deal-payments insert, registry
+  // edit…) the cache entry was either dropped or patched; either way we
+  // either refetch or repaint from the new snapshot. Without this the
+  // deal-detail page stayed stuck on its pre-edit rollups/lines until a
+  // page refresh — that's the operator-reported staleness.
+  useEffect(() => {
+    if (!dealId) return;
+    return subscribeBundle(dealId, () => {
+      const entry = bundleCache.get(dealId);
+      if (entry) {
+        // Optimistic — paint patched snapshot synchronously.
+        setData(entry.data);
+      } else {
+        // Hard invalidate — refetch.
+        load();
+      }
+    });
+  }, [dealId, load]);
+
   // Точечные перезагрузки — у каждой секции свой reload-колбэк, чтобы
   // page.tsx мог обновить, например, только линии после правки variant.
   // Самый тяжёлый round-trip всё ещё bundle reload — но он же
@@ -204,7 +246,32 @@ export function useDealBundle(dealId: string | null) {
 // Экспорт для тестов / других потребителей.
 export function invalidateDealBundle(dealId: string) {
   bundleCache.delete(dealId);
+  notifyBundle(dealId);
 }
+
+// Optimistic in-place patch of the cached bundle's `deal` so the
+// deal-detail page paints the new value instantly. Mostly used by
+// updateDeal via the registerBundleInvalidator hook: the bundle drops
+// entirely (so trigger-recomputed columns refetch), but if a caller
+// only wants to nudge a single field without forcing a network blip,
+// they can use this helper.
+export function patchDealBundleField(dealId: string, patch: Partial<Deal>) {
+  const entry = bundleCache.get(dealId);
+  if (!entry || !entry.data.deal) return;
+  const merged: DealBundle = {
+    ...entry.data,
+    deal: { ...entry.data.deal, ...patch },
+  };
+  bundleCache.set(dealId, { data: merged, ts: entry.ts });
+  notifyBundle(dealId);
+}
+
+// Hooked once at module load. When updateDeal lands a write in
+// use-deals.ts, the bundle for that deal is invalidated AND every
+// mounted useDealBundle for that id refetches — picking up trigger-
+// recomputed columns (supplier_balance, buyer_debt, line rollups…)
+// without a page reload.
+registerBundleInvalidator(invalidateDealBundle);
 
 // ────────────────────────────────────────────────────────────────────
 // Realtime activity layer.

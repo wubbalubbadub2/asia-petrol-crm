@@ -30,7 +30,7 @@ import { SupplierLinesEditor, BuyerLinesEditor } from "@/components/deals/deal-l
 // Single-RPC bundle хук, заменяющий useDeal / useDealSupplierLines /
 // useDealBuyerLines / useDealLineRollups / useDealActivity + четыре
 // DocumentsSection fetch'а в одном round-trip (migration 00093).
-import { useDealBundle, useDealActivityLive } from "@/lib/hooks/use-deal-bundle";
+import { useDealBundle, useDealActivityLive, invalidateDealBundle } from "@/lib/hooks/use-deal-bundle";
 import type { ActivityMessage } from "@/lib/hooks/use-deal-activity";
 
 const ATTACHMENT_CATEGORIES = [
@@ -1112,6 +1112,10 @@ function DocumentsSection({ dealId, section, title, initialAttachments }: {
     } else {
       toast.success(`Файл "${file.name}" прикреплен`);
       await loadAttachments();
+      // Bundle carries attachments per-section — drop it so other parts
+      // of the page (counters, other sections sharing the same bundle)
+      // refetch with the new row instead of staying stuck on the seed.
+      invalidateDealBundle(dealId);
     }
 
     setUploading(false);
@@ -1125,6 +1129,7 @@ function DocumentsSection({ dealId, section, title, initialAttachments }: {
     } else {
       toast.success("Файл удален");
       await loadAttachments();
+      invalidateDealBundle(dealId);
     }
   }
 
@@ -1181,6 +1186,7 @@ function DocumentsSection({ dealId, section, title, initialAttachments }: {
       if (dbErr) { toast.error(`Сохранение не удалось: ${dbErr.message}`); return; }
       toast.success("Файл перезалит");
       await loadAttachments();
+      invalidateDealBundle(dealId);
     };
     input.click();
   }

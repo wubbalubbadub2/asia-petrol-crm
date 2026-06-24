@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDeals, type Deal } from "@/lib/hooks/use-deals";
+import { useDeals, type Deal, invalidateDeal, invalidateAllDealsLists } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
@@ -206,6 +206,13 @@ export default function DealsPage() {
     const { error } = await supabase.from("deals").delete().eq("id", deal.id);
     if (error) { toast.error(`Ошибка удаления: ${error.message}`); return; }
     toast.success(`Сделка ${deal.deal_code} удалена`);
+    // Drop the per-id snapshot — the next /deals/[id] visit would
+    // otherwise paint the just-deleted row from cache before catching
+    // its missing-FK 404. invalidateDeal also notifies every mounted
+    // useDeals subscriber so the row disappears from the passport list
+    // immediately.
+    invalidateDeal(deal.id);
+    invalidateAllDealsLists();
     reload();
   }
 

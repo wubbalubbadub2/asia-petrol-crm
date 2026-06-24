@@ -408,6 +408,105 @@ const DEALS_TTL_MS = 60_000;
 const dealByIdCache = new Map<string, { data: Deal; ts: number }>();
 const DEAL_TTL_MS = 60_000;
 
+// ── Pub-sub for cache updates ───────────────────────────────────────
+// Mutations (updateDeal, line edits, registry edits…) need to push a
+// re-render into every mounted useDeals / useDeal that currently reflects
+// the affected row — otherwise the operator has to refresh the page
+// before the new value paints. (Operator complaint 2026-06-24.)
+//
+// We use a single revision counter per logical cache slice. Subscribers
+// bump local state when the revision moves; the actual patched data lives
+// in the module-level Maps above, so the new render reads the freshest
+// snapshot synchronously.
+type Listener = () => void;
+const dealsListeners = new Set<Listener>();
+const dealByIdListeners = new Map<string, Set<Listener>>();
+
+function notifyDeals() {
+  for (const fn of dealsListeners) fn();
+}
+function notifyDeal(id: string) {
+  const ls = dealByIdListeners.get(id);
+  if (ls) for (const fn of ls) fn();
+}
+function subscribeDeals(fn: Listener): () => void {
+  dealsListeners.add(fn);
+  return () => { dealsListeners.delete(fn); };
+}
+function subscribeDeal(id: string, fn: Listener): () => void {
+  let ls = dealByIdListeners.get(id);
+  if (!ls) { ls = new Set(); dealByIdListeners.set(id, ls); }
+  ls.add(fn);
+  return () => {
+    const set = dealByIdListeners.get(id);
+    if (!set) return;
+    set.delete(fn);
+    if (set.size === 0) dealByIdListeners.delete(id);
+  };
+}
+
+// Pluggable cross-cache invalidator. use-deal-bundle.ts registers itself
+// here at module load so use-deals.ts doesn't need to import it (would
+// create a cycle). When updateDeal lands, the bundle cache for that
+// deal is dropped too so the next deal-detail visit refetches.
+let bundleInvalidator: ((dealId: string) => void) | null = null;
+export function registerBundleInvalidator(fn: (dealId: string) => void) {
+  bundleInvalidator = fn;
+}
+
+// Optimistically patch the local Deal caches without a round-trip and
+// notify every mounted subscriber. Called by updateDeal after a
+// successful DB write; also safe to call externally if a mutation has
+// already persisted by another path.
+export function applyDealPatch(id: string, patch: Record<string, unknown>) {
+  const now = Date.now();
+  const existing = dealByIdCache.get(id);
+  if (existing) {
+    const merged = { ...existing.data, ...(patch as Partial<Deal>) } as Deal;
+    dealByIdCache.set(id, { data: merged, ts: now });
+  }
+  // Patch every dealsCache entry that contains this row. The list
+  // payload carries a subset of fields — Object.assign on the row
+  // mutates the same object reference inside the cached array.
+  for (const [, entry] of dealsCache) {
+    if (!entry.data) continue;
+    const idx = entry.data.findIndex((d) => d.id === id);
+    if (idx === -1) continue;
+    entry.data[idx] = { ...entry.data[idx], ...(patch as Partial<Deal>) };
+  }
+  // Bundle cache (deal-detail page) carries a richer snapshot. Drop it
+  // so the next visit refetches with the trigger-recomputed derived
+  // columns (supplier_balance, buyer_debt, etc).
+  bundleInvalidator?.(id);
+  notifyDeal(id);
+  notifyDeals();
+}
+
+// Invalidate-only escape hatch. Forces the next read for this id to
+// hit the network. Used after destructive ops or when the patch shape
+// is unknown (e.g. trigger recomputed many columns server-side).
+export function invalidateDeal(id: string) {
+  dealByIdCache.delete(id);
+  for (const [key, entry] of dealsCache) {
+    // Stale-flag the entry — keep painted data, force background
+    // revalidate on next mount.
+    dealsCache.set(key, { ...entry, ts: 0 });
+  }
+  bundleInvalidator?.(id);
+  notifyDeal(id);
+  notifyDeals();
+}
+
+// Used by use-registry / use-deal-lines after a write so the deals
+// list's denormalized counters (supplier_lines_count, shipped totals
+// recomputed by triggers) get refreshed on next read.
+export function invalidateAllDealsLists() {
+  for (const [key, entry] of dealsCache) {
+    dealsCache.set(key, { ...entry, ts: 0 });
+  }
+  notifyDeals();
+}
+
 // Run the actual paged fetch and write the result into dealsCache.
 // Factored out so prefetchDeals and useDeals can share a single promise
 // via the cache's `promise` slot (true single-flight dedup).
@@ -552,6 +651,25 @@ export function useDeals(filters?: DealFilters) {
   // navigation between sibling pages.
   useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
+  // Subscribe to global mutations. After applyDealPatch / invalidateDeal
+  // bumps the cache, we either repaint optimistically from the patched
+  // cache snapshot or kick a fresh load if the entry was staled.
+  useEffect(() => {
+    return subscribeDeals(() => {
+      const entry = dealsCache.get(cacheKey);
+      if (!entry) return;
+      // Stale-flagged (ts=0) → trigger a refetch. Patched entries keep
+      // their ts and just need a re-render with the mutated array
+      // reference (Array.from forces React to see a new identity).
+      if (entry.data && entry.ts === 0) {
+        load();
+      } else if (entry.data) {
+        setData(Array.from(entry.data));
+        setTotalCount(entry.total);
+      }
+    });
+  }, [cacheKey, load]);
+
   return { data, totalCount, loading, reload: load };
 }
 
@@ -594,6 +712,22 @@ export function useDeal(id: string | null) {
 
   useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
+  // Subscribe to global patches/invalidations for this specific id.
+  useEffect(() => {
+    if (!id) return;
+    return subscribeDeal(id, () => {
+      const entry = dealByIdCache.get(id);
+      if (entry) {
+        // Optimistic — paint from the patched snapshot immediately.
+        setData({ ...entry.data });
+      } else {
+        // Entry was wiped (delete or invalidate without a patch). Refetch
+        // so derived columns coming back from the DB trigger are picked up.
+        load();
+      }
+    });
+  }, [id, load]);
+
   return { data, loading, reload: load };
 }
 
@@ -628,6 +762,9 @@ export async function createDeal(values: Omit<TablesInsert<"deals">, "deal_numbe
   toast.success(
     `Сделка ${dealType}/${String(year % 100).padStart(2, "0")}/${String(dealNumber).padStart(3, "0")} создана`,
   );
+  // The new row isn't in any list cache yet — invalidate so a navigation
+  // to /deals immediately refetches and shows it.
+  invalidateAllDealsLists();
   return data;
 }
 
@@ -638,5 +775,11 @@ export async function updateDeal(id: string, values: Record<string, unknown>) {
     toast.error(`Ошибка сохранения: ${error.message}`);
     throw error;
   }
+  // Optimistic propagation: every mounted useDeals / useDeal subscriber
+  // sees the patched value without a manual refresh. The bundle cache
+  // for this deal is also dropped (registered invalidator) so the next
+  // /deals/[id] visit re-fetches and picks up trigger-recomputed derived
+  // columns (supplier_balance, buyer_debt, preliminary_amount, etc).
+  applyDealPatch(id, values);
   return true;
 }

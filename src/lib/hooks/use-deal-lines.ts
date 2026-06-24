@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { invalidateDealBundle } from "./use-deal-bundle";
+import { invalidateDeal, invalidateAllDealsLists } from "./use-deals";
 
 export type DealLineSide = "supplier" | "buyer";
 
@@ -85,11 +87,55 @@ const BUYER_SELECT = `
   destination_station:stations!destination_station_id(name)
 `;
 
+// Per-line shipping rollup types — hoisted up here so the cache map
+// (declared just below) can use them without a forward-reference TS
+// error from invalidateLines().
+export type LineRollup = { volume: number; amount: number };
+export type LineRollups = {
+  supplier: Record<string, LineRollup>;
+  buyer:    Record<string, LineRollup>;
+};
+
 // Stale-while-revalidate caches keyed by dealId. Same deal opened twice
 // in a session paints the variant cards instantly.
 const supplierLinesCache = new Map<string, { data: DealSupplierLine[]; ts: number }>();
 const buyerLinesCache = new Map<string, { data: DealBuyerLine[]; ts: number }>();
+// Cache for the per-line aggregates — same TTL pattern as the variant
+// queries above. Hoisted alongside the line caches so invalidateLines()
+// can drop the rollup snapshot in lockstep.
+const lineRollupsCache = new Map<string, { data: LineRollups; ts: number }>();
 const LINES_TTL_MS = 60_000;
+
+// Pub-sub so a write from deal-lines-editor invalidates every mounted
+// reader (the deal-detail page uses bundle, but Excel export and any
+// future direct-consumer path still use these hooks). Keyed by dealId.
+const linesListeners = new Map<string, Set<() => void>>();
+function notifyLines(dealId: string) {
+  const ls = linesListeners.get(dealId);
+  if (ls) for (const fn of ls) fn();
+}
+function subscribeLines(dealId: string, fn: () => void): () => void {
+  let ls = linesListeners.get(dealId);
+  if (!ls) { ls = new Set(); linesListeners.set(dealId, ls); }
+  ls.add(fn);
+  return () => {
+    const set = linesListeners.get(dealId);
+    if (!set) return;
+    set.delete(fn);
+    if (set.size === 0) linesListeners.delete(dealId);
+  };
+}
+
+// Drop both side caches for a deal and bump subscribers. Also kicks
+// the bundle and the deals list — line edits feed back into deal-level
+// rollups (supplier_lines_count / buyer_lines_count + per-line price
+// snapshots used by the Excel export).
+function invalidateLines(dealId: string) {
+  supplierLinesCache.delete(dealId);
+  buyerLinesCache.delete(dealId);
+  lineRollupsCache.delete(dealId);
+  notifyLines(dealId);
+}
 
 export function useDealSupplierLines(dealId: string | null) {
   const cached = dealId ? supplierLinesCache.get(dealId) : null;
@@ -120,6 +166,11 @@ export function useDealSupplierLines(dealId: string | null) {
   }, [dealId]);
 
   useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  // Refetch on any mutation against this deal's lines (or rollups).
+  useEffect(() => {
+    if (!dealId) return;
+    return subscribeLines(dealId, () => { load(); });
+  }, [dealId, load]);
   return { data, loading, reload: load };
 }
 
@@ -148,19 +199,49 @@ export function useDealBuyerLines(dealId: string | null) {
   }, [dealId]);
 
   useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  useEffect(() => {
+    if (!dealId) return;
+    return subscribeLines(dealId, () => { load(); });
+  }, [dealId, load]);
   return { data, loading, reload: load };
+}
+
+// Helper — read deal_id off a line row so the post-write invalidation
+// knows which bundle / deal-list entry to refresh. Cheap: only the
+// single deal_id column comes back.
+async function lineDealId(side: "supplier" | "buyer", id: string): Promise<string | null> {
+  const sb = createClient();
+  const table = side === "supplier" ? "deal_supplier_lines" : "deal_buyer_lines";
+  const { data } = await sb.from(table).select("deal_id").eq("id", id).maybeSingle();
+  return (data?.deal_id as string | undefined) ?? null;
+}
+
+function bumpAfterLineWrite(dealId: string | null) {
+  if (!dealId) return;
+  invalidateLines(dealId);
+  invalidateDealBundle(dealId);
+  // The lines table has AFTER INSERT/UPDATE/DELETE triggers that
+  // recompute supplier_lines_count / buyer_lines_count on the deal row
+  // (migration 00092) — drop the deals snapshot so the next read picks
+  // up the new counter.
+  invalidateDeal(dealId);
+  invalidateAllDealsLists();
 }
 
 export async function updateSupplierLine(id: string, patch: Record<string, unknown>) {
   const sb = createClient();
+  const dealId = await lineDealId("supplier", id);
   const { error } = await sb.from("deal_supplier_lines").update(patch).eq("id", id);
   if (error) { toast.error(`Ошибка: ${error.message}`); throw error; }
+  bumpAfterLineWrite(dealId);
 }
 
 export async function updateBuyerLine(id: string, patch: Record<string, unknown>) {
   const sb = createClient();
+  const dealId = await lineDealId("buyer", id);
   const { error } = await sb.from("deal_buyer_lines").update(patch).eq("id", id);
   if (error) { toast.error(`Ошибка: ${error.message}`); throw error; }
+  bumpAfterLineWrite(dealId);
 }
 
 // Calls the recompute_line_shipment_prices(line_id, side) RPC
@@ -190,6 +271,7 @@ export async function addSupplierLine(dealId: string, position: number) {
     .select("id")
     .single();
   if (error) { toast.error(`Ошибка: ${error.message}`); throw error; }
+  bumpAfterLineWrite(dealId);
   return data?.id as string;
 }
 
@@ -200,11 +282,13 @@ export async function addBuyerLine(dealId: string, position: number) {
     .select("id")
     .single();
   if (error) { toast.error(`Ошибка: ${error.message}`); throw error; }
+  bumpAfterLineWrite(dealId);
   return data?.id as string;
 }
 
 export async function deleteSupplierLine(id: string) {
   const sb = createClient();
+  const dealId = await lineDealId("supplier", id);
   const { error } = await sb.from("deal_supplier_lines").delete().eq("id", id);
   if (error) {
     if (error.code === "23503") {
@@ -214,10 +298,12 @@ export async function deleteSupplierLine(id: string) {
     }
     throw error;
   }
+  bumpAfterLineWrite(dealId);
 }
 
 export async function deleteBuyerLine(id: string) {
   const sb = createClient();
+  const dealId = await lineDealId("buyer", id);
   const { error } = await sb.from("deal_buyer_lines").delete().eq("id", id);
   if (error) {
     if (error.code === "23503") {
@@ -227,20 +313,13 @@ export async function deleteBuyerLine(id: string) {
     }
     throw error;
   }
+  bumpAfterLineWrite(dealId);
 }
 
-// Per-line shipping rollup: how much volume + amount have been attributed
-// to each variant. Computed by joining shipment_registry (volumes, line_id)
-// with deal_shipment_prices (amounts) — both grouped by line_id per side.
-export type LineRollup = { volume: number; amount: number };
-export type LineRollups = {
-  supplier: Record<string, LineRollup>;
-  buyer:    Record<string, LineRollup>;
-};
-
-// Cache for the per-line aggregates — same TTL pattern as the variant
-// queries above.
-const lineRollupsCache = new Map<string, { data: LineRollups; ts: number }>();
+// lineRollupsCache + LineRollup / LineRollups types are declared near
+// the top of this file (hoisted so invalidateLines can drop the rollup
+// snapshot too). Keeping a re-export of the public types here so the
+// public surface is stable for callers.
 
 export function useDealLineRollups(dealId: string | null) {
   const cached = dealId ? lineRollupsCache.get(dealId) : null;
@@ -318,5 +397,9 @@ export function useDealLineRollups(dealId: string | null) {
   }, [dealId]);
 
   useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  useEffect(() => {
+    if (!dealId) return;
+    return subscribeLines(dealId, () => { load(); });
+  }, [dealId, load]);
   return { data, loading, reload: load };
 }
