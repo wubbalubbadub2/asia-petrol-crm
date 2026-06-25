@@ -375,7 +375,7 @@ function PaymentBreakdownCell({
               if (e.key === "Escape") { setEditing(false); setOpen(false); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-16 border border-amber-400 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50 focus:outline-none focus:border-amber-500"
+            className="w-16 border border-amber-400 rounded px-1 py-0 text-[12px] font-mono text-right bg-amber-50 focus:outline-none focus:border-amber-500"
           />
         ) : (
           formatNum(shown)
@@ -426,7 +426,7 @@ function EditableNumCell({ value, dealId, field }: {
   const isVol = VOLUME_FIELDS.has(field);
   if (!editing) return (
     <button onClick={() => { setLocalVal(shown?.toString() ?? ""); setEditing(true); }}
-      className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px]">
+      className="w-full text-right font-mono text-[12px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px]">
       {isVol ? formatVol(shown) : formatNum(shown)}
     </button>
   );
@@ -435,7 +435,7 @@ function EditableNumCell({ value, dealId, field }: {
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const num = localVal.trim() === "" ? null : parseFloat(localVal); if (num !== value) { pendingVal.current = num; updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none focus:border-amber-500" />
+      className="w-16 border border-amber-300 rounded px-1 py-0 text-[12px] font-mono text-right bg-amber-50/50 focus:outline-none focus:border-amber-500" />
   );
 }
 
@@ -450,7 +450,7 @@ function EditableTextCell({ value, dealId, field, wide = false }: {
   const maxW = wide ? "max-w-[140px]" : "max-w-[100px]";
   if (!editing) return (
     <button onClick={() => { setLocalVal(shown ?? ""); setEditing(true); }}
-      className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] truncate ${maxW}`}>
+      className={`w-full text-left text-[12px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] truncate ${maxW}`}>
       {shown ?? ""}
     </button>
   );
@@ -458,7 +458,7 @@ function EditableTextCell({ value, dealId, field, wide = false }: {
     <input autoFocus value={localVal} onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const nv = localVal || null; if (nv !== (value ?? null)) { pendingVal.current = nv; updateDeal(dealId, { [field]: nv }).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
-      className={`${wide ? "w-32" : "w-20"} border border-amber-400 rounded px-1 py-0 text-[11px] bg-amber-50 focus:outline-none`} />
+      className={`${wide ? "w-32" : "w-20"} border border-amber-400 rounded px-1 py-0 text-[12px] bg-amber-50 focus:outline-none`} />
   );
 }
 
@@ -502,7 +502,7 @@ function EditableSelectCell({ value, displayLabel, dealId, field, options, color
             .catch(() => { pendingVal.current = undefined; });
         }
       }}
-      className={`w-full max-w-[140px] text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-pointer min-h-[18px] appearance-none bg-transparent border-0 focus:outline-none truncate ${colorClass}`}
+      className={`w-full max-w-[140px] text-left text-[12px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-pointer min-h-[18px] appearance-none bg-transparent border-0 focus:outline-none truncate ${colorClass}`}
       title={pendingLabel || undefined}
     >
       <option value="">—</option>
@@ -809,12 +809,12 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       </td>
 
       {/* Company groups — editable prices */}
-      <td className="border-r px-1 py-1 text-[10px] bg-purple-50/10 min-w-[140px]" colSpan={2}>
+      <td className="border-r px-1 py-1 text-[11px] bg-purple-50/10 min-w-[140px]" colSpan={2}>
         <div className="flex items-center gap-1 flex-wrap">
           {deal.deal_company_groups?.sort((a, b) => a.position - b.position).map((cg, idx) => (
             <span key={cg.id} className="inline-flex items-center gap-0.5">
               {idx > 0 && <span className="text-stone-300 mx-0.5">→</span>}
-              <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700 whitespace-nowrap inline-flex items-center gap-1">
+              <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 whitespace-nowrap inline-flex items-center gap-1">
                 <ContractRefPopover
                   cgId={cg.id}
                   label={cgLabels.get(cg.company_group_id) ?? cg.company_group?.name ?? ""}
@@ -1072,7 +1072,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             cell — Chrome silently drops the parent's sticky-top from
             rows that contain a sticky-left child. Per-row sticky keeps
             both axes independent and reliable. */}
-        <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
+        {/*
+          Operator request 2026-06-25: «увеличить шрифт цифр и текстов,
+          но размер ячеек не менять». fontSize bumped 11→12; lineHeight
+          pinned to 14px so row heights stay where the cell paddings
+          put them (min-h-[18px] on inner cells locks the rest).
+        */}
+        <table className="w-max border-collapse" style={{ fontSize: "12px", lineHeight: "14px" }}>
           <thead>
             {/* Sticky-top per-cell, NOT per-<tr>/<thead> — Chrome's
                 sticky on <tr> conflicts with sticky-left on child cells.
@@ -1083,11 +1089,11 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 merge into one block (border-b is on row 2 only, marking
                 the boundary with the body). */}
             <tr className="bg-stone-100">
-              <th colSpan={5} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Сделка</th>
-              <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50">Поставщик</th>
-              <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50">Группы компании</th>
-              <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[10px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50">Покупатель</th>
-              <th colSpan={9} className="sticky top-0 z-20 h-7 px-2 text-center text-[10px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Логистика</th>
+              <th colSpan={5} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Сделка</th>
+              <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50">Поставщик</th>
+              <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50">Группы компании</th>
+              <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50">Покупатель</th>
+              <th colSpan={9} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Логистика</th>
             </tr>
             <tr className="bg-stone-50 border-b">
               <th className="sticky top-7 left-0 z-30 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
@@ -1263,7 +1269,7 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
   return (
     <tr className="border-t-2 border-stone-300">
       {/* Сделка (5 cols): label spans them */}
-      <td colSpan={5} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[11px] font-semibold text-stone-600 uppercase tracking-wider">
+      <td colSpan={5} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
       </td>
       {/* Поставщик (10 cols): name/contract/basis blank + numeric sums */}
