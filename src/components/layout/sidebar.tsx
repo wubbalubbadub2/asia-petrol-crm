@@ -35,11 +35,13 @@ function NavLinkBody({
 
   return (
     <span
+      // overflow-hidden + whitespace-nowrap on labels — without this,
+      // labels would wrap during the width transition the moment the
+      // sidebar passes through narrow intermediate widths («Реестр
+      // отгрузки» visibly broke into 2 lines mid-expand).
       className={cn(
-        "group/body flex items-center rounded-lg text-[13px] font-medium transition-all duration-200",
+        "group/body flex items-center rounded-lg text-[13px] font-medium transition-all duration-200 overflow-hidden",
         collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
-        // Pending overrides active styling so the «armed» feedback
-        // is unmistakable on the currently-active link too.
         pending
           ? "bg-amber-500/25 text-amber-300"
           : isActive
@@ -55,11 +57,11 @@ function NavLinkBody({
             : "text-slate-500 group-hover/body:text-slate-300",
         )}
       />
-      {!collapsed && <span>{label}</span>}
+      {!collapsed && <span className="whitespace-nowrap">{label}</span>}
       {!collapsed && (pending ? (
-        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+        <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 animate-pulse" />
       ) : isActive ? (
-        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />
+        <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
       ) : null)}
     </span>
   );
@@ -136,31 +138,39 @@ export function Sidebar({
           collapsed ? "w-[56px]" : "w-[240px]",
         )}
       >
-        {/* Logo + collapse toggle */}
+        {/* Header — logo + title (expanded only) + toggle button.
+            Toggle stays in the SAME vertical position in both states
+            (top of the sidebar, right side of the header strip when
+            expanded, centered when collapsed). Logo+title disappear
+            in collapsed mode to make room for the toggle. */}
         <div className={cn(
-          "flex h-14 items-center border-b border-slate-800/50",
+          "flex h-14 items-center border-b border-slate-800/50 overflow-hidden",
           collapsed ? "justify-center px-2" : "gap-3 px-5",
         )}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/20">
-            <Fuel className="h-4 w-4 text-white" />
-          </div>
           {!collapsed && (
-            <span
-              className="flex-1 text-[15px] font-bold text-white tracking-tight truncate"
-              style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
-            >
-              Singularity Trading
-            </span>
+            <>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/20">
+                <Fuel className="h-4 w-4 text-white" />
+              </div>
+              <span
+                className="flex-1 text-[15px] font-bold text-white tracking-tight whitespace-nowrap"
+                style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
+              >
+                Singularity Trading
+              </span>
+            </>
           )}
-          {!collapsed && onToggle && (
+          {onToggle && (
             <button
               type="button"
               onClick={onToggle}
-              aria-label="Свернуть меню"
-              title="Свернуть (⌘/Ctrl+B)"
-              className="rounded p-1 text-slate-500 hover:bg-white/5 hover:text-slate-200 transition-colors"
+              aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+              title={collapsed ? "Развернуть (⌘/Ctrl+B)" : "Свернуть (⌘/Ctrl+B)"}
+              className="shrink-0 rounded p-1 text-slate-500 hover:bg-white/5 hover:text-slate-200 transition-colors"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              {collapsed
+                ? <PanelLeftOpen className="h-4 w-4" />
+                : <PanelLeftClose className="h-4 w-4" />}
             </button>
           )}
         </div>
@@ -187,22 +197,15 @@ export function Sidebar({
           ))}
         </div>
 
-        {/* Footer — version line, or expand button when collapsed */}
-        <div className={cn("border-t border-slate-800/50", collapsed ? "p-2" : "px-5 py-3")}>
-          {collapsed && onToggle ? (
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-label="Развернуть меню"
-              title="Развернуть (⌘/Ctrl+B)"
-              className="flex w-full items-center justify-center rounded p-1.5 text-slate-500 hover:bg-white/5 hover:text-slate-200 transition-colors"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          ) : (
+        {/* Footer — version line only (toggle lives in the header
+            so the click target stays in one vertical spot regardless
+            of collapsed state). Hidden when collapsed to avoid extra
+            chrome at narrow widths. */}
+        {!collapsed && (
+          <div className="border-t border-slate-800/50 px-5 py-3">
             <p className="text-[10px] text-slate-600">v0.1.0</p>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
     </>
   );
