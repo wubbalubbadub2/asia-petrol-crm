@@ -583,12 +583,45 @@ function isOsooOrSingularityGroup(g: { name?: string | null; full_name?: string 
   );
 }
 
+// Operator 2026-06-25 whitelist: deals whose chain has BOTH pos1 AND
+// pos2 occupied by a company from this list should ALSO default
+// «Продублировать отгрузку» to ON. Matching is case-insensitive and
+// ignores whitespace + hyphens (so «Дот-Трейдинг» / «Дот Трейдинг» /
+// «ДОТТРЕЙДИНГ» all match). Substring match against name + full_name
+// so the legal-form prefix («ОсОО», «ТОО», etc.) doesn't break it.
+// Same name on both positions also qualifies (operator confirmation:
+// answer #3 — Fuel Supply → Fuel Supply applies the rule too).
+const AUTO_DUP_WHITELIST_NORM = [
+  "caodl",
+  "fuelsupplycompany",
+  "geowax",
+  "kerneltradegmbh",
+  "singularitytradinggmbh",
+  "tengriweyfzco",
+  "аблинк",
+  "бетта",
+  "бренттрейдинг",
+  "доттрейдинг",
+  "ойлресурстрейдинг",
+  "ордомунайимпекс",
+];
+function _normalizeForWhitelist(s: string | null | undefined): string {
+  return (s ?? "").toLowerCase().replace(/[\s\-_.]+/g, "");
+}
+function isWhitelistGroup(g: { name?: string | null; full_name?: string | null } | null | undefined): boolean {
+  if (!g) return false;
+  const h = _normalizeForWhitelist(`${g.full_name ?? ""}${g.name ?? ""}`);
+  return AUTO_DUP_WHITELIST_NORM.some((w) => h.includes(w));
+}
+
 function shouldAutoDupShipment(deal: DRef | undefined | null): boolean {
   if (!deal?.deal_company_groups) return false;
   const pos1 = deal.deal_company_groups.find((g) => g.position === 1)?.company_group;
   const pos2 = deal.deal_company_groups.find((g) => g.position === 2)?.company_group;
   if (!pos1 || !pos2) return false;
-  return isOsooOrSingularityGroup(pos1) && isOsooOrSingularityGroup(pos2);
+  if (isOsooOrSingularityGroup(pos1) && isOsooOrSingularityGroup(pos2)) return true;
+  if (isWhitelistGroup(pos1) && isWhitelistGroup(pos2)) return true;
+  return false;
 }
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
