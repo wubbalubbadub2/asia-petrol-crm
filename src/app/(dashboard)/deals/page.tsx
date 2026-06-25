@@ -69,9 +69,16 @@ export default function DealsPage() {
   // nuqs defaults to history: "replace" so filter changes don't pollute
   // the back stack. Each filter has a string default of "" to keep the
   // existing SearchableSelect contract («"" means no filter»).
+  // throttleMs: 0 on every URL-state — operator 2026-06-25 hit a race
+  // where filter → workspace-tab switch → return showed stale filter.
+  // Default nuqs throttle is 50ms (Chrome) / 120-320ms (Safari); within
+  // that window window.location.search is the pre-change URL, so the
+  // workspace-tab capture stored the OLD filter. Flushing on every set
+  // closes the race.
+  const NUQS_INSTANT = { throttleMs: 0 } as const;
   const [activeTab, setActiveTabState] = useQueryState(
     "activeTab",
-    parseAsStringEnum<"list" | "kg" | "kz">(["list", "kg", "kz"]).withDefault("list"),
+    { ...parseAsStringEnum<"list" | "kg" | "kz">(["list", "kg", "kz"]).withDefault("list"), ...NUQS_INSTANT },
   );
   // Tab clicks must feel URGENT. Previously this was wrapped in
   // React.startTransition, which (combined with the heavy initial
@@ -91,15 +98,15 @@ export default function DealsPage() {
   }
   const [yearFilter, setYearFilter] = useQueryState(
     "yearFilter",
-    parseAsInteger.withDefault(new Date().getFullYear()),
+    { ...parseAsInteger.withDefault(new Date().getFullYear()), ...NUQS_INSTANT },
   );
-  const [search, setSearch] = useQueryState("search", { defaultValue: "" });
+  const [search, setSearch] = useQueryState("search", { defaultValue: "", ...NUQS_INSTANT });
   // 2026-06-22 — every dropdown filter is now MULTI-select (Excel-style:
   // OR within a filter, AND between filters). Operator complaint:
   // «нельзя когда фильтр ставишь выбирать несколько вариантов сразу?»
   // Empty array == no filter. parseAsArrayOf serializes to the URL as
   // ?supplierFilter=uuid1,uuid2 and omits the param when [].
-  const multi = parseAsArrayOf(parseAsString).withDefault([]);
+  const multi = { ...parseAsArrayOf(parseAsString).withDefault([]), ...NUQS_INSTANT };
   const [supplierFilter, setSupplierFilter] = useQueryState("supplierFilter", multi);
   const [buyerFilter, setBuyerFilter] = useQueryState("buyerFilter", multi);
   const [factoryFilter, setFactoryFilter] = useQueryState("factoryFilter", multi);

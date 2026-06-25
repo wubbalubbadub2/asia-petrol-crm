@@ -1239,7 +1239,16 @@ export default function RegistryPage() {
   // сбрасывался на KG, а URL-фильтр оставался → 0 совпадений». Now
   // both `tab` and the filters round-trip via the URL, so returning
   // lands the operator exactly where they were.
-  const [tabRaw, setTabRaw] = useQueryState("tab", { defaultValue: "kg" });
+  // throttleMs: 0 on every URL-state — operator 2026-06-25 still saw
+  // stale filter after rapid filter change → tab switch → return.
+  // nuqs default throttle is 50ms (Chrome) / 120-320ms (Safari); within
+  // that window window.location.search is still the pre-change URL, so
+  // the workspace-tab capture grabbed the OLD filter and stored it.
+  // Flushing immediately on each setState fixes the race; with
+  // shallow: true (nuqs default) every update is just a
+  // history.replaceState — cheap, no extra renders.
+  const NUQS_INSTANT = { throttleMs: 0 } as const;
+  const [tabRaw, setTabRaw] = useQueryState("tab", { defaultValue: "kg", ...NUQS_INSTANT });
   const tab: "kg" | "kz" = tabRaw === "kz" ? "kz" : "kg";
   const setTab = (next: "kg" | "kz") => { void setTabRaw(next === "kg" ? null : next); };
   const { data: records, loading, reload } = useRegistry(tab === "kg" ? "KG" : "KZ");
@@ -1267,7 +1276,7 @@ export default function RegistryPage() {
   // in `?expanded=KG/26/002,KZ/26/001`.
   const [expandedList, setExpandedList] = useQueryState(
     "expanded",
-    parseAsArrayOf(parseAsString).withDefault([]),
+    { ...parseAsArrayOf(parseAsString).withDefault([]), ...NUQS_INSTANT },
   );
   const expanded = useMemo(() => new Set(expandedList), [expandedList]);
   const setExpanded = (updater: (prev: Set<string>) => Set<string>) => {
@@ -1284,24 +1293,24 @@ export default function RegistryPage() {
   //      pattern as /deals page).
   //   2. URLs become shareable: /registry?forwarderFilter=…&columnFilters=…
   // history: "replace" (nuqs default) keeps the back stack clean.
-  const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", { defaultValue: "" });
-  const [dealFilter, setDealFilter] = useQueryState("dealFilter", { defaultValue: "" });
-  const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "" });
+  const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [dealFilter, setDealFilter] = useQueryState("dealFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "", ...NUQS_INSTANT });
   // Substring filters on wagon / waybill numbers — operator needs to
   // jump straight to a specific shipment without scrolling groups.
-  const [wagonFilter, setWagonFilter] = useQueryState("wagonFilter", { defaultValue: "" });
-  const [waybillFilter, setWaybillFilter] = useQueryState("waybillFilter", { defaultValue: "" });
+  const [wagonFilter, setWagonFilter] = useQueryState("wagonFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [waybillFilter, setWaybillFilter] = useQueryState("waybillFilter", { defaultValue: "", ...NUQS_INSTANT });
   // New: page-level month-of-shipment filter — separate from the
   // per-column funnel filter because the operator's primary
   // narrow-by axis is месяц отгрузки (client req 2026-06-18).
-  const [shipmentMonthFilter, setShipmentMonthFilter] = useQueryState("shipmentMonthFilter", { defaultValue: "" });
+  const [shipmentMonthFilter, setShipmentMonthFilter] = useQueryState("shipmentMonthFilter", { defaultValue: "", ...NUQS_INSTANT });
   // Per-column funnel filters — single map keyed by column name. Stored
   // as URL-encoded JSON so the operator can share a filtered view.
   // useDeferredValue isolates the heavy filter pass from the cmdk
   // popover keystrokes (~5000 shipments per registry).
   const [columnFilters, setColumnFilters] = useQueryState(
     "columnFilters",
-    parseAsJson<Record<string, string>>(validateColumnFilters).withDefault({}),
+    { ...parseAsJson<Record<string, string>>(validateColumnFilters).withDefault({}), ...NUQS_INSTANT },
   );
   const deferredColumnFilters = useDeferredValue(columnFilters);
   function setColumnFilter(col: ColFilterKey, value: string) {
