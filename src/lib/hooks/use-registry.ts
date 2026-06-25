@@ -125,23 +125,40 @@ export function useRegistry(type: "KG" | "KZ") {
   const currentTypeRef = useRef(type);
   useEffect(() => { currentTypeRef.current = type; }, [type]);
 
-  const load = useCallback(async () => {
+  // Coalesce concurrent loads — operator 2026-06-25: «AbortError:
+  // Lock broken by another request with the 'steal' option». After
+  // 4b9d517's pub-sub refactor, rapid mutations could trigger several
+  // load() calls in quick succession; Supabase's auth-refresh Web Lock
+  // gets stolen by the next call and the in-flight one rejects.
+  // Solution: serialise loads via inFlight + pending refs. While one
+  // load runs, additional invalidations just set the pending flag; on
+  // completion the load reruns once to pick up everything.
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef(false);
+
+  // Recognise the lock-contention error patterns Supabase emits when
+  // the auth-token refresh lock gets stolen. These are transient and
+  // safe to retry — surfacing them as red toasts to the operator is
+  // noise (the data is fine; the request just lost a race).
+  const isTransientLockError = (msg: string | undefined | null): boolean => {
+    if (!msg) return false;
+    return /aborterror|lock broken|'steal' option/i.test(msg);
+  };
+
+  const loadOnce = useCallback(async (): Promise<{ retryTransient: boolean }> => {
     const requestedType = type;
     // Two-step load: (1) HEAD with count:exact to learn the size,
-    // (2) fire every page in parallel. Sequential pagination used to
-    // serialize N round-trips (the Network tab showed 5 chunks each
-    // taking 2–7 s, blocking each other). Parallel = max(RTT) instead
-    // of sum(RTT). We still don't toggle loading=true on background
-    // revalidation — cached snapshot stays painted while we refresh.
+    // (2) fire every page in parallel.
     const pageSize = 1000;
     const head = await supabase
       .from("shipment_registry")
       .select("id", { count: "exact", head: true })
       .eq("registry_type", requestedType);
-    if (currentTypeRef.current !== requestedType) return;
+    if (currentTypeRef.current !== requestedType) return { retryTransient: false };
     if (head.error) {
+      if (isTransientLockError(head.error.message)) return { retryTransient: true };
       toast.error(`Ошибка загрузки реестра: ${head.error.message}`);
-      return;
+      return { retryTransient: false };
     }
     const total = head.count ?? 0;
     const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -150,18 +167,17 @@ export function useRegistry(type: "KG" | "KZ") {
         .from("shipment_registry")
         .select(REG_SELECT)
         .eq("registry_type", requestedType)
-        // NULLS FIRST so freshly created shipments without a date
-        // appear at the top until the user fills the date in. The
-        // secondary sort on created_at keeps that group newest-first.
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
         .range(i * pageSize, (i + 1) * pageSize - 1),
     );
     const settled = await Promise.all(requests);
-    if (currentTypeRef.current !== requestedType) return;
+    if (currentTypeRef.current !== requestedType) return { retryTransient: false };
     const all: ShipmentRecord[] = [];
+    let sawTransient = false;
     for (const r of settled) {
       if (r.error) {
+        if (isTransientLockError(r.error.message)) { sawTransient = true; continue; }
         toast.error(`Ошибка загрузки реестра: ${r.error.message}`);
         continue;
       }
@@ -170,10 +186,34 @@ export function useRegistry(type: "KG" | "KZ") {
       // unknown until `npm run types:db` is rerun.
       all.push(...((r.data ?? []) as unknown as ShipmentRecord[]));
     }
+    if (sawTransient && all.length === 0) return { retryTransient: true };
     setData(all);
     registryCache.set(requestedType, { data: all, ts: Date.now() });
     setLoading(false);
+    return { retryTransient: false };
   }, [supabase, type]);
+
+  // Public load: serialise concurrent calls + retry once on transient
+  // Supabase Web-Locks errors.
+  const load = useCallback(async () => {
+    if (inFlightRef.current) { pendingRef.current = true; return; }
+    inFlightRef.current = true;
+    try {
+      const result = await loadOnce();
+      if (result.retryTransient) {
+        await new Promise((r) => setTimeout(r, 250));
+        await loadOnce();
+      }
+    } finally {
+      inFlightRef.current = false;
+      if (pendingRef.current) {
+        pendingRef.current = false;
+        // Coalesced trailing call — picks up any invalidation that
+        // arrived mid-load.
+        void load();
+      }
+    }
+  }, [loadOnce]);
 
   useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
 
