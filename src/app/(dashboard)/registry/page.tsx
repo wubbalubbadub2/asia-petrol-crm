@@ -1175,7 +1175,14 @@ type ColFilterKey = (typeof COL_FILTER_KEYS)[number];
 
 // --- Main page ---
 export default function RegistryPage() {
-  const [tab, setTab] = useState<"kg" | "kz">("kg");
+  // Tab persisted in URL — operator 2026-06-25: «поставили фильтр в
+  // реестре KZ, перешли на другую вкладку workspace, вернулись — таб
+  // сбрасывался на KG, а URL-фильтр оставался → 0 совпадений». Now
+  // both `tab` and the filters round-trip via the URL, so returning
+  // lands the operator exactly where they were.
+  const [tabRaw, setTabRaw] = useQueryState("tab", { defaultValue: "kg" });
+  const tab: "kg" | "kz" = tabRaw === "kz" ? "kz" : "kg";
+  const setTab = (next: "kg" | "kz") => { void setTabRaw(next === "kg" ? null : next); };
   const { data: records, loading, reload } = useRegistry(tab === "kg" ? "KG" : "KZ");
   const showRegistryLoader = useDelayed(loading);
   const [showAdd, setShowAdd] = useState(false);
