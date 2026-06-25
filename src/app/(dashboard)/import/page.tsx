@@ -260,7 +260,7 @@ export default function ImportPage() {
                       className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
                       title="столбец shipment_volume"
                     >
-                      Исходящее СНТ
+                      Входящее СНТ
                     </button>
                     <button
                       type="button"
@@ -268,7 +268,7 @@ export default function ImportPage() {
                       className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
                       title="столбец loading_volume"
                     >
-                      Входящее СНТ
+                      Исходящее СНТ
                     </button>
                   </div>
                 </div>

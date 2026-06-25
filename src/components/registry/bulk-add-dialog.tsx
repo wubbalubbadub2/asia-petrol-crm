@@ -93,8 +93,8 @@ export function BulkAddDialog({
   // Paste + preview
   const [pasted, setPasted] = useState("");
   const [saving, setSaving] = useState(false);
-  // Volume column target: "ship" (Исходящее СНТ → shipment_volume) vs
-  // "load" (Входящее СНТ → loading_volume). Logisticians pick which
+  // Volume column target: "ship" (Входящее СНТ → shipment_volume) vs
+  // "load" (Исходящее СНТ → loading_volume). Logisticians pick which
   // side the pasted "Объём" column represents.
   const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
   // «Продублировать отгрузку» — when checked, the parsed volume goes
@@ -237,7 +237,7 @@ export function BulkAddDialog({
       currency: currency || null,
       wagon_number: p.wagon,
       // dupShipment writes the same volume into both sides — common for
-      // ОсОО↔Singularity wagons where Исходящее and Входящее СНТ
+      // ОсОО↔Singularity wagons where Исходящее and Исходящее СНТ
       // carry identical tonnage.
       shipment_volume: dupShipment ? p.volume : (volumeTarget === "ship" ? p.volume : null),
       loading_volume:  dupShipment ? p.volume : (volumeTarget === "load" ? p.volume : null),
@@ -369,7 +369,7 @@ export function BulkAddDialog({
                     className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
                     title="столбец shipment_volume"
                   >
-                    Исходящее СНТ
+                    Входящее СНТ
                   </button>
                   <button
                     type="button"
@@ -377,7 +377,7 @@ export function BulkAddDialog({
                     className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
                     title="столбец loading_volume"
                   >
-                    Входящее СНТ
+                    Исходящее СНТ
                   </button>
                 </div>
               </div>
@@ -410,7 +410,7 @@ export function BulkAddDialog({
                     <tr>
                       <th className="text-left px-2 py-1 w-8">#</th>
                       <th className="text-left px-2 py-1">№ вагона</th>
-                      <th className="text-right px-2 py-1">{dupShipment ? "Исх. + Вх. СНТ" : (volumeTarget === "ship" ? "Исходящее СНТ" : "Входящее СНТ")}</th>
+                      <th className="text-right px-2 py-1">{dupShipment ? "Исх. + Вх. СНТ" : (volumeTarget === "ship" ? "Входящее СНТ" : "Исходящее СНТ")}</th>
                       <th className="text-left px-2 py-1">Дата (стр.)</th>
                       <th className="text-left px-2 py-1">№ накладной</th>
                       <th className="text-left px-2 py-1">Ошибка</th>
