@@ -618,10 +618,17 @@ function shouldAutoDupShipment(deal: DRef | undefined | null): boolean {
   if (!deal?.deal_company_groups) return false;
   const pos1 = deal.deal_company_groups.find((g) => g.position === 1)?.company_group;
   const pos2 = deal.deal_company_groups.find((g) => g.position === 2)?.company_group;
-  if (!pos1 || !pos2) return false;
-  if (isOsooOrSingularityGroup(pos1) && isOsooOrSingularityGroup(pos2)) return true;
-  if (isWhitelistGroup(pos1) && isWhitelistGroup(pos2)) return true;
-  return false;
+  // Rule (operator clarification 2026-06-25):
+  //   • pos1 MUST match whitelist OR ОсОО — empty pos1 never triggers.
+  //   • pos2 may be either empty OR a matching company. A non-empty
+  //     pos2 with a NON-matching company explicitly DISQUALIFIES the
+  //     pair («не должны включать если есть компании не из whitelist
+  //     или осоо»).
+  if (!pos1) return false;
+  const pos1Matches = isOsooOrSingularityGroup(pos1) || isWhitelistGroup(pos1);
+  if (!pos1Matches) return false;
+  if (!pos2) return true; // pos2 empty + pos1 matches → дублируем
+  return isOsooOrSingularityGroup(pos2) || isWhitelistGroup(pos2);
 }
 
 function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {

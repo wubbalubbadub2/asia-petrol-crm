@@ -54,10 +54,15 @@ function _shouldAutoDupChain(
   pos1: { name?: string | null; full_name?: string | null } | null | undefined,
   pos2: { name?: string | null; full_name?: string | null } | null | undefined,
 ): boolean {
-  if (!pos1 || !pos2) return false;
-  if (_isOsooOrSingularity(pos1) && _isOsooOrSingularity(pos2)) return true;
-  if (_isWhitelistGroup(pos1) && _isWhitelistGroup(pos2)) return true;
-  return false;
+  // Rule mirrors shouldAutoDupShipment in /registry/page.tsx
+  // (operator clarification 2026-06-25): pos1 MUST match; pos2 either
+  // matches OR is empty. A non-empty pos2 with a non-matching company
+  // disqualifies the pair.
+  if (!pos1) return false;
+  const pos1Matches = _isOsooOrSingularity(pos1) || _isWhitelistGroup(pos1);
+  if (!pos1Matches) return false;
+  if (!pos2) return true;
+  return _isOsooOrSingularity(pos2) || _isWhitelistGroup(pos2);
 }
 const CURRENCIES = [
   { value: "USD", label: "USD $" },
