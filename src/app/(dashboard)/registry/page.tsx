@@ -25,6 +25,8 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useGlobalRefs } from "@/lib/refs";
 import { useDelayed } from "@/lib/hooks/use-delayed";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import Link from "next/link";
+import { useTabs } from "@/lib/contexts/tabs-context";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -1185,6 +1187,11 @@ export default function RegistryPage() {
   const setTab = (next: "kg" | "kz") => { void setTabRaw(next === "kg" ? null : next); };
   const { data: records, loading, reload } = useRegistry(tab === "kg" ? "KG" : "KZ");
   const showRegistryLoader = useDelayed(loading);
+  // Workspace-tab integration: clicking a deal code in a group header
+  // opens the deal passport as a workspace tab (operator request
+  // 2026-06-25: «добавим возможность открыть сделку с реестра при
+  // нажатии на номер сделки»).
+  const { openTab } = useTabs();
   const [showAdd, setShowAdd] = useState(false);
   const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
   // Excel export — disabled while the workbook is being built so a
@@ -1586,9 +1593,56 @@ export default function RegistryPage() {
             const open = expanded.has(g.key);
             return (
               <div key={g.key} className="rounded-lg border border-stone-200 bg-white overflow-hidden">
-                <button onClick={() => toggle(g.key)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-stone-50 transition-colors text-left">
+                {/* role="button" instead of <button> so we can nest a
+                    <Link> for the deal code (invalid as a child of
+                    <button>). Keyboard accessibility preserved via
+                    tabIndex + onKeyDown. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggle(g.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggle(g.key);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-stone-50 transition-colors text-left cursor-pointer"
+                >
                   <ChevronDown className={`h-3.5 w-3.5 text-stone-400 transition-transform shrink-0 ${open ? "" : "-rotate-90"}`} />
-                  <span className="font-mono text-[12px] font-bold text-amber-700">{g.dealCode}</span>
+                  {g.dealId ? (
+                    <Link
+                      href={`/deals/${g.dealId}`}
+                      onClick={(e) => {
+                        // Don't toggle the group when the link is clicked.
+                        e.stopPropagation();
+                        // Background tab on ⌘/Ctrl-click; default = open
+                        // and switch. Right-click / middle-click stay
+                        // browser-native so «open in new window» works.
+                        if (e.button !== 0) return;
+                        const placeholderTitle = `Сделка ${g.dealCode}`;
+                        if (e.metaKey || e.ctrlKey) {
+                          e.preventDefault();
+                          openTab(`/deals/${g.dealId}`, { background: true, title: placeholderTitle });
+                          return;
+                        }
+                        e.preventDefault();
+                        openTab(`/deals/${g.dealId}`, { title: placeholderTitle });
+                      }}
+                      onAuxClick={(e) => {
+                        if (e.button === 1) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openTab(`/deals/${g.dealId}`, { background: true, title: `Сделка ${g.dealCode}` });
+                        }
+                      }}
+                      className="font-mono text-[12px] font-bold text-amber-700 underline decoration-amber-300 hover:decoration-amber-600 hover:text-amber-900 transition-colors"
+                    >
+                      {g.dealCode}
+                    </Link>
+                  ) : (
+                    <span className="font-mono text-[12px] font-bold text-amber-700">{g.dealCode}</span>
+                  )}
                   <span className="text-[11px] text-stone-500">{g.month}</span>
                   <span className="inline-flex items-center gap-1 text-[11px]"><span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: g.fuelColor }} />{g.fuelType}</span>
                   <span className="text-[10px] text-stone-400">{g.factory}</span>
@@ -1605,7 +1659,7 @@ export default function RegistryPage() {
                       return <span className="font-mono text-[11px] tabular-nums text-stone-500">{fmtNum(g.totalAmt)} {gcur}</span>;
                     })()}
                   </span>
-                </button>
+                </div>
                 {open && (
                   <div className="border-t border-stone-200">
                     <div className="overflow-x-auto">

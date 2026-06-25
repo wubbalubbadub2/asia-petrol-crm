@@ -32,6 +32,9 @@ import { SupplierLinesEditor, BuyerLinesEditor } from "@/components/deals/deal-l
 // DocumentsSection fetch'а в одном round-trip (migration 00093).
 import { useDealBundle, useDealActivityLive, invalidateDealBundle } from "@/lib/hooks/use-deal-bundle";
 import type { ActivityMessage } from "@/lib/hooks/use-deal-activity";
+import { BulkAddDialog } from "@/components/registry/bulk-add-dialog";
+import { invalidateRegistry } from "@/lib/hooks/use-registry";
+import { ClipboardPaste } from "lucide-react";
 
 const ATTACHMENT_CATEGORIES = [
   { value: "contract", label: "Договор / Приложение" },
@@ -351,6 +354,11 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
   const [historyOpen, setHistoryOpen] = useState(false);
   const [numberDialogOpen, setNumberDialogOpen] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  // Bulk-add — operator 2026-06-25: «массовое добавление в карточке
+  // сделок в секции логистики». Reuses the same BulkAddDialog the
+  // registry page uses; context derived from the deal so the dialog
+  // doesn't make the operator re-pick supplier/buyer/factory etc.
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const { isAdmin, isWritable } = useRole();
   // All form selectors read from the shared refs cache (warmed by
   // /lib/refs.ts in the dashboard layout). On a navigation back to a
@@ -893,7 +901,20 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-[14px]">Логистика</CardTitle>
-          <SectionCurrencyPicker editing={editing} value={logisticsCurrency} dealId={deal.id} field="logistics_currency" onSaved={reload} />
+          <div className="flex items-center gap-2">
+            {isWritable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[11px]"
+                onClick={() => setBulkAddOpen(true)}
+              >
+                <ClipboardPaste className="h-3 w-3 mr-1" />
+                Массово
+              </Button>
+            )}
+            <SectionCurrencyPicker editing={editing} value={logisticsCurrency} dealId={deal.id} field="logistics_currency" onSaved={reload} />
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
@@ -952,6 +973,44 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         currentNumber={deal.deal_number}
         currentCode={deal.deal_code}
         onChanged={reload}
+      />
+    )}
+
+    {/* Bulk-add shipments — same dialog the registry page uses, fed
+        with a context derived from this deal so the operator doesn't
+        re-pick supplier/buyer/factory/etc. regType is locked to the
+        deal's own type (KG/KZ) so the bulk add can't land rows in
+        the wrong registry tab. */}
+    {isWritable && (deal.deal_type === "KG" || deal.deal_type === "KZ") && (
+      <BulkAddDialog
+        open={bulkAddOpen}
+        onClose={() => setBulkAddOpen(false)}
+        regType={deal.deal_type}
+        context={{
+          dealId: deal.id,
+          dealCode: deal.deal_code,
+          month: deal.month ?? null,
+          shipmentMonth: deal.logistics_shipment_month ?? null,
+          fuelTypeId: deal.fuel_type_id ?? null,
+          factoryId: deal.factory_id ?? null,
+          supplierId: deal.supplier_id ?? null,
+          buyerId: deal.buyer_id ?? null,
+          forwarderId: deal.forwarder_id ?? null,
+          companyGroupId: deal.logistics_company_group_id ?? null,
+          destinationStationId: deal.buyer_destination_station_id ?? null,
+          departureStationId: deal.supplier_departure_station_id ?? null,
+          railwayTariff: deal.actual_tariff ?? deal.planned_tariff ?? null,
+          dealYear: deal.year ?? null,
+          currency: deal.currency ?? null,
+        }}
+        onDone={() => {
+          // The bulk insert already invalidates registry; here we
+          // also bump the deal bundle so the «Логистика» card's
+          // shipments table and the rollups (supplier_shipped_*,
+          // buyer_shipped_*) refresh without a manual reload.
+          invalidateRegistry();
+          reload();
+        }}
       />
     )}
 
