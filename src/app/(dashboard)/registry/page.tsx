@@ -1554,7 +1554,26 @@ export default function RegistryPage() {
       )}
 
       {showRegistryLoader && groups.length === 0 ? <p className="text-sm text-muted-foreground">Загрузка...</p>
-      : !loading && groups.length === 0 ? <div className="rounded-md border border-stone-200 bg-white py-12 text-center"><Truck className="h-8 w-8 text-stone-300 mx-auto mb-2" /><p className="text-sm text-stone-500">Реестр {tab.toUpperCase()} пуст</p></div>
+      : !loading && groups.length === 0 ? (
+        // Differentiate truly-empty registry from filter-empty registry.
+        // Operator 2026-06-25: returning from /deals → /registry could
+        // land on «Реестр пуст» even though 8000+ rows were loaded,
+        // because the URL-persisted filter had no matches. Now we show
+        // the real reason + a one-click reset.
+        records.length === 0 ? (
+          <div className="rounded-md border border-stone-200 bg-white py-12 text-center"><Truck className="h-8 w-8 text-stone-300 mx-auto mb-2" /><p className="text-sm text-stone-500">Реестр {tab.toUpperCase()} пуст</p></div>
+        ) : (
+          <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
+            <Filter className="h-8 w-8 text-stone-300 mx-auto mb-2" />
+            <p className="text-sm text-stone-500">Ни одна из {records.length} записей не подошла под фильтры</p>
+            {activeFilterCount > 0 && (
+              <Button size="sm" variant="outline" onClick={clearRegistryFilters} className="mt-3 h-7 text-[11px]">
+                <X className="h-3 w-3 mr-1" /> Сбросить фильтры ({activeFilterCount})
+              </Button>
+            )}
+          </div>
+        )
+      )
       : <div className="space-y-2">
           {groups.map((g) => {
             const open = expanded.has(g.key);

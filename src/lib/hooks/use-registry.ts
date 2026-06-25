@@ -116,6 +116,19 @@ export function useRegistry(type: "KG" | "KZ") {
   const isFresh = !!cached && Date.now() - cached.ts < REGISTRY_TTL_MS;
   const [data, setData] = useState<ShipmentRecord[]>(cached?.data ?? []);
   const [loading, setLoading] = useState(!cached);
+
+  // Operator 2026-06-25: switching KG↔KZ tabs briefly showed previous
+  // tab's records while the new tab loaded. Cause — useState's initial
+  // value (above) is captured on first mount only; subsequent type
+  // changes leave `data` pointing at the stale tab. Sync to the new
+  // tab's cache (or empty) every time `type` changes so the swap is
+  // instant for warmed tabs and shows the loading state for cold ones.
+  useEffect(() => {
+    const c = registryCache.get(type);
+    setData(c?.data ?? []);
+    setLoading(!c);
+  }, [type]);
+
   const supabase = createClient();
   // Tracks the "currently requested" tab type. The paginated load below
   // can span many seconds; if the user flips KG → KZ mid-load the old
