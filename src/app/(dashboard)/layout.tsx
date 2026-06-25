@@ -11,12 +11,48 @@ import { getGlobalRefs } from "@/lib/refs";
 import { RoleProvider } from "@/lib/role-context";
 import { TabsProvider } from "@/lib/contexts/tabs-context";
 
+const SIDEBAR_COLLAPSED_KEY = "asia-petrol-sidebar-collapsed-v1";
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Sidebar collapse — operator request 2026-06-25: «можно скрыть/раскрыть
+  // левое меню? чтобы при работе было больше мест». Persisted in
+  // localStorage so the preference survives reload. Cmd/Ctrl+B toggles
+  // (matches VS Code muscle memory).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
+        setSidebarCollapsed(true);
+      }
+    } catch { /* private mode — ignore */ }
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+    } catch { /* ignore */ }
+  }, [sidebarCollapsed]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "B")) {
+        // Ignore when typing in an input/textarea/contenteditable —
+        // these are common editor shortcuts the operator hits while
+        // editing cells; collapsing the sidebar mid-keystroke would
+        // be jarring.
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        const editable = (e.target as HTMLElement | null)?.isContentEditable;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editable) return;
+        e.preventDefault();
+        setSidebarCollapsed((c) => !c);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const router = useRouter();
 
@@ -71,7 +107,10 @@ export default function DashboardLayout({
           <div className="flex h-screen overflow-hidden">
             {/* Desktop sidebar */}
             <div className="hidden lg:block">
-              <Sidebar />
+              <Sidebar
+                collapsed={sidebarCollapsed}
+                onToggle={() => setSidebarCollapsed((c) => !c)}
+              />
             </div>
 
             {/* Mobile sidebar (sheet drawer) */}
