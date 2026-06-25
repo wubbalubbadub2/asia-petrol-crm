@@ -43,12 +43,20 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  keepMounted = false,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /**
+   * When true, the portal stays in the DOM while the dialog is
+   * closed — keeps form state intact across open/close cycles.
+   * Used by the registry «свернуть/восстановить» flow so an
+   * operator's half-filled bulk-add doesn't get wiped on minimize.
+   */
+  keepMounted?: boolean
 }) {
   return (
-    <DialogPortal>
+    <DialogPortal keepMounted={keepMounted}>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"

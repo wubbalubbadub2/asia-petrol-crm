@@ -302,13 +302,36 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     (id) => {
       const target = tabs.find((t) => t.id === id);
       if (!target) return;
+
+      // Before leaving the current tab, snapshot the LIVE browser URL
+      // into the current tab's path. Operator 2026-06-25: «поставил
+      // фильтр, поменял вкладку, вернулся, поменял фильтр, опять
+      // поменял вкладку, опять вернулся — стоит старый фильтр».
+      // nuqs throttles router updates by ~50ms; if the operator
+      // changed a filter and clicked a workspace tab within that
+      // window, our React-state currentPath still pointed at the
+      // pre-filter URL, so the leaving tab kept stale state. Reading
+      // window.location bypasses the throttle and captures whatever
+      // is in the address bar at this exact moment.
+      if (typeof window !== "undefined" && activeId && activeId !== id) {
+        const live = window.location.pathname + window.location.search;
+        if (live !== currentPath) {
+          setTabs((prev) =>
+            prev.map((t) => (t.id === activeId && t.path !== live ? { ...t, path: live } : t))
+          );
+          // Keep the synced-ref in lock-step so the URL-sync effect
+          // doesn't immediately try to overwrite our update.
+          lastSyncedPathRef.current = live;
+        }
+      }
+
       setActiveId(id);
       if (target.path !== currentPath) {
         lastSyncedPathRef.current = target.path;
         router.push(target.path);
       }
     },
-    [tabs, currentPath, router]
+    [tabs, currentPath, activeId, router]
   );
 
   const setTabTitle = useCallback<TabsContextValue["setTabTitle"]>((id, title) => {

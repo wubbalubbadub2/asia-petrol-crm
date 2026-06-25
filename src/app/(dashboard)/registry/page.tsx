@@ -631,7 +631,7 @@ function shouldAutoDupShipment(deal: DRef | undefined | null): boolean {
   return isOsooOrSingularityGroup(pos2) || isWhitelistGroup(pos2);
 }
 
-function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void }) {
+function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimize }: { open: boolean; onClose: () => void; regType: "KG" | "KZ"; onDone: () => void; minimized?: boolean; onMinimize?: () => void }) {
   const sb = useRef(createClient());
   const [deals, setDeals] = useState<DRef[]>([]); const [stations, setStations] = useState<StRef[]>([]);
   const [factories, setFactories] = useState<Ref[]>([]); const [fuelTypes, setFuelTypes] = useState<Ref[]>([]);
@@ -839,9 +839,26 @@ function AddDialog({ open, onClose, regType, onDone }: { open: boolean; onClose:
   );
 
   return (
-    <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Новая запись в реестр {regType}</DialogTitle></DialogHeader>
+    /* keepMounted preserves form state when the operator minimises:
+       closing the dialog (open=false) would normally unmount the
+       portal and wipe all useState values; keepMounted=true holds the
+       React tree alive while making the dialog invisible. */
+    <Dialog open={open && !minimized} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent keepMounted className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0">
+          <DialogTitle>Новая запись в реестр {regType}</DialogTitle>
+          {onMinimize && (
+            <button
+              type="button"
+              onClick={onMinimize}
+              aria-label="Свернуть"
+              title="Свернуть — форма останется заполненной"
+              className="mr-7 inline-flex h-6 w-6 items-center justify-center rounded text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition-colors"
+            >
+              <span className="block h-0.5 w-3 bg-current rounded" />
+            </button>
+          )}
+        </DialogHeader>
         <div className="space-y-3">
           <div className="rounded border border-amber-200 bg-amber-50/30 p-3">
             <p className="text-[11px] font-medium text-amber-700 mb-2">Контекст сделки</p>
@@ -1233,6 +1250,11 @@ export default function RegistryPage() {
   // нажатии на номер сделки»).
   const { openTab } = useTabs();
   const [showAdd, setShowAdd] = useState(false);
+  // Минимизация диалога «Новая запись» — операторский запрос 2026-06-25
+  // («сделать кнопку "свернуть"»). При свёрнутом состоянии Dialog
+  // open=false (overlay уходит), но keepMounted=true держит React-tree
+  // живым, так что заполненные поля и вставленный текст не теряются.
+  const [addMinimized, setAddMinimized] = useState(false);
   const [bulkIn, setBulkIn] = useState<RGroup | null>(null);
   // Excel export — disabled while the workbook is being built so a
   // double-click can't trigger two downloads. Operator request
@@ -2014,7 +2036,27 @@ export default function RegistryPage() {
           })}
         </div>
       }
-      <AddDialog open={showAdd} onClose={() => setShowAdd(false)} regType={tab === "kg" ? "KG" : "KZ"} onDone={reload} />
+      <AddDialog
+        open={showAdd}
+        onClose={() => { setShowAdd(false); setAddMinimized(false); }}
+        regType={tab === "kg" ? "KG" : "KZ"}
+        onDone={() => { reload(); setAddMinimized(false); }}
+        minimized={addMinimized}
+        onMinimize={() => setAddMinimized(true)}
+      />
+      {showAdd && addMinimized && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <button
+            type="button"
+            onClick={() => setAddMinimized(false)}
+            className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-[12px] font-medium text-white shadow-lg hover:bg-amber-600 transition-colors"
+            title="Развернуть форму новой записи"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Новая запись в реестр {tab === "kg" ? "KG" : "KZ"} — свёрнута
+          </button>
+        </div>
+      )}
 
       <BulkAddDialog
         open={bulkIn != null}
