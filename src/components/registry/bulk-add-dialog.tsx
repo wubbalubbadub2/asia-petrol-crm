@@ -12,6 +12,18 @@ import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { toast } from "sonner";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+
+// Mirror of shouldAutoDupShipment in /registry/page.tsx — duplicated
+// here on purpose so the rule lives next to the dialog it drives.
+// Auto-tick «Продублировать отгрузку» when BOTH chain positions 1 AND
+// 2 are «ОсОО»- or «Singularity»-flavoured companies (operator
+// request 2026-06-24, screenshot 2026-06-25 caught this dialog
+// missing the change applied to the smaller AddDialog).
+function _isOsooOrSingularity(g: { name?: string | null; full_name?: string | null } | null | undefined): boolean {
+  if (!g) return false;
+  const h = `${g.full_name ?? ""} ${g.name ?? ""}`.toLowerCase();
+  return h.includes("осоо") || h.includes("osoo") || h.includes("singularity") || h.includes("сингулярити");
+}
 const CURRENCIES = [
   { value: "USD", label: "USD $" },
   { value: "KZT", label: "KZT ₸" },
@@ -81,10 +93,14 @@ export function BulkAddDialog({
   // Paste + preview
   const [pasted, setPasted] = useState("");
   const [saving, setSaving] = useState(false);
-  // Volume column target: "ship" (отгрузка → shipment_volume, Завод отписывает нам) vs
-  // "load" (налив → loading_volume, мы отписываем). Logisticians pick which side
-  // the pasted "Объём" column represents.
+  // Volume column target: "ship" (Исходящее СНТ → shipment_volume) vs
+  // "load" (Входящее СНТ → loading_volume). Logisticians pick which
+  // side the pasted "Объём" column represents.
   const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
+  // «Продублировать отгрузку» — when checked, the parsed volume goes
+  // into BOTH shipment_volume and loading_volume. Auto-ticked for
+  // ОсОО↔Singularity chains; operator can flip manually.
+  const [dupShipment, setDupShipment] = useState<boolean>(false);
 
   // References
   const [factories, setFactories] = useState<Ref[]>([]);
@@ -137,21 +153,28 @@ export function BulkAddDialog({
     setInvoiceNum("");
     setBulkComment("");
     setVolumeTarget("ship");
+    setDupShipment(false); // recomputed by the chain-loading effect
     setApx("");
   }, [open, context]);
 
-  // Load variant appendix labels for both sides whenever the dialog
-  // opens with a deal selected. Cast through unknown — generated
+  // Load variant appendix labels + chain positions 1/2 for the picked
+  // deal. The chain is needed to auto-tick «Продублировать отгрузку»
+  // for ОсОО↔Singularity deals. Cast through unknown — generated
   // database.ts pre-dates the appendix column.
   useEffect(() => {
-    if (!open || !context?.dealId) { setSupLines([]); setBuyLines([]); return; }
+    if (!open || !context?.dealId) { setSupLines([]); setBuyLines([]); setDupShipment(false); return; }
     const sb = createClient();
     Promise.all([
       sb.from("deal_supplier_lines").select("id, appendix").eq("deal_id", context.dealId),
       sb.from("deal_buyer_lines").select("id, appendix").eq("deal_id", context.dealId),
-    ]).then(([s, b]) => {
+      sb.from("deal_company_groups").select("position, company_group:company_groups(name, full_name)").eq("deal_id", context.dealId).in("position", [1, 2]),
+    ]).then(([s, b, chain]) => {
       setSupLines(((s.data as unknown) ?? []) as ApxLine[]);
       setBuyLines(((b.data as unknown) ?? []) as ApxLine[]);
+      const rows = (chain.data ?? []) as unknown as { position: number; company_group?: { name?: string | null; full_name?: string | null } | null }[];
+      const pos1 = rows.find((r) => r.position === 1)?.company_group ?? null;
+      const pos2 = rows.find((r) => r.position === 2)?.company_group ?? null;
+      setDupShipment(!!pos1 && !!pos2 && _isOsooOrSingularity(pos1) && _isOsooOrSingularity(pos2));
     });
   }, [open, context?.dealId]);
 
@@ -213,8 +236,11 @@ export function BulkAddDialog({
       railway_tariff: tariffNum,
       currency: currency || null,
       wagon_number: p.wagon,
-      shipment_volume: volumeTarget === "ship" ? p.volume : null,
-      loading_volume: volumeTarget === "load" ? p.volume : null,
+      // dupShipment writes the same volume into both sides — common for
+      // ОсОО↔Singularity wagons where Исходящее and Входящее СНТ
+      // carry identical tonnage.
+      shipment_volume: dupShipment ? p.volume : (volumeTarget === "ship" ? p.volume : null),
+      loading_volume:  dupShipment ? p.volume : (volumeTarget === "load" ? p.volume : null),
       date: p.date ?? date ?? null,
       waybill_number: p.waybill || null,
       invoice_number: invoiceNum || null,
@@ -322,22 +348,36 @@ export function BulkAddDialog({
               <Label className="text-[11px] text-stone-600 flex items-center gap-1">
                 <ClipboardPaste className="h-3 w-3" /> Вагоны (один на строку; TAB или пробелы между колонками)
               </Label>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-stone-500">Объём идёт в:</span>
-                <div className="inline-flex rounded border border-stone-200 bg-white overflow-hidden">
+              <div className="flex items-center gap-3">
+                {/* Auto-ticked for ОсОО↔Singularity chains; operator
+                    can flip manually. When on, the toggle below is
+                    moot — disable + dim it. */}
+                <label className="flex items-center gap-1.5 text-[11px] text-stone-600 select-none cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dupShipment}
+                    onChange={(e) => setDupShipment(e.target.checked)}
+                    className="h-3.5 w-3.5 cursor-pointer accent-amber-600"
+                  />
+                  Продублировать отгрузку
+                </label>
+                <span className={`text-[10px] ${dupShipment ? "text-stone-300" : "text-stone-500"}`}>Объём идёт в:</span>
+                <div className={`inline-flex rounded border border-stone-200 bg-white overflow-hidden ${dupShipment ? "opacity-40 pointer-events-none" : ""}`}>
                   <button
                     type="button"
                     onClick={() => setVolumeTarget("ship")}
                     className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец shipment_volume"
                   >
-                    Отгрузка
+                    Исходящее СНТ
                   </button>
                   <button
                     type="button"
                     onClick={() => setVolumeTarget("load")}
                     className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец loading_volume"
                   >
-                    Налив
+                    Входящее СНТ
                   </button>
                 </div>
               </div>
@@ -345,7 +385,7 @@ export function BulkAddDialog({
             <textarea
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
-              placeholder={"51742534\t54,719\t05.11.2025\tЭД0012345\n51667558\t54,719\t05.11.2025\n75040170\t54,719"}
+              placeholder={"05.11.2025\tЭД0012345\t51742534\t54,719\n05.11.2025\tЭД0012346\t51667558\t54,719\n05.11.2025\t\t75040170\t54,719"}
               rows={6}
               className="w-full rounded-md border border-stone-200 bg-white p-2 text-[12px] font-mono focus:border-amber-400 focus:outline-none"
             />
@@ -370,7 +410,7 @@ export function BulkAddDialog({
                     <tr>
                       <th className="text-left px-2 py-1 w-8">#</th>
                       <th className="text-left px-2 py-1">№ вагона</th>
-                      <th className="text-right px-2 py-1">{volumeTarget === "ship" ? "Отгрузка" : "Налив"}</th>
+                      <th className="text-right px-2 py-1">{dupShipment ? "Исх. + Вх. СНТ" : (volumeTarget === "ship" ? "Исходящее СНТ" : "Входящее СНТ")}</th>
                       <th className="text-left px-2 py-1">Дата (стр.)</th>
                       <th className="text-left px-2 py-1">№ накладной</th>
                       <th className="text-left px-2 py-1">Ошибка</th>
