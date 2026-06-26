@@ -22,9 +22,11 @@ type DateGroup = {
   wagons: (ShipmentRow & { amount: number | null })[];
 };
 
-function fmtNum(v: number | null | undefined, d = 3) {
+function fmtNum(v: number | null | undefined, d = 2) {
+  // Default d=2 — operator request 2026-06-26: monetary cells (сумма,
+  // тариф) round to 2 decimals. Tonnage uses fmtVol below (3 decimals).
   if (v == null) return "—";
-  return v.toLocaleString("ru-RU", { maximumFractionDigits: d });
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
 // Tonnage — always 3 decimals (client request).

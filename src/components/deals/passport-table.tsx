@@ -38,9 +38,13 @@ function shipmentLines(
   return `${rows.length} ${word}\n${rows.join("\n")}`;
 }
 
+// Money fields — always 2 decimals (client request 2026-06-26:
+// «Оплата, дебет, долг, переплата — округление 2 цифры»). Applies to
+// all monetary columns (price, contracted amount, shipped amount,
+// payment, balance/debt, tariff) for consistency.
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Volumes always show 3 decimal places (client request — «3 ноля после запятой»).
@@ -49,11 +53,12 @@ function formatVol(val: number | null | undefined): string {
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
-// Computed/auto cells: render "0" explicitly so users see that the calc ran
-// (supplier_balance = shipped − payment is a common legitimate zero).
+// Computed/auto monetary cells: render "0" explicitly so users see that
+// the calc ran (supplier_balance = shipped − payment is a common
+// legitimate zero). 2 decimals — money convention.
 function formatComputedNum(val: number | null | undefined): string {
   if (val == null) return "";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Same as formatComputedNum, but pads to exactly 3 decimals for tonnage.
@@ -852,7 +857,10 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
           Read-only computed: shipped − ordered (negative until
           fulfilled, positive on overshipment). */}
       <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: отгружено − заявлено">
-        {formatComputedNum((deal.buyer_shipped_volume ?? 0) - (deal.buyer_ordered_volume ?? 0))}
+        {/* Остаток — это разность объёмов (тонн), не сумма; используем
+            formatComputedVol чтобы было 3 знака после запятой, как и
+            у других тоннажных колонок. */}
+        {formatComputedVol((deal.buyer_shipped_volume ?? 0) - (deal.buyer_ordered_volume ?? 0))}
       </td>
       <VolumeBreakdownCell
         dealId={deal.id}
@@ -1242,7 +1250,7 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
     }
     return s;
   };
-  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // Volumes — always 3 decimals (client request).
   const fmtVol = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   // Cell builder — keeps the markup consistent.

@@ -37,7 +37,7 @@ const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
 };
 
 function formatMoney(val: number): string {
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Single payment row with inline editable date/amount/description/currency
