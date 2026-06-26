@@ -193,7 +193,22 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   // path matches an existing tab, just activate it; otherwise
   // replace the currently-active tab's path with the new one (this
   // is the «navigating inside a tab» case — same tab, new URL).
+  //
+  // CRITICAL — operator 2026-06-26: depend ONLY on currentPath, NOT
+  // activeId. nuqs with shallow:true updates the URL via
+  // history.replaceState directly, which bypasses Next.js
+  // useSearchParams, so this effect's `currentPath` stays stale
+  // through a filter change. If activeId is in the deps, then any
+  // setActiveId() (e.g. from openTab / switchTab right before router
+  // navigates) re-fires this effect against the stale currentPath
+  // and "corrects" the leaving tab's path back to the pre-filter
+  // value — undoing the live-URL snapshot openTab/switchTab just
+  // wrote. The activeIdx fallback below uses activeId via closure,
+  // which is fine: it reads whatever activeId is at fire time
+  // without forcing the effect to re-run on activeId changes alone.
   const lastSyncedPathRef = useRef<string>(currentPath);
+  const activeIdRef = useRef<string | null>(null);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
   useEffect(() => {
     if (lastSyncedPathRef.current === currentPath) return;
     lastSyncedPathRef.current = currentPath;
@@ -211,7 +226,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       }
       // No matching tab: the active tab navigated to a new URL.
       // Replace its id+path+title with the new destination.
-      const activeIdx = prev.findIndex((t) => t.id === activeId);
+      const activeIdx = prev.findIndex((t) => t.id === activeIdRef.current);
       if (activeIdx === -1) {
         // No active tab (cold case) — push a fresh one.
         const meta = inferTabMeta(currentPath);
@@ -223,7 +238,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       return next;
     });
     setActiveId(newId);
-  }, [currentPath, activeId]);
+  }, [currentPath]);
 
   const openTab = useCallback<TabsContextValue["openTab"]>(
     (path, opts) => {
