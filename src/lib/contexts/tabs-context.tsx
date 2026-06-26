@@ -230,6 +230,31 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       const id = pathToId(path);
       const background = opts?.background === true;
 
+      // BEFORE doing anything else, capture the LIVE browser URL into the
+      // currently active tab's path. nuqs with shallow: true uses
+      // history.replaceState directly — that updates window.location
+      // immediately but does NOT fire Next.js useSearchParams, so the
+      // React-state currentPath inside this provider stays at whatever
+      // it was before the in-page filter change. If we navigate away
+      // without first reading window.location, the leaving tab keeps a
+      // stale path (operator complaint 2026-06-26: «фильтр 045 →
+      // выбрал 001 → перешёл в карточку сделки → вернулся, опять 045»
+      // — this happens through openTab, not switchTab, because the
+      // deal-code link inside the registry calls openTab to bring up
+      // the passport).
+      //
+      // Skipped for background opens (Ctrl/Cmd-click) — those don't
+      // change active tab so the leaving tab's path doesn't matter for
+      // round-trip restoration.
+      if (!background && typeof window !== "undefined" && activeId && activeId !== id) {
+        const live = window.location.pathname + window.location.search;
+        if (live !== currentPath) {
+          setTabs((prev) =>
+            prev.map((t) => (t.id === activeId && t.path !== live ? { ...t, path: live } : t))
+          );
+        }
+      }
+
       setTabs((prev) => {
         const existing = prev.find((t) => t.id === id);
         if (existing) {
