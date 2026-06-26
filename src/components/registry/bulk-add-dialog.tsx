@@ -136,7 +136,9 @@ export function BulkAddDialog({
   // Volume column target: "ship" (Входящее СНТ → shipment_volume) vs
   // "load" (Исходящее СНТ → loading_volume). Logisticians pick which
   // side the pasted "Объём" column represents.
-  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
+  // 2026-06-26: "load" = Входящее СНТ (supplier-side). See bottom of
+  // file for the label-to-DB mapping.
+  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("load");
   // «Продублировать отгрузку» — when checked, the parsed volume goes
   // into BOTH shipment_volume and loading_volume. Auto-ticked for
   // ОсОО↔Singularity chains; operator can flip manually.
@@ -192,7 +194,9 @@ export function BulkAddDialog({
     setPasted("");
     setInvoiceNum("");
     setBulkComment("");
-    setVolumeTarget("ship");
+    // 2026-06-26: default to "load" so "Входящее СНТ" (supplier) is
+    // pre-selected — that's the most common entry point for KG exports.
+    setVolumeTarget("load");
     setDupShipment(false); // recomputed by the chain-loading effect
     setApx("");
   }, [open, context]);
@@ -403,19 +407,22 @@ export function BulkAddDialog({
                 </label>
                 <span className={`text-[10px] ${dupShipment ? "text-stone-300" : "text-stone-500"}`}>Объём идёт в:</span>
                 <div className={`inline-flex rounded border border-stone-200 bg-white overflow-hidden ${dupShipment ? "opacity-40 pointer-events-none" : ""}`}>
+                  {/* See registry/page.tsx for the rationale —
+                      Входящее = supplier (loading_volume),
+                      Исходящее = buyer (shipment_volume). */}
                   <button
                     type="button"
-                    onClick={() => setVolumeTarget("ship")}
-                    className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
-                    title="столбец shipment_volume"
+                    onClick={() => setVolumeTarget("load")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец loading_volume (поставщик)"
                   >
                     Входящее СНТ
                   </button>
                   <button
                     type="button"
-                    onClick={() => setVolumeTarget("load")}
-                    className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
-                    title="столбец loading_volume"
+                    onClick={() => setVolumeTarget("ship")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец shipment_volume (покупатель)"
                   >
                     Исходящее СНТ
                   </button>
@@ -450,7 +457,7 @@ export function BulkAddDialog({
                     <tr>
                       <th className="text-left px-2 py-1 w-8">#</th>
                       <th className="text-left px-2 py-1">№ вагона</th>
-                      <th className="text-right px-2 py-1">{dupShipment ? "Исх. + Вх. СНТ" : (volumeTarget === "ship" ? "Входящее СНТ" : "Исходящее СНТ")}</th>
+                      <th className="text-right px-2 py-1">{dupShipment ? "Исх. + Вх. СНТ" : (volumeTarget === "load" ? "Входящее СНТ" : "Исходящее СНТ")}</th>
                       <th className="text-left px-2 py-1">Дата (стр.)</th>
                       <th className="text-left px-2 py-1">№ накладной</th>
                       <th className="text-left px-2 py-1">Ошибка</th>

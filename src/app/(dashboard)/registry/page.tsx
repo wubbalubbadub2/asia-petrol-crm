@@ -644,7 +644,9 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
   const [pasted, setPasted] = useState("");
   // Which parsed-volume column to write — "ship" (отгрузка / shipment_volume) is the
   // factory-to-us side, "load" (налив / loading_volume) is the us-to-buyer side.
-  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
+  // 2026-06-26: default "load" so the «Входящее СНТ» button
+  // (supplier-side) is pre-selected on dialog open.
+  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("load");
   // «Продублировать отгрузку» — when checked, the parsed volume is
   // written into BOTH shipment_volume and loading_volume. Useful for
   // KG export deals where the same tonnage is the исходящая + входящая
@@ -1022,19 +1024,27 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                 </label>
                 <span className={`text-[10px] ${dupShipment ? "text-stone-300" : "text-stone-500"}`}>Объём идёт в:</span>
                 <div className={`inline-flex rounded border border-stone-200 bg-white overflow-hidden ${dupShipment ? "opacity-40 pointer-events-none" : ""}`}>
+                  {/*
+                    Operator 2026-06-26: «Входящее» = поставщик-сторона.
+                    По БД (migration 00044) supplier_shipped_volume =
+                    SUM(loading_volume), buyer_shipped_volume =
+                    SUM(shipment_volume). Поэтому:
+                      Входящее СНТ → loading_volume → supplier
+                      Исходящее СНТ → shipment_volume → buyer
+                  */}
                   <button
                     type="button"
-                    onClick={() => setVolumeTarget("ship")}
-                    className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
-                    title="столбец shipment_volume"
+                    onClick={() => setVolumeTarget("load")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец loading_volume (поставщик)"
                   >
                     Входящее СНТ
                   </button>
                   <button
                     type="button"
-                    onClick={() => setVolumeTarget("load")}
-                    className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
-                    title="столбец loading_volume"
+                    onClick={() => setVolumeTarget("ship")}
+                    className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                    title="столбец shipment_volume (покупатель)"
                   >
                     Исходящее СНТ
                   </button>
@@ -1068,7 +1078,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                     <tr>
                       <th className="text-left px-2 py-1 w-8">#</th>
                       <th className="text-left px-2 py-1">№ вагона</th>
-                      <th className="text-right px-2 py-1">{volumeTarget === "ship" ? "Входящее СНТ" : "Исходящее СНТ"}</th>
+                      <th className="text-right px-2 py-1">{volumeTarget === "load" ? "Входящее СНТ" : "Исходящее СНТ"}</th>
                       <th className="text-left px-2 py-1">Дата (стр.)</th>
                       <th className="text-left px-2 py-1">№ накладной</th>
                       <th className="text-left px-2 py-1">Ошибка</th>
@@ -1820,7 +1830,7 @@ export default function RegistryPage() {
                               />
                             </span>
                           </th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="shipment_volume — buyer-side. Operator convention: buyer accepts incoming СНТ first in registry layout (2026-06-25).">Входящее СНТ</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="loading_volume — supplier-side. Operator 2026-06-26: Входящее СНТ = поставщик (SUM(loading_volume) = supplier_shipped_volume per 00044).">Входящее СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
                             <span className="inline-flex items-center gap-1">
                               группа комп.
@@ -1856,7 +1866,7 @@ export default function RegistryPage() {
                           </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">№ ЖД накл.</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="loading_volume — supplier-side. Operator convention: supplier issues outgoing СНТ in the second slot of registry layout (2026-06-25).">Исходящее СНТ</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="shipment_volume — buyer-side. Operator 2026-06-26: Исходящее СНТ = покупатель (SUM(shipment_volume) = buyer_shipped_volume per 00044).">Исходящее СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
@@ -1953,13 +1963,13 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ES value={r.fuel_type_id} displayLabel={(r.fuel_type_id && fuelTypeLabels.get(r.fuel_type_id)?.name) || ""} recId={r.id} field="fuel_type_id" options={ftOpts} onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={(r.factory_id && factoryLabels.get(r.factory_id)) || ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.supplier_id} displayLabel={(r.supplier_id && supplierLabels.get(r.supplier_id)) || ""} recId={r.id} field="supplier_id" options={supplierOpts} onSaved={reload} className="text-stone-500" /></td>
-                              <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={(r.company_group_id && cgLabels.get(r.company_group_id)) || ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={(r.buyer_id && buyerLabels.get(r.buyer_id)) || ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.forwarder_id} displayLabel={(r.forwarder_id && forwarderLabels.get(r.forwarder_id)) || ""} recId={r.id} field="forwarder_id" options={fwOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.wagon_number} recId={r.id} field="wagon_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.waybill_number} recId={r.id} field="waybill_number" onSaved={reload} cls="font-mono" /></td>
-                              <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">

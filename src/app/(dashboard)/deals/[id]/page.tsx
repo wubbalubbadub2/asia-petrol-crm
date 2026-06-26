@@ -902,7 +902,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-[14px]">Логистика</CardTitle>
           <div className="flex items-center gap-2">
-            {isWritable && (
+            {/* Кнопка «Массово» рендерится только для KG/KZ — BulkAddDialog
+                рендерится по тому же условию ниже. Раньше кнопка
+                показывалась всегда, и для OIL/тестовых сделок без
+                registry_type клик ничего не делал (диалог не был в
+                DOM). Operator 2026-06-26. */}
+            {isWritable && (deal.deal_type === "KG" || deal.deal_type === "KZ") && (
               <Button
                 size="sm"
                 variant="outline"

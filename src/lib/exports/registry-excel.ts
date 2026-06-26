@@ -62,12 +62,12 @@ const COLUMNS: Column[] = [
   { key: "destination_station", header: "Ст. назначения",    width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
   { key: "supplier_appendix", header: "Прил. поставщика",    width: 14, read: (r) => r.supplier_appendix ?? "" },
   { key: "buyer_appendix",    header: "Прил. покупателя",    width: 14, read: (r) => r.buyer_appendix ?? "" },
-  // Order swapped 2026-06-25 to match registry page: Входящее СНТ comes first.
-  // Counterparty-perspective label mapping:
-  //   shipment_volume (DB: отгрузка/from factory) → buyer's incoming СНТ → Входящее
-  //   loading_volume  (DB: налив/to buyer)        → supplier's outgoing СНТ → Исходящее
-  { key: "shipment_volume",   header: "Входящее СНТ, т",     width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
-  { key: "loading_volume",    header: "Исходящее СНТ, т",    width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
+  // 2026-06-26: label-to-DB swap (AP perspective per operator).
+  //   loading_volume  → supplier-side per migration 00044 → labeled «Входящее СНТ»
+  //   shipment_volume → buyer-side per migration 00044    → labeled «Исходящее СНТ»
+  // Column visual order keeps Входящее first (matches the on-screen registry layout).
+  { key: "loading_volume",    header: "Входящее СНТ, т",     width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
+  { key: "shipment_volume",   header: "Исходящее СНТ, т",    width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
   { key: "railway_tariff",    header: "Ж/Д тариф",           width: 12, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.railway_tariff },
   { key: "shipped_amount",    header: "Сумма по тоннажу",    width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
   { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.currency ?? "" },

@@ -36,7 +36,9 @@ export default function ImportPage() {
   // registry export with just «объем»), the toggle decides which DB column it
   // lands in — отгрузка → shipment_volume, налив → loading_volume. Explicit
   // «объем отгрузки» + «Налив тонн» columns always win over this default.
-  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("ship");
+  // 2026-06-26: default "load" so the «Входящее СНТ» button
+  // (supplier-side) is pre-selected on import open.
+  const [volumeTarget, setVolumeTarget] = useState<"ship" | "load">("load");
   const sbRef = useRef(createClient());
 
   // Load deal options for ESF assignment
@@ -254,19 +256,22 @@ export default function ImportPage() {
                 <div className="flex items-center gap-1.5">
                   <Label className="text-[11px] text-stone-500 whitespace-nowrap">Объём идёт в:</Label>
                   <div className="inline-flex rounded border border-stone-200 bg-white overflow-hidden">
+                    {/* 2026-06-26 swap: Входящее = supplier (loading_volume),
+                        Исходящее = buyer (shipment_volume). Matches the
+                        00044 rollup convention. */}
                     <button
                       type="button"
-                      onClick={() => setVolumeTarget("ship")}
-                      className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
-                      title="столбец shipment_volume"
+                      onClick={() => setVolumeTarget("load")}
+                      className={`px-2 py-0.5 text-[11px] transition-colors ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                      title="столбец loading_volume (поставщик)"
                     >
                       Входящее СНТ
                     </button>
                     <button
                       type="button"
-                      onClick={() => setVolumeTarget("load")}
-                      className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "load" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
-                      title="столбец loading_volume"
+                      onClick={() => setVolumeTarget("ship")}
+                      className={`px-2 py-0.5 text-[11px] transition-colors border-l border-stone-200 ${volumeTarget === "ship" ? "bg-amber-600 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                      title="столбец shipment_volume (покупатель)"
                     >
                       Исходящее СНТ
                     </button>

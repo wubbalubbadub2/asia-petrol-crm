@@ -214,7 +214,7 @@ export function DealCompanyChain({
               </p>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-[24px_1fr_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
+                <div className="grid grid-cols-[24px_minmax(240px,_1fr)_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center text-[10px] text-stone-400 uppercase tracking-wide px-2">
                   <div>#</div>
                   <div>Компания</div>
                   <div>Котир.</div>
@@ -231,7 +231,7 @@ export function DealCompanyChain({
                   return (
                     <div
                       key={cg.id}
-                      className="grid grid-cols-[24px_1fr_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
+                      className="grid grid-cols-[24px_minmax(240px,_1fr)_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
                     >
                       <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
 
