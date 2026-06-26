@@ -437,7 +437,7 @@ export function BulkAddDialog({
               className="w-full rounded-md border border-stone-200 bg-white p-2 text-[12px] font-mono focus:border-amber-400 focus:outline-none"
             />
             <p className="mt-1 text-[10px] text-stone-400">
-              Колонки: <code>дата ⇥ № накладной ⇥ № вагона ⇥ объём</code> (как в ваших Excel-реестрах). Старый порядок <code>вагон ⇥ объём ⇥ дата ⇥ накладная</code> тоже распознаётся.
+              Колонки: <code>дата ⇥ № накладной ⇥ № вагона ⇥ объём</code> (4 столбца) или <code>дата ⇥ № вагона ⇥ объём</code> (3 столбца, без накладной). Старый порядок <code>вагон ⇥ объём ⇥ дата ⇥ накладная</code> тоже распознаётся. Запятая и точка в числах поддерживаются.
             </p>
           </div>
 

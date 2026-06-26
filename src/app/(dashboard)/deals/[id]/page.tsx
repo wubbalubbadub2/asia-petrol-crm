@@ -35,6 +35,7 @@ import type { ActivityMessage } from "@/lib/hooks/use-deal-activity";
 import { BulkAddDialog } from "@/components/registry/bulk-add-dialog";
 import { invalidateRegistry } from "@/lib/hooks/use-registry";
 import { ClipboardPaste } from "lucide-react";
+import { parseNum } from "@/lib/utils/parse-num";
 
 const ATTACHMENT_CATEGORIES = [
   { value: "contract", label: "Договор / Приложение" },
@@ -106,7 +107,12 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
 }) {
   const isVolume = VOLUME_FIELDS_BY_LABEL.has(label);
   const ctxReload = useDealReload();
-  const isNumeric = typeof value === "number" || inputType === "number";
+  // 2026-06-26: detect numeric ALSO when isVolume — fields like
+  // «Заявлено» whose current value is null still need numeric input.
+  // Before this, isNumeric=false for null-valued volume fields → the
+  // onBlur branch treated the raw "293,246" as a string and Postgres
+  // rejected it with «invalid input syntax for type numeric».
+  const isNumeric = typeof value === "number" || inputType === "number" || isVolume;
   const isDate = inputType === "date";
   const pendingVal = useRef<string | number | null | undefined>(undefined);
   const [, forceRender] = useState(0);
@@ -138,14 +144,21 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
         </span>
         <input
           key={String(value ?? "")}
-          type={isDate ? "date" : isNumeric ? "number" : "text"}
-          step="0.01"
+          // Use type=text + inputMode=decimal for numeric fields —
+          // type=number silently strips "," in some browsers (Russian
+          // operators type «293,246» as a decimal and expect parseNum
+          // to convert it). text+inputMode keeps the mobile numeric
+          // keypad while accepting any decimal separator.
+          type={isDate ? "date" : "text"}
+          inputMode={isNumeric ? "decimal" : undefined}
+          step={isNumeric ? "0.01" : undefined}
           defaultValue={inputVal}
           onBlur={(e) => {
             const raw = e.target.value;
-            const newVal = isNumeric
-              ? (raw.trim() === "" ? null : parseFloat(raw.replace(",", ".")))
-              : (raw.trim() || null);
+            // parseNum handles both «,» and «.» as decimal separator and
+            // strips space-thousands. Required for the Russian locale —
+            // operator typed «293,246» and Postgres rejected the literal.
+            const newVal = isNumeric ? parseNum(raw) : (raw.trim() || null);
             if (newVal !== value) {
               pendingVal.current = newVal as string | number | null;
               forceRender((n) => n + 1);

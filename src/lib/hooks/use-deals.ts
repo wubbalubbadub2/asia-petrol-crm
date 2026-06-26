@@ -533,7 +533,11 @@ async function fetchDealsList(
     q = q.eq("is_draft", false);
     if (filters?.year) q = q.eq("year", filters.year);
     if (filters?.isArchived !== undefined) q = q.eq("is_archived", filters.isArchived);
-    return q.order("deal_number", { ascending: true });
+    // Newest deals first — operator request 2026-06-26: «как создадим,
+    // приходится листать вниз». Sort by year DESC (current year on
+    // top), then deal_number DESC inside each year (latest created
+    // number first since deal_sequences increments monotonically).
+    return q.order("year", { ascending: false }).order("deal_number", { ascending: false });
   };
 
   const all: unknown[] = [];

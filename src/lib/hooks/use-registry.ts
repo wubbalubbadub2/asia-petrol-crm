@@ -93,7 +93,7 @@ const registryListeners = new Set<() => void>();
 function notifyRegistry() {
   for (const fn of registryListeners) fn();
 }
-function subscribeRegistry(fn: () => void): () => void {
+export function subscribeRegistry(fn: () => void): () => void {
   registryListeners.add(fn);
   return () => { registryListeners.delete(fn); };
 }

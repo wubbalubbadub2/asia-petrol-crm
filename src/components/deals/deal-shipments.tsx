@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { subscribeRegistry } from "@/lib/hooks/use-registry";
 
 type ShipmentRow = {
   id: string;
@@ -50,7 +51,12 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
   const [loading, setLoading] = useState(true);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Stable fetcher — reused on mount AND on every invalidateRegistry()
+  // notification (operator 2026-06-26: «загрузил массово с страницы
+  // сделки, но в таблице "Отгрузки по датам" ничего не появилось»).
+  // Root cause was no subscription here — the previous version
+  // fetched once on dealId change and never refreshed.
+  const reloadRows = useCallback(() => {
     sb.current
       .from("shipment_registry")
       .select("id, wagon_number, shipment_volume, loading_volume, date, railway_tariff, invoice_number")
@@ -61,6 +67,12 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
         setLoading(false);
       });
   }, [dealId]);
+
+  useEffect(() => { reloadRows(); }, [reloadRows]);
+
+  // Refetch when any registry write fires the pub-sub (BulkAddDialog,
+  // inline edits, bulk-add from the passport «Массово» button).
+  useEffect(() => subscribeRegistry(reloadRows), [reloadRows]);
 
   if (loading) return null;
   if (rows.length === 0) return null;

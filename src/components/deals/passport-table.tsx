@@ -12,6 +12,7 @@ import { useGlobalRefs } from "@/lib/refs";
 import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
+import { parseNum } from "@/lib/utils/parse-num";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -352,7 +353,7 @@ function PaymentBreakdownCell({
   function commitEdit() {
     setEditing(false);
     setOpen(false);
-    const num = localVal.trim() === "" ? null : parseFloat(localVal);
+    const num = parseNum(localVal);
     if (num !== value) {
       pendingVal.current = num;
       const field = side === "supplier" ? "supplier_payment" : "buyer_payment";
@@ -438,7 +439,7 @@ function EditableNumCell({ value, dealId, field }: {
   return (
     <input autoFocus type="number" step={isVol ? "0.001" : "0.01"} value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
-      onBlur={() => { setEditing(false); const num = localVal.trim() === "" ? null : parseFloat(localVal); if (num !== value) { pendingVal.current = num; updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; }); } }}
+      onBlur={() => { setEditing(false); const num = parseNum(localVal); if (num !== value) { pendingVal.current = num; updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
       className="w-16 border border-amber-300 rounded px-1 py-0 text-[12px] font-mono text-right bg-amber-50/50 focus:outline-none focus:border-amber-500" />
   );
@@ -534,7 +535,7 @@ function EditableCGPrice({ cgId, value, onSaved }: { cgId: string; value: number
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={async () => {
         setEditing(false);
-        const num = localVal.trim() === "" ? null : parseFloat(localVal);
+        const num = parseNum(localVal);
         if (num !== value) {
           const sb = createClient();
           await sb.from("deal_company_groups").update({ price: num }).eq("id", cgId);

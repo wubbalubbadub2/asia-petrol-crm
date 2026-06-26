@@ -122,29 +122,40 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
   for (let i = startIdx; i < lines.length; i++) {
     const cells = splitLine(lines[i]);
 
-    // Auto-detect order. The new (2026-06-17) Excel layout is
-    //   дата | накладная | вагон | объём
-    // The legacy layout was
-    //   вагон | объём | дата | накладная
+    // Auto-detect order. Three layouts are supported:
+    //   NEW-4  (2026-06-17) — дата | накладная | вагон | объём
+    //   NEW-3  (2026-06-26) — дата | вагон | объём        (без накладной)
+    //   LEGACY            — вагон | объём | дата | накладная
+    //
     // Sniff position 0 against the DATE PATTERN (not full validity).
-    // An invalid date like «10.15.2026» still SHAPED like a date, so
-    // operator who typed it that way clearly meant the new layout —
-    // we route through the new layout and surface a date-format error
-    // in the date column instead of silently treating the date string
-    // as the wagon number (operator complaint 2026-06-24). Legacy
-    // pastes (bare wagon first) still hit the fallback.
-    const isNewLayout = looksLikeDate(cells[0]) && cells.length >= 2;
+    // An invalid date like «10.15.2026» still SHAPED like a date — we
+    // route through the new layout and surface a date-format error
+    // instead of silently treating the date string as the wagon number
+    // (operator complaint 2026-06-24).
+    //
+    // When the first cell is a date AND there are exactly 3 cells, the
+    // operator meant «дата → вагон → объём» (no waybill). Distinguish
+    // from NEW-4 by counting cells: 3 → NEW-3, 4+ → NEW-4. Falls
+    // through to LEGACY when cell[0] doesn't look like a date.
+    const cell0IsDate = looksLikeDate(cells[0]);
+    const isNew4 = cell0IsDate && cells.length >= 4;
+    const isNew3 = cell0IsDate && cells.length === 3;
 
     let wagon: string;
     let volumeRaw: string | undefined;
     let dateRaw: string | undefined;
     let waybillRaw: string | undefined;
 
-    if (isNewLayout) {
+    if (isNew4) {
       dateRaw = cells[0];
       waybillRaw = cells[1];
       wagon = (cells[2] ?? "").replace(/\s/g, "");
       volumeRaw = cells[3];
+    } else if (isNew3) {
+      dateRaw = cells[0];
+      waybillRaw = undefined;
+      wagon = (cells[1] ?? "").replace(/\s/g, "");
+      volumeRaw = cells[2];
     } else {
       wagon = (cells[0] ?? "").replace(/\s/g, "");
       volumeRaw = cells[1];
