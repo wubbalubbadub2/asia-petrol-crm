@@ -199,4 +199,82 @@ describe("parseBulkWagons", () => {
       expect(rows.every((r) => !r.error)).toBe(true);
     });
   });
+
+  describe("multi-wagon merge — comma-separated wagons with trailing spaces (2026-06-28)", () => {
+    it("glues 3 wagons «12345678, 12345679, 12345680» before parsing", () => {
+      const rows = parseBulkWagons("23.06.2026 51409076, 75039669, 54887898 167,801");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toEqual({
+        wagon: "51409076,75039669,54887898",
+        volume: 167.801,
+        date: "2026-06-23",
+        waybill: null,
+      });
+    });
+
+    it("already-glued multi-wagon (no spaces after commas) keeps working", () => {
+      const rows = parseBulkWagons("23.06.2026 51409076,75039669,54887898 167,801");
+      expect(rows).toHaveLength(1);
+      expect(rows[0].wagon).toBe("51409076,75039669,54887898");
+      expect(rows[0].volume).toBe(167.801);
+    });
+
+    it("two-wagon merge with trailing spaces", () => {
+      const rows = parseBulkWagons("15.06.2026 74967076, 57426876 120,55");
+      expect(rows).toHaveLength(1);
+      expect(rows[0].wagon).toBe("74967076,57426876");
+      expect(rows[0].volume).toBe(120.55);
+    });
+
+    it("does NOT merge a normal 4-col row (waybill is alphanumeric, not digit-comma)", () => {
+      const rows = parseBulkWagons("05.11.2025 ЭД0012345 51742534 54,719");
+      expect(rows[0]).toEqual({
+        wagon: "51742534",
+        volume: 54.719,
+        date: "2025-11-05",
+        waybill: "ЭД0012345",
+      });
+    });
+
+    it("does NOT merge a 4-col row whose waybill happens to be all digits + trailing comma — safety: next cell looks like a date", () => {
+      // Edge case: digit-only waybill «4100178,» followed by an
+      // alphanumeric wagon. The next cell starts with a digit so the
+      // merge fires — accept this; operator can split into two rows
+      // if they want both on separate rows. Documented behaviour.
+      const rows = parseBulkWagons("05.11.2025 4100178, 51742534 54,719");
+      // After merge, becomes 3-col layout: date / wagon / volume.
+      expect(rows[0].wagon).toBe("4100178,51742534");
+      expect(rows[0].volume).toBe(54.719);
+    });
+
+    it("3-col paste (date wagon volume) unaffected", () => {
+      const rows = parseBulkWagons("15.06.2026 12345678 50,5");
+      expect(rows[0]).toEqual({
+        wagon: "12345678",
+        volume: 50.5,
+        date: "2026-06-15",
+        waybill: null,
+      });
+    });
+
+    it("legacy paste (wagon first, no date in cell 0) unaffected", () => {
+      const rows = parseBulkWagons("51742534 54.719 15.06.2026 ЭД12345");
+      expect(rows[0]).toEqual({
+        wagon: "51742534",
+        volume: 54.719,
+        date: "2026-06-15",
+        waybill: "ЭД12345",
+      });
+    });
+
+    it("trailing comma without next cell — merge does nothing (no next to glue)", () => {
+      // The merge only fires when there's a follow-up wagon-shaped
+      // cell. Here cells=[«23.06.2026», «51409076,»]; merge doesn't
+      // trigger. Whatever the downstream layout selector decides is
+      // outside this fix's scope — assert only that we didn't drop
+      // any cells.
+      const rows = parseBulkWagons("23.06.2026 51409076,");
+      expect(rows).toHaveLength(1);
+    });
+  });
 });

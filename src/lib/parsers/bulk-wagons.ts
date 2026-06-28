@@ -44,6 +44,48 @@ function splitLine(line: string): string[] {
   return line.split(/\s+/).map((c) => c.trim()).filter(Boolean);
 }
 
+// Post-process: glue consecutive cells that form a comma-separated
+// wagon list with spaces after the commas. Operator paste pattern
+// (2026-06-28):
+//
+//   «23.06.2026 51409076, 75039669, 54887898 167,801»
+//                      ↑   ↑   ↑
+//   trailing commas + spaces are how Excel exports «multi-wagon»
+//   cells when the operator copies a row.
+//
+// splitLine sees the spaces and produces 5 cells; the row should be
+// 3 cells (date / multi-wagon / volume). This pass merges
+// «12345678,» + «12345679,» + «12345680» → «12345678,12345679,12345680»
+// when:
+//
+//   - cur matches /^[\d,]+,$/  (digit-and-comma chain ending in comma)
+//   - next cell matches /^\d+,?$/  (pure digit run, optionally with one
+//     trailing comma)
+//
+// Conservative on purpose. Cells with dots (dates / decimals),
+// letters (waybill numbers), or stray punctuation never trigger the
+// merge, so 4-col / 3-col / legacy pastes are untouched. The volume
+// «167,801» at the end never matches the merge pattern either — its
+// internal comma is the decimal separator, not a trailing comma.
+function mergeMultiWagonCells(cells: string[]): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < cells.length) {
+    let cur = cells[i];
+    while (
+      /^[\d,]+,$/.test(cur) &&
+      i + 1 < cells.length &&
+      /^\d+,?$/.test(cells[i + 1])
+    ) {
+      i++;
+      cur += cells[i];
+    }
+    out.push(cur);
+    i++;
+  }
+  return out;
+}
+
 function parseVolume(raw: string | undefined): number | null {
   if (!raw) return null;
   const cleaned = raw.replace(/\s/g, "").replace(",", ".");
@@ -120,7 +162,7 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
 
   const out: ParsedWagon[] = [];
   for (let i = startIdx; i < lines.length; i++) {
-    const cells = splitLine(lines[i]);
+    const cells = mergeMultiWagonCells(splitLine(lines[i]));
 
     // Auto-detect order. Three layouts are supported:
     //   NEW-4  (2026-06-17) — дата | накладная | вагон | объём
