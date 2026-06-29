@@ -1594,21 +1594,25 @@ export default function RegistryPage() {
           value={forwarderFilter} onChange={setForwarderFilter}
           options={fwOpts}
           placeholder="Все экспедиторы" searchPlaceholder="Поиск экспедитора…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect
           value={dealFilter} onChange={setDealFilter}
           options={dealOpts.map((o) => ({ value: o.id, label: o.label }))}
           placeholder="Все сделки" searchPlaceholder="Поиск сделки…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect
           value={companyGroupFilter} onChange={setCompanyGroupFilter}
           options={cgOpts}
           placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect
           value={shipmentMonthFilter} onChange={setShipmentMonthFilter}
           options={monthOpts}
           placeholder="Все месяцы отгр." searchPlaceholder="Поиск месяца…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <Input
           value={wagonFilter}
