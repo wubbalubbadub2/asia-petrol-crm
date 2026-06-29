@@ -2017,8 +2017,8 @@ export default function RegistryPage() {
                                 </div>
                               </td>
                               <td className="border-r px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
-                              {/* дубликат — read-only зеркало «группа комп.» для удобства просмотра рядом с коммент. */}
-                              <td className="border-r px-2 py-0.5 text-[10px] text-stone-500">{(r.company_group_id && cgLabels.get(r.company_group_id)) || ""}</td>
+                              {/* дубликат «группа комп.» рядом с комментарием — тоже редактируемый чтобы оператор мог менять с любой стороны таблицы (просьба 2026-06-29). */}
+                              <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={(r.company_group_id && cgLabels.get(r.company_group_id)) || ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="px-1 py-0.5"><EC value={r.comment} recId={r.id} field="comment" onSaved={reload} /></td>
                               <td className="px-1 py-0.5">
                                 <button onClick={async () => {
