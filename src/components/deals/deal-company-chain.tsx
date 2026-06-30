@@ -156,7 +156,7 @@ export function DealCompanyChain({
                       </span>
                     </p>
                   )}
-                  {cg.contract_ref && <p className="text-[9px] text-stone-400">{cg.contract_ref}</p>}
+                  {cg.contract_ref && <p className="text-[11px] text-stone-500 mt-0.5">{cg.contract_ref}</p>}
                 </div>
               </div>
             );
