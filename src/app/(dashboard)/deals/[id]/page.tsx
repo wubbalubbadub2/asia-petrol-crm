@@ -6,7 +6,6 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useSetTabTitle } from "@/lib/contexts/tabs-context";
 // useEffect needed for Field optimistic state sync
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ArrowLeft, Save, Upload, FileText, Trash2, MessageSquare, X, Plus, History, ChevronDown, Pencil, Eye, Download, RefreshCw, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -667,9 +666,18 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     <div className="space-y-4 flex-1 min-w-0">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/deals">
-          <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4" /></Button>
-        </Link>
+        {/* Back via history — сохраняет ?filters в URL списка сделок (nuqs).
+            Прежняя <Link href="/deals"> жёстко стирала query-параметры. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.history.length > 1) router.back();
+            else router.push("/deals");
+          }}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold font-mono">{deal.deal_code}</h1>
