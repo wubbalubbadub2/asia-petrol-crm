@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -96,6 +97,14 @@ function normalizeName(s: string): string {
     .replace(/[-–—_]/g, " ")
     .replace(/\s+/g, " ")
     .replace(/[.,;:()"'`]/g, "")
+    // Roman numerals I/II/III written as standalone words normalize to
+    // arabic digits so «Бишкек I» matches «Бишкек 1» exactly. Covers
+    // both Latin «i» (U+0069) and Cyrillic «і» (U+0456) since eyeballs
+    // can't tell them apart in a mixed-script client file. Order iii
+    // → ii → i so «ii» doesn't turn into «11».
+    .replace(/\b[iі]{3}\b/g, "3")
+    .replace(/\b[iі]{2}\b/g, "2")
+    .replace(/\b[iі]\b/g, "1")
     .trim();
 }
 
@@ -294,6 +303,13 @@ export function ImportTariffsDialog({
 }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
+  // Operator overrides for the auto-matched values. Keyed by
+  // `${rowIndex}:${field}`; the special sentinel «"" (empty string)»
+  // means the operator explicitly cleared the field so we don't fall
+  // back to the auto-match on the next render. `null` in the value
+  // slot is legal (forwarder can be blank), so we can't overload
+  // "map.has(key)" with a null-marker.
+  const [overrides, setOverrides] = useState<Map<string, string>>(new Map());
   const [month, setMonth] = useState<string>(MONTHS_RU_FULL[new Date().getMonth()]);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [parsing, setParsing] = useState(false);
@@ -306,10 +322,65 @@ export function ImportTariffsDialog({
     if (!open) {
       setFileName(null);
       setRows([]);
+      setOverrides(new Map());
       setMonth(MONTHS_RU_FULL[new Date().getMonth()]);
       setYear(new Date().getFullYear());
     }
   }, [open]);
+
+  const stationOpts = useMemo(
+    () => refs.stations.map((s) => ({ value: s.id, label: s.name })),
+    [refs.stations],
+  );
+  const forwarderOpts = useMemo(
+    () => refs.forwarders.map((f) => ({ value: f.id, label: f.name })),
+    [refs.forwarders],
+  );
+  const fuelOpts = useMemo(
+    () => refs.fuelTypes.map((f) => ({ value: f.id, label: f.name })),
+    [refs.fuelTypes],
+  );
+
+  function setOverride(rowIdx: number, field: "dep" | "dst" | "fuel" | "fw", id: string) {
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(`${rowIdx}:${field}`, id);
+      return next;
+    });
+  }
+  function readOverride(
+    rowIdx: number,
+    field: "dep" | "dst" | "fuel" | "fw",
+    fallback: string | null,
+  ): string | null {
+    const key = `${rowIdx}:${field}`;
+    if (overrides.has(key)) {
+      const v = overrides.get(key)!;
+      return v === "" ? null : v;
+    }
+    return fallback;
+  }
+
+  // Re-derive per-row status from the overrides on every render. Cheap
+  // (linear over ~50 rows) and keeps the import button count in sync
+  // with what the operator has fixed manually.
+  const effectiveRows = useMemo(() => {
+    return rows.map((r) => {
+      const depId = readOverride(r.rowIndex, "dep", r.departureId);
+      const dstId = readOverride(r.rowIndex, "dst", r.destinationId);
+      const fuelId = readOverride(r.rowIndex, "fuel", r.fuelId);
+      const fwId = readOverride(r.rowIndex, "fw", r.forwarderId);
+      const canInsert =
+        r.tariff != null &&
+        Number.isFinite(r.tariff) &&
+        (!r.departureText || !!depId) &&
+        (!r.destinationText || !!dstId) &&
+        (!r.fuelText || !!fuelId) &&
+        (!r.forwarderText || !!fwId);
+      return { row: r, depId, dstId, fuelId, fwId, status: canInsert ? "ok" as const : "skip" as const };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, overrides]);
 
   async function handleFile(f: File) {
     setParsing(true);
@@ -353,7 +424,7 @@ export function ImportTariffsDialog({
   }
 
   async function handleImport() {
-    const okRows = rows.filter((r) => r.status === "ok");
+    const okRows = effectiveRows.filter((e) => e.status === "ok");
     if (okRows.length === 0) {
       toast.error("Нет строк для импорта");
       return;
@@ -370,14 +441,14 @@ export function ImportTariffsDialog({
     // ×month×year) UNIQUE index the whole batch rolls back and we
     // surface the DB error to the operator so they can decide whether
     // to delete the previous month's row and re-import.
-    const payload = okRows.map((r) => ({
-      destination_station_id: r.destinationId,
-      departure_station_id: r.departureId,
-      forwarder_id: r.forwarderId,
-      fuel_type_id: r.fuelId,
+    const payload = okRows.map((e) => ({
+      destination_station_id: e.dstId,
+      departure_station_id: e.depId,
+      forwarder_id: e.fwId,
+      fuel_type_id: e.fuelId,
       month,
       year,
-      planned_tariff: r.tariff,
+      planned_tariff: e.row.tariff,
     }));
     const { error } = await sb.from("tariffs").insert(payload);
     setImporting(false);
@@ -393,8 +464,8 @@ export function ImportTariffsDialog({
     onClose();
   }
 
-  const okCount = useMemo(() => rows.filter((r) => r.status === "ok").length, [rows]);
-  const skipCount = rows.length - okCount;
+  const okCount = useMemo(() => effectiveRows.filter((e) => e.status === "ok").length, [effectiveRows]);
+  const skipCount = effectiveRows.length - okCount;
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
@@ -499,59 +570,87 @@ export function ImportTariffsDialog({
                     <th className="px-2 py-1 text-left font-medium text-stone-600">Груз</th>
                     <th className="px-2 py-1 text-left font-medium text-stone-600">Экспедитор</th>
                     <th className="px-2 py-1 text-right font-medium text-stone-600">Ставка</th>
-                    <th className="px-2 py-1 text-left font-medium text-stone-600">Заметки</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
-                    // Render one cell: green if exact, amber (with "→ matched name" hint)
-                    // if fuzzy, red if the file gave text but nothing matched, dim dash
-                    // if the file didn't provide a value at all.
-                    const nameCell = (
+                  {effectiveRows.map((e) => {
+                    const r = e.row;
+                    // Editable cell. Three visual modes based on the
+                    // current effective FK (which folds in operator
+                    // overrides):
+                    //  • exact auto-match → plain text, no selector
+                    //  • fuzzy auto-match or manual override → text
+                    //    + a picker underneath so the operator can
+                    //    swap to a different DB entity if the guess
+                    //    is wrong
+                    //  • unresolved → red text + empty picker
+                    const cell = (
+                      field: "dep" | "dst" | "fuel" | "fw",
                       text: string,
-                      id: string | null,
-                      matched: string | null,
-                      fuzzy: boolean,
+                      currentId: string | null,
+                      autoMatchedId: string | null,
+                      autoMatchedName: string | null,
+                      wasFuzzy: boolean,
+                      options: { value: string; label: string }[],
                     ) => {
                       if (!text) return <span className="text-stone-300">—</span>;
-                      if (!id) return <span className="text-red-600">{text}</span>;
-                      if (fuzzy) {
-                        return (
-                          <div>
-                            <span className="text-amber-700">{text}</span>
-                            <div className="text-[9px] text-amber-600 leading-tight">
-                              → {matched}
-                            </div>
-                          </div>
-                        );
+                      const isExactAuto =
+                        currentId === autoMatchedId && !!currentId && !wasFuzzy;
+                      const isManual =
+                        overrides.has(`${r.rowIndex}:${field}`);
+                      // Plain (no editor) when the auto-match was exact
+                      // and the operator hasn't touched it — 90% of rows
+                      // in a well-maintained справочник fall here, so we
+                      // avoid mounting one SearchableSelect per cell.
+                      if (isExactAuto && !isManual) {
+                        return <span className="text-stone-700">{text}</span>;
                       }
-                      return <span className="text-stone-700">{text}</span>;
+                      const textColor = currentId
+                        ? isManual
+                          ? "text-blue-700"
+                          : "text-amber-700"
+                        : "text-red-600";
+                      return (
+                        <div className="space-y-0.5">
+                          <div className={`text-[11px] ${textColor}`}>{text}</div>
+                          {wasFuzzy && !isManual && autoMatchedName && (
+                            <div className="text-[9px] text-amber-600 leading-tight">
+                              → {autoMatchedName}
+                            </div>
+                          )}
+                          <SearchableSelect
+                            value={currentId ?? ""}
+                            onChange={(v) => setOverride(r.rowIndex, field, v)}
+                            options={options}
+                            placeholder={isManual ? "выбрано вручную" : "— выбрать —"}
+                            searchPlaceholder="Поиск…"
+                            triggerClassName="h-6 text-[11px] px-1.5"
+                          />
+                        </div>
+                      );
                     };
                     return (
                       <tr
                         key={r.rowIndex}
-                        className={`border-t ${r.status === "skip" ? "bg-red-50/30" : ""}`}
+                        className={`border-t ${e.status === "skip" ? "bg-red-50/30" : ""}`}
                       >
                         <td className="px-2 py-1 text-stone-400 tabular-nums align-top">{r.rowIndex}</td>
-                        <td className="px-2 py-1 align-top">
-                          {nameCell(r.departureText, r.departureId, r.departureMatch, r.fuzzyDeparture)}
+                        <td className="px-2 py-1 align-top min-w-[160px]">
+                          {cell("dep", r.departureText, e.depId, r.departureId, r.departureMatch, r.fuzzyDeparture, stationOpts)}
                         </td>
-                        <td className="px-2 py-1 align-top">
-                          {nameCell(r.destinationText, r.destinationId, r.destinationMatch, r.fuzzyDestination)}
+                        <td className="px-2 py-1 align-top min-w-[200px]">
+                          {cell("dst", r.destinationText, e.dstId, r.destinationId, r.destinationMatch, r.fuzzyDestination, stationOpts)}
                         </td>
-                        <td className="px-2 py-1 align-top">
-                          {nameCell(r.fuelText, r.fuelId, r.fuelMatch, r.fuzzyFuel)}
+                        <td className="px-2 py-1 align-top min-w-[130px]">
+                          {cell("fuel", r.fuelText, e.fuelId, r.fuelId, r.fuelMatch, r.fuzzyFuel, fuelOpts)}
                         </td>
-                        <td className="px-2 py-1 align-top">
-                          {nameCell(r.forwarderText, r.forwarderId, r.forwarderMatch, r.fuzzyForwarder)}
+                        <td className="px-2 py-1 align-top min-w-[130px]">
+                          {cell("fw", r.forwarderText, e.fwId, r.forwarderId, r.forwarderMatch, r.fuzzyForwarder, forwarderOpts)}
                         </td>
                         <td className="px-2 py-1 text-right font-mono tabular-nums text-stone-700 align-top">
                           {r.tariff != null
                             ? r.tariff.toLocaleString("ru-RU", { maximumFractionDigits: 3 })
                             : <span className="text-red-600">нет</span>}
-                        </td>
-                        <td className="px-2 py-1 text-[10px] text-amber-700 align-top">
-                          {r.reasons.join("; ")}
                         </td>
                       </tr>
                     );
@@ -560,13 +659,13 @@ export function ImportTariffsDialog({
               </table>
             </div>
 
-            <p className="text-[11px] text-stone-500">
-              <span className="text-amber-700">Оранжевым</span> — значения, найденные приблизительно
-              (по опечатке или отличиям в написании); проверьте, что «→» показывает правильное имя из справочника.
-              {" "}
-              <span className="text-red-600">Красным</span> — значения, которых нет в справочнике; их нужно
-              сначала добавить в разделе <span className="font-medium">Справочник</span>, затем повторить импорт.
-              Пропущенные строки не будут добавлены.
+            <p className="text-[11px] text-stone-500 leading-relaxed">
+              <span className="text-amber-700">Оранжевым</span> — значения, найденные приблизительно;
+              «→» показывает автоматически подобранное имя из справочника.{" "}
+              <span className="text-red-600">Красным</span> — значения, которых не нашлось.{" "}
+              <span className="text-blue-700">Синим</span> — значения, выбранные вручную.{" "}
+              Любую ячейку с оранжевой/красной/синей подписью можно поправить через выпадающий список под текстом.
+              Строки без выбранного значения (кроме экспедитора) будут пропущены.
             </p>
           </div>
         )}
