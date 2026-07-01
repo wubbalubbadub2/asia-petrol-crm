@@ -79,15 +79,13 @@ function classifyHeader(h: string): ColRole | null {
   return null;
 }
 
-// Loose name match: lower-case, trim, collapse whitespace, drop most
-// punctuation, and strip the «ст.»/«станция» prefix present on every
-// station name in /spravochnik («ст. Текесу», «ст.Бухара»). Excel rate
-// sheets omit that prefix («Текесу»), so without normalization the
-// batch would skip 100% of station rows. Applied on both sides so the
+// Loose name match: lower-case, trim, strip the «ст.»/«станция» prefix
+// that every station in /spravochnik carries («ст. Текесу», «ст.Бухара»)
+// but Excel rate sheets omit («Текесу»), swap dashes for spaces (so
+// «Арыс-1» collapses onto «Арыс 1»), collapse whitespace, drop
+// punctuation. Applied on both the DB side and the Excel side so the
 // two representations end up identical.
 //
-// Enough for the free-hand naming clients tend to use ("Актобе 2" vs
-// "Актобе-2" vs "актобе  2") without pulling in a full fuzzy library.
 // If two DB rows normalize to the same key we take the first — the
 // /spravochnik owner is expected to dedupe those.
 function normalizeName(s: string): string {
@@ -95,9 +93,91 @@ function normalizeName(s: string): string {
     .toLowerCase()
     .trim()
     .replace(/^(станция|ст\.?)\s*/i, "")
+    .replace(/[-–—_]/g, " ")
     .replace(/\s+/g, " ")
     .replace(/[.,;:()"'`]/g, "")
     .trim();
+}
+
+// Digits-only fingerprint. Used to gate fuzzy matching: «Арыс 1» and
+// «Арыс 2» normalize to strings 1 char apart (85% similar), but they
+// are different real-world stations. If digitsOf(a) !== digitsOf(b),
+// reject fuzzy — an insertion/deletion of a digit is almost always a
+// distinct route, not a typo.
+function digitsOf(s: string): string {
+  return s.replace(/\D/g, "");
+}
+
+// Classic Levenshtein with the two-row rolling optimization. Called
+// per (candidate × query), so N stations × M rows = ~15k calls on a
+// typical monthly sheet — fine at O(len_a × len_b) with strings of
+// ~15 chars.
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array<number>(n + 1);
+  let curr = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+// Normalized-Levenshtein similarity gated by three cheap heuristics:
+//   • digitsOf must be identical — «Арыс 1» never matches «Арыс 2».
+//   • length delta ≤ 2 — «мазут» never bridges to «мазутный М-100».
+//   • shortest side must be ≥ 5 chars — for «Ош» a 1-char edit is
+//     already 50% distance; short names must match exactly.
+// Threshold 0.8 chosen so «токмок» vs «токмак» (5/6 = 0.833) is
+// accepted as a typo while «арыс» vs «арыс 1» is not (extra token).
+function isFuzzyMatch(a: string, b: string, threshold = 0.8): boolean {
+  if (a === b) return true;
+  if (digitsOf(a) !== digitsOf(b)) return false;
+  if (Math.abs(a.length - b.length) > 2) return false;
+  if (Math.min(a.length, b.length) < 5) return false;
+  const d = levenshtein(a, b);
+  return 1 - d / Math.max(a.length, b.length) >= threshold;
+}
+
+type NormRef = { id: string; name: string; norm: string };
+
+function normalizeRefs<T extends { id: string; name: string }>(items: T[]): NormRef[] {
+  return items.map((it) => ({ id: it.id, name: it.name, norm: normalizeName(it.name) }));
+}
+
+type MatchResult = { id: string; name: string; exact: boolean } | null;
+
+// Two-pass matcher: exact-normalized first (O(N) scan on precomputed
+// keys, hits in the common case), then a fuzzy sweep that picks the
+// single best candidate above the threshold. Returns the resolved
+// name so the preview can show the operator which DB entity a fuzzy
+// input was collapsed onto — otherwise a bad match would silently
+// land the tariff on the wrong station.
+function matchByName(text: string, norms: NormRef[]): MatchResult {
+  const q = normalizeName(text);
+  if (!q) return null;
+  const exact = norms.find((c) => c.norm === q);
+  if (exact) return { id: exact.id, name: exact.name, exact: true };
+  let bestScore = 0;
+  let best: NormRef | null = null;
+  for (const c of norms) {
+    if (!isFuzzyMatch(q, c.norm)) continue;
+    const d = levenshtein(q, c.norm);
+    const score = 1 - d / Math.max(q.length, c.norm.length);
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best ? { id: best.id, name: best.name, exact: false } : null;
 }
 
 type ParsedRow = {
@@ -111,18 +191,21 @@ type ParsedRow = {
   destinationId: string | null;
   fuelId: string | null;
   forwarderId: string | null; // null means "не указан" — legal
+  // Names of the DB entities the row was matched against. Populated
+  // for every non-null match (exact or fuzzy). The preview surfaces
+  // these when they differ from the Excel text so the operator can
+  // catch a wrong fuzzy match before importing.
+  departureMatch: string | null;
+  destinationMatch: string | null;
+  fuelMatch: string | null;
+  forwarderMatch: string | null;
+  fuzzyDeparture: boolean;
+  fuzzyDestination: boolean;
+  fuzzyFuel: boolean;
+  fuzzyForwarder: boolean;
   status: "ok" | "skip";
   reasons: string[];
 };
-
-function buildLookup<T extends { id: string; name: string }>(items: T[]): Map<string, string> {
-  const m = new Map<string, string>();
-  for (const it of items) {
-    const key = normalizeName(it.name);
-    if (!m.has(key)) m.set(key, it.id);
-  }
-  return m;
-}
 
 function classify(rows: string[][], refs: Refs): ParsedRow[] {
   if (rows.length === 0) return [];
@@ -135,9 +218,9 @@ function classify(rows: string[][], refs: Refs): ParsedRow[] {
     tariff: roles.indexOf("tariff"),
     forwarder: roles.indexOf("forwarder"),
   };
-  const stLookup = buildLookup(refs.stations);
-  const fwLookup = buildLookup(refs.forwarders);
-  const fuelLookup = buildLookup(refs.fuelTypes);
+  const stNorms = normalizeRefs(refs.stations);
+  const fwNorms = normalizeRefs(refs.forwarders);
+  const fuelNorms = normalizeRefs(refs.fuelTypes);
   const out: ParsedRow[] = [];
   for (let i = 1; i < rows.length; i++) {
     const raw = rows[i];
@@ -150,27 +233,27 @@ function classify(rows: string[][], refs: Refs): ParsedRow[] {
     const tariffRaw = cell(idxOf.tariff);
     const tariff = tariffRaw ? parseFloat(tariffRaw.replace(",", ".")) : null;
 
-    const departureId = departureText ? (stLookup.get(normalizeName(departureText)) ?? null) : null;
-    const destinationId = destinationText ? (stLookup.get(normalizeName(destinationText)) ?? null) : null;
-    const fuelId = fuelText ? (fuelLookup.get(normalizeName(fuelText)) ?? null) : null;
-    const forwarderId = forwarderText ? (fwLookup.get(normalizeName(forwarderText)) ?? null) : null;
+    const dep = departureText ? matchByName(departureText, stNorms) : null;
+    const dst = destinationText ? matchByName(destinationText, stNorms) : null;
+    const fuel = fuelText ? matchByName(fuelText, fuelNorms) : null;
+    const fw = forwarderText ? matchByName(forwarderText, fwNorms) : null;
 
     const reasons: string[] = [];
     if (!tariff || !Number.isFinite(tariff)) reasons.push("нет ставки");
-    if (departureText && !departureId) reasons.push(`ст. отпр. «${departureText}» не найдена`);
-    if (destinationText && !destinationId) reasons.push(`ст. назн. «${destinationText}» не найдена`);
-    if (fuelText && !fuelId) reasons.push(`груз «${fuelText}» не найден`);
-    if (forwarderText && !forwarderId) reasons.push(`экспедитор «${forwarderText}» не найден`);
+    if (departureText && !dep) reasons.push(`ст. отпр. «${departureText}» не найдена`);
+    if (destinationText && !dst) reasons.push(`ст. назн. «${destinationText}» не найдена`);
+    if (fuelText && !fuel) reasons.push(`груз «${fuelText}» не найден`);
+    if (forwarderText && !fw) reasons.push(`экспедитор «${forwarderText}» не найден`);
     // Не пускаем строку, если нет ставки или хотя бы одна станция/груз
     // указаны текстом, но не сматчились — иначе получим полу-заполненный
     // тариф без FK, который потом никак не найти.
     const canInsert =
       tariff != null &&
       Number.isFinite(tariff) &&
-      (!departureText || !!departureId) &&
-      (!destinationText || !!destinationId) &&
-      (!fuelText || !!fuelId) &&
-      (!forwarderText || !!forwarderId);
+      (!departureText || !!dep) &&
+      (!destinationText || !!dst) &&
+      (!fuelText || !!fuel) &&
+      (!forwarderText || !!fw);
 
     out.push({
       rowIndex: i,
@@ -179,10 +262,18 @@ function classify(rows: string[][], refs: Refs): ParsedRow[] {
       fuelText,
       forwarderText,
       tariff: tariff != null && Number.isFinite(tariff) ? tariff : null,
-      departureId,
-      destinationId,
-      fuelId,
-      forwarderId,
+      departureId: dep?.id ?? null,
+      destinationId: dst?.id ?? null,
+      fuelId: fuel?.id ?? null,
+      forwarderId: fw?.id ?? null,
+      departureMatch: dep?.name ?? null,
+      destinationMatch: dst?.name ?? null,
+      fuelMatch: fuel?.name ?? null,
+      forwarderMatch: fw?.name ?? null,
+      fuzzyDeparture: !!dep && !dep.exact,
+      fuzzyDestination: !!dst && !dst.exact,
+      fuzzyFuel: !!fuel && !fuel.exact,
+      fuzzyForwarder: !!fw && !fw.exact,
       status: canInsert ? "ok" : "skip",
       reasons,
     });
@@ -412,41 +503,69 @@ export function ImportTariffsDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr
-                      key={r.rowIndex}
-                      className={`border-t ${r.status === "skip" ? "bg-amber-50/40" : ""}`}
-                    >
-                      <td className="px-2 py-1 text-stone-400 tabular-nums">{r.rowIndex}</td>
-                      <td className={`px-2 py-1 ${r.departureText && !r.departureId ? "text-red-600" : "text-stone-700"}`}>
-                        {r.departureText || <span className="text-stone-300">—</span>}
-                      </td>
-                      <td className={`px-2 py-1 ${r.destinationText && !r.destinationId ? "text-red-600" : "text-stone-700"}`}>
-                        {r.destinationText || <span className="text-stone-300">—</span>}
-                      </td>
-                      <td className={`px-2 py-1 ${r.fuelText && !r.fuelId ? "text-red-600" : "text-stone-700"}`}>
-                        {r.fuelText || <span className="text-stone-300">—</span>}
-                      </td>
-                      <td className={`px-2 py-1 ${r.forwarderText && !r.forwarderId ? "text-red-600" : "text-stone-700"}`}>
-                        {r.forwarderText || <span className="text-stone-300">—</span>}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums text-stone-700">
-                        {r.tariff != null
-                          ? r.tariff.toLocaleString("ru-RU", { maximumFractionDigits: 3 })
-                          : <span className="text-red-600">нет</span>}
-                      </td>
-                      <td className="px-2 py-1 text-[10px] text-amber-700">
-                        {r.reasons.join("; ")}
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    // Render one cell: green if exact, amber (with "→ matched name" hint)
+                    // if fuzzy, red if the file gave text but nothing matched, dim dash
+                    // if the file didn't provide a value at all.
+                    const nameCell = (
+                      text: string,
+                      id: string | null,
+                      matched: string | null,
+                      fuzzy: boolean,
+                    ) => {
+                      if (!text) return <span className="text-stone-300">—</span>;
+                      if (!id) return <span className="text-red-600">{text}</span>;
+                      if (fuzzy) {
+                        return (
+                          <div>
+                            <span className="text-amber-700">{text}</span>
+                            <div className="text-[9px] text-amber-600 leading-tight">
+                              → {matched}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return <span className="text-stone-700">{text}</span>;
+                    };
+                    return (
+                      <tr
+                        key={r.rowIndex}
+                        className={`border-t ${r.status === "skip" ? "bg-red-50/30" : ""}`}
+                      >
+                        <td className="px-2 py-1 text-stone-400 tabular-nums align-top">{r.rowIndex}</td>
+                        <td className="px-2 py-1 align-top">
+                          {nameCell(r.departureText, r.departureId, r.departureMatch, r.fuzzyDeparture)}
+                        </td>
+                        <td className="px-2 py-1 align-top">
+                          {nameCell(r.destinationText, r.destinationId, r.destinationMatch, r.fuzzyDestination)}
+                        </td>
+                        <td className="px-2 py-1 align-top">
+                          {nameCell(r.fuelText, r.fuelId, r.fuelMatch, r.fuzzyFuel)}
+                        </td>
+                        <td className="px-2 py-1 align-top">
+                          {nameCell(r.forwarderText, r.forwarderId, r.forwarderMatch, r.fuzzyForwarder)}
+                        </td>
+                        <td className="px-2 py-1 text-right font-mono tabular-nums text-stone-700 align-top">
+                          {r.tariff != null
+                            ? r.tariff.toLocaleString("ru-RU", { maximumFractionDigits: 3 })
+                            : <span className="text-red-600">нет</span>}
+                        </td>
+                        <td className="px-2 py-1 text-[10px] text-amber-700 align-top">
+                          {r.reasons.join("; ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             <p className="text-[11px] text-stone-500">
-              Красным выделены значения, которых нет в справочнике — их нужно сначала добавить
-              в разделе <span className="font-medium">Справочник</span>, затем повторить импорт.
+              <span className="text-amber-700">Оранжевым</span> — значения, найденные приблизительно
+              (по опечатке или отличиям в написании); проверьте, что «→» показывает правильное имя из справочника.
+              {" "}
+              <span className="text-red-600">Красным</span> — значения, которых нет в справочнике; их нужно
+              сначала добавить в разделе <span className="font-medium">Справочник</span>, затем повторить импорт.
               Пропущенные строки не будут добавлены.
             </p>
           </div>
