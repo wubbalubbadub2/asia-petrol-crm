@@ -9,7 +9,7 @@ import {
   useContext,
   memo,
 } from "react";
-import { Plus, Filter, Trash2, X } from "lucide-react";
+import { Plus, Filter, Trash2, X, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import { useGlobalRefs } from "@/lib/refs";
 import type { TablesUpdate } from "@/lib/types/database";
+import { ImportTariffsDialog } from "@/components/tariffs/import-dialog";
 
 type Station = { id: string; name: string };
 type Forwarder = { id: string; name: string };
@@ -199,7 +200,7 @@ function AddTariffDialog({
             options={forwarders.map((f) => ({ value: f.id, label: f.name }))}
           />
           <SelectField
-            label="Товар (ГСМ)"
+            label="Груз"
             value={fuelTypeId}
             onChange={setFuelTypeId}
             options={fuelTypes.map((f) => ({ value: f.id, label: f.name }))}
@@ -229,7 +230,7 @@ function AddTariffDialog({
           </div>
           <div>
             <Label className="text-[12px] text-stone-500">
-              Тариф <span className="text-destructive">*</span>
+              Ставка, USD/тонна без НДС <span className="text-destructive">*</span>
             </Label>
             <Input
               type="number"
@@ -535,6 +536,7 @@ export default function TariffsPage() {
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   // Per-column filters. Each holds the selected id (or month name for month).
   const [destFilter, setDestFilter] = useState("");
   const [depFilter, setDepFilter] = useState("");
@@ -717,14 +719,24 @@ export default function TariffsPage() {
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Тарифы</h1>
-        <Button
-          size="sm"
-          className="bg-amber-500 hover:bg-amber-600 text-white"
-          onClick={() => setShowAdd(true)}
-        >
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Добавить тариф
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowImport(true)}
+          >
+            <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+            Импорт из Excel
+          </Button>
+          <Button
+            size="sm"
+            className="bg-amber-500 hover:bg-amber-600 text-white"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Добавить тариф
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -770,7 +782,7 @@ export default function TariffsPage() {
         <SearchableSelect
           value={fuelFilter} onChange={setFuelFilter}
           options={fuelOpts}
-          placeholder="Все ГСМ" searchPlaceholder="Поиск ГСМ…"
+          placeholder="Все грузы" searchPlaceholder="Поиск груза…"
         />
         <SearchableSelect
           value={monthFilter} onChange={setMonthFilter}
@@ -834,9 +846,9 @@ export default function TariffsPage() {
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Ст. назначения</th>
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Ст. отправления</th>
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Экспедитор</th>
-                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Товар (ГСМ)</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Груз</th>
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Месяц</th>
-                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-right align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Тариф</th>
+                  <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-right align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Ставка, USD/тонна без НДС</th>
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-left align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Завод</th>
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 px-2 text-right align-middle font-medium text-stone-600 text-[11px] whitespace-nowrap">Норм. суток</th>
                   <th className="sticky top-0 z-20 bg-stone-50 h-9 w-[30px]"></th>
@@ -863,6 +875,17 @@ export default function TariffsPage() {
         open={showAdd}
         onClose={() => setShowAdd(false)}
         onCreated={loadTariffs}
+      />
+
+      <ImportTariffsDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={loadTariffs}
+        refs={{
+          stations: g.stations,
+          forwarders: g.forwarders,
+          fuelTypes: g.fuelTypes,
+        }}
       />
     </div>
   );
