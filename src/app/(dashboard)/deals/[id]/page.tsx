@@ -22,7 +22,7 @@ import { DealPayments } from "@/components/deals/deal-payments";
 import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
 import { DealShipments } from "@/components/deals/deal-shipments";
 import { DealCompanyChain } from "@/components/deals/deal-company-chain";
-import { CollapsibleSection } from "@/components/deals/collapsible-section";
+import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 import { AuditHistory } from "@/components/shared/audit-history";
 import { ChangeDealNumberDialog } from "@/components/deals/change-deal-number-dialog";
 import { useRole } from "@/lib/hooks/use-role";
@@ -765,6 +765,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {/* ===== SUPPLIER SECTION (fields + pricing + payments + docs) ===== */}
       <CollapsibleSection
         title="Поставщик"
+        headerBg={SECTION_COLORS.supplier}
         headerRight={<SectionCurrencyPicker editing={editing} value={supplierCurrency} dealId={deal.id} field="supplier_currency" syncLegacy onSaved={reload} />}
       >
         {/* Header / scalar fields (one per side) */}
@@ -830,6 +831,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {/* ===== BUYER SECTION (fields + pricing + payments + docs) ===== */}
       <CollapsibleSection
         title="Покупатель"
+        headerBg={SECTION_COLORS.buyer}
         headerRight={<SectionCurrencyPicker editing={editing} value={buyerCurrency} dealId={deal.id} field="buyer_currency" onSaved={reload} />}
       >
         {/* Header / scalar fields (one per side) */}
@@ -893,7 +895,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       </CollapsibleSection>
 
       {/* ===== COMPANY CHAIN ===== */}
-      <CollapsibleSection title="Группа компаний">
+      <CollapsibleSection title="Группа компаний" headerBg={SECTION_COLORS.chain}>
         <DealCompanyChain
           dealId={deal.id}
           editing={editing}
@@ -920,6 +922,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       {/* ===== LOGISTICS ===== */}
       <CollapsibleSection
         title="Логистика"
+        headerBg={SECTION_COLORS.logistics}
         headerRight={
           <div className="flex items-center gap-2">
             {/* Кнопка «Массово» рендерится только для KG/KZ — BulkAddDialog
@@ -973,7 +976,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       </CollapsibleSection>
 
       {/* ===== MANAGERS ===== */}
-      <CollapsibleSection title="Ответственные" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
+      <CollapsibleSection title="Ответственные" headerBg={SECTION_COLORS.deal} contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
         <EditableSelect label="Коммерция (поставщик)" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
         <EditableSelect label="Коммерция (покупатель)" value={deal.buyer_manager_id} displayValue={deal.buyer_manager?.full_name ?? "—"} editing={editing} field="buyer_manager_id" dealId={deal.id} options={refs.managers} />
         <EditableSelect label="Трейдер" value={deal.trader_id} displayValue={deal.trader?.full_name ?? "—"} editing={editing} field="trader_id" dealId={deal.id} options={refs.managers} />

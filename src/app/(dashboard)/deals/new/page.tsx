@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft } from "@/components/deals/deal-create-variants";
-import { CollapsibleSection } from "@/components/deals/collapsible-section";
+import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -449,7 +449,7 @@ export default function NewDealPage() {
         className="space-y-4"
       >
         {/* Basic Info */}
-        <CollapsibleSection title="Основные данные" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <CollapsibleSection title="Основные данные" headerBg={SECTION_COLORS.deal} contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-[12px] text-stone-500">Тип сделки</Label>
               <div className="flex gap-1 mt-1">
@@ -509,7 +509,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Supplier */}
-        <CollapsibleSection title="Поставщик" contentClassName="space-y-3">
+        <CollapsibleSection title="Поставщик" headerBg={SECTION_COLORS.supplier} contentClassName="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <SelectField
                 label="Поставщик"
@@ -553,7 +553,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Buyer */}
-        <CollapsibleSection title="Покупатель" contentClassName="space-y-3">
+        <CollapsibleSection title="Покупатель" headerBg={SECTION_COLORS.buyer} contentClassName="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <SelectField
                 label="Покупатель"
@@ -589,6 +589,7 @@ export default function NewDealPage() {
         {/* Company Groups */}
         <CollapsibleSection
           title="Группы компании"
+          headerBg={SECTION_COLORS.chain}
           headerRight={
             dealCompanyGroups.length < 6 ? (
               <Button type="button" size="sm" variant="outline" onClick={addCompanyGroup}>
@@ -654,7 +655,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Logistics */}
-        <CollapsibleSection title="Логистика" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <CollapsibleSection title="Логистика" headerBg={SECTION_COLORS.logistics} contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <SelectField
               label="Экспедитор"
               value={forwarderId}
@@ -691,7 +692,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Managers */}
-        <CollapsibleSection title="Ответственные" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <CollapsibleSection title="Ответственные" headerBg={SECTION_COLORS.deal} contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <SelectField
               label="Коммерция (поставщик)"
               value={supplierManagerId}
@@ -713,7 +714,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Оплата заранее */}
-        <CollapsibleSection title="Оплата заранее (опционально)" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <CollapsibleSection title="Оплата заранее (опционально)" headerBg={SECTION_COLORS.supplier} contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-[12px] text-stone-500">Сторона</Label>
               <select

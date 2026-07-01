@@ -172,12 +172,17 @@ function VariantsBadge({ supplierCount, buyerCount }: { supplierCount: number; b
 // so the popover escapes the table's overflow-auto clipping context
 // and isn't trimmed when the cell is near the viewport edge.
 function VolumeBreakdownCell({
-  dealId, value, field, className,
+  dealId, value, field, className, dataCol, dataValue,
 }: {
   dealId: string;
   value: number | null | undefined;
   field: "loading_volume" | "shipment_volume";
   className?: string;
+  // Selection-mode metadata (rendered as data-col / data-deal-id /
+  // data-value on the inner <td> so the table-level modifier-click
+  // handler can pick this cell up for sum/avg aggregation).
+  dataCol?: string;
+  dataValue?: number | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [shipments, setShipments] = useState<ShipmentSnap[] | null>(null);
@@ -221,6 +226,9 @@ function VolumeBreakdownCell({
         ref={cellRef}
         onClick={toggle}
         className={`${className ?? ""} cursor-pointer ${open ? "ring-2 ring-amber-300/70" : ""}`}
+        data-col={dataCol}
+        data-deal-id={dataCol ? dealId : undefined}
+        data-value={dataCol && dataValue != null ? String(dataValue) : undefined}
       >
         {formatComputedVol(value)}
       </td>
@@ -288,13 +296,15 @@ function paymentLines(
 // keeps the inline-edit affordance discoverable (visible whenever the
 // popover is open).
 function PaymentBreakdownCell({
-  dealId, value, side, currency, className,
+  dealId, value, side, currency, className, dataCol, dataValue,
 }: {
   dealId: string;
   value: number | null | undefined;
   side: "supplier" | "buyer";
   currency: string;
   className?: string;
+  dataCol?: string;
+  dataValue?: number | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -367,6 +377,9 @@ function PaymentBreakdownCell({
         ref={cellRef}
         onClick={toggle}
         className={`${className ?? ""} cursor-pointer ${open ? "ring-2 ring-amber-300/70" : ""}`}
+        data-col={dataCol}
+        data-deal-id={dataCol ? dealId : undefined}
+        data-value={dataCol && dataValue != null ? String(dataValue) : undefined}
       >
         {editing ? (
           <input
@@ -793,15 +806,33 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       </td>
       <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"><EditableTextCell value={deal.supplier_contract} dealId={deal.id} field="supplier_contract" /></td>
       <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"><EditableTextCell value={deal.supplier_delivery_basis} dealId={deal.id} field="supplier_delivery_basis" /></td>
-      <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: объем × цена">{formatComputedNum(deal.supplier_contracted_amount)}</td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.supplier_price)}</td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="сумма из секции цен">{formatComputedNum(deal.supplier_shipped_amount)}</td>
+      <td
+        className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700"
+        data-col="supplier_contracted_volume" data-deal-id={deal.id}
+        data-value={deal.supplier_contracted_volume ?? undefined}
+      ><EditableNumCell value={deal.supplier_contracted_volume} dealId={deal.id} field="supplier_contracted_volume" /></td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: объем × цена"
+        data-col="supplier_contracted_amount" data-deal-id={deal.id}
+        data-value={deal.supplier_contracted_amount ?? undefined}
+      >{formatComputedNum(deal.supplier_contracted_amount)}</td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)"
+        data-col="supplier_price" data-deal-id={deal.id}
+        data-value={deal.supplier_price ?? undefined}
+      >{formatComputedNum(deal.supplier_price)}</td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="сумма из секции цен"
+        data-col="supplier_shipped_amount" data-deal-id={deal.id}
+        data-value={deal.supplier_shipped_amount ?? undefined}
+      >{formatComputedNum(deal.supplier_shipped_amount)}</td>
       <VolumeBreakdownCell
         dealId={deal.id}
         value={deal.supplier_shipped_volume}
         field="loading_volume"
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
+        dataCol="supplier_shipped_volume"
+        dataValue={deal.supplier_shipped_volume}
       />
       <PaymentBreakdownCell
         dealId={deal.id}
@@ -809,8 +840,14 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
         side="supplier"
         currency={deal.supplier_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
+        dataCol="supplier_payment"
+        dataValue={deal.supplier_payment}
       />
-      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: отгружено − оплата">
+      <td
+        className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: отгружено − оплата"
+        data-col="supplier_balance" data-deal-id={deal.id}
+        data-value={deal.supplier_balance ?? undefined}
+      >
         <ComputedNumSigned value={deal.supplier_balance} />
       </td>
 
@@ -848,16 +885,36 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       </td>
       <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableTextCell value={deal.buyer_contract} dealId={deal.id} field="buyer_contract" /></td>
       <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableTextCell value={deal.buyer_delivery_basis} dealId={deal.id} field="buyer_delivery_basis" /></td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: объем × цена">{formatComputedNum(deal.buyer_contracted_amount)}</td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)">{formatComputedNum(deal.buyer_price)}</td>
-      <td className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
+      <td
+        className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"
+        data-col="buyer_contracted_volume" data-deal-id={deal.id}
+        data-value={deal.buyer_contracted_volume ?? undefined}
+      ><EditableNumCell value={deal.buyer_contracted_volume} dealId={deal.id} field="buyer_contracted_volume" /></td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: объем × цена"
+        data-col="buyer_contracted_amount" data-deal-id={deal.id}
+        data-value={deal.buyer_contracted_amount ?? undefined}
+      >{formatComputedNum(deal.buyer_contracted_amount)}</td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)"
+        data-col="buyer_price" data-deal-id={deal.id}
+        data-value={deal.buyer_price ?? undefined}
+      >{formatComputedNum(deal.buyer_price)}</td>
+      <td
+        className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"
+        data-col="buyer_ordered_volume" data-deal-id={deal.id}
+        data-value={deal.buyer_ordered_volume ?? undefined}
+      ><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
       {/* Остаток — operator request 2026-06-23: «нужно добавить
           колонку со стороны покупателя между Заявлено и Отгружено,
           колонку Остаток по формуле отгружено минус заявлено».
           Read-only computed: shipped − ordered (negative until
           fulfilled, positive on overshipment). */}
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: отгружено − заявлено">
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: отгружено − заявлено"
+        data-col="buyer_remaining" data-deal-id={deal.id}
+        data-value={((deal.buyer_shipped_volume ?? 0) - (deal.buyer_ordered_volume ?? 0))}
+      >
         {/* Остаток — это разность объёмов (тонн), не сумма; используем
             formatComputedVol чтобы было 3 знака после запятой, как и
             у других тоннажных колонок. */}
@@ -868,16 +925,28 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
         value={deal.buyer_shipped_volume}
         field="shipment_volume"
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
+        dataCol="buyer_shipped_volume"
+        dataValue={deal.buyer_shipped_volume}
       />
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="сумма из секции цен">{formatComputedNum(deal.buyer_shipped_amount)}</td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="сумма из секции цен"
+        data-col="buyer_shipped_amount" data-deal-id={deal.id}
+        data-value={deal.buyer_shipped_amount ?? undefined}
+      >{formatComputedNum(deal.buyer_shipped_amount)}</td>
       <PaymentBreakdownCell
         dealId={deal.id}
         value={deal.buyer_payment}
         side="buyer"
         currency={deal.buyer_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
+        dataCol="buyer_payment"
+        dataValue={deal.buyer_payment}
       />
-      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: оплата − отгружено">
+      <td
+        className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: оплата − отгружено"
+        data-col="buyer_debt" data-deal-id={deal.id}
+        data-value={deal.buyer_debt ?? undefined}
+      >
         <ComputedNumSigned value={deal.buyer_debt} />
       </td>
 
@@ -893,14 +962,28 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
           тариф». planned_tariff is the per-ton rate used to compute
           preliminary_amount = тариф × объем план; editing it here
           recomputes the next column via the existing trigger. */}
-      <td className="border-r px-1 py-0.5 text-stone-700"><EditableNumCell value={deal.planned_tariff} dealId={deal.id} field="planned_tariff" /></td>
-      <td className="border-r px-1 py-0.5 text-stone-700"><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
-      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="auto: тариф × объем план">{formatComputedNum(deal.preliminary_amount)}</td>
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="planned_tariff" data-deal-id={deal.id}
+        data-value={deal.planned_tariff ?? undefined}
+      ><EditableNumCell value={deal.planned_tariff} dealId={deal.id} field="planned_tariff" /></td>
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="preliminary_tonnage" data-deal-id={deal.id}
+        data-value={deal.preliminary_tonnage ?? undefined}
+      ><EditableNumCell value={deal.preliminary_tonnage} dealId={deal.id} field="preliminary_tonnage" /></td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="auto: тариф × объем план"
+        data-col="preliminary_amount" data-deal-id={deal.id}
+        data-value={deal.preliminary_amount ?? undefined}
+      >{formatComputedNum(deal.preliminary_amount)}</td>
       <VolumeBreakdownCell
         dealId={deal.id}
         value={deal.actual_shipped_volume}
         field="shipment_volume"
         className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
+        dataCol="actual_shipped_volume"
+        dataValue={deal.actual_shipped_volume}
       />
       {/* Логистика → Сумма (invoice_amount). Was read-only; operator
           Symbat 2026-06-22: «можем сразу здесь писать сумму по
@@ -912,7 +995,11 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
           source rows), so this is for quick manual entry on deals
           that haven't been shipped yet. Title makes the rule
           visible on hover. */}
-      <td className="border-r px-1 py-0.5 text-stone-700" title="Сумма по экспедитору. Перезапишется при следующей правке реестра/ЭСФ.">
+      <td
+        className="border-r px-1 py-0.5 text-stone-700" title="Сумма по экспедитору. Перезапишется при следующей правке реестра/ЭСФ."
+        data-col="invoice_amount" data-deal-id={deal.id}
+        data-value={deal.invoice_amount ?? undefined}
+      >
         <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
       </td>
       <td className="px-1 py-0.5 text-stone-700">
@@ -957,6 +1044,46 @@ function PassportSkeletonRow() {
       ))}
     </tr>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Selection-mode config
+//
+//  Multi-cell selection with a live sum/avg/count summary — client
+//  2026-07-01: «как в Excel когда выделяем несколько строк можно
+//  автоматом увидеть сумму». Only numeric columns participate; each
+//  row's cell in these columns carries `data-col`, `data-deal-id`,
+//  `data-value` attributes so the table-level onClickCapture handler
+//  can pick them up on Shift/Ctrl/Cmd-click without every cell
+//  having to subscribe to selection state through React.
+// ─────────────────────────────────────────────────────────────────────
+
+const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
+  supplier_contracted_volume: { label: "Объем контракт (Поставщик)", decimals: 3 },
+  supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 2 },
+  supplier_price:             { label: "Цена (Поставщик)",           decimals: 2 },
+  supplier_shipped_amount:    { label: "Отгр. сумма (Поставщик)",    decimals: 2 },
+  supplier_shipped_volume:    { label: "Отгр. тонн (Поставщик)",     decimals: 3 },
+  supplier_payment:           { label: "Оплата (Поставщик)",         decimals: 2 },
+  supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
+  buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
+  buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
+  buyer_price:                { label: "Цена (Покупатель)",           decimals: 2 },
+  buyer_ordered_volume:       { label: "Заявлено (Покупатель)",       decimals: 3 },
+  buyer_remaining:            { label: "Остаток (Покупатель)",        decimals: 3 },
+  buyer_shipped_volume:       { label: "Отгр. тонн (Покупатель)",     decimals: 3 },
+  buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 2 },
+  buyer_payment:              { label: "Оплата (Покупатель)",         decimals: 2 },
+  buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
+  planned_tariff:             { label: "Тариф",                       decimals: 2 },
+  preliminary_tonnage:        { label: "Объем план (Логистика)",      decimals: 3 },
+  preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 2 },
+  actual_shipped_volume:      { label: "Факт объем (Логистика)",      decimals: 3 },
+  invoice_amount:             { label: "Сумма (Логистика)",           decimals: 2 },
+};
+
+function formatWithDecimals(v: number, decimals: 2 | 3): string {
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1069,9 +1196,136 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   // immediate «click» feedback.
   const isColdLoad = (loading && deals.length === 0) || tabFlash;
 
+  // ── Multi-cell selection ──────────────────────────────────────────
+  // Excel-style: Shift-click extends from the anchor to the clicked
+  // cell within the same column; Ctrl/Cmd-click toggles a single
+  // cell; clicking a cell in a different column resets to just that
+  // cell (anchor moves with it). Escape clears everything.
+  //
+  // State is deliberately kept OUT of PassportRefsContext so row
+  // re-renders don't cascade on every click — the visual highlight
+  // is delivered via a dynamic <style> block that emits CSS rules
+  // keyed on the same data-col/data-deal-id attributes the row
+  // <td>s already carry.
+  const [selection, setSelection] = useState<{
+    colKey: string | null;
+    ids: Set<string>;
+    anchorId: string | null;
+  }>({ colKey: null, ids: new Set(), anchorId: null });
+
+  function clearSelection() {
+    setSelection({ colKey: null, ids: new Set(), anchorId: null });
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") clearSelection();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Clear selection whenever the underlying dataset changes (filters,
+  // deal_type tab switch, refetch after an edit). Otherwise the
+  // selected ids would keep pointing at rows that are no longer
+  // visible and the footer sum would grow silently stale.
+  useEffect(() => {
+    clearSelection();
+  }, [dealType, deals.length]);
+
+  // Capture-phase so we intercept the click BEFORE any child cell's
+  // own onClick fires (VolumeBreakdownCell.toggle,
+  // EditableNumCell.startEdit). Without a modifier we bail out and
+  // let the child handler run its usual path (open popover, enter
+  // edit mode, etc).
+  function handleTableClickCapture(e: React.MouseEvent) {
+    if (!e.shiftKey && !e.metaKey && !e.ctrlKey) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const td = target.closest("td[data-col][data-deal-id]") as HTMLElement | null;
+    if (!td) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const colKey = td.dataset.col!;
+    const dealId = td.dataset.dealId!;
+    setSelection((prev) => {
+      // Different column → reset to single-cell selection.
+      if (prev.colKey !== colKey) {
+        return { colKey, ids: new Set([dealId]), anchorId: dealId };
+      }
+      if (e.shiftKey && prev.anchorId) {
+        // Range from anchor → clicked, inclusive. Uses the currently
+        // filtered `deals` array so the range only spans visible rows.
+        const idxA = deals.findIndex((d) => d.id === prev.anchorId);
+        const idxB = deals.findIndex((d) => d.id === dealId);
+        if (idxA < 0 || idxB < 0) return prev;
+        const [lo, hi] = idxA <= idxB ? [idxA, idxB] : [idxB, idxA];
+        const rangeIds = new Set(deals.slice(lo, hi + 1).map((d) => d.id));
+        return { colKey, ids: rangeIds, anchorId: prev.anchorId };
+      }
+      // Ctrl/Cmd-click: toggle individual cell + move anchor.
+      const ids = new Set(prev.ids);
+      if (ids.has(dealId)) ids.delete(dealId);
+      else ids.add(dealId);
+      return { colKey, ids, anchorId: dealId };
+    });
+  }
+
+  const selectionStats = useMemo(() => {
+    if (!selection.colKey || selection.ids.size === 0) return null;
+    const meta = NUMERIC_COLS[selection.colKey];
+    if (!meta) return null;
+    let sum = 0;
+    let count = 0;
+    let min: number | null = null;
+    let max: number | null = null;
+    for (const d of deals) {
+      if (!selection.ids.has(d.id)) continue;
+      // buyer_remaining is computed on the fly; other columns are
+      // plain properties on Deal. Cast through unknown to sidestep
+      // Deal's typed field list without loosening the whole type.
+      const raw =
+        selection.colKey === "buyer_remaining"
+          ? (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0)
+          : (d as unknown as Record<string, number | null | undefined>)[selection.colKey!];
+      const v = typeof raw === "number" ? raw : null;
+      if (v == null) continue;
+      sum += v;
+      count += 1;
+      if (min == null || v < min) min = v;
+      if (max == null || v > max) max = v;
+    }
+    return {
+      sum,
+      avg: count > 0 ? sum / count : 0,
+      min: min ?? 0,
+      max: max ?? 0,
+      count,
+      label: meta.label,
+      decimals: meta.decimals,
+    };
+  }, [selection, deals]);
+
   return (
     <PassportRefsContext.Provider value={refsContextValue}>
-      <div ref={scrollRef} className="overflow-auto h-full rounded-md border border-stone-200 bg-white">
+      {/* Emit CSS for the currently selected cells. Cheap: at most
+          selection.ids.size rules re-emitted on selection change, no
+          row re-renders. Virtualized rows entering the viewport pick
+          up the highlight for free. */}
+      {selection.colKey && selection.ids.size > 0 && (
+        <style>{Array.from(selection.ids).map((id) =>
+          `td[data-col="${selection.colKey}"][data-deal-id="${id}"]{`
+            + `background-color:rgba(245,158,11,0.28)!important;`
+            + `box-shadow:inset 0 0 0 2px rgb(217,119,6);`
+          + `}`,
+        ).join("")}</style>
+      )}
+      <div className="flex flex-col h-full">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-auto rounded-md border border-stone-200 bg-white"
+        onClickCapture={handleTableClickCapture}
+      >
         {/* The wrapper has its OWN vertical + horizontal scroll context.
             The page above is non-scrollable; users scroll the table
             internally.
@@ -1178,6 +1432,33 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
             {!isColdLoad && <PassportTotalsRow deals={deals} />}
           </tbody>
         </table>
+      </div>
+      {selectionStats && (
+        <div className="flex flex-wrap items-center gap-4 border-t border-amber-400 bg-amber-100 px-3 py-1.5 text-[12px] text-stone-800">
+          <span className="font-medium text-amber-900">{selectionStats.label}</span>
+          <span>
+            Ячеек: <strong className="font-mono tabular-nums">{selectionStats.count}</strong>
+          </span>
+          <span>
+            Сумма: <strong className="font-mono tabular-nums">{formatWithDecimals(selectionStats.sum, selectionStats.decimals)}</strong>
+          </span>
+          <span>
+            Среднее: <strong className="font-mono tabular-nums">{formatWithDecimals(selectionStats.avg, selectionStats.decimals)}</strong>
+          </span>
+          <span className="text-stone-600">
+            min <span className="font-mono tabular-nums">{formatWithDecimals(selectionStats.min, selectionStats.decimals)}</span>
+            {" · "}
+            max <span className="font-mono tabular-nums">{formatWithDecimals(selectionStats.max, selectionStats.decimals)}</span>
+          </span>
+          <button
+            onClick={clearSelection}
+            className="ml-auto rounded px-2 py-0.5 text-[11px] text-amber-900 hover:bg-amber-200"
+            title="Esc"
+          >
+            × Сбросить
+          </button>
+        </div>
+      )}
       </div>
     </PassportRefsContext.Provider>
   );
