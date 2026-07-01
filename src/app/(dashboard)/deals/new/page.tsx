@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { createDeal } from "@/lib/hooks/use-deals";
 import { MONTHS_RU, getQuarterFromMonth } from "@/lib/constants/months-ru";
@@ -17,6 +16,7 @@ import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft } from "@/components/deals/deal-create-variants";
+import { CollapsibleSection } from "@/components/deals/collapsible-section";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -449,11 +449,7 @@ export default function NewDealPage() {
         className="space-y-4"
       >
         {/* Basic Info */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px]">Основные данные</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <CollapsibleSection title="Основные данные" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-[12px] text-stone-500">Тип сделки</Label>
               <div className="flex gap-1 mt-1">
@@ -510,15 +506,10 @@ export default function NewDealPage() {
                 { value: "RUB", label: "RUB (₽)" },
               ]}
             />
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Supplier */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px]">Поставщик</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <CollapsibleSection title="Поставщик" contentClassName="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <SelectField
                 label="Поставщик"
@@ -559,15 +550,10 @@ export default function NewDealPage() {
                 stations={stations}
               />
             </div>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Buyer */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px]">Покупатель</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <CollapsibleSection title="Покупатель" contentClassName="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <SelectField
                 label="Покупатель"
@@ -598,22 +584,19 @@ export default function NewDealPage() {
                 stations={stations}
               />
             </div>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Company Groups */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-[14px]">Группы компании</CardTitle>
-              {dealCompanyGroups.length < 6 && (
-                <Button type="button" size="sm" variant="outline" onClick={addCompanyGroup}>
-                  + Добавить группу
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
+        <CollapsibleSection
+          title="Группы компании"
+          headerRight={
+            dealCompanyGroups.length < 6 ? (
+              <Button type="button" size="sm" variant="outline" onClick={addCompanyGroup}>
+                + Добавить группу
+              </Button>
+            ) : null
+          }
+        >
             {dealCompanyGroups.length === 0 ? (
               <p className="text-[12px] text-stone-400">Нет групп компании. Нажмите "Добавить группу" (до 6).</p>
             ) : (
@@ -668,15 +651,10 @@ export default function NewDealPage() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Logistics */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px]">Логистика</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <CollapsibleSection title="Логистика" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <SelectField
               label="Экспедитор"
               value={forwarderId}
@@ -710,15 +688,10 @@ export default function NewDealPage() {
               <Label className="text-[12px] text-stone-500">Объем предварит. (тонн)</Label>
               <Input type="number" step="0.01" value={preliminaryTonnage} onChange={(e) => setPreliminaryTonnage(e.target.value)} className="h-8 text-[13px] font-mono" />
             </div>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Managers */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px]">Ответственные</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <CollapsibleSection title="Ответственные" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <SelectField
               label="Коммерция (поставщик)"
               value={supplierManagerId}
@@ -737,15 +710,10 @@ export default function NewDealPage() {
               onChange={setTraderId}
               options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
             />
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Оплата заранее */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px]">Оплата заранее (опционально)</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <CollapsibleSection title="Оплата заранее (опционально)" contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <Label className="text-[12px] text-stone-500">Сторона</Label>
               <select
@@ -780,8 +748,7 @@ export default function NewDealPage() {
             <div className="text-[11px] text-stone-400 self-end pb-1.5">
               Если оплата пришла до создания сделки. Запишется в раздел «Оплаты» сразу после сохранения.
             </div>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Submit */}
         <div className="flex gap-3">

@@ -1097,56 +1097,62 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 No border-b on row 1 → the two header rows visually
                 merge into one block (border-b is on row 2 only, marking
                 the boundary with the body). */}
-            <tr className="bg-stone-100">
-              <th colSpan={5} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Сделка</th>
-              <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-amber-700 uppercase tracking-wider bg-amber-50">Поставщик</th>
-              <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-purple-700 uppercase tracking-wider bg-purple-50">Группы компании</th>
-              <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-blue-700 uppercase tracking-wider bg-blue-50">Покупатель</th>
-              <th colSpan={9} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-500 uppercase tracking-wider bg-stone-100">Логистика</th>
+            {/* Category band colors per client request 2026-07-01. Hex
+                values from the client's brand palette: Сделка #b4c6e7,
+                Поставщик #fce3d6, Группы компании #bcd7ee, Покупатель
+                #fff2cc, Логистика #d9d9d9. Applied to BOTH header rows
+                so the top-band label and its detail cells share a
+                single visual identity. */}
+            <tr>
+              <th colSpan={5} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#b4c6e7]">Сделка</th>
+              <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>
+              <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>
+              <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>
+              <th colSpan={9} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
             </tr>
-            <tr className="bg-stone-50 border-b">
-              <th className="sticky top-7 left-0 z-30 bg-stone-50 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px]">№</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[75px] bg-stone-50">Месяц</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-stone-50">Завод</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-stone-50">ГСМ</th>
-              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[40px] bg-stone-50">%S</th>
+            <tr className="border-b">
+              <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">№</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[75px] bg-[#b4c6e7]">Месяц</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#b4c6e7]">Завод</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#b4c6e7]">ГСМ</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[40px] bg-[#b4c6e7]">%S</th>
               {/* Supplier: 10 cols */}
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-amber-50">Поставщик</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-amber-50">Договор</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-amber-50">Базис</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-amber-50">Объем</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50">Сумма дог.</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[60px] bg-amber-50">Цена</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50">Отгр. сумма</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-amber-50">Отгр. тонн</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-amber-50">Оплата</th>
-              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-amber-50">Баланс</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#fce3d6]">Поставщик</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Договор</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]">Базис</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Объем</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Сумма дог.</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#fce3d6]">Цена</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Отгр. сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Отгр. тонн</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Оплата</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]">Баланс</th>
               {/* Company groups: 2 cols */}
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-purple-50">Компания</th>
-              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[60px] bg-purple-50">Цена гр.</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#bcd7ee]">Компания</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#bcd7ee]">Цена гр.</th>
               {/* Buyer: 11 cols */}
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[110px] bg-blue-50">Покупатель</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[70px] bg-blue-50">Договор</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[80px] bg-blue-50">Базис</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-blue-50">Объем</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50">Сумма дог.</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[60px] bg-blue-50">Цена</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-blue-50">Заявлено</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-blue-50" title="отгружено − заявлено">Остаток</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-blue-50">Отгр. тонн</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50">Отгр. сумма</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[70px] bg-blue-50">Оплата</th>
-              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-blue-50">Долг</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#fff2cc]">Покупатель</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Договор</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fff2cc]">Базис</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Объем</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Сумма дог.</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#fff2cc]">Цена</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Заявлено</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]" title="отгружено − заявлено">Остаток</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Отгр. тонн</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Отгр. сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Оплата</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fff2cc]">Долг</th>
               {/* Logistics: 8 cols */}
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Экспедитор</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Группа комп.</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Тариф</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Объем план</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Предв. сумма</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[55px] bg-stone-50">Факт объем</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-600 min-w-[65px] bg-stone-50">Сумма</th>
-              <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-600 min-w-[90px] bg-stone-50">Коммерция</th>
-              <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-stone-50"></th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Экспедитор</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Группа комп.</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Тариф</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Объем план</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Предв. сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Факт объем</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Сумма</th>
+              <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
+              <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-[#d9d9d9]"></th>
             </tr>
           </thead>
           <tbody>

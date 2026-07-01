@@ -71,7 +71,11 @@ export type VariantDraft = {
 };
 
 export const EMPTY_VARIANT: VariantDraft = {
-  priceMode: "fixed",
+  // Клиент 2026-07-01 попросил открывать новую сделку с обычной
+  // «Фикс / Вручную» — оператор набивает цену руками без формульного
+  // расчёта. Прежний «fixed» лендил на «Формула: На дату» и требовал
+  // выбирать котировку до сохранения, что мешало быстрому вводу.
+  priceMode: "manual",
   calcMode: "on_date",
   quotationTypeId: "",
   priceSource: "",
