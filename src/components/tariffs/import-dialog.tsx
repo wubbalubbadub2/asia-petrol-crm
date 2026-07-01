@@ -80,16 +80,24 @@ function classifyHeader(h: string): ColRole | null {
 }
 
 // Loose name match: lower-case, trim, collapse whitespace, drop most
-// punctuation. Enough for the free-hand naming clients tend to use
-// ("Актобе 2" vs "Актобе-2" vs "актобе  2") without pulling in a full
-// fuzzy library. If two DB rows normalize to the same key we take the
-// first — the /spravochnik owner is expected to dedupe those.
+// punctuation, and strip the «ст.»/«станция» prefix present on every
+// station name in /spravochnik («ст. Текесу», «ст.Бухара»). Excel rate
+// sheets omit that prefix («Текесу»), so without normalization the
+// batch would skip 100% of station rows. Applied on both sides so the
+// two representations end up identical.
+//
+// Enough for the free-hand naming clients tend to use ("Актобе 2" vs
+// "Актобе-2" vs "актобе  2") without pulling in a full fuzzy library.
+// If two DB rows normalize to the same key we take the first — the
+// /spravochnik owner is expected to dedupe those.
 function normalizeName(s: string): string {
   return s
     .toLowerCase()
     .trim()
+    .replace(/^(станция|ст\.?)\s*/i, "")
     .replace(/\s+/g, " ")
-    .replace(/[.,;:()"'`]/g, "");
+    .replace(/[.,;:()"'`]/g, "")
+    .trim();
 }
 
 type ParsedRow = {
