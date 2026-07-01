@@ -218,7 +218,6 @@ export function DealCompanyChain({
             <p className="text-[9px] text-stone-400">
               Покупатель − Поставщик − Тариф
             </p>
-            <p className="text-[8px] text-stone-400">без группы компании</p>
           </div>
         </div>
 

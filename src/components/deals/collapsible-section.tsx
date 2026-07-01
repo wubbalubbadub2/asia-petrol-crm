@@ -38,23 +38,29 @@ export function CollapsibleSection({
   headerRight?: ReactNode;
   children: ReactNode;
   contentClassName?: string;
-  // Hex applied to the header bar AND the outer card border. Body
-  // stays white so form inputs remain readable — client 2026-07-01
-  // round 3: «header покрасим полностью и жирный border, остальное
-  // внутри пусть остается белым».
+  // Hex applied to the whole card (colored end-to-end when closed) +
+  // to the 2px accent border. Body stays white when the card is open
+  // so form inputs remain readable. Client 2026-07-01 round 5:
+  //   • «в collapsed пусть всё будет закрашено» → Card bg = headerBg
+  //   • «в открытом не оставляй сверху белую дырку» → Card padding /
+  //     gap zeroed out so the coloured header sits flush against the
+  //     top edge, and the white body attaches directly below it.
   headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  // 2px accent border in the section color when set; falls back to
-  // shadcn Card's default border otherwise.
   const cardStyle: React.CSSProperties | undefined = headerBg
-    ? { borderWidth: 2, borderColor: headerBg }
+    ? { backgroundColor: headerBg, borderWidth: 2, borderColor: headerBg }
     : undefined;
   return (
-    <Card style={cardStyle} className={headerBg ? "overflow-hidden" : undefined}>
+    <Card
+      style={cardStyle}
+      // Kill Card's default py-4 + gap-4 when tinted so the header sits
+      // flush at the top edge and the white body starts immediately
+      // below it (no white or coloured gap in between).
+      className={headerBg ? "py-0 gap-0" : undefined}
+    >
       <CardHeader
-        className="pb-2 flex flex-row items-center justify-between space-y-0"
-        style={headerBg ? { backgroundColor: headerBg } : undefined}
+        className={`flex flex-row items-center justify-between space-y-0 ${headerBg ? "pt-3 pb-2" : "pb-2"}`}
       >
         <button
           type="button"
@@ -69,7 +75,9 @@ export function CollapsibleSection({
         {headerRight}
       </CardHeader>
       {open && (
-        <CardContent className={contentClassName ?? "space-y-4"}>
+        <CardContent
+          className={`${headerBg ? "bg-white py-4 " : ""}${contentClassName ?? "space-y-4"}`}
+        >
           {children}
         </CardContent>
       )}
