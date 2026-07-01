@@ -59,20 +59,26 @@ export function CollapsibleSection({
       // below it (no white or coloured gap in between).
       className={headerBg ? "py-0 gap-0" : undefined}
     >
+      {/* Whole header is the click target (client 2026-07-01 round 6:
+          «раскрывались при нажатии на любую часть карточки»). The
+          headerRight slot renders its controls inside a click-swallower
+          so buttons like the currency picker / «Массово» don't also
+          fold the section when clicked. */}
       <CardHeader
-        className={`flex flex-row items-center justify-between space-y-0 ${headerBg ? "pt-3 pb-2" : "pb-2"}`}
+        onClick={() => setOpen((o) => !o)}
+        className={`flex flex-row items-center justify-between space-y-0 cursor-pointer select-none hover:opacity-90 transition-opacity ${headerBg ? "pt-3 pb-2" : "pb-2"}`}
       >
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-left cursor-pointer hover:opacity-70 transition-opacity"
-        >
+        <div className="flex items-center gap-1.5 text-left">
           {open
             ? <ChevronDown className="h-4 w-4 text-stone-700" />
             : <ChevronRight className="h-4 w-4 text-stone-700" />}
           <CardTitle className="text-[14px] text-stone-800">{title}</CardTitle>
-        </button>
-        {headerRight}
+        </div>
+        {headerRight && (
+          <div onClick={(e) => e.stopPropagation()}>
+            {headerRight}
+          </div>
+        )}
       </CardHeader>
       {open && (
         <CardContent
