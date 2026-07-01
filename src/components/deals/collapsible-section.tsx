@@ -38,18 +38,24 @@ export function CollapsibleSection({
   headerRight?: ReactNode;
   children: ReactNode;
   contentClassName?: string;
-  // Hex background applied to the WHOLE card (header + body). Client
-  // 2026-07-01 round 2: «нужно покрасить всю карточку». Same hex the
-  // /deals column-group bands use, so the passport reads as a folded
-  // version of the table layout.
+  // Hex applied to the header bar AND the outer card border. Body
+  // stays white so form inputs remain readable — client 2026-07-01
+  // round 3: «header покрасим полностью и жирный border, остальное
+  // внутри пусть остается белым».
   headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // 2px accent border in the section color when set; falls back to
+  // shadcn Card's default border otherwise.
+  const cardStyle: React.CSSProperties | undefined = headerBg
+    ? { borderWidth: 2, borderColor: headerBg }
+    : undefined;
   return (
-    <Card
-      style={headerBg ? { backgroundColor: headerBg } : undefined}
-    >
-      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+    <Card style={cardStyle} className={headerBg ? "overflow-hidden" : undefined}>
+      <CardHeader
+        className="pb-2 flex flex-row items-center justify-between space-y-0"
+        style={headerBg ? { backgroundColor: headerBg } : undefined}
+      >
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
