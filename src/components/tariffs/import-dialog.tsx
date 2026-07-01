@@ -429,6 +429,13 @@ export function ImportTariffsDialog({
       toast.error("Нет строк для импорта");
       return;
     }
+    // Guard against a partial import: the button is disabled while any
+    // row is unresolved, but a keyboard shortcut / stale click could
+    // still hit this handler.
+    if (effectiveRows.some((e) => e.status === "skip")) {
+      toast.error("Есть неразрешённые строки — исправьте их перед импортом");
+      return;
+    }
     if (!month || !year) {
       toast.error("Укажите месяц и год");
       return;
@@ -665,7 +672,8 @@ export function ImportTariffsDialog({
               <span className="text-red-600">Красным</span> — значения, которых не нашлось.{" "}
               <span className="text-blue-700">Синим</span> — значения, выбранные вручную.{" "}
               Любую ячейку с оранжевой/красной/синей подписью можно поправить через выпадающий список под текстом.
-              Строки без выбранного значения (кроме экспедитора) будут пропущены.
+              Пока есть хоть одна неразрешённая строка (розовый фон), импорт заблокирован —
+              исправьте её через выпадающий список либо загрузите другой файл.
             </p>
           </div>
         )}
@@ -674,10 +682,14 @@ export function ImportTariffsDialog({
           {rows.length > 0 && (
             <Button
               onClick={handleImport}
-              disabled={importing || okCount === 0}
+              disabled={importing || okCount === 0 || skipCount > 0}
               className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
             >
-              {importing ? "Импорт..." : `Импортировать ${okCount} тарифов`}
+              {importing
+                ? "Импорт..."
+                : skipCount > 0
+                  ? `Разберите ${skipCount} неразрешённых строк`
+                  : `Импортировать ${okCount} тарифов`}
             </Button>
           )}
           {rows.length > 0 && (
