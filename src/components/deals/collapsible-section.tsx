@@ -38,19 +38,18 @@ export function CollapsibleSection({
   headerRight?: ReactNode;
   children: ReactNode;
   contentClassName?: string;
-  // Hex background applied to the header bar. Should match the
-  // matching column-group band on /deals (Сделка #b4c6e7, Поставщик
-  // #fce3d6, Группа компаний #bcd7ee, Покупатель #fff2cc, Логистика
-  // #d9d9d9) so the deal passport reads as the same layout, folded.
+  // Hex background applied to the WHOLE card (header + body). Client
+  // 2026-07-01 round 2: «нужно покрасить всю карточку». Same hex the
+  // /deals column-group bands use, so the passport reads as a folded
+  // version of the table layout.
   headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <Card>
-      <CardHeader
-        className={`pb-2 flex flex-row items-center justify-between space-y-0 ${headerBg ? "rounded-t-xl" : ""}`}
-        style={headerBg ? { backgroundColor: headerBg } : undefined}
-      >
+    <Card
+      style={headerBg ? { backgroundColor: headerBg } : undefined}
+    >
+      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
