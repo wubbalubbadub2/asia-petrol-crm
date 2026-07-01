@@ -70,10 +70,19 @@ export function DealCompanyChain({
   const sbRef = useRef(createClient());
   const sorted = [...groups].sort((a, b) => a.position - b.position);
 
-  // Маржа = цена покупателя − цена поставщика − тариф экспедитора.
-  // Only meaningful when all three sides are denominated in the same currency.
+  // Маржа = Покупатель − Поставщик − Тариф. Компания-группа НЕ входит
+  // в расчёт (клиент 2026-07-01: «Пропускать группу компании») — она
+  // просто расписывает, кто из юрлиц владел товаром в цепочке между
+  // поставщиком и покупателем, на маржу трейдера не влияет.
+  //
+  // Считаем даже если валюты разошлись — пусть менеджер видит число
+  // и может сам решить, что с ним делать (прежде отсутствие маржи
+  // при несовпадении валют выглядело как поломанная формула). Флаг
+  // currenciesAligned остаётся управлять цветом рамки: зелёный/красный
+  // рендерим только когда числа реально сопоставимы; при разных
+  // валютах — нейтральный серый + tooltip-предупреждение.
   const margin =
-    currenciesAligned && buyerPrice != null && supplierPrice != null
+    buyerPrice != null && supplierPrice != null
       ? buyerPrice - supplierPrice - (forwarderTariff ?? 0)
       : null;
 
@@ -188,20 +197,28 @@ export function DealCompanyChain({
           <div
             className={`rounded-lg border px-3 py-2 text-center min-w-[140px] ${
               margin == null ? "border-stone-200 bg-stone-50" :
+              !currenciesAligned ? "border-stone-300 bg-stone-50" :
               margin >= 0 ? "border-green-200 bg-green-50" :
               "border-red-200 bg-red-50"
             }`}
-            title={!currenciesAligned ? "Валюты разделов не совпадают — конвертация ещё не реализована" : undefined}
+            title={!currenciesAligned
+              ? "Число посчитано в валюте покупателя без конвертации — проверьте валюты Поставщика / Покупателя / Логистики."
+              : undefined}
           >
             <p className={`text-[10px] uppercase font-medium ${
-              margin == null ? "text-stone-500" : margin >= 0 ? "text-green-600" : "text-red-600"
+              margin == null ? "text-stone-500" :
+              !currenciesAligned ? "text-stone-600" :
+              margin >= 0 ? "text-green-600" : "text-red-600"
             }`}>Маржа</p>
             <p className={`text-[13px] font-mono tabular-nums font-semibold ${
-              margin == null ? "text-stone-500" : margin >= 0 ? "text-green-700" : "text-red-700"
+              margin == null ? "text-stone-500" :
+              !currenciesAligned ? "text-stone-700" :
+              margin >= 0 ? "text-green-700" : "text-red-700"
             }`}>{fmt(margin)} {margin != null && buyerCurrencySymbol}</p>
             <p className="text-[9px] text-stone-400">
-              {currenciesAligned ? "цена покуп − цена пост − тариф" : "разные валюты"}
+              Покупатель − Поставщик − Тариф
             </p>
+            <p className="text-[8px] text-stone-400">без группы компании</p>
           </div>
         </div>
 
