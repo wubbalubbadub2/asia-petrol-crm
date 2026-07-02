@@ -36,6 +36,7 @@ import {
   recomputeLineShipmentPrices,
 } from "@/lib/hooks/use-deal-lines";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { toast } from "sonner";
 
 type PriceStage = "preliminary" | "final";
@@ -149,6 +150,8 @@ export function SupplierLinesEditor({
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
+        price_source: l.price_source ?? null,
+        quotation_type_name: l.quotation_type?.name ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -317,6 +320,8 @@ export function BuyerLinesEditor({
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
+        price_source: l.price_source ?? null,
+        quotation_type_name: l.quotation_type?.name ?? null,
       }))}
       editing={editing}
       busy={busy}
@@ -365,6 +370,14 @@ type LineVM = {
   preliminary_fx_rate: number | null;
   // Migration 00072 — free-text appendix label.
   appendix: string | null;
+  // Migration 00077 — «Подкотировка», concrete wide-column of
+  // quotations (price_cif_nwe / price_fob_med / …). Missing on
+  // legacy lines; picker only shown when the parent quotation
+  // type actually exposes multiple sub-columns.
+  price_source: string | null;
+  // Joined name of the parent quotation type — used to look up
+  // the column configuration via getColumnsForProduct.
+  quotation_type_name: string | null;
 };
 
 function LinesEditorView({
@@ -518,15 +531,79 @@ function LinesEditorView({
                 reference quotation, even on «Фикс/Вручную» or
                 «Формульная вручную» lines where the value is typed by
                 hand. Operator 2026-06-24: «пропали котировки, скидки» —
-                this cell was previously hidden under manual_formula. */}
+                this cell was previously hidden under manual_formula.
+
+                Client 2026-07-02: picking a quotation type also drops
+                the current price_source — mirrors the create form so
+                the operator picks a fresh sub-column for the new type.
+                If the new type exposes exactly one editable column, we
+                auto-seed it so the auto-fetch RPC can fire without an
+                explicit «Подкотировка» pick. */}
             <SelectCell
               label="Котировка"
               value={l.quotation_type_id}
               displayValue={l.quotation_type_label ?? "—"}
               editing={editing}
               options={quotationTypes}
-              onChange={(v) => onUpdate(l.id, { quotation_type_id: v || null })}
+              onChange={(v) => {
+                if (!v) {
+                  onUpdate(l.id, { quotation_type_id: null, price_source: null });
+                  return;
+                }
+                const parent = quotationTypes.find((q) => q.value === v);
+                const cols = parent
+                  ? getColumnsForProduct(parent.label).filter((c) => c.key !== "comment")
+                  : [];
+                onUpdate(l.id, {
+                  quotation_type_id: v,
+                  price_source: cols.length === 1 ? cols[0].key : null,
+                });
+              }}
             />
+
+            {/* «Подкотировка» (price_source) — the specific wide-column
+                the formula reads from. Mirrors the create form's second
+                dropdown; previously missing on the edit view so lines
+                on «Средний месяц» / «На дату» / etc. could not be
+                edited fully without deleting and re-creating.
+                Only shown when tier=formula (manual and manual_formula
+                pick their prices without touching the wide columns). */}
+            {tier === "formula" && (() => {
+              const parent = quotationTypes.find((q) => q.value === l.quotation_type_id);
+              // Prefer the joined parent name (accurate even if the
+              // parent got renamed since the deal was saved); fall back
+              // to the option label when it's not resolved yet.
+              const parentName = l.quotation_type_name ?? parent?.label ?? "";
+              const cols = parentName
+                ? getColumnsForProduct(parentName).filter((c) => c.key !== "comment")
+                : [];
+              const hasParent = cols.length > 0;
+              const onlyOne = cols.length === 1;
+              const effectiveValue = onlyOne ? cols[0].key : (l.price_source ?? "");
+              const disabled = !hasParent || onlyOne;
+              const displayLabel = effectiveValue
+                ? cols.find((c) => c.key === effectiveValue)?.label ?? effectiveValue
+                : "—";
+              return (
+                <div>
+                  <span className="text-[11px] text-stone-400 block">Подкотировка</span>
+                  {editing ? (
+                    <select
+                      value={effectiveValue}
+                      disabled={disabled}
+                      onChange={(e) => onUpdate(l.id, { price_source: e.target.value || null })}
+                      className="w-full h-8 rounded border border-stone-300 bg-white px-2 text-[13px] hover:border-amber-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-colors cursor-pointer disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
+                    >
+                      {!hasParent && <option value="">— выберите котировку —</option>}
+                      {hasParent && !onlyOne && <option value="">Выбрать подкотировку…</option>}
+                      {cols.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[13px] text-stone-800">{displayLabel}</span>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Курс валют — only meaningful for manual_formula
                 (multiplier in (q − d) × fx). Displayed as a regular grid

@@ -45,6 +45,11 @@ export type DealSupplierLine = {
   // Migration 00072 — free-text appendix label. Used by the registry
   // add form to auto-resolve which variant a shipment ties to.
   appendix?: string | null;
+  // Migration 00077 — «Подкотировка», the specific wide-column of the
+  // quotations table that the formula reads (price_cif_nwe /
+  // price_fob_med / price_fob_rotterdam / …). Nullable — pre-00077
+  // lines fall back to the legacy first-non-null coalesce.
+  price_source?: string | null;
   // joined
   quotation_type?: { name: string } | null;
   departure_station?: { name: string } | null;
@@ -70,6 +75,11 @@ export type DealBuyerLine = {
   destination_station_id: string | null;
   // Migration 00072 — see DealSupplierLine.
   appendix?: string | null;
+  // Migration 00077 — «Подкотировка», the specific wide-column of the
+  // quotations table that the formula reads (price_cif_nwe /
+  // price_fob_med / price_fob_rotterdam / …). Nullable — pre-00077
+  // lines fall back to the legacy first-non-null coalesce.
+  price_source?: string | null;
   // joined
   quotation_type?: { name: string } | null;
   destination_station?: { name: string } | null;

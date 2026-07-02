@@ -10,7 +10,7 @@
 // scan the deal top-down and pop only what they need — the field
 // density otherwise makes long deals hard to read at a glance.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -32,6 +32,7 @@ export function CollapsibleSection({
   children,
   contentClassName,
   headerBg,
+  storageKey,
 }: {
   title: string;
   defaultOpen?: boolean;
@@ -46,8 +47,38 @@ export function CollapsibleSection({
   //     gap zeroed out so the coloured header sits flush against the
   //     top edge, and the white body attaches directly below it.
   headerBg?: string;
+  // Persist open/closed state across mounts. Passport pages remount
+  // whenever the operator switches workspace tabs (e.g. Сделка → Реестр
+  // → back to Сделка) — without persistence every section snaps back
+  // to `defaultOpen`. Client 2026-07-02: «если раскрыл секцию и перешёл
+  // на другой таб, при возврате должна оставаться раскрытой». Pass a
+  // key like `deal:<id>:section:<title>` and we mirror the open state
+  // into localStorage.
+  storageKey?: string;
 }) {
+  // Initial state respects defaultOpen; a client-side effect below
+  // hydrates from localStorage on mount. We deliberately DON'T read
+  // storage in the useState initializer — Next.js SSR would render one
+  // value and the client another, causing a hydration mismatch flash.
   const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => {
+    if (!storageKey || typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(storageKey);
+      if (stored === "true") setOpen(true);
+      else if (stored === "false") setOpen(false);
+    } catch {
+      /* storage disabled — silently fall back to defaultOpen */
+    }
+  }, [storageKey]);
+  useEffect(() => {
+    if (!storageKey || typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(storageKey, open ? "true" : "false");
+    } catch {
+      /* quota — ignore */
+    }
+  }, [open, storageKey]);
   const cardStyle: React.CSSProperties | undefined = headerBg
     ? { backgroundColor: headerBg, borderWidth: 2, borderColor: headerBg }
     : undefined;
