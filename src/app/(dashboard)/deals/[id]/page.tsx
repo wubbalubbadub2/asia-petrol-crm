@@ -790,6 +790,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             lines={supplierLines}
             rollups={lineRollups.supplier}
             onChanged={() => { reloadSupplierLines(); reloadLineRollups(); reload(); }}
+            dealMonth={deal.month ?? null}
+            dealYear={deal.year ?? null}
           />
         </div>
 
@@ -858,6 +860,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             lines={buyerLines}
             rollups={lineRollups.buyer}
             onChanged={() => { reloadBuyerLines(); reloadLineRollups(); reload(); }}
+            dealMonth={deal.month ?? null}
+            dealYear={deal.year ?? null}
           />
         </div>
 

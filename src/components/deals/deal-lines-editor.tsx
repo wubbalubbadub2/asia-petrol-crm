@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Trash2, Plus, ChevronDown, Star, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,10 +53,19 @@ type CommonProps = {
   quotationTypes: Option[];
   rollups?: Record<string, LineRollup>;
   onChanged: () => void;
+  // Client 2026-07-02 «Котировочное значение не выходит»: when the
+  // operator picks a formula subtype + a Подкотировка on an existing
+  // line, we auto-fetch the quotation value from `quotations` via
+  // compute_quotation_value(). The target month for «Средний месяц»
+  // falls back to the deal's own month/year when the line doesn't
+  // carry a selected_month override.
+  dealMonth: string | null;
+  dealYear: number | null;
 };
 
 export function SupplierLinesEditor({
   dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
+  dealMonth, dealYear,
 }: CommonProps & { lines: DealSupplierLine[] }) {
   const [busy, setBusy] = useState(false);
   // Pending finalize: holds the line id + the patch the user wants to
@@ -167,6 +177,8 @@ export function SupplierLinesEditor({
       onAdd={handleAdd}
       onDelete={handleDelete}
       onUpdate={handleUpdate}
+      dealMonth={dealMonth}
+      dealYear={dealYear}
     />
     </>
   );
@@ -237,6 +249,7 @@ function applyPriceFormulaPatch(
 
 export function BuyerLinesEditor({
   dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
+  dealMonth, dealYear,
 }: CommonProps & { lines: DealBuyerLine[] }) {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ id: string; patch: Record<string, unknown> } | null>(null);
@@ -339,6 +352,8 @@ export function BuyerLinesEditor({
       onAdd={handleAdd}
       onDelete={handleDelete}
       onUpdate={handleUpdate}
+      dealMonth={dealMonth}
+      dealYear={dealYear}
     />
     </>
   );
@@ -388,9 +403,77 @@ type LineVM = {
   quotation_type_name: string | null;
 };
 
+// Resolve line.selected_month + deal month/year into a YYYY-MM string
+// consumable by compute_quotation_value(). Handles two shapes clients
+// have historically produced:
+//   • «2026-03» — new create-form (<Input type="month" />)
+//   • «март»   — lines editor SelectCell (Russian month name)
+// Falls back to the deal's own month + year when the line's override is
+// null. Returns null when nothing valid resolves.
+function resolveTargetMonth(
+  selectedMonth: string | null,
+  dealMonth: string | null,
+  dealYear: number | null,
+): string | null {
+  if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) return selectedMonth;
+  const name = selectedMonth ?? dealMonth;
+  if (!name || dealYear == null) return null;
+  const idx = MONTHS_RU.indexOf(name as (typeof MONTHS_RU)[number]);
+  if (idx < 0) return null;
+  const mm = String(idx + 1).padStart(2, "0");
+  return `${dealYear}-${mm}`;
+}
+
+// Effect-only child: fires compute_quotation_value() whenever the line's
+// (quotation_type_id + price_source + selected_month) resolves to enough
+// input and the current quotation is empty. Mirrors the create form's
+// auto-fetch effect (deal-create-variants.tsx line 220-285) so operators
+// see the value drop in without re-typing it. Skipped on manual /
+// manual_formula subtypes — those keep the value hand-entered.
+function LineAutoFetchQuotation({
+  line, dealMonth, dealYear, onUpdate,
+}: {
+  line: LineVM;
+  dealMonth: string | null;
+  dealYear: number | null;
+  onUpdate: (id: string, patch: Record<string, unknown>) => void;
+}) {
+  const sbRef = useRef(createClient());
+  useEffect(() => {
+    // Guards: only formula subtypes read from `quotations`.
+    const cond = line.price_condition;
+    if (cond !== "average_month") return; // fixed/trigger need an anchor
+                                          // date we don't surface here yet
+    if (!line.quotation_type_id) return;
+    if (!line.price_source) return;
+    // Don't overwrite a value the operator already typed.
+    if (line.quotation != null) return;
+    const targetMonth = resolveTargetMonth(line.selected_month, dealMonth, dealYear);
+    if (!targetMonth) return;
+    const target_date = `${targetMonth}-15`;
+    sbRef.current
+      .rpc("compute_quotation_value" as never, {
+        p_product_type_id: line.quotation_type_id,
+        p_price_source: line.price_source,
+        p_target_date: target_date,
+        p_calc_mode: "avg_month",
+      } as never)
+      .then(({ data, error }) => {
+        if (error || data == null) return;
+        const rounded = Math.round((data as number) * 100) / 100;
+        onUpdate(line.id, { quotation: rounded });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    line.id, line.price_condition, line.quotation_type_id, line.price_source,
+    line.selected_month, line.quotation, dealMonth, dealYear,
+  ]);
+  return null;
+}
+
 function LinesEditorView({
   side, lines, editing, busy, currencySymbol, stations, quotationTypes,
-  onAdd, onDelete, onUpdate,
+  onAdd, onDelete, onUpdate, dealMonth, dealYear,
 }: {
   side: "supplier" | "buyer";
   lines: LineVM[];
@@ -402,6 +485,8 @@ function LinesEditorView({
   onAdd: () => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, patch: Record<string, unknown>) => void;
+  dealMonth: string | null;
+  dealYear: number | null;
 }) {
   // Keep `side` referenced (for the eventual per-side rendering hooks).
   void side;
@@ -415,6 +500,18 @@ function LinesEditorView({
           key={l.id}
           className={`rounded-md border p-3 ${l.is_default ? "border-amber-200 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}
         >
+          {/* Silent auto-fetch hook — no visible UI. Renders null;
+              triggers compute_quotation_value() when the operator
+              picks quotation type + Подкотировка on a Средний-месяц
+              line. */}
+          {editing && (
+            <LineAutoFetchQuotation
+              line={l}
+              dealMonth={dealMonth}
+              dealYear={dealYear}
+              onUpdate={onUpdate}
+            />
+          )}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-[12px]">
               {l.is_default ? (
@@ -555,7 +652,7 @@ function LinesEditorView({
               options={quotationTypes}
               onChange={(v) => {
                 if (!v) {
-                  onUpdate(l.id, { quotation_type_id: null, price_source: null });
+                  onUpdate(l.id, { quotation_type_id: null, price_source: null, quotation: null, price: null });
                   return;
                 }
                 const parent = quotationTypes.find((q) => q.value === v);
@@ -565,6 +662,12 @@ function LinesEditorView({
                 onUpdate(l.id, {
                   quotation_type_id: v,
                   price_source: cols.length === 1 ? cols[0].key : null,
+                  // Clear the numeric value so the LineAutoFetchQuotation
+                  // effect refetches under the new type. Matches the
+                  // create form which also resets quotation + price on
+                  // type switch.
+                  quotation: null,
+                  price: null,
                 });
               }}
             />
@@ -599,7 +702,14 @@ function LinesEditorView({
                     <select
                       value={effectiveValue}
                       disabled={disabled}
-                      onChange={(e) => onUpdate(l.id, { price_source: e.target.value || null })}
+                      onChange={(e) => onUpdate(l.id, {
+                        price_source: e.target.value || null,
+                        // Same rationale as quotation-type onChange —
+                        // wipe the numeric so auto-fetch picks up the
+                        // new sub-column.
+                        quotation: null,
+                        price: null,
+                      })}
                       className="w-full h-8 rounded border border-stone-300 bg-white px-2 text-[13px] hover:border-amber-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-colors cursor-pointer disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
                     >
                       {!hasParent && <option value="">— выберите котировку —</option>}
