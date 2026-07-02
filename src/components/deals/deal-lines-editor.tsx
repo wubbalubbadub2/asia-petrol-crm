@@ -164,14 +164,26 @@ export function SupplierLinesEditor({
 }
 
 // Auto-recompute patch.price when the user edits any of the formula
-// inputs (quotation / discount / fx_rate) without explicitly touching
-// price. Caller passes the current line so we can read the inputs that
-// weren't part of this patch.
+// inputs (quotation / discount / fx_rate) OR flips the stage to
+// «Окончательная» without explicitly touching price. Caller passes
+// the current line so we can read the inputs that weren't part of
+// this patch.
+//
+// The price_stage trigger was added 2026-07-02 — client asked that
+// switching to «Окончательная» refresh price from the current
+// quotation just like preliminary does on quotation change.
+// Previously the flip only wrote price_stage='final' and left the
+// operator to re-blur the quotation cell to force the recompute.
 //
 // For manual_formula lines: price = (quotation − discount) × fx_rate
 //                           — all three inputs are line-level.
 // For other modes:          price = quotation − discount
 //                           — fx_rate is irrelevant.
+//
+// Skips «manual_in_formula» (Формула: Фикс цена) — that subtype
+// explicitly keeps price hand-entered, matching create-form behaviour
+// (deal-create-variants.tsx: «if v.priceMode === 'manual_in_formula'
+// return»).
 //
 // Explicit `price` in the patch always wins. Missing inputs leave
 // price untouched.
@@ -192,8 +204,9 @@ function applyPriceFormulaPatch(
   const touchedDiscount  = "discount" in patch;
   const touchedFx        = "fx_rate"  in patch;
   const touchedPrice     = "price"    in patch;
+  const flippedToFinal   = patch.price_stage === "final";
   if (touchedPrice) return patch;
-  if (!touchedQuotation && !touchedDiscount && !touchedFx) return patch;
+  if (!touchedQuotation && !touchedDiscount && !touchedFx && !flippedToFinal) return patch;
 
   const q   = touchedQuotation ? (patch.quotation as number | null) : line.quotation;
   const d   = touchedDiscount  ? (patch.discount  as number | null) : line.discount;
@@ -203,6 +216,9 @@ function applyPriceFormulaPatch(
   const cond = (patch.price_condition as string | null | undefined) ?? line.price_condition;
 
   if (q == null) return patch;
+  // «Формула: Фикс цена» — цена набивается вручную, автопересчёт
+  // не трогает; матчит поведение формы создания сделки.
+  if (cond === "manual_in_formula") return patch;
   if (cond === "manual_formula") {
     if (fx == null) return patch;
     return { ...patch, price: (q - (d ?? 0)) * fx };

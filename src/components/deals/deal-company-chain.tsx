@@ -325,13 +325,23 @@ export function DealCompanyChain({
                       />
 
                       {/* Price kind — preliminary vs final. Default
-                          'preliminary' for fresh rows (migration 00084). */}
+                          'preliminary' for fresh rows (migration 00084).
+                          Client 2026-07-02: смена «Оконч./Предв.»
+                          должна пересчитывать цену из котировки, как
+                          и onBlur самой котировки. Раньше только
+                          менялся тип цены, а price оставался прежним
+                          — оператор думал, что автоформула не
+                          работает для «Оконч.» и вбивал руками. */}
                       <div className="relative">
                         <select
                           value={cg.price_kind}
                           onChange={(e) => {
                             const v = e.target.value as "preliminary" | "final";
-                            if (v !== cg.price_kind) updateGroup(cg.id, { price_kind: v });
+                            if (v === cg.price_kind) return;
+                            const newP = cg.quotation != null
+                              ? Math.round((cg.quotation - (cg.discount ?? 0)) * 100) / 100
+                              : cg.price;
+                            updateGroup(cg.id, { price_kind: v, price: newP });
                           }}
                           className="h-8 w-full rounded border border-stone-300 bg-white px-2 pr-6 text-[12px] text-stone-800 hover:border-amber-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
                           title="Тип цены — предварительная или окончательная"
