@@ -25,6 +25,26 @@ export type ShipmentPrice = {
   created_at: string;
 };
 
+// Pub-sub for deal_shipment_prices — the same pattern registry uses.
+// Line-level edits in deal-lines-editor kick recompute_line_shipment_prices
+// on the server, which rewrites `calculated_price` / `amount` /
+// `discount` on every deal_shipment_prices row under the line. That RPC
+// is invisible to the client-side hook here, so without a nudge the
+// «Окончательная цена — по отгрузкам» card kept showing the old numbers
+// until the operator navigated away and back (client 2026-07-02:
+// «при изменении цены другие цифры не пересчитались»). Callers do:
+//   await recomputeLineShipmentPrices(id, side);
+//   invalidateShipmentPrices(dealId);
+// and this hook picks up the change on the same tick.
+const shipmentPricesListeners = new Set<(dealId: string) => void>();
+export function invalidateShipmentPrices(dealId: string) {
+  for (const fn of shipmentPricesListeners) fn(dealId);
+}
+export function subscribeShipmentPrices(fn: (dealId: string) => void): () => void {
+  shipmentPricesListeners.add(fn);
+  return () => { shipmentPricesListeners.delete(fn); };
+}
+
 export function useDealTriggerPrices(dealId: string, side: "supplier" | "buyer") {
   const [data, setData] = useState<ShipmentPrice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +67,15 @@ export function useDealTriggerPrices(dealId: string, side: "supplier" | "buyer")
   }, [dealId, side]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Reload whenever a line-level write bumps the pub-sub for this deal.
+  // Scoped by dealId so opening two deals in parallel tabs doesn't
+  // reload the wrong one.
+  useEffect(() => {
+    return subscribeShipmentPrices((id) => {
+      if (id === dealId) load();
+    });
+  }, [dealId, load]);
 
   async function insert(values: Partial<ShipmentPrice>) {
     const { error } = await sbRef.current

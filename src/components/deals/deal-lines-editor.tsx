@@ -35,6 +35,7 @@ import {
   deleteBuyerLine,
   recomputeLineShipmentPrices,
 } from "@/lib/hooks/use-deal-lines";
+import { invalidateShipmentPrices } from "@/lib/hooks/use-deal-trigger-prices";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { toast } from "sonner";
@@ -90,6 +91,11 @@ export function SupplierLinesEditor({
         const n = await recomputeLineShipmentPrices(id, "supplier");
         if (n > 0) toast.success(`Пересчитано отгрузок: ${n}`);
       }
+      // Bump the deal_shipment_prices pub-sub so «Окончательная цена
+      // — по отгрузкам» refetches even when nothing about the price
+      // changed structurally (e.g. discount / fx tweak on a final
+      // variant). Cheap: just a Set iteration client-side.
+      invalidateShipmentPrices(dealId);
       onChanged();
     } catch {}
   }
@@ -263,6 +269,8 @@ export function BuyerLinesEditor({
         const n = await recomputeLineShipmentPrices(id, "buyer");
         if (n > 0) toast.success(`Пересчитано отгрузок: ${n}`);
       }
+      // See SupplierLinesEditor.commitUpdate for the rationale.
+      invalidateShipmentPrices(dealId);
       onChanged();
     } catch {}
   }
