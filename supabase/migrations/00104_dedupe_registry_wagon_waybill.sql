@@ -34,17 +34,25 @@
 --             future bulk insert from slipping past the new
 --             app-side guard in /import.
 --
--- What COUNTS as a duplicate — deliberately narrow:
+-- What COUNTS as a duplicate — physical shipment identity:
 --     same registry_type
 --   + same wagon_number
 --   + same waybill_number
 --   + same date (nullable; NULL matches NULL)
---   + same deal_id (nullable; NULL matches NULL)
 --
--- If any of date / deal_id differ the rows stay put — could be
--- two legitimately separate shipments (wagon reused, waybill re-
--- issued). The narrow filter means we may miss a real duplicate,
--- but we will never merge two legitimately-distinct shipments.
+-- Client 2026-07-03: «дубли смотрим внутри одной сделки, верно?».
+-- Half-yes: the physical (wagon+waybill+date) IS the shipment, but
+-- deal_id is NOT part of the key. Reason: the SNT import path (the
+-- primary duplicate source) writes rows with deal_id=NULL — if we
+-- partitioned by deal_id, NULL and '084' would end up in different
+-- groups and never merge. The whole point of this file is to fix
+-- those NULL-deal SNT rows.
+--
+-- Ambiguity guard: if a cluster contains ≥2 rows with DIFFERENT
+-- non-null deal_ids, that's an operator error (same shipment
+-- posted against two deals) — Phase 2 leaves that cluster
+-- alone and phase 1 lists it separately so someone can decide
+-- which deal_id is correct.
 
 -- ────────────────────────────────────────────────────────────────
 -- PHASE 1 — DRY-RUN REPORT (always runs; zero writes).
@@ -53,7 +61,10 @@
 DO $$
 DECLARE
   v_clusters INT;
-  v_extra_rows INT;
+  v_safe_clusters INT;
+  v_ambiguous_clusters INT;
+  v_safe_extra INT;
+  v_ambiguous_extra INT;
   v_sample TEXT;
 BEGIN
   WITH clustered AS (
@@ -62,56 +73,94 @@ BEGIN
       wagon_number,
       waybill_number,
       date,
-      deal_id,
-      COUNT(*)             AS n,
-      MIN(created_at)      AS earliest,
-      MAX(created_at)      AS latest,
-      ARRAY_AGG(id ORDER BY created_at) AS ids
+      COUNT(*)                            AS n,
+      COUNT(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) AS distinct_deals,
+      ARRAY_AGG(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) AS deal_ids
     FROM shipment_registry
     WHERE wagon_number  IS NOT NULL
       AND waybill_number IS NOT NULL
-    GROUP BY registry_type, wagon_number, waybill_number, date, deal_id
+    GROUP BY registry_type, wagon_number, waybill_number, date
     HAVING COUNT(*) > 1
   )
   SELECT
     COUNT(*),
-    COALESCE(SUM(n - 1), 0)
-  INTO v_clusters, v_extra_rows
+    COUNT(*) FILTER (WHERE distinct_deals <= 1),
+    COUNT(*) FILTER (WHERE distinct_deals >  1),
+    COALESCE(SUM(n - 1) FILTER (WHERE distinct_deals <= 1), 0),
+    COALESCE(SUM(n - 1) FILTER (WHERE distinct_deals >  1), 0)
+  INTO v_clusters, v_safe_clusters, v_ambiguous_clusters, v_safe_extra, v_ambiguous_extra
   FROM clustered;
 
   RAISE NOTICE '========================================================';
   RAISE NOTICE 'shipment_registry dedupe DRY RUN';
   RAISE NOTICE '========================================================';
-  RAISE NOTICE 'Кластеров дубликатов: %', v_clusters;
-  RAISE NOTICE 'Строк, которые были бы удалены: %', v_extra_rows;
-  RAISE NOTICE '(строки НЕ удалены — фаза 2 закомментирована ниже)';
+  RAISE NOTICE 'Всего кластеров дубликатов: %', v_clusters;
+  RAISE NOTICE '  безопасных (deal_id совпадает или NULL): %  → -% строк', v_safe_clusters, v_safe_extra;
+  RAISE NOTICE '  неоднозначных (deal_id разные и оба не-NULL): % → % строк', v_ambiguous_clusters, v_ambiguous_extra;
+  RAISE NOTICE '(Phase 2 сольёт только «безопасные». «Неоднозначные»';
+  RAISE NOTICE ' пропустит — надо разбирать вручную, кому принадлежит';
+  RAISE NOTICE ' физическая отгрузка.)';
+  RAISE NOTICE 'Ничего сейчас НЕ удалено — фаза 2 закомментирована ниже.';
 
-  IF v_clusters > 0 THEN
+  IF v_safe_clusters > 0 THEN
     SELECT string_agg(
              format(
-               '  тип=% вагон=% накл=% дата=% сделка=% × %',
+               '  тип=%s вагон=%s накл=%s дата=%s × %s (deal_id: %s)',
                registry_type,
                wagon_number,
                waybill_number,
                COALESCE(date::TEXT, 'NULL'),
-               COALESCE(deal_id::TEXT, 'NULL'),
-               n
+               n,
+               COALESCE(array_to_string(deal_ids, ','), 'NULL')
              ),
              E'\n'
            )
     INTO v_sample
     FROM (
-      SELECT registry_type, wagon_number, waybill_number, date, deal_id, COUNT(*) AS n
+      SELECT registry_type, wagon_number, waybill_number, date,
+             COUNT(*) AS n,
+             ARRAY_AGG(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) AS deal_ids,
+             COUNT(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) AS distinct_deals
       FROM shipment_registry
       WHERE wagon_number IS NOT NULL AND waybill_number IS NOT NULL
-      GROUP BY registry_type, wagon_number, waybill_number, date, deal_id
-      HAVING COUNT(*) > 1
+      GROUP BY registry_type, wagon_number, waybill_number, date
+      HAVING COUNT(*) > 1 AND COUNT(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) <= 1
       ORDER BY n DESC, wagon_number, waybill_number
       LIMIT 20
     ) sample;
-    RAISE NOTICE 'Первые до 20 кластеров:';
+    RAISE NOTICE '--- Первые до 20 БЕЗОПАСНЫХ кластеров (будут слиты Phase 2) ---';
     RAISE NOTICE E'%', v_sample;
   END IF;
+
+  IF v_ambiguous_clusters > 0 THEN
+    SELECT string_agg(
+             format(
+               '  тип=%s вагон=%s накл=%s дата=%s × %s → deal_ids: %s',
+               registry_type,
+               wagon_number,
+               waybill_number,
+               COALESCE(date::TEXT, 'NULL'),
+               n,
+               array_to_string(deal_ids, ',')
+             ),
+             E'\n'
+           )
+    INTO v_sample
+    FROM (
+      SELECT registry_type, wagon_number, waybill_number, date,
+             COUNT(*) AS n,
+             ARRAY_AGG(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) AS deal_ids
+      FROM shipment_registry
+      WHERE wagon_number IS NOT NULL AND waybill_number IS NOT NULL
+      GROUP BY registry_type, wagon_number, waybill_number, date
+      HAVING COUNT(*) > 1 AND COUNT(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) > 1
+      ORDER BY n DESC, wagon_number, waybill_number
+      LIMIT 20
+    ) sample;
+    RAISE NOTICE '--- НЕОДНОЗНАЧНЫЕ кластеры (Phase 2 их не тронет) ---';
+    RAISE NOTICE E'%', v_sample;
+  END IF;
+
   RAISE NOTICE '========================================================';
 END $$;
 
@@ -133,55 +182,65 @@ DECLARE
   v_deletes INT;
 BEGIN
   -- 2a. Merge non-null values from losers onto their group's survivor.
+  --     Partition = physical shipment (type + wagon + waybill + date).
+  --     Ambiguity guard (subquery below) EXCLUDES clusters that have
+  --     ≥2 distinct non-null deal_ids — those need manual resolution
+  --     because we can't know which deal_id is correct.
   --     Survivor = row with the most data (both volumes > one volume >
-  --     none), tie-broken by earliest created_at. We fold the following
-  --     columns because they carry per-shipment metadata operators
-  --     enter piecemeal across the paired imports:
-  --       loading_volume, shipment_volume, railway_tariff,
-  --       shipment_month, invoice_number, comment, forwarder_id,
-  --       factory_id, company_group_id, supplier_id, buyer_id,
-  --       fuel_type_id, destination_station_id, departure_station_id,
-  --       additional_month, quarter, month, rounded_tonnage_from_forwarder,
-  --       shipped_tonnage_amount.
+  --     none), tie-broken by earliest created_at.
 
-  WITH ranked AS (
-    SELECT
-      id,
-      registry_type,
-      wagon_number,
-      waybill_number,
-      date,
-      deal_id,
-      loading_volume,
-      shipment_volume,
-      railway_tariff,
-      shipment_month,
-      invoice_number,
-      comment,
-      forwarder_id,
-      factory_id,
-      company_group_id,
-      supplier_id,
-      buyer_id,
-      fuel_type_id,
-      destination_station_id,
-      departure_station_id,
-      additional_month,
-      quarter,
-      month,
-      rounded_tonnage_from_forwarder,
-      shipped_tonnage_amount,
-      ROW_NUMBER() OVER (
-        PARTITION BY registry_type, wagon_number, waybill_number, date, deal_id
-        ORDER BY
-          (CASE WHEN loading_volume IS NOT NULL AND shipment_volume IS NOT NULL THEN 0
-                WHEN loading_volume IS NOT NULL OR  shipment_volume IS NOT NULL THEN 1
-                ELSE 2 END),
-          created_at ASC
-      ) AS rn
+  WITH safe_clusters AS (
+    -- Only clusters where at most one non-null deal_id appears. If
+    -- there are two, that's an operator error (same shipment posted
+    -- against two deals) and Phase 2 leaves them alone.
+    SELECT registry_type, wagon_number, waybill_number, date
     FROM shipment_registry
-    WHERE wagon_number  IS NOT NULL
-      AND waybill_number IS NOT NULL
+    WHERE wagon_number IS NOT NULL AND waybill_number IS NOT NULL
+    GROUP BY registry_type, wagon_number, waybill_number, date
+    HAVING COUNT(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) <= 1
+       AND COUNT(*) > 1
+  ),
+  ranked AS (
+    SELECT
+      sr.id,
+      sr.registry_type,
+      sr.wagon_number,
+      sr.waybill_number,
+      sr.date,
+      sr.deal_id,
+      sr.loading_volume,
+      sr.shipment_volume,
+      sr.railway_tariff,
+      sr.shipment_month,
+      sr.invoice_number,
+      sr.comment,
+      sr.forwarder_id,
+      sr.factory_id,
+      sr.company_group_id,
+      sr.supplier_id,
+      sr.buyer_id,
+      sr.fuel_type_id,
+      sr.destination_station_id,
+      sr.departure_station_id,
+      sr.additional_month,
+      sr.quarter,
+      sr.month,
+      sr.rounded_tonnage_from_forwarder,
+      sr.shipped_tonnage_amount,
+      ROW_NUMBER() OVER (
+        PARTITION BY sr.registry_type, sr.wagon_number, sr.waybill_number, sr.date
+        ORDER BY
+          (CASE WHEN sr.loading_volume IS NOT NULL AND sr.shipment_volume IS NOT NULL THEN 0
+                WHEN sr.loading_volume IS NOT NULL OR  sr.shipment_volume IS NOT NULL THEN 1
+                ELSE 2 END),
+          sr.created_at ASC
+      ) AS rn
+    FROM shipment_registry sr
+    JOIN safe_clusters sc
+      ON sc.registry_type   = sr.registry_type
+     AND sc.wagon_number    = sr.wagon_number
+     AND sc.waybill_number  = sr.waybill_number
+     AND sc.date            IS NOT DISTINCT FROM sr.date
   ),
   survivors AS (SELECT * FROM ranked WHERE rn = 1),
   losers    AS (SELECT * FROM ranked WHERE rn > 1),
@@ -189,32 +248,38 @@ BEGIN
     -- For each survivor, pick the earliest non-null value across its
     -- losers for every mergeable column. COALESCE with the survivor's
     -- own value first — never overwrite something the operator has
-    -- explicitly set on the winning row.
+    -- explicitly set on the winning row. Partition matches without
+    -- deal_id (already guarded by safe_clusters above).
+    -- deal_id itself is folded too: if the survivor came from the
+    -- SNT/ЭСФ import path with deal_id=NULL, promoting the loser's
+    -- non-null deal_id is the whole point of the migration.
     SELECT
       s.id AS survivor_id,
-      COALESCE(s.loading_volume,                  (SELECT loading_volume                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND loading_volume IS NOT NULL ORDER BY rn LIMIT 1)) AS loading_volume,
-      COALESCE(s.shipment_volume,                 (SELECT shipment_volume                 FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND shipment_volume IS NOT NULL ORDER BY rn LIMIT 1)) AS shipment_volume,
-      COALESCE(s.railway_tariff,                  (SELECT railway_tariff                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND railway_tariff IS NOT NULL ORDER BY rn LIMIT 1)) AS railway_tariff,
-      COALESCE(s.shipment_month,                  (SELECT shipment_month                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND shipment_month IS NOT NULL ORDER BY rn LIMIT 1)) AS shipment_month,
-      COALESCE(s.invoice_number,                  (SELECT invoice_number                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND invoice_number IS NOT NULL ORDER BY rn LIMIT 1)) AS invoice_number,
-      COALESCE(s.comment,                         (SELECT comment                         FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND comment IS NOT NULL ORDER BY rn LIMIT 1)) AS comment,
-      COALESCE(s.forwarder_id,                    (SELECT forwarder_id                    FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND forwarder_id IS NOT NULL ORDER BY rn LIMIT 1)) AS forwarder_id,
-      COALESCE(s.factory_id,                      (SELECT factory_id                      FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND factory_id IS NOT NULL ORDER BY rn LIMIT 1)) AS factory_id,
-      COALESCE(s.company_group_id,                (SELECT company_group_id                FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND company_group_id IS NOT NULL ORDER BY rn LIMIT 1)) AS company_group_id,
-      COALESCE(s.supplier_id,                     (SELECT supplier_id                     FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND supplier_id IS NOT NULL ORDER BY rn LIMIT 1)) AS supplier_id,
-      COALESCE(s.buyer_id,                        (SELECT buyer_id                        FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND buyer_id IS NOT NULL ORDER BY rn LIMIT 1)) AS buyer_id,
-      COALESCE(s.fuel_type_id,                    (SELECT fuel_type_id                    FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND fuel_type_id IS NOT NULL ORDER BY rn LIMIT 1)) AS fuel_type_id,
-      COALESCE(s.destination_station_id,          (SELECT destination_station_id          FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND destination_station_id IS NOT NULL ORDER BY rn LIMIT 1)) AS destination_station_id,
-      COALESCE(s.departure_station_id,            (SELECT departure_station_id            FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND departure_station_id IS NOT NULL ORDER BY rn LIMIT 1)) AS departure_station_id,
-      COALESCE(s.additional_month,                (SELECT additional_month                FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND additional_month IS NOT NULL ORDER BY rn LIMIT 1)) AS additional_month,
-      COALESCE(s.quarter,                         (SELECT quarter                         FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND quarter IS NOT NULL ORDER BY rn LIMIT 1)) AS quarter,
-      COALESCE(s.month,                           (SELECT month                           FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND month IS NOT NULL ORDER BY rn LIMIT 1)) AS month,
-      COALESCE(s.rounded_tonnage_from_forwarder,  (SELECT rounded_tonnage_from_forwarder  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND rounded_tonnage_from_forwarder IS NOT NULL ORDER BY rn LIMIT 1)) AS rounded_tonnage_from_forwarder,
-      COALESCE(s.shipped_tonnage_amount,          (SELECT shipped_tonnage_amount          FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND l.deal_id IS NOT DISTINCT FROM s.deal_id AND shipped_tonnage_amount IS NOT NULL ORDER BY rn LIMIT 1)) AS shipped_tonnage_amount
+      COALESCE(s.deal_id,                         (SELECT deal_id                         FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND deal_id IS NOT NULL ORDER BY rn LIMIT 1)) AS deal_id,
+      COALESCE(s.loading_volume,                  (SELECT loading_volume                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND loading_volume IS NOT NULL ORDER BY rn LIMIT 1)) AS loading_volume,
+      COALESCE(s.shipment_volume,                 (SELECT shipment_volume                 FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND shipment_volume IS NOT NULL ORDER BY rn LIMIT 1)) AS shipment_volume,
+      COALESCE(s.railway_tariff,                  (SELECT railway_tariff                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND railway_tariff IS NOT NULL ORDER BY rn LIMIT 1)) AS railway_tariff,
+      COALESCE(s.shipment_month,                  (SELECT shipment_month                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND shipment_month IS NOT NULL ORDER BY rn LIMIT 1)) AS shipment_month,
+      COALESCE(s.invoice_number,                  (SELECT invoice_number                  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND invoice_number IS NOT NULL ORDER BY rn LIMIT 1)) AS invoice_number,
+      COALESCE(s.comment,                         (SELECT comment                         FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND comment IS NOT NULL ORDER BY rn LIMIT 1)) AS comment,
+      COALESCE(s.forwarder_id,                    (SELECT forwarder_id                    FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND forwarder_id IS NOT NULL ORDER BY rn LIMIT 1)) AS forwarder_id,
+      COALESCE(s.factory_id,                      (SELECT factory_id                      FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND factory_id IS NOT NULL ORDER BY rn LIMIT 1)) AS factory_id,
+      COALESCE(s.company_group_id,                (SELECT company_group_id                FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND company_group_id IS NOT NULL ORDER BY rn LIMIT 1)) AS company_group_id,
+      COALESCE(s.supplier_id,                     (SELECT supplier_id                     FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND supplier_id IS NOT NULL ORDER BY rn LIMIT 1)) AS supplier_id,
+      COALESCE(s.buyer_id,                        (SELECT buyer_id                        FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND buyer_id IS NOT NULL ORDER BY rn LIMIT 1)) AS buyer_id,
+      COALESCE(s.fuel_type_id,                    (SELECT fuel_type_id                    FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND fuel_type_id IS NOT NULL ORDER BY rn LIMIT 1)) AS fuel_type_id,
+      COALESCE(s.destination_station_id,          (SELECT destination_station_id          FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND destination_station_id IS NOT NULL ORDER BY rn LIMIT 1)) AS destination_station_id,
+      COALESCE(s.departure_station_id,            (SELECT departure_station_id            FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND departure_station_id IS NOT NULL ORDER BY rn LIMIT 1)) AS departure_station_id,
+      COALESCE(s.additional_month,                (SELECT additional_month                FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND additional_month IS NOT NULL ORDER BY rn LIMIT 1)) AS additional_month,
+      COALESCE(s.quarter,                         (SELECT quarter                         FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND quarter IS NOT NULL ORDER BY rn LIMIT 1)) AS quarter,
+      COALESCE(s.month,                           (SELECT month                           FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND month IS NOT NULL ORDER BY rn LIMIT 1)) AS month,
+      COALESCE(s.rounded_tonnage_from_forwarder,  (SELECT rounded_tonnage_from_forwarder  FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND rounded_tonnage_from_forwarder IS NOT NULL ORDER BY rn LIMIT 1)) AS rounded_tonnage_from_forwarder,
+      COALESCE(s.shipped_tonnage_amount,          (SELECT shipped_tonnage_amount          FROM losers l WHERE l.registry_type = s.registry_type AND l.wagon_number = s.wagon_number AND l.waybill_number = s.waybill_number AND l.date IS NOT DISTINCT FROM s.date AND shipped_tonnage_amount IS NOT NULL ORDER BY rn LIMIT 1)) AS shipped_tonnage_amount
     FROM survivors s
   )
   UPDATE shipment_registry sr
-  SET loading_volume                 = fp.loading_volume,
+  SET deal_id                        = fp.deal_id,
+      loading_volume                 = fp.loading_volume,
       shipment_volume                = fp.shipment_volume,
       railway_tariff                 = fp.railway_tariff,
       shipment_month                 = fp.shipment_month,
@@ -237,28 +302,40 @@ BEGIN
   WHERE sr.id = fp.survivor_id;
   GET DIAGNOSTICS v_merges = ROW_COUNT;
 
-  -- 2b. Delete the losers.
+  -- 2b. Delete the losers. Restrict to safe clusters via the same
+  --     guard subquery, so ambiguous (multi-deal) clusters keep every
+  --     one of their rows for manual review.
+  WITH safe_clusters2 AS (
+    SELECT registry_type, wagon_number, waybill_number, date
+    FROM shipment_registry
+    WHERE wagon_number IS NOT NULL AND waybill_number IS NOT NULL
+    GROUP BY registry_type, wagon_number, waybill_number, date
+    HAVING COUNT(DISTINCT deal_id) FILTER (WHERE deal_id IS NOT NULL) <= 1
+       AND COUNT(*) > 1
+  ),
+  ranked2 AS (
+    SELECT sr.id,
+           ROW_NUMBER() OVER (
+             PARTITION BY sr.registry_type, sr.wagon_number, sr.waybill_number, sr.date
+             ORDER BY
+               (CASE WHEN sr.loading_volume IS NOT NULL AND sr.shipment_volume IS NOT NULL THEN 0
+                     WHEN sr.loading_volume IS NOT NULL OR  sr.shipment_volume IS NOT NULL THEN 1
+                     ELSE 2 END),
+               sr.created_at ASC
+           ) AS rn
+    FROM shipment_registry sr
+    JOIN safe_clusters2 sc
+      ON sc.registry_type   = sr.registry_type
+     AND sc.wagon_number    = sr.wagon_number
+     AND sc.waybill_number  = sr.waybill_number
+     AND sc.date            IS NOT DISTINCT FROM sr.date
+  )
   DELETE FROM shipment_registry
-  WHERE id IN (
-    SELECT id FROM (
-      SELECT id,
-             ROW_NUMBER() OVER (
-               PARTITION BY registry_type, wagon_number, waybill_number, date, deal_id
-               ORDER BY
-                 (CASE WHEN loading_volume IS NOT NULL AND shipment_volume IS NOT NULL THEN 0
-                       WHEN loading_volume IS NOT NULL OR  shipment_volume IS NOT NULL THEN 1
-                       ELSE 2 END),
-                 created_at ASC
-             ) AS rn
-      FROM shipment_registry
-      WHERE wagon_number IS NOT NULL AND waybill_number IS NOT NULL
-    ) r
-    WHERE r.rn > 1
-  );
+  WHERE id IN (SELECT id FROM ranked2 WHERE rn > 1);
   GET DIAGNOSTICS v_deletes = ROW_COUNT;
 
   RAISE NOTICE '========================================================';
-  RAISE NOTICE 'dedupe applied: % survivors merged, % losers deleted', v_merges, v_deletes;
+  RAISE NOTICE 'dedupe applied: % выживших смерджено, % лузеров удалено', v_merges, v_deletes;
   RAISE NOTICE '========================================================';
 END $$;
 
