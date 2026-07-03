@@ -564,19 +564,33 @@ export default function DealsPage() {
       </div>
 
       <div className="flex gap-1 border-b border-stone-200">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 text-[13px] font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? "border-amber-500 text-amber-700"
-                : "border-transparent text-stone-500 hover:text-stone-700"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          // Client 2026-07-03: KG passport gets dark green, KZ dark
+          // blue so operators can distinguish them at a glance in a
+          // deep tab stack. «Все сделки» keeps the amber underline.
+          const isActive = activeTab === tab.key;
+          const classes =
+            tab.key === "kg"
+              ? isActive
+                ? "bg-emerald-800 text-white border-emerald-800"
+                : "bg-emerald-50 text-emerald-800 border-transparent hover:bg-emerald-100"
+              : tab.key === "kz"
+              ? isActive
+                ? "bg-blue-800 text-white border-blue-800"
+                : "bg-blue-50 text-blue-800 border-transparent hover:bg-blue-100"
+              : isActive
+              ? "border-amber-500 text-amber-700"
+              : "border-transparent text-stone-500 hover:text-stone-700";
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2 text-[13px] font-medium border-b-2 transition-colors ${classes}`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Filters — year + search on first row, dropdown filters on second */}
