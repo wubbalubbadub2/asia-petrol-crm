@@ -565,31 +565,35 @@ export default function DealsPage() {
 
       <div className="flex gap-1 border-b border-stone-200">
         {tabs.map((tab) => {
-          // Client 2026-07-03: Паспорт KG = тёмно-зелёный, KZ = тёмно-
-          // синий. Colour lives on the tab regardless of active state
-          // so operators can tell them apart at a glance; the active
-          // state is marked by a fully-saturated hex + bolder text,
-          // inactive drops one step + fades the text. No CSS colour
-          // transition — client also complained that colours don't
-          // switch instantly.
+          // Colour lives on the tab regardless of active state so
+          // operators can tell KG / KZ apart even when a different
+          // one is selected. Client 2026-07-03: «когда выбрана
+          // вкладка снизу добавим линию» → active state gets a 4-px
+          // bright amber underline sitting on top of the 2-px stone
+          // divider. Amber matches the «Все сделки» / brand accent
+          // used elsewhere on the deal passport, so all three tabs
+          // read as «selected» via the same visual signal.
           const isActive = activeTab === tab.key;
-          const classes =
+          const bg =
             tab.key === "kg"
               ? isActive
-                ? "bg-emerald-800 text-white font-semibold border-emerald-800"
-                : "bg-emerald-700 text-emerald-50 border-transparent hover:bg-emerald-800"
+                ? "bg-emerald-800 text-white font-semibold"
+                : "bg-emerald-700 text-emerald-50 hover:bg-emerald-800"
               : tab.key === "kz"
               ? isActive
-                ? "bg-blue-800 text-white font-semibold border-blue-800"
-                : "bg-blue-700 text-blue-50 border-transparent hover:bg-blue-800"
+                ? "bg-blue-800 text-white font-semibold"
+                : "bg-blue-700 text-blue-50 hover:bg-blue-800"
               : isActive
-              ? "border-amber-500 text-amber-700"
-              : "border-transparent text-stone-500 hover:text-stone-700";
+              ? "text-amber-700"
+              : "text-stone-500 hover:text-stone-700";
+          const underline = isActive
+            ? "border-b-4 border-amber-500"
+            : "border-b-2 border-transparent";
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-[13px] font-medium border-b-2 ${classes}`}
+              className={`px-4 py-2 text-[13px] font-medium ${bg} ${underline}`}
             >
               {tab.label}
             </button>
