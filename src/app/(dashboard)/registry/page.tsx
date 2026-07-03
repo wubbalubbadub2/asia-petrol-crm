@@ -1576,22 +1576,24 @@ export default function RegistryPage() {
       </div>
       <div className="flex gap-1 border-b border-stone-200">
         {tabs.map((t) => {
-          // Same palette as /deals passport tabs (client 2026-07-03):
-          // KG = dark green, KZ = dark blue.
+          // Same palette as /deals passport tabs. Solid dark hex on
+          // both states; active adds a bolder text + one shade darker
+          // so the tab still reads as "selected" without relying on a
+          // CSS colour animation the client asked us to drop.
           const isActive = tab === t.key;
           const classes =
             t.key === "kg"
               ? isActive
-                ? "bg-emerald-800 text-white border-emerald-800"
-                : "bg-emerald-50 text-emerald-800 border-transparent hover:bg-emerald-100"
+                ? "bg-emerald-800 text-white font-semibold border-emerald-800"
+                : "bg-emerald-700 text-emerald-50 border-transparent hover:bg-emerald-800"
               : isActive
-                ? "bg-blue-800 text-white border-blue-800"
-                : "bg-blue-50 text-blue-800 border-transparent hover:bg-blue-100";
+                ? "bg-blue-800 text-white font-semibold border-blue-800"
+                : "bg-blue-700 text-blue-50 border-transparent hover:bg-blue-800";
           return (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-[13px] font-medium border-b-2 transition-colors ${classes}`}
+              className={`px-4 py-2 text-[13px] font-medium border-b-2 ${classes}`}
             >
               {t.label}
             </button>
