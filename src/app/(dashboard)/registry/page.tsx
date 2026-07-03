@@ -1770,7 +1770,23 @@ export default function RegistryPage() {
                 </div>
                 {open && (
                   <div className="border-t border-stone-200">
-                    <div className="overflow-x-auto">
+                    {/* No overflow-x wrapper: setting overflow-x on a
+                        div implicitly turns overflow-y into `auto` too
+                        (CSS Overflow spec: `visible` in one axis is
+                        silently promoted when the other is non-visible),
+                        which was creating a scroll context that trapped
+                        the thead's sticky positioning inside a div with
+                        no vertical scroll — result: header didn't stick
+                        to anything and scrolled away with the rows.
+                        Letting the table overflow into <main> (which
+                        already has overflow-auto) lets sticky top-0 on
+                        the <th>s anchor to the page viewport, so column
+                        names stay visible while the operator scrolls
+                        through the group. Wide groups now trigger the
+                        page-level horizontal scroll instead of a
+                        per-card one — acceptable trade for the sticky
+                        header behaviour the client actually asked for. */}
+                    <div>
                       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
                         {/* Sticky header band — operator request
                             2026-06-23 (round 2: round-1 attempt put

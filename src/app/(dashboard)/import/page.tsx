@@ -192,11 +192,61 @@ export default function ImportPage() {
       };
     }).filter((r) => r.shipment_volume || r.loading_volume);
 
+    // Dedupe against existing registry rows: СНТ/ЭСФ import only carries
+    // ONE volume (loading OR shipment) but the same (wagon, waybill) may
+    // already have a full row from the paired opposite-side import or
+    // from the /registry Excel import. Client 2026-07-03 «есть дубли:
+    // одной отгрузкой добавили входящее+исходящее, ниже ещё раз
+    // добавили только входящее» — that was this exact scenario. When a
+    // matching row exists, MERGE the missing volume onto it instead of
+    // inserting a second row.
     if (registryRecords.length > 0) {
-      await bulkInsertRegistry(registryRecords);
+      const wagonWaybillPairs = registryRecords
+        .filter((r) => r.wagon_number && r.waybill_number)
+        .map((r) => `(${r.wagon_number},${r.waybill_number})`);
+      // Fetch every existing row that matches any of the incoming
+      // (wagon, waybill) pairs. Range covers a big import in one shot.
+      const { data: existing } = wagonWaybillPairs.length > 0
+        ? await supabase
+            .from("shipment_registry")
+            .select("id, wagon_number, waybill_number, loading_volume, shipment_volume")
+            .eq("registry_type", "KG")
+            .in("wagon_number", registryRecords.map((r) => r.wagon_number).filter(Boolean) as string[])
+            .in("waybill_number", registryRecords.map((r) => r.waybill_number).filter(Boolean) as string[])
+        : { data: [] as { id: string; wagon_number: string | null; waybill_number: string | null; loading_volume: number | null; shipment_volume: number | null }[] };
+      const existingByKey = new Map<string, { id: string; loading_volume: number | null; shipment_volume: number | null }>();
+      for (const r of existing ?? []) {
+        if (r.wagon_number && r.waybill_number) {
+          existingByKey.set(`${r.wagon_number}::${r.waybill_number}`, r);
+        }
+      }
+      const toInsert: typeof registryRecords = [];
+      const toUpdate: { id: string; patch: { loading_volume?: number | null; shipment_volume?: number | null } }[] = [];
+      for (const rec of registryRecords) {
+        const key = rec.wagon_number && rec.waybill_number ? `${rec.wagon_number}::${rec.waybill_number}` : null;
+        const match = key ? existingByKey.get(key) : null;
+        if (!match) { toInsert.push(rec); continue; }
+        // Fill only the volume column the incoming row provides AND the
+        // existing row leaves empty — never overwrite an already-set
+        // volume, that's a hint the operator changed something and this
+        // partial import shouldn't stomp it.
+        const patch: { loading_volume?: number | null; shipment_volume?: number | null } = {};
+        if (rec.loading_volume != null && match.loading_volume == null) patch.loading_volume = rec.loading_volume;
+        if (rec.shipment_volume != null && match.shipment_volume == null) patch.shipment_volume = rec.shipment_volume;
+        if (Object.keys(patch).length > 0) toUpdate.push({ id: match.id, patch });
+      }
+      if (toInsert.length > 0) await bulkInsertRegistry(toInsert);
+      // Serial updates keep the trigger-driven rollups sane (one at a
+      // time). N is small — this only fires when the import actually
+      // has duplicates, not on every row.
+      for (const u of toUpdate) {
+        await supabase.from("shipment_registry").update(u.patch).eq("id", u.id);
+      }
+      toast.success(`Импортировано ${docs.length} документов, ${toInsert.length} новых записей, ${toUpdate.length} дозаполнено`);
+    } else {
+      toast.success(`Импортировано ${docs.length} документов`);
     }
 
-    toast.success(`Импортировано ${docs.length} документов, ${registryRecords.length} записей в реестр`);
     setImporting(false);
     setImportDone(true);
   }
