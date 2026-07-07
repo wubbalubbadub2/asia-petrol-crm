@@ -13,6 +13,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
+import { SyncedTopScrollbar } from "@/components/ui/double-scroll-x";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -1321,9 +1322,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
         ).join("")}</style>
       )}
       <div className="flex flex-col h-full">
+      {/* Верхний скроллбар — синхронизирован с bottom-scroll внутри
+          scrollRef. Клиент 2026-07-07: не мотать до низа таблицы за
+          скроллом; удобно двигать горизонтально прямо с верхнего края. */}
+      <SyncedTopScrollbar targetRef={scrollRef} className="bg-white border border-b-0 border-stone-200 rounded-t-md" />
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-auto rounded-md border border-stone-200 bg-white"
+        className="flex-1 min-h-0 overflow-auto rounded-b-md border border-stone-200 bg-white"
         onClickCapture={handleTableClickCapture}
       >
         {/* The wrapper has its OWN vertical + horizontal scroll context.

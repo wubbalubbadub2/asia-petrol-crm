@@ -27,6 +27,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import Link from "next/link";
 import { useTabs } from "@/lib/contexts/tabs-context";
+import { DoubleScrollX } from "@/components/ui/double-scroll-x";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -1770,37 +1771,22 @@ export default function RegistryPage() {
                 </div>
                 {open && (
                   <div className="border-t border-stone-200">
-                    {/* No overflow-x wrapper: setting overflow-x on a
-                        div implicitly turns overflow-y into `auto` too
-                        (CSS Overflow spec: `visible` in one axis is
-                        silently promoted when the other is non-visible),
-                        which was creating a scroll context that trapped
-                        the thead's sticky positioning inside a div with
-                        no vertical scroll — result: header didn't stick
-                        to anything and scrolled away with the rows.
-                        Letting the table overflow into <main> (which
-                        already has overflow-auto) lets sticky top-0 on
-                        the <th>s anchor to the page viewport, so column
-                        names stay visible while the operator scrolls
-                        through the group. Wide groups now trigger the
-                        page-level horizontal scroll instead of a
-                        per-card one — acceptable trade for the sticky
-                        header behaviour the client actually asked for. */}
-                    <div>
+                    {/* DoubleScrollX добавляет верхнюю полосу прокрутки
+                        над таблицей + нижнюю под ней. Клиент 2026-07-07:
+                        не хочет мотать до низа таблицы за скроллбаром.
+                        Локальная прокрутка тут же означает: sticky
+                        column headers работают в рамках одной карточки
+                        группы (когда таблица уже своя scroll-контекст),
+                        а не относительно всего <main>. Для 6-строчных
+                        таблиц из скрина это визуально то же самое. */}
+                    <DoubleScrollX>
                       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
-                        {/* Sticky header band — operator request
-                            2026-06-23 (round 2: round-1 attempt put
-                            position:sticky on the <tr>, which browsers
-                            implement inconsistently — Safari especially
-                            ignores it). Now applied to every <th>
-                            descendant via a Tailwind arbitrary
-                            selector, matching the proven pattern used
-                            in the passport table. Vertical sticky
-                            resolves to the nearest y-scroll ancestor
-                            (<main>) — the surrounding overflow-x-auto
-                            div catches only the x axis. z-10 keeps the
-                            header below the mass-action toolbar at
-                            z-30. */}
+                        {/* Sticky header band — anchors to whichever
+                            scroll ancestor exists. С DoubleScrollX
+                            вокруг таблицы горизонтальный скролл теперь
+                            локальный (bottomRef), поэтому вертикальный
+                            sticky относится к нему же; для коротких
+                            групп это визуально то же самое, что и до. */}
                         <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-stone-100"><tr className="bg-stone-100 border-b text-stone-500">
                           <th className="border-r px-2 py-1 w-[28px] text-center">
                             <input
@@ -2079,7 +2065,7 @@ export default function RegistryPage() {
                           )}
                         </tbody>
                       </table>
-                    </div>
+                    </DoubleScrollX>
                     {/* Add row buttons below table */}
                     {addingIn !== g.key && (
                       <div className="border-t border-stone-100 px-3 py-1.5 flex gap-2">
