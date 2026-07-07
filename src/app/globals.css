@@ -170,18 +170,37 @@
 }
 
 /* Скрывает ТОЛЬКО горизонтальный native scrollbar, вертикальный
- * оставляет. Используется SyncedTopScrollbar/SyncedBottomScrollbar
- * для внешнего scroll-контейнера (passport-таблица), у которого
- * вертикальный скролл нужен для длинного списка строк. Firefox
- * не умеет селективно скрывать одну ось (scrollbar-width — глобальный
- * для элемента), поэтому там native горизонтальный останется — мышиные
- * юзеры увидят native + наш custom (вреда нет, второй просто дублирует). */
+ * оставляет. -webkit-appearance:none выключает macOS'ный overlay-режим
+ * (без него :horizontal{display:none} игнорируется). Вертикальный
+ * оставляем видимым — не переопределяем его :vertical, поэтому
+ * рендерится классический системный. Firefox не умеет per-axis,
+ * там native горизонтальный останется — приемлемо. */
 .dsx-hide-native-h {
   -ms-overflow-style: none;
+}
+.dsx-hide-native-h::-webkit-scrollbar {
+  -webkit-appearance: none;
 }
 .dsx-hide-native-h::-webkit-scrollbar:horizontal {
   display: none !important;
   height: 0 !important;
+}
+.dsx-hide-native-h::-webkit-scrollbar:vertical {
+  width: 12px;
+}
+.dsx-hide-native-h::-webkit-scrollbar-track:vertical {
+  background: transparent;
+}
+.dsx-hide-native-h::-webkit-scrollbar-thumb:vertical {
+  background: #a8a29e;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 30px;
+}
+.dsx-hide-native-h::-webkit-scrollbar-thumb:vertical:hover {
+  background: #78716c;
+  background-clip: padding-box;
 }
 
 .dsx-thumb:hover {
