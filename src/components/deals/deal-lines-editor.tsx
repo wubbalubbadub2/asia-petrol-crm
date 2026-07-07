@@ -744,6 +744,7 @@ function LinesEditorView({
                 value={l.trigger_days}
                 editing={editing}
                 onChange={(v) => onUpdate(l.id, { trigger_days: v })}
+                decimals={0}
               />
             )}
 
@@ -1001,11 +1002,14 @@ function FinalizeStageDialog({
   );
 }
 
-function NumberCell({ label, value, editing, onChange }: {
+function NumberCell({ label, value, editing, onChange, decimals = 2 }: {
   label: ReactNode;
   value: number | null;
   editing: boolean;
   onChange: (v: number | null) => void;
+  /** Кол-во знаков после запятой в READ-ONLY отображении. 2 по
+   * умолчанию (деньги). 0 для целых (напр. Кол-во дней триггера). */
+  decimals?: number;
 }) {
   const pendingVal = useRef<number | null | undefined>(undefined);
   const [, force] = useState(0);
@@ -1037,7 +1041,7 @@ function NumberCell({ label, value, editing, onChange }: {
         />
       ) : (
         <span className="text-[13px] text-stone-800 font-mono tabular-nums">
-          {shown != null ? Number(shown).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+          {shown != null ? Number(shown).toLocaleString("ru-RU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : "—"}
         </span>
       )}
     </div>
