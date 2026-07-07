@@ -44,7 +44,7 @@ export function DoubleScrollX({
       <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
       <div
         ref={contentRef}
-        className="dsx-hide-native"
+        className="dsx-hide-native-all"
         style={{ overflowX: "auto" }}
       >
         {children}
@@ -55,9 +55,13 @@ export function DoubleScrollX({
 }
 
 /**
- * Верхняя кастомная полоса, синхронизированная с внешним scroll-ref
- * (когда обёртывание невозможно — например, virtualizer уже держит
- * ref на этот div).
+ * Кастомная горизонтальная полоса, синхронизированная с внешним
+ * scroll-контейнером (когда обёртывание невозможно — например,
+ * virtualizer уже держит ref на этот div). SyncedTopScrollbar
+ * дополнительно скрывает native горизонтальный scrollbar target'а
+ * (вертикальный остаётся). SyncedBottomScrollbar только рисует
+ * ещё одну синхронизированную полосу без работы с классами —
+ * используется как пара к TopScrollbar для sandwich-эффекта.
  */
 export function SyncedTopScrollbar({
   targetRef,
@@ -74,15 +78,37 @@ export function SyncedTopScrollbar({
     [targetRef],
   );
 
-  // Скрываем native scrollbar внешнего контейнера, чтобы у мышиных
-  // юзеров не было пропадающего overlay поверх нашей кастомной
-  // полосы.
+  // Прячем ТОЛЬКО горизонтальный native scrollbar внешнего
+  // контейнера — вертикальный оставляем нетронутым (для длинных
+  // таблиц типа passport'а).
   useEffect(() => {
     const el = targetRef.current;
     if (!el) return;
-    el.classList.add("dsx-hide-native");
-    return () => el.classList.remove("dsx-hide-native");
+    el.classList.add("dsx-hide-native-h");
+    return () => el.classList.remove("dsx-hide-native-h");
   }, [targetRef]);
+
+  return (
+    <div className={className}>
+      <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
+    </div>
+  );
+}
+
+export function SyncedBottomScrollbar({
+  targetRef,
+  className,
+}: {
+  targetRef: RefObject<HTMLElement | null>;
+  className?: string;
+}) {
+  const dim = useScrollDim(targetRef);
+  const setScrollLeft = useCallback(
+    (left: number) => {
+      if (targetRef.current) targetRef.current.scrollLeft = left;
+    },
+    [targetRef],
+  );
 
   return (
     <div className={className}>

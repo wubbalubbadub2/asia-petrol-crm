@@ -155,15 +155,35 @@
  * при overflow-x: scroll + -webkit-appearance: none. Поэтому
  * DoubleScrollX / SyncedTopScrollbar рисуют СВОЮ custom-полосу
  * DOM-элементом, а native scrollbar скрывают через этот класс. */
-.dsx-hide-native {
+/* Полностью скрывает native scrollbar. Используется DoubleScrollX'ом
+ * внутри собственного content div (у него нет вертикального
+ * overflow — контент помещается по высоте, поэтому потеря вертикали
+ * не мешает). */
+.dsx-hide-native-all {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.dsx-hide-native::-webkit-scrollbar {
+.dsx-hide-native-all::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
   display: none !important;
 }
+
+/* Скрывает ТОЛЬКО горизонтальный native scrollbar, вертикальный
+ * оставляет. Используется SyncedTopScrollbar/SyncedBottomScrollbar
+ * для внешнего scroll-контейнера (passport-таблица), у которого
+ * вертикальный скролл нужен для длинного списка строк. Firefox
+ * не умеет селективно скрывать одну ось (scrollbar-width — глобальный
+ * для элемента), поэтому там native горизонтальный останется — мышиные
+ * юзеры увидят native + наш custom (вреда нет, второй просто дублирует). */
+.dsx-hide-native-h {
+  -ms-overflow-style: none;
+}
+.dsx-hide-native-h::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0 !important;
+}
+
 .dsx-thumb:hover {
   background: #78716c !important;
 }

@@ -13,7 +13,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
-import { SyncedTopScrollbar } from "@/components/ui/double-scroll-x";
+import { SyncedTopScrollbar, SyncedBottomScrollbar } from "@/components/ui/double-scroll-x";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -1333,7 +1333,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
       <SyncedTopScrollbar targetRef={scrollRef} className="bg-white border border-b-0 border-stone-200 rounded-t-md" />
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-auto rounded-b-md border border-stone-200 bg-white"
+        className="flex-1 min-h-0 overflow-auto border-l border-r border-stone-200 bg-white"
         onClickCapture={handleTableClickCapture}
       >
         {/* The wrapper has its OWN vertical + horizontal scroll context.
@@ -1443,6 +1443,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
           </tbody>
         </table>
       </div>
+      {/* Нижний скроллбар — вторая проекция того же scrollRef, для тех
+          кто ниже таблицы и не хочет мотать обратно наверх. */}
+      <SyncedBottomScrollbar targetRef={scrollRef} className="bg-white border border-t-0 border-stone-200 rounded-b-md" />
       {selectionStats && (
         <div className="flex flex-wrap items-center gap-4 border-t border-amber-400 bg-amber-100 px-3 py-1.5 text-[12px] text-stone-800">
           <span className="font-medium text-amber-900">{selectionStats.label}</span>
