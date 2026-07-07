@@ -656,7 +656,7 @@ export function ImportTariffsDialog({
                         </td>
                         <td className="px-2 py-1 text-right font-mono tabular-nums text-stone-700 align-top">
                           {r.tariff != null
-                            ? r.tariff.toLocaleString("ru-RU", { maximumFractionDigits: 3 })
+                            ? r.tariff.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                             : <span className="text-red-600">нет</span>}
                         </td>
                       </tr>

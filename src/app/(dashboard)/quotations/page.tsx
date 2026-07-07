@@ -44,13 +44,11 @@ function formatDateDMY(dateStr: string): string {
   return `${d}.${m}.${y}`;
 }
 function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00:00:00").getDay(); return d === 0 || d === 6; }
-// Russian-locale 3-decimal format with comma separator
-// («896,500» instead of «896.500») — copied from Excel's General
-// number format on the source files.
+// Клиент 2026-07-07: котировки — это деньги, 2 знака после запятой,
+// как везде в приложении. Пробелы-разделители тоже разрешаем.
 const NUM_FMT = new Intl.NumberFormat("ru-RU", {
-  minimumFractionDigits: 3,
-  maximumFractionDigits: 3,
-  useGrouping: false,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 function fmtNum(n: number | null | undefined): string {
   return n == null ? "" : NUM_FMT.format(n);

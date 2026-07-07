@@ -858,7 +858,7 @@ function LinesEditorView({
               <span className="text-stone-500">
                 Сумма:{" "}
                 <span className="font-mono tabular-nums font-medium text-stone-700">
-                  {l.rollup.amount.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                  {l.rollup.amount.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span className="text-stone-500"> {currencySymbol}</span>
                 {l.price != null && l.rollup.volume > 0 && (

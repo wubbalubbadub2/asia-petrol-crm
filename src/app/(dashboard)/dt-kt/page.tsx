@@ -32,7 +32,10 @@ type DtKtRecord = {
 type DtKtPayment = { id: string; payment_date: string; amount: number; description: string | null; currency: string | null };
 type RegistrySums = { forwarder_id: string; company_group_id: string | null; total_volume: number; total_amount: number };
 
-function fmt(v: number | null | undefined) { return v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }); }
+function fmt(v: number | null | undefined) {
+  // Money — always 2 decimals per client canon 2026-07-07.
+  return v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function n(v: number | null | undefined) { return v ?? 0; }
 
 // Inline editable cells for DT-KT (number / date / text)

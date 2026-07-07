@@ -57,6 +57,8 @@ function hexToRgba(hex: string | null | undefined, alpha: number): string {
 }
 
 function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
+// Money canon 2026-07-07: always 2 decimals (сумма, тариф, etc).
+function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 // Tonnage display: always 3 decimals, even for whole / 2-decimal values.
 // Per client request — "после запятой 3 ноля должно быть".
 function fmtVol(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
@@ -176,7 +178,7 @@ function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
           title={isOverridden ? "Округл переопределён вручную. Очистите поле, чтобы вернуть авто-расчёт." : (isRounded ? "Авто: ⌈тонн⌉. Введите значение, чтобы переопределить." : "Авто: тонн (без округления). Введите значение, чтобы переопределить.")}
           className={`flex-1 text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] ${isOverridden ? "italic text-amber-700" : "text-stone-400"}`}
         >
-          {fmtNum(display)}
+          {fmtVol(display)}
         </button>
       )}
     </div>
@@ -201,7 +203,7 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
       title={override ? "Сумма переопределена вручную. Очистите поле, чтобы вернуть авто-расчёт." : "Авто-расчёт: ⌈тонн⌉ × тариф. Введите значение, чтобы переопределить."}
       className={`w-full text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[60px] ${override ? "italic text-amber-700" : "font-medium"}`}
     >
-      {fmtNum(value, 2)} {suffix}
+      {fmtMoney(value)} {suffix}
     </button>
   );
   return (
@@ -522,7 +524,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
         />
       </td>
       <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{v ? fmtNum(ceil(parseFloat(v))) : ""}</td>
-      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff != null ? fmtNum(calcAmt(parseFloat(v), tariff), 2) : ""}</td>
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-500">{v && tariff != null ? fmtMoney(calcAmt(parseFloat(v), tariff)) : ""}</td>
       <td className="border-r px-1 py-1">
         <select value={curOverride} onChange={(e) => setCurOverride(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-0.5 bg-green-50 cursor-pointer focus:outline-none">
           <option value="">сделка</option>
@@ -1090,7 +1092,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                       <tr key={i} className={`border-t border-stone-100 ${p.error ? "bg-red-50/50" : ""}`}>
                         <td className="px-2 py-0.5 text-stone-400">{i + 1}</td>
                         <td className="px-2 py-0.5 font-mono">{p.wagon || <span className="text-red-500">(пусто)</span>}</td>
-                        <td className="px-2 py-0.5 font-mono text-right">{p.volume != null ? p.volume.toLocaleString("ru-RU", { maximumFractionDigits: 3 }) : "—"}</td>
+                        <td className="px-2 py-0.5 font-mono text-right">{p.volume != null ? p.volume.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : "—"}</td>
                         <td className="px-2 py-0.5 text-stone-500">{p.date ?? "—"}</td>
                         <td className="px-2 py-0.5 font-mono text-stone-500">{p.waybill ?? "—"}</td>
                         <td className="px-2 py-0.5 text-red-600 text-[10px]">{p.error ?? ""}</td>
@@ -1761,11 +1763,11 @@ export default function RegistryPage() {
                   <span className="text-[10px] text-stone-400">{g.forwarder}</span>
                   <span className="ml-auto flex items-center gap-3 shrink-0">
                     <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">{g.records.length} шт</span>
-                    <span className="font-mono text-[11px] tabular-nums font-medium">{fmtNum(g.totalVol)} т</span>
+                    <span className="font-mono text-[11px] tabular-nums font-medium">{fmtVol(g.totalVol)} т</span>
                     {(() => {
                       const cs = new Set(g.records.map((r) => r.currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT")));
                       const gcur = cs.size === 1 ? CURRENCY_SYMBOLS[[...cs][0]] ?? [...cs][0] : "смеш.";
-                      return <span className="font-mono text-[11px] tabular-nums text-stone-500">{fmtNum(g.totalAmt)} {gcur}</span>;
+                      return <span className="font-mono text-[11px] tabular-nums text-stone-500">{fmtMoney(g.totalAmt)} {gcur}</span>;
                     })()}
                   </span>
                 </div>

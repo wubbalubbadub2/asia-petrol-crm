@@ -299,13 +299,13 @@ function InlineSelect({ value, displayLabel, options, onSave }: {
     </select>
   );
 }
-function InlineNum({ value, onSave, d = 3 }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; d?: number }) {
+function InlineNum({ value, onSave, d = 2 }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; d?: number }) {
   const [ed, setEd] = useState(false);
   const [lv, setLv] = useState("");
   if (!ed) return (
     <button onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
       className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 rounded px-1 py-0.5 cursor-text">
-      {value == null ? "—" : value.toLocaleString("ru-RU", { maximumFractionDigits: d })}
+      {value == null ? "—" : value.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d })}
     </button>
   );
   return (

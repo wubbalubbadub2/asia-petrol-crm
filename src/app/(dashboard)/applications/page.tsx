@@ -517,7 +517,7 @@ export default function ApplicationsPage() {
                     ) : app.product_name ?? "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono text-[11px] tabular-nums">
-                    {app.tonnage?.toLocaleString("ru-RU") ?? ""}
+                    {app.tonnage != null ? app.tonnage.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}
                   </TableCell>
                   <TableCell className="text-[12px] text-stone-600">
                     {app.destination_station?.name ?? "—"}

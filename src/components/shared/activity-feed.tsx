@@ -7,7 +7,8 @@ import { type ActivityMessage } from "@/lib/hooks/use-deal-activity";
 import { currencySymbol } from "@/lib/constants/currencies";
 
 function formatAmount(n: number): string {
-  return n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  // Money canon 2026-07-07: always 2 decimals.
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 const toNum = (v: unknown): number | null => {

@@ -123,9 +123,12 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
     pendingVal.current = undefined;
   }
 
+  // Client canon 2026-07-07: volume = 3/3, everything else (money,
+  // price, tariff, FX, quotation) = 2/2. Old behaviour ({max:3, no min})
+  // showed non-volume ints as «1 200» — no trailing decimals.
   const numOpts: Intl.NumberFormatOptions = isVolume
     ? { minimumFractionDigits: 3, maximumFractionDigits: 3 }
-    : { maximumFractionDigits: 3 };
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
   const formatted = shown != null && shown !== ""
     ? (typeof shown === "number"
       ? Number(shown).toLocaleString("ru-RU", numOpts)

@@ -55,7 +55,8 @@ function StatusBadge({ status }: { status: ApprovalStatus | null }) {
 
 function formatMoney(val: number | null | undefined): string {
   if (val == null) return "—";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  // Money canon 2026-07-07: always 2 decimals.
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function AddSurchargeDialog({
