@@ -148,6 +148,49 @@
   }
 }
 
+/* Scrollbar visibility — macOS hides scrollbars by default until
+ * touchpad interaction, so mouse users don't see them at all. Client
+ * 2026-07-07: сделай чтобы на ховере появлялись. This class forces a
+ * visible (but subtle) scrollbar in idle state and a prominent one on
+ * container hover, across all browsers. Applied by DoubleScrollX /
+ * SyncedTopScrollbar to any wrapped or synced scroll container. */
+.dsx-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 113, 108, 0.25) transparent;
+}
+.dsx-scroll:hover {
+  scrollbar-color: rgba(120, 113, 108, 0.6) transparent;
+}
+.dsx-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  /* -webkit-appearance: none — forces classic-style bars on macOS
+     where overlay bars would otherwise stay hidden. */
+  -webkit-appearance: none;
+}
+.dsx-scroll::-webkit-scrollbar-track {
+  background: rgba(120, 113, 108, 0.05);
+}
+.dsx-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.25);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 30px;
+  min-width: 30px;
+}
+.dsx-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.6);
+  background-clip: padding-box;
+}
+.dsx-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 113, 108, 0.85) !important;
+  background-clip: padding-box;
+}
+.dsx-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Tabular numerics only (no slashed-zero). Operator 2026-06-23 round
  * 3: «шрифт надо поменять… везде должен быть один и тот же стиль».
  * The whole UI now ships Carlito (Calibri-equivalent), the same font

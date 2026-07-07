@@ -64,7 +64,7 @@ export function DoubleScrollX({
   return (
     <div className={className}>
       <ProxyBar barRef={topRef} innerWidth={innerWidth} visible={overflowing} />
-      <div ref={bottomRef} style={{ overflowX: "auto" }}>
+      <div ref={bottomRef} className="dsx-scroll" style={{ overflowX: "auto" }}>
         {children}
       </div>
     </div>
@@ -124,6 +124,16 @@ export function SyncedTopScrollbar({
     return wireScrollSync(top, target);
   }, [targetRef]);
 
+  // Стилизуем внешний scroll-контейнер тем же классом, что и proxy-полосу,
+  // чтобы курсор-only пользователи видели скроллбары (macOS их прячет
+  // пока не начнёшь скроллить тачпадом).
+  useEffect(() => {
+    const target = targetRef.current;
+    if (!target) return;
+    target.classList.add("dsx-scroll");
+    return () => target.classList.remove("dsx-scroll");
+  }, [targetRef]);
+
   return (
     <ProxyBar
       barRef={topRef}
@@ -149,11 +159,11 @@ function ProxyBar({
     <div
       ref={barRef}
       aria-hidden
-      className={className}
+      className={`dsx-scroll ${className ?? ""}`}
       style={{
         overflowX: "auto",
         overflowY: "hidden",
-        height: visible ? 14 : 0,
+        height: visible ? 12 : 0,
         transition: "height 0.12s",
       }}
     >
