@@ -13,7 +13,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
-import { SyncedTopScrollbar, SyncedBottomScrollbar } from "@/components/ui/double-scroll-x";
+import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -1327,10 +1327,15 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
         ).join("")}</style>
       )}
       <div className="flex flex-col h-full">
-      {/* Верхний скроллбар — синхронизирован с bottom-scroll внутри
-          scrollRef. Клиент 2026-07-07: не мотать до низа таблицы за
-          скроллом; удобно двигать горизонтально прямо с верхнего края. */}
-      <SyncedTopScrollbar targetRef={scrollRef} className="bg-white border border-b-0 border-stone-200 rounded-t-md" />
+      {/* Пара кастомных скроллбаров (top + bottom) синхронизированных
+          с scrollRef. Один общий dim state — иначе верхний может
+          отрисоваться с scrollWidth=clientWidth (первое измерение до
+          того, как таблица разложилась) и не появиться. */}
+      <PairedSyncedScrollbars
+        targetRef={scrollRef}
+        topClassName="bg-white border border-b-0 border-stone-200 rounded-t-md"
+        bottomClassName="bg-white border border-t-0 border-stone-200 rounded-b-md"
+      >
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-auto border-l border-r border-stone-200 bg-white"
@@ -1443,9 +1448,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
           </tbody>
         </table>
       </div>
-      {/* Нижний скроллбар — вторая проекция того же scrollRef, для тех
-          кто ниже таблицы и не хочет мотать обратно наверх. */}
-      <SyncedBottomScrollbar targetRef={scrollRef} className="bg-white border border-t-0 border-stone-200 rounded-b-md" />
+      </PairedSyncedScrollbars>
       {selectionStats && (
         <div className="flex flex-wrap items-center gap-4 border-t border-amber-400 bg-amber-100 px-3 py-1.5 text-[12px] text-stone-800">
           <span className="font-medium text-amber-900">{selectionStats.label}</span>

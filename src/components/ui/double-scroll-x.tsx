@@ -55,13 +55,64 @@ export function DoubleScrollX({
 }
 
 /**
- * Кастомная горизонтальная полоса, синхронизированная с внешним
- * scroll-контейнером (когда обёртывание невозможно — например,
- * virtualizer уже держит ref на этот div). SyncedTopScrollbar
- * дополнительно скрывает native горизонтальный scrollbar target'а
- * (вертикальный остаётся). SyncedBottomScrollbar только рисует
- * ещё одну синхронизированную полосу без работы с классами —
- * используется как пара к TopScrollbar для sandwich-эффекта.
+ * Пара кастомных горизонтальных полос (сверху и снизу),
+ * синхронизированных с внешним scroll-контейнером, ref на который
+ * уже используется чем-то ещё (виртуализатором в passport-таблице).
+ *
+ * ВАЖНО: dim меряется ОДИН раз внутри этого компонента и
+ * пробрасывается в оба CustomScrollbar. Иначе две независимые
+ * useScrollDim могут получить разные scrollWidth (первое измерение
+ * до полной раскладки таблицы) — верхняя полоса тогда не отрисуется.
+ *
+ * children — DOM, где стоит `<div ref={targetRef}>` c нужным
+ * overflow-x. Wrapper сам ставит верхнюю полосу перед children и
+ * нижнюю после.
+ */
+export function PairedSyncedScrollbars({
+  targetRef,
+  topClassName,
+  bottomClassName,
+  children,
+}: {
+  targetRef: RefObject<HTMLElement | null>;
+  topClassName?: string;
+  bottomClassName?: string;
+  children: ReactNode;
+}) {
+  const dim = useScrollDim(targetRef);
+  const setScrollLeft = useCallback(
+    (left: number) => {
+      if (targetRef.current) targetRef.current.scrollLeft = left;
+    },
+    [targetRef],
+  );
+
+  // Прячем ТОЛЬКО горизонтальный native scrollbar внешнего
+  // контейнера — вертикальный оставляем.
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    el.classList.add("dsx-hide-native-h");
+    return () => el.classList.remove("dsx-hide-native-h");
+  }, [targetRef]);
+
+  return (
+    <>
+      <div className={topClassName}>
+        <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
+      </div>
+      {children}
+      <div className={bottomClassName}>
+        <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Оставлены как back-compat алиасы. НЕ используй их вместе на одном
+ * target'е — dim меряется независимо в каждом, ловится race condition.
+ * Для sandwich'а используй PairedSyncedScrollbars.
  */
 export function SyncedTopScrollbar({
   targetRef,
@@ -77,38 +128,12 @@ export function SyncedTopScrollbar({
     },
     [targetRef],
   );
-
-  // Прячем ТОЛЬКО горизонтальный native scrollbar внешнего
-  // контейнера — вертикальный оставляем нетронутым (для длинных
-  // таблиц типа passport'а).
   useEffect(() => {
     const el = targetRef.current;
     if (!el) return;
     el.classList.add("dsx-hide-native-h");
     return () => el.classList.remove("dsx-hide-native-h");
   }, [targetRef]);
-
-  return (
-    <div className={className}>
-      <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
-    </div>
-  );
-}
-
-export function SyncedBottomScrollbar({
-  targetRef,
-  className,
-}: {
-  targetRef: RefObject<HTMLElement | null>;
-  className?: string;
-}) {
-  const dim = useScrollDim(targetRef);
-  const setScrollLeft = useCallback(
-    (left: number) => {
-      if (targetRef.current) targetRef.current.scrollLeft = left;
-    },
-    [targetRef],
-  );
 
   return (
     <div className={className}>
