@@ -1180,15 +1180,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
     cgLabels,
   }), [refs, supplierLabels, buyerLabels, factoryLabels, fuelTypeLabels, forwarderLabels, managerLabels, cgLabels]);
 
-  // Empty-state stays — when the fetch finished and there are 0 deals
-  // we want the actual message, not skeleton rows. Cold-load (loading
-  // && deals.length === 0) and tab-flash both fall through to the
-  // skeleton branch below.
-  if (!loading && !tabFlash && deals.length === 0) return (
-    <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
-      <p className="text-sm text-stone-500">Нет сделок{dealType !== "ALL" ? ` типа ${dealType}` : ""}</p>
-    </div>
-  );
+  // Empty-state flag — вычисляется здесь, чтобы early-return был ПОСЛЕ
+  // всех остальных хуков (иначе React #300: количество вызванных хуков
+  // между рендерами не совпадает, когда фильтр сужает deals до 0).
+  // Bug 2026-07-07: /deals?search=<любая-непопадающая-строка> при
+  // определённом тайминге приводил к «This page couldn't load»,
+  // потому что этот `if (…) return` был ВЫШЕ хуков selection/keyboard.
+  const empty = !loading && !tabFlash && deals.length === 0;
 
   // Skeleton branch — true on initial cold load OR during the brief
   // tab-switch flash. Even if `deals` already contains rows for the
@@ -1306,6 +1304,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
       decimals: meta.decimals,
     };
   }, [selection, deals]);
+
+  // Empty-state early return — вынесен ПОСЛЕ всех хуков.
+  if (empty) return (
+    <div className="rounded-md border border-stone-200 bg-white py-12 text-center">
+      <p className="text-sm text-stone-500">Нет сделок{dealType !== "ALL" ? ` типа ${dealType}` : ""}</p>
+    </div>
+  );
 
   return (
     <PassportRefsContext.Provider value={refsContextValue}>
