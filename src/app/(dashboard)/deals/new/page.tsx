@@ -17,6 +17,7 @@ import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft } from "@/components/deals/deal-create-variants";
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
+import { DealPaymentsDraft, type DraftPayment } from "@/components/deals/deal-payments-draft";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -198,12 +199,11 @@ export default function NewDealPage() {
   const [buyerManagerId, setBuyerManagerId] = useState("");
   const [traderId, setTraderId] = useState("");
 
-  // «Оплата заранее» — sometimes the wire hits before the deal is entered.
-  // Captured here, written as a deal_payments row right after the deal is
-  // created (client request, 30.05.2026).
-  const [prepayAmount, setPrepayAmount] = useState("");
-  const [prepayDate, setPrepayDate] = useState("");
-  const [prepaySide, setPrepaySide] = useState<"supplier" | "buyer">("supplier");
+  // Оплаты, вносимые до сохранения сделки. Клиент часто знает какие
+  // оплаты уже пришли на момент создания карточки и хочет проставить
+  // сразу, не заходя потом в edit-view. Работает исключительно в памяти
+  // до момента createDeal → потом вставляем пачкой.
+  const [draftPayments, setDraftPayments] = useState<DraftPayment[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -352,22 +352,28 @@ export default function NewDealPage() {
       );
     }
 
-    // «Оплата заранее» → write a deal_payments row right after the deal exists.
-    // No-op if no amount was entered. Date defaults to today.
-    if (deal && prepayAmount) {
-      const amt = parseFloat(prepayAmount);
-      if (Number.isFinite(amt) && amt > 0) {
-        const today = new Date().toISOString().slice(0, 10);
-        const { error: payErr } = await supabase.from("deal_payments").insert({
-          deal_id: deal.id,
-          side: prepaySide,
-          amount: amt,
-          payment_date: prepayDate || today,
-          payment_type: "prepayment",
-          description: "Оплата заранее (при создании сделки)",
-          currency: prepaySide === "supplier" ? deal.supplier_currency : deal.buyer_currency,
-        });
-        if (payErr) toast.error(`Не удалось записать оплату заранее: ${payErr.message}`);
+    // Draft-оплаты → одна пачка INSERT в deal_payments после того как
+    // сделка сохранилась. Пустые суммы отбрасываем, чтобы клиент не
+    // получал по ошибке 0-строки от пустой карточки.
+    if (deal && draftPayments.length > 0) {
+      const rows = draftPayments
+        .map((p) => {
+          const amt = parseFloat(p.amount);
+          if (!Number.isFinite(amt) || amt === 0) return null;
+          return {
+            deal_id: deal.id,
+            side: p.side,
+            amount: amt,
+            payment_date: p.payment_date || new Date().toISOString().slice(0, 10),
+            payment_type: p.payment_type,
+            description: p.description || null,
+            currency: p.currency || (p.side === "supplier" ? deal.supplier_currency : deal.buyer_currency),
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+      if (rows.length > 0) {
+        const { error: payErr } = await supabase.from("deal_payments").insert(rows);
+        if (payErr) toast.error(`Не удалось записать оплаты: ${payErr.message}`);
       }
     }
 
@@ -713,42 +719,19 @@ export default function NewDealPage() {
             />
         </CollapsibleSection>
 
-        {/* Оплата заранее */}
-        <CollapsibleSection title="Оплата заранее (опционально)" headerBg={SECTION_COLORS.supplier} contentClassName="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <Label className="text-[12px] text-stone-500">Сторона</Label>
-              <select
-                value={prepaySide}
-                onChange={(e) => setPrepaySide(e.target.value as "supplier" | "buyer")}
-                className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-              >
-                <option value="supplier">Поставщику</option>
-                <option value="buyer">От покупателя</option>
-              </select>
-            </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">Сумма</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={prepayAmount}
-                onChange={(e) => setPrepayAmount(e.target.value)}
-                placeholder="0,00"
-                className="h-8 text-[13px] font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-[12px] text-stone-500">Дата оплаты</Label>
-              <Input
-                type="date"
-                value={prepayDate}
-                onChange={(e) => setPrepayDate(e.target.value)}
-                className="h-8 text-[13px]"
-              />
-            </div>
-            <div className="text-[11px] text-stone-400 self-end pb-1.5">
-              Если оплата пришла до создания сделки. Запишется в раздел «Оплаты» сразу после сохранения.
-            </div>
+        {/* Оплаты (клиент 2026-07-07: часть оплат известна ещё до
+            сохранения — надо вносить сразу, а не потом заходить в
+            паспорт). Секция отображает поставщика и покупателя
+            параллельно, как в паспорте сделки. */}
+        <CollapsibleSection title="Оплаты (опционально)" headerBg={SECTION_COLORS.supplier}>
+          <DealPaymentsDraft
+            payments={draftPayments}
+            onChange={setDraftPayments}
+            dealCurrency={currency}
+          />
+          <p className="mt-2 text-[11px] text-stone-400">
+            Все записи запишутся в раздел «Оплаты» сразу после сохранения сделки. Отрицательные (Возврат/Перезачёт) вычитаются из итога.
+          </p>
         </CollapsibleSection>
 
         {/* Submit */}
