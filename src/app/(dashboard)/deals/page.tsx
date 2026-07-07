@@ -54,9 +54,11 @@ function FuelBadge({ name, color }: { name?: string; color?: string }) {
   );
 }
 
+// Dead code (no callers found 2026-07-07). Kept as canonical money
+// helper for future use — 2 decimals per client canon.
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function DealsPage() {

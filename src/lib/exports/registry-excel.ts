@@ -32,8 +32,9 @@ export type RegistryExportContext = {
   labels: RegistryLabelMaps;
 };
 
+// Client canon 2026-07-07: tariff = money = 2 decimals.
 const NUM_FMT_VOLUME = "#,##0.000";
-const NUM_FMT_TARIFF = "#,##0.0000";
+const NUM_FMT_TARIFF = "#,##0.00";
 const NUM_FMT_AMOUNT = "#,##0.00";
 
 type Column = {

@@ -89,10 +89,10 @@ function EC({ value, recId, field, onSaved, cls = "" }: { value: string | null |
 function EN({ value, recId, field, onSaved }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<number | null | undefined>(undefined);
   const sh = pv.current !== undefined ? pv.current : value; if (pv.current !== undefined && value === pv.current) pv.current = undefined;
-  // Volume fields render with the always-3-decimals formatter; everything else
-  // (tariffs, amounts) keeps the existing «up to 3» formatter.
+  // Volume fields render with the always-3-decimals formatter; everything
+  // else (tariff/amount — money) с 2 знаками per client canon 2026-07-07.
   const isVol = field === "loading_volume" || field === "shipment_volume";
-  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px]">{isVol ? fmtVol(sh) : fmtNum(sh)}</button>;
+  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px]">{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
   return <input autoFocus type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; updateRegistryEntry(recId, { [field]: n }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
 }
 function ED({ value, recId, field, onSaved }: { value: string | null | undefined; recId: string; field: string; onSaved: () => void }) {

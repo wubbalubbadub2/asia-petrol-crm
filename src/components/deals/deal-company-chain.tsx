@@ -112,8 +112,9 @@ export function DealCompanyChain({
     onReload();
   }
 
+  // Money canon 2026-07-07: prices, tariff, margin → 2 decimals.
   const fmt = (v: number | null) =>
-    v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+    v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <Card>

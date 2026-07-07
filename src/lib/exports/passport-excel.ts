@@ -25,9 +25,11 @@ type Column = {
   read: (deal: Deal) => string | number | null | undefined;
 };
 
+// Client canon 2026-07-07: money (сумма, цена $/т, котировка, скидка,
+// тариф, FX) — 2 decimals. Volume — 3 decimals.
 const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
-const NUM_FMT_PRICE = "#,##0.0000";
+const NUM_FMT_PRICE = "#,##0.00";
 
 // Group name at a specific chain position (1..6) on a deal. Returns
 // "" if that position is empty — Excel's auto-filter treats blanks as

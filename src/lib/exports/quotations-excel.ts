@@ -38,7 +38,8 @@ type QuotationRow = {
   comment: string | null;
 };
 
-const NUM_FMT_PRICE = "#,##0.0000";
+// Client canon 2026-07-07: quotations = money = 2 decimals.
+const NUM_FMT_PRICE = "#,##0.00";
 const NUM_FMT_DATE = "DD.MM.YYYY";
 const HEADER_BG = "FF1C1917";
 const HEADER_TEXT = "FFFAFAF9";
