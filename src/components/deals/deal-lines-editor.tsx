@@ -765,11 +765,11 @@ function LinesEditorView({
                     Предв.
                   </span>
                   <span className="font-mono tabular-nums text-[12px] font-medium text-amber-900">
-                    {l.preliminary_price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}
+                    {l.preliminary_price.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   {tier === "manual_formula" && l.preliminary_fx_rate != null && (
                     <span className="text-[10px] text-amber-700/80">
-                      · курс {l.preliminary_fx_rate.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}
+                      · курс {l.preliminary_fx_rate.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   )}
                   {l.preliminary_set_at && (
@@ -862,7 +862,7 @@ function LinesEditorView({
                 <span className="text-stone-500"> {currencySymbol}</span>
                 {l.price != null && l.rollup.volume > 0 && (
                   <span className="ml-1 text-stone-400">
-                    (по цене {l.price.toLocaleString("ru-RU", { maximumFractionDigits: 4 })})
+                    (по цене {l.price.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </span>
                 )}
               </span>
@@ -1037,7 +1037,7 @@ function NumberCell({ label, value, editing, onChange }: {
         />
       ) : (
         <span className="text-[13px] text-stone-800 font-mono tabular-nums">
-          {shown != null ? Number(shown).toLocaleString("ru-RU", { maximumFractionDigits: 4 }) : "—"}
+          {shown != null ? Number(shown).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
         </span>
       )}
     </div>
