@@ -3,6 +3,7 @@
 import {
   ReactNode,
   RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -10,12 +11,20 @@ import {
 } from "react";
 
 /**
- * Двойной горизонтальный скроллбар: рендерит верхнюю и нижнюю полосы
- * прокрутки над и под содержимым, синхронизированные между собой.
- * Пользователю не нужно мотать вниз до таблицы за скроллбаром.
+ * DoubleScrollX — верхняя и нижняя КАСТОМНЫЕ полосы прокрутки над
+ * широким содержимым (например, широкая таблица).
  *
- * Обе полосы появляются только если контент действительно шире
- * контейнера (scrollWidth > clientWidth).
+ * Почему кастомные, а не native ::-webkit-scrollbar:
+ *   macOS Chromium/Chrome для overlay-скроллбаров игнорирует
+ *   ::-webkit-scrollbar styling — bar рисуется поверх контента,
+ *   fade-out через ~1 секунду и НЕ резервирует место в layout.
+ *   Проверено playwright'ом: offsetHeight === clientHeight даже
+ *   при overflow-x: scroll + -webkit-appearance: none. Единственный
+ *   надёжный путь для мышиных пользователей — рисовать полосу
+ *   собственным DOM-элементом.
+ *
+ * Обе полосы всегда видны, когда контент overflow-х-ится, и
+ * скрываются иначе (height → 0).
  */
 export function DoubleScrollX({
   children,
@@ -24,62 +33,31 @@ export function DoubleScrollX({
   children: ReactNode;
   className?: string;
 }) {
-  const topRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [innerWidth, setInnerWidth] = useState(0);
-  const [overflowing, setOverflowing] = useState(false);
-
-  useLayoutEffect(() => {
-    const bottom = bottomRef.current;
-    if (!bottom) return;
-
-    const measure = () => {
-      const w = bottom.scrollWidth;
-      setInnerWidth(w);
-      setOverflowing(w > bottom.clientWidth + 1);
-    };
-    measure();
-
-    const ro = new ResizeObserver(measure);
-    ro.observe(bottom);
-    const child = bottom.firstElementChild;
-    if (child) ro.observe(child);
-
-    const mo = new MutationObserver(measure);
-    mo.observe(bottom, { childList: true, subtree: true, attributes: true });
-
-    return () => {
-      ro.disconnect();
-      mo.disconnect();
-    };
-  }, [children]);
-
-  useEffect(() => {
-    const top = topRef.current;
-    const bottom = bottomRef.current;
-    if (!top || !bottom) return;
-    return wireScrollSync(top, bottom);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const dim = useScrollDim(contentRef);
+  const setScrollLeft = useCallback((left: number) => {
+    if (contentRef.current) contentRef.current.scrollLeft = left;
   }, []);
 
   return (
     <div className={className}>
-      <ProxyBar barRef={topRef} innerWidth={innerWidth} visible={overflowing} />
-      <div ref={bottomRef} className="dsx-scroll" style={{ overflowX: "auto" }}>
+      <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
+      <div
+        ref={contentRef}
+        className="dsx-hide-native"
+        style={{ overflowX: "auto" }}
+      >
         {children}
       </div>
+      <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
     </div>
   );
 }
 
 /**
- * Верхняя синхронизированная полоса прокрутки для существующего
- * scroll-контейнера (когда нельзя обернуть в свой overflow-x-auto —
- * например, virtualizer уже держит внешний ref на этот div).
- *
- * Использование:
- *   const ref = useRef<HTMLDivElement>(null);
- *   <SyncedTopScrollbar targetRef={ref} />
- *   <div ref={ref} className="overflow-auto ...">...</div>
+ * Верхняя кастомная полоса, синхронизированная с внешним scroll-ref
+ * (когда обёртывание невозможно — например, virtualizer уже держит
+ * ref на этот div).
  */
 export function SyncedTopScrollbar({
   targetRef,
@@ -88,111 +66,174 @@ export function SyncedTopScrollbar({
   targetRef: RefObject<HTMLElement | null>;
   className?: string;
 }) {
-  const topRef = useRef<HTMLDivElement>(null);
-  const [innerWidth, setInnerWidth] = useState(0);
-  const [overflowing, setOverflowing] = useState(false);
-
-  useLayoutEffect(() => {
-    const target = targetRef.current;
-    if (!target) return;
-
-    const measure = () => {
-      const w = target.scrollWidth;
-      setInnerWidth(w);
-      setOverflowing(w > target.clientWidth + 1);
-    };
-    measure();
-
-    const ro = new ResizeObserver(measure);
-    ro.observe(target);
-    const child = target.firstElementChild;
-    if (child) ro.observe(child);
-
-    const mo = new MutationObserver(measure);
-    mo.observe(target, { childList: true, subtree: true, attributes: true });
-
-    return () => {
-      ro.disconnect();
-      mo.disconnect();
-    };
-  }, [targetRef]);
-
-  useEffect(() => {
-    const top = topRef.current;
-    const target = targetRef.current;
-    if (!top || !target) return;
-    return wireScrollSync(top, target);
-  }, [targetRef]);
-
-  // Стилизуем внешний scroll-контейнер тем же классом, что и proxy-полосу,
-  // чтобы курсор-only пользователи видели скроллбары (macOS их прячет
-  // пока не начнёшь скроллить тачпадом).
-  useEffect(() => {
-    const target = targetRef.current;
-    if (!target) return;
-    target.classList.add("dsx-scroll");
-    return () => target.classList.remove("dsx-scroll");
-  }, [targetRef]);
-
-  return (
-    <ProxyBar
-      barRef={topRef}
-      innerWidth={innerWidth}
-      visible={overflowing}
-      className={className}
-    />
+  const dim = useScrollDim(targetRef);
+  const setScrollLeft = useCallback(
+    (left: number) => {
+      if (targetRef.current) targetRef.current.scrollLeft = left;
+    },
+    [targetRef],
   );
-}
 
-function ProxyBar({
-  barRef,
-  innerWidth,
-  visible,
-  className,
-}: {
-  barRef: RefObject<HTMLDivElement | null>;
-  innerWidth: number;
-  visible: boolean;
-  className?: string;
-}) {
+  // Скрываем native scrollbar внешнего контейнера, чтобы у мышиных
+  // юзеров не было пропадающего overlay поверх нашей кастомной
+  // полосы.
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    el.classList.add("dsx-hide-native");
+    return () => el.classList.remove("dsx-hide-native");
+  }, [targetRef]);
+
   return (
-    <div
-      ref={barRef}
-      aria-hidden
-      className={`dsx-scroll ${className ?? ""}`}
-      style={{
-        overflowX: "auto",
-        overflowY: "hidden",
-        height: visible ? 12 : 0,
-        transition: "height 0.12s",
-      }}
-    >
-      <div style={{ width: innerWidth, height: 1 }} />
+    <div className={className}>
+      <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
     </div>
   );
 }
 
-function wireScrollSync(a: HTMLElement, b: HTMLElement) {
-  let syncing = false;
-  const clearSyncing = () => {
-    syncing = false;
+type Dim = {
+  scrollWidth: number;
+  clientWidth: number;
+  scrollLeft: number;
+};
+
+function useScrollDim(ref: RefObject<HTMLElement | null>): Dim {
+  const [dim, setDim] = useState<Dim>({
+    scrollWidth: 0,
+    clientWidth: 0,
+    scrollLeft: 0,
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      setDim({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        scrollLeft: el.scrollLeft,
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { childList: true, subtree: true, attributes: true });
+    const onScroll = () => {
+      setDim((d) => ({ ...d, scrollLeft: el.scrollLeft }));
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [ref]);
+
+  return dim;
+}
+
+function CustomScrollbar({
+  dim,
+  onScrollLeft,
+}: {
+  dim: Dim;
+  onScrollLeft: (left: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const dragStartRef = useRef<{ clientX: number; startScrollLeft: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const measure = () => setTrackWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const overflowing = dim.scrollWidth > dim.clientWidth + 1;
+  const ratio = dim.scrollWidth > 0 ? dim.clientWidth / dim.scrollWidth : 1;
+  const thumbWidth = Math.max(30, Math.floor(trackWidth * ratio));
+  const maxThumbLeft = Math.max(0, trackWidth - thumbWidth);
+  const maxScrollLeft = Math.max(1, dim.scrollWidth - dim.clientWidth);
+  const thumbLeft = maxScrollLeft > 0
+    ? (dim.scrollLeft / maxScrollLeft) * maxThumbLeft
+    : 0;
+
+  const onThumbDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    dragStartRef.current = { clientX: e.clientX, startScrollLeft: dim.scrollLeft };
+    setDragging(true);
   };
-  const onA = () => {
-    if (syncing) return;
-    syncing = true;
-    b.scrollLeft = a.scrollLeft;
-    requestAnimationFrame(clearSyncing);
+  const onThumbMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging || !dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.clientX;
+    const scale = maxThumbLeft > 0 ? maxScrollLeft / maxThumbLeft : 0;
+    const next = dragStartRef.current.startScrollLeft + dx * scale;
+    onScrollLeft(Math.max(0, Math.min(maxScrollLeft, next)));
   };
-  const onB = () => {
-    if (syncing) return;
-    syncing = true;
-    a.scrollLeft = b.scrollLeft;
-    requestAnimationFrame(clearSyncing);
+  const onThumbUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    setDragging(false);
+    dragStartRef.current = null;
   };
-  a.addEventListener("scroll", onA, { passive: true });
-  b.addEventListener("scroll", onB, { passive: true });
-  return () => {
-    a.removeEventListener("scroll", onA);
-    b.removeEventListener("scroll", onB);
+  const onTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const targetThumbLeft = Math.max(0, Math.min(maxThumbLeft, clickX - thumbWidth / 2));
+    const next = maxThumbLeft > 0
+      ? (targetThumbLeft / maxThumbLeft) * maxScrollLeft
+      : 0;
+    onScrollLeft(next);
   };
+
+  return (
+    <div
+      ref={trackRef}
+      onClick={onTrackClick}
+      aria-hidden
+      style={{
+        height: overflowing ? 12 : 0,
+        overflow: "hidden",
+        position: "relative",
+        background: overflowing ? "#f5f5f4" : "transparent",
+        cursor: overflowing ? "pointer" : "default",
+        userSelect: "none",
+        transition: "height 0.12s",
+      }}
+    >
+      {overflowing && (
+        <div
+          onPointerDown={onThumbDown}
+          onPointerMove={onThumbMove}
+          onPointerUp={onThumbUp}
+          onPointerCancel={onThumbUp}
+          onClick={(e) => e.stopPropagation()}
+          className="dsx-thumb"
+          style={{
+            position: "absolute",
+            top: 2,
+            bottom: 2,
+            left: 0,
+            width: thumbWidth,
+            transform: `translateX(${thumbLeft}px)`,
+            background: dragging ? "#57534e" : "#a8a29e",
+            borderRadius: 4,
+            cursor: dragging ? "grabbing" : "grab",
+            transition: dragging ? "none" : "background 0.12s",
+            touchAction: "none",
+          }}
+        />
+      )}
+    </div>
+  );
 }

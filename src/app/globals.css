@@ -148,47 +148,24 @@
   }
 }
 
-/* Scrollbar visibility — macOS hides overlay scrollbars until touchpad
- * interaction, so mouse users don't see them at all. Client 2026-07-07:
- * пусть скролбар всегда видно. Applied by DoubleScrollX /
- * SyncedTopScrollbar to any wrapped or synced scroll container.
- *
- * Any ::-webkit-scrollbar rule forces webkit/blink into "custom
- * scrollbar" mode which does NOT fade out — that's what defeats the
- * macOS overlay behaviour. Firefox uses scrollbar-width/color. */
-.dsx-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #a8a29e #f5f5f4;
+/* macOS Chromium/Chrome для overlay-scrollbars игнорирует
+ * ::-webkit-scrollbar styling: bar рисуется поверх контента,
+ * fade-out после ~1 секунды, не резервирует место в layout.
+ * Проверено playwright'ом: offsetHeight === clientHeight даже
+ * при overflow-x: scroll + -webkit-appearance: none. Поэтому
+ * DoubleScrollX / SyncedTopScrollbar рисуют СВОЮ custom-полосу
+ * DOM-элементом, а native scrollbar скрывают через этот класс. */
+.dsx-hide-native {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.dsx-scroll:hover {
-  scrollbar-color: #78716c #f5f5f4;
+.dsx-hide-native::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
 }
-.dsx-scroll::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-.dsx-scroll::-webkit-scrollbar-track {
-  background: #f5f5f4;
-  border-radius: 6px;
-}
-.dsx-scroll::-webkit-scrollbar-thumb {
-  background: #a8a29e;
-  border-radius: 6px;
-  border: 2px solid #f5f5f4;
-  background-clip: padding-box;
-  min-height: 30px;
-  min-width: 30px;
-}
-.dsx-scroll:hover::-webkit-scrollbar-thumb {
-  background: #78716c;
-  background-clip: padding-box;
-}
-.dsx-scroll::-webkit-scrollbar-thumb:hover {
-  background: #57534e !important;
-  background-clip: padding-box;
-}
-.dsx-scroll::-webkit-scrollbar-corner {
-  background: #f5f5f4;
+.dsx-thumb:hover {
+  background: #78716c !important;
 }
 
 /* Tabular numerics only (no slashed-zero). Operator 2026-06-23 round
