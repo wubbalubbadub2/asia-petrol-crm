@@ -35,13 +35,25 @@ export type ParsedWagon = {
 };
 
 function splitLine(line: string): string[] {
+  let cells: string[];
   // Prefer tab (Excel paste)
-  if (line.includes("\t")) return line.split("\t").map((c) => c.trim());
-  // Fallback: two-or-more spaces
-  const multi = line.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean);
-  if (multi.length > 1) return multi;
-  // Last resort: single whitespace
-  return line.split(/\s+/).map((c) => c.trim()).filter(Boolean);
+  if (line.includes("\t")) {
+    cells = line.split("\t").map((c) => c.trim());
+  } else {
+    // Fallback: two-or-more spaces
+    const multi = line.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean);
+    if (multi.length > 1) cells = multi;
+    // Last resort: single whitespace
+    else cells = line.split(/\s+/).map((c) => c.trim()).filter(Boolean);
+  }
+  // Trim TRAILING empty cells only. Preserve leading/middle empties
+  // (they distinguish NEW-3 «дата | вагон | объём» from NEW-4
+  // «дата | накладная | вагон | объём» when накладная is intentionally
+  // blank). But a trailing empty comes from Excel paste with a hanging
+  // tab and used to shift the parser into NEW-4 layout mode, corrupting
+  // wagon/waybill assignments (operator bug 2026-07-08).
+  while (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
+  return cells;
 }
 
 // Post-process: glue consecutive cells that form a comma-separated
@@ -214,6 +226,12 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
 
     if (!wagon) {
       row.error = "Пустой № вагона";
+    } else if (/[,.]/.test(wagon)) {
+      // Wagon numbers are always plain digits (7-8 chars). A comma or
+      // dot inside means the volume value leaked into the wagon column
+      // — happens when the paste layout is misaligned (e.g. extra
+      // trailing tab). Flag it so the row can't be silently saved.
+      row.error = `«${wagon}» не похоже на номер вагона (запятая/точка). Проверьте порядок колонок.`;
     } else if (volumeRaw && row.volume == null) {
       row.error = `Не удалось прочитать объём: "${volumeRaw}"`;
     } else if (dateRaw && row.date == null) {
