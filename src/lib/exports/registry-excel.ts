@@ -26,10 +26,13 @@ export type RegistryLabelMaps = {
   station: Map<string, string>;
 };
 
+export type RegistryExportVariant = "pts" | "full";
+
 export type RegistryExportContext = {
   type: "KG" | "KZ";
   year: number;
   labels: RegistryLabelMaps;
+  variant: RegistryExportVariant;
 };
 
 // Client canon 2026-07-07: tariff = money = 2 decimals.
@@ -56,16 +59,16 @@ function roundedTonnage(r: ShipmentRecord): number | null {
   return r.round_volume !== false ? Math.ceil(raw) : raw;
 }
 
-const COLUMNS: Column[] = [
+// PTS — вариант «для экспедитора PTC», по требованию клиента
+// 2026-07-08. Меньше колонок, «Исходящее СНТ»/станции сразу после
+// вагона+накладной, «Входящее СНТ» отсутствует.
+const COLUMNS_PTS: Column[] = [
   { key: "deal_code",         header: "№ сделки",            width: 12, read: (r) => r.deal?.deal_code ?? "" },
   { key: "additional_month",  header: "Мес. доп",            width: 11, read: (r) => r.additional_month ?? r.deal?.month ?? "" },
   { key: "shipment_month",    header: "Мес. отгрузки",       width: 12, read: (r) => r.shipment_month ?? "" },
   { key: "date",              header: "Дата",                width: 12, read: (r) => r.date ?? "" },
   { key: "wagon_number",      header: "№ вагона",            width: 14, read: (r) => r.wagon_number ?? "" },
   { key: "waybill_number",    header: "№ ЖД накладной",      width: 16, read: (r) => r.waybill_number ?? "" },
-  // Клиент 2026-07-08: порядок колонок в экспорте — сначала Исходящее
-  // СНТ и станции, потом ГСМ/Завод/КА. «Входящее СНТ» из экспорта
-  // выведено (не нужно в отчёте).
   { key: "shipment_volume",   header: "Исходящее СНТ, т",    width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
   { key: "departure_station", header: "Ст. отправления",     width: 16, read: (r, l) => (r.departure_station_id && l.station.get(r.departure_station_id)) || "" },
   { key: "destination_station", header: "Ст. назначения",    width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
@@ -83,6 +86,38 @@ const COLUMNS: Column[] = [
   { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.currency ?? "" },
   { key: "invoice_number",    header: "№ СФ",                width: 14, read: (r) => r.invoice_number ?? "" },
   { key: "comment",           header: "Комментарий",         width: 28, read: (r) => r.comment ?? "" },
+];
+
+// FULL — все колонки в том же порядке, как на экране в /registry
+// (клиент 2026-07-08). Включает «Входящее СНТ», обе группы компании
+// (продублировано под коммент как на экране), станции идут после
+// тарифа/суммы. Всё как в UI, чтобы юзер получил «то что видит».
+const COLUMNS_FULL: Column[] = [
+  { key: "deal_code",           header: "№ сделки",         width: 12, read: (r) => r.deal?.deal_code ?? "" },
+  { key: "additional_month",    header: "Мес. доп",         width: 11, read: (r) => r.additional_month ?? r.deal?.month ?? "" },
+  { key: "shipment_month",      header: "Мес. отгрузки",    width: 12, read: (r) => r.shipment_month ?? "" },
+  { key: "fuel_type",           header: "ГСМ",              width: 12, read: (r, l) => (r.fuel_type_id && l.fuelType.get(r.fuel_type_id)?.name) || "" },
+  { key: "factory",             header: "Завод",            width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
+  { key: "supplier",            header: "Поставщик",        width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
+  { key: "loading_volume",      header: "Входящее СНТ, т",  width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
+  { key: "company_group",       header: "Группа компании",  width: 18, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
+  { key: "buyer",               header: "Покупатель",       width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
+  { key: "forwarder",           header: "Экспедитор",       width: 18, read: (r, l) => (r.forwarder_id && l.forwarder.get(r.forwarder_id)) || "" },
+  { key: "wagon_number",        header: "№ вагона",         width: 14, read: (r) => r.wagon_number ?? "" },
+  { key: "waybill_number",      header: "№ ЖД накл.",       width: 16, read: (r) => r.waybill_number ?? "" },
+  { key: "shipment_volume",     header: "Исходящее СНТ, т", width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
+  { key: "date",                header: "Дата отгр.",       width: 12, read: (r) => r.date ?? "" },
+  { key: "railway_tariff",      header: "Тариф",            width: 12, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.railway_tariff },
+  { key: "rounded_tonnage",     header: "Округл. тоннаж",   width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedTonnage(r) },
+  { key: "shipped_amount",      header: "Сумма",            width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
+  { key: "currency",            header: "Валюта",           width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.currency ?? "" },
+  { key: "destination_station", header: "Ст. назн.",        width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
+  { key: "departure_station",   header: "Ст. отпр.",        width: 16, read: (r, l) => (r.departure_station_id && l.station.get(r.departure_station_id)) || "" },
+  { key: "supplier_appendix",   header: "Прил. поставщика", width: 14, read: (r) => r.supplier_appendix ?? "" },
+  { key: "buyer_appendix",      header: "Прил. покупателя", width: 14, read: (r) => r.buyer_appendix ?? "" },
+  { key: "invoice_number",      header: "№ СФ",             width: 14, read: (r) => r.invoice_number ?? "" },
+  { key: "company_group_dup",   header: "Группа комп.",     width: 18, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
+  { key: "comment",             header: "Коммент.",         width: 28, read: (r) => r.comment ?? "" },
 ];
 
 const HEADER_BG = "FF1C1917";   // sidebar dark
@@ -118,6 +153,9 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
   wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
 
+  const columns = ctx.variant === "full" ? COLUMNS_FULL : COLUMNS_PTS;
+  const variantSuffix = ctx.variant === "full" ? " · полный" : " · PTS";
+
   const sheetName = ctx.type === "KG" ? "Реестр KG" : "Реестр KZ";
   const ws = wb.addWorksheet(sheetName, {
     views: [{ state: "frozen", ySplit: 2 }],
@@ -126,9 +164,9 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
 
   // ── Title row ────────────────────────────────────────────
   ws.getRow(1).height = 24;
-  ws.mergeCells(1, 1, 1, COLUMNS.length);
+  ws.mergeCells(1, 1, 1, columns.length);
   const titleCell = ws.getCell(1, 1);
-  titleCell.value = `${sheetName} · ${ctx.year}${records.length ? `  ·  ${records.length} отгрузок` : ""}`;
+  titleCell.value = `${sheetName}${variantSuffix} · ${ctx.year}${records.length ? `  ·  ${records.length} отгрузок` : ""}`;
   titleCell.font = { bold: true, size: 13, color: { argb: HEADER_TEXT } };
   titleCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
   titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
@@ -136,7 +174,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
   // ── Column header row ────────────────────────────────────
   const headerRow = ws.getRow(2);
   headerRow.height = 22;
-  COLUMNS.forEach((col, idx) => {
+  columns.forEach((col, idx) => {
     const cell = headerRow.getCell(idx + 1);
     cell.value = col.header;
     cell.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
@@ -154,7 +192,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     row.height = 18;
     const fuelHex = (rec.fuel_type_id && ctx.labels.fuelType.get(rec.fuel_type_id)?.color) || null;
     const rowFill = blendArgbWithFuel("FFFFFFFF", fuelHex, 0.12);
-    COLUMNS.forEach((col, colIdx) => {
+    columns.forEach((col, colIdx) => {
       const cell = row.getCell(colIdx + 1);
       const v = col.read(rec, ctx.labels);
       // Date columns are stored as ISO strings (yyyy-mm-dd). Convert
@@ -191,7 +229,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     const totalRow = ws.getRow(totalRowIdx);
     totalRow.height = 22;
     const TOTAL_KEYS = new Set(["shipment_volume", "rounded_tonnage", "shipped_amount"]);
-    COLUMNS.forEach((col, idx) => {
+    columns.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
       cell.font = { bold: true, size: 10 };
@@ -215,7 +253,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
   // ── Auto-filter on the column-header row ─────────────────
   ws.autoFilter = {
     from: { row: 2, column: 1 },
-    to: { row: 2, column: COLUMNS.length },
+    to: { row: 2, column: columns.length },
   };
 
   // ── Download ────────────────────────────────────────────
@@ -227,7 +265,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
   const a = document.createElement("a");
   const datestamp = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `registry-${ctx.type.toLowerCase()}-${ctx.year}-${datestamp}.xlsx`;
+  a.download = `registry-${ctx.type.toLowerCase()}-${ctx.variant}-${ctx.year}-${datestamp}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

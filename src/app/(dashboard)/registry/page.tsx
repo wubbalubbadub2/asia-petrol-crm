@@ -28,6 +28,7 @@ import { MONTHS_RU } from "@/lib/constants/months-ru";
 import Link from "next/link";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { DoubleScrollX } from "@/components/ui/double-scroll-x";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
@@ -1355,7 +1356,7 @@ export default function RegistryPage() {
       return s;
     });
   }
-  async function handleExportExcel() {
+  async function handleExportExcel(variant: "pts" | "full") {
     if (exporting) return;
     if (filteredRecords.length === 0) {
       toast.error("Нет записей для выгрузки");
@@ -1380,6 +1381,7 @@ export default function RegistryPage() {
         type: tab === "kg" ? "KG" : "KZ",
         year,
         labels: labelMaps,
+        variant,
       });
       toast.success(`Выгружено ${filteredRecords.length} строк`);
     } catch (e) {
@@ -1571,10 +1573,29 @@ export default function RegistryPage() {
         <div className="flex gap-2">
           <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Добавить</Button>
           <Button size="sm" variant="outline" onClick={() => window.location.href = "/import"}><Upload className="mr-1.5 h-3.5 w-3.5" />Импорт</Button>
-          <Button size="sm" variant="outline" onClick={handleExportExcel} disabled={exporting}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            {exporting ? "Выгрузка…" : "Excel"}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-3 py-1.5 text-[13px] hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              disabled={exporting}
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exporting ? "Выгрузка…" : "Excel"}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => handleExportExcel("full")} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">Полная выгрузка</span>
+                  <span className="text-[11px] text-stone-500">Все колонки в порядке экрана</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel("pts")} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">PTS</span>
+                  <span className="text-[11px] text-stone-500">Формат для экспедитора PTC</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       <div className="flex gap-1 border-b border-stone-200">
