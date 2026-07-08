@@ -1596,8 +1596,13 @@ export default function RegistryPage() {
           <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Добавить</Button>
           <Button size="sm" variant="outline" onClick={() => window.location.href = "/import"}><Upload className="mr-1.5 h-3.5 w-3.5" />Импорт</Button>
           <DropdownMenu>
+            {/* DropdownMenuTrigger не поддерживает asChild в этой
+                версии типов, поэтому воспроизводим стили sm outline
+                Button один в один (h-7, gap-1, px-2.5, размер svg
+                3.5), чтобы визуально сесть в ряд с «Добавить» /
+                «Импорт». */}
             <DropdownMenuTrigger
-              className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-3 py-1.5 text-[13px] hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="inline-flex items-center justify-center whitespace-nowrap gap-1 h-7 rounded-md border border-stone-200 bg-white px-2.5 text-[0.8rem] shadow-xs hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
               disabled={exporting}
             >
               <Download className="h-3.5 w-3.5" />
@@ -1797,20 +1802,37 @@ export default function RegistryPage() {
                   ) : (
                     <span className="font-mono text-[12px] font-bold text-amber-700">{g.dealCode}</span>
                   )}
-                  <span className="text-[11px] text-stone-500">{g.month}</span>
-                  <span className="inline-flex items-center gap-1 text-[11px]"><span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: g.fuelColor }} />{g.fuelType}</span>
-                  <span className="text-[10px] text-stone-400">{g.factory}</span>
-                  <span className="text-[10px] text-stone-500 truncate max-w-[80px]">{g.supplier}</span>
-                  <span className="text-stone-300 text-[10px]">→</span>
-                  <span className="text-[10px] text-stone-500 truncate max-w-[80px]">{g.buyer}</span>
-                  <span className="text-[10px] text-stone-400">{g.forwarder}</span>
+                  {/* Компактный header группы — клиент 2026-07-08 просил
+                      явно подписать что есть что. Каждое поле идёт с
+                      маленьким лейблом в stone-300 и значением в
+                      stone-700; разделитель — «·» stone-300. */}
+                  <span className="text-[11px] text-stone-500 font-medium">{g.month}</span>
+                  <span className="text-stone-300 text-[10px]">·</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-stone-700"><span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: g.fuelColor }} />{g.fuelType}</span>
+                  {g.factory ? <>
+                    <span className="text-stone-300 text-[10px]">·</span>
+                    <span className="text-[10px]"><span className="text-stone-400">Завод: </span><span className="text-stone-700">{g.factory}</span></span>
+                  </> : null}
+                  {(g.supplier || g.buyer) ? <>
+                    <span className="text-stone-300 text-[10px]">·</span>
+                    <span className="text-[10px]"><span className="text-stone-400">Пост.: </span><span className="text-stone-700">{g.supplier || "—"}</span></span>
+                    <span className="text-stone-300 text-[10px]">→</span>
+                    <span className="text-[10px]"><span className="text-stone-400">Покуп.: </span><span className="text-stone-700">{g.buyer || "—"}</span></span>
+                  </> : null}
+                  {g.forwarder ? <>
+                    <span className="text-stone-300 text-[10px]">·</span>
+                    <span className="text-[10px]"><span className="text-stone-400">Эксп.: </span><span className="text-stone-700">{g.forwarder}</span></span>
+                  </> : null}
                   {(() => {
                     const chain = g.dealId ? (dealChains.get(g.dealId) ?? []).filter(Boolean) : [];
                     if (chain.length === 0) return null;
                     return (
-                      <span className="text-[10px] text-stone-500 truncate max-w-[280px]" title={`Цепочка групп компании: ${chain.join(" → ")}`}>
-                        <span className="text-stone-400">Цепочка:</span> {chain.join(" → ")}
-                      </span>
+                      <>
+                        <span className="text-stone-300 text-[10px]">·</span>
+                        <span className="text-[10px] truncate max-w-[320px]" title={`Цепочка групп компании: ${chain.join(" → ")}`}>
+                          <span className="text-stone-400">Цепочка: </span><span className="text-stone-700">{chain.join(" → ")}</span>
+                        </span>
+                      </>
                     );
                   })()}
                   <span className="ml-auto flex items-center gap-3 shrink-0">
