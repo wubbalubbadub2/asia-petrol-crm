@@ -46,6 +46,16 @@ type Column = {
   read: (r: ShipmentRecord, l: RegistryLabelMaps) => string | number | null | undefined;
 };
 
+// Same rule as the on-screen ERound cell (registry/page.tsx:114).
+// For KZ registry rawVolume = loading_volume, for KG = shipment_volume.
+// Precedence: manual override → ceil(raw) when round_volume !== false → raw.
+function roundedTonnage(r: ShipmentRecord): number | null {
+  if (r.rounded_volume_override != null) return r.rounded_volume_override;
+  const raw = r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume;
+  if (raw == null) return null;
+  return r.round_volume !== false ? Math.ceil(raw) : raw;
+}
+
 const COLUMNS: Column[] = [
   { key: "deal_code",         header: "№ сделки",            width: 12, read: (r) => r.deal?.deal_code ?? "" },
   { key: "additional_month",  header: "Мес. доп",            width: 11, read: (r) => r.additional_month ?? r.deal?.month ?? "" },
@@ -53,23 +63,22 @@ const COLUMNS: Column[] = [
   { key: "date",              header: "Дата",                width: 12, read: (r) => r.date ?? "" },
   { key: "wagon_number",      header: "№ вагона",            width: 14, read: (r) => r.wagon_number ?? "" },
   { key: "waybill_number",    header: "№ ЖД накладной",      width: 16, read: (r) => r.waybill_number ?? "" },
+  // Клиент 2026-07-08: порядок колонок в экспорте — сначала Исходящее
+  // СНТ и станции, потом ГСМ/Завод/КА. «Входящее СНТ» из экспорта
+  // выведено (не нужно в отчёте).
+  { key: "shipment_volume",   header: "Исходящее СНТ, т",    width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
+  { key: "departure_station", header: "Ст. отправления",     width: 16, read: (r, l) => (r.departure_station_id && l.station.get(r.departure_station_id)) || "" },
+  { key: "destination_station", header: "Ст. назначения",    width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
   { key: "fuel_type",         header: "ГСМ",                 width: 12, read: (r, l) => (r.fuel_type_id && l.fuelType.get(r.fuel_type_id)?.name) || "" },
   { key: "factory",           header: "Завод",               width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
   { key: "supplier",          header: "Поставщик",           width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
   { key: "buyer",             header: "Покупатель",          width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
   { key: "company_group",     header: "Группа компании",     width: 18, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
   { key: "forwarder",         header: "Экспедитор",          width: 18, read: (r, l) => (r.forwarder_id && l.forwarder.get(r.forwarder_id)) || "" },
-  { key: "departure_station", header: "Ст. отправления",     width: 16, read: (r, l) => (r.departure_station_id && l.station.get(r.departure_station_id)) || "" },
-  { key: "destination_station", header: "Ст. назначения",    width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
   { key: "supplier_appendix", header: "Прил. поставщика",    width: 14, read: (r) => r.supplier_appendix ?? "" },
   { key: "buyer_appendix",    header: "Прил. покупателя",    width: 14, read: (r) => r.buyer_appendix ?? "" },
-  // 2026-06-26: label-to-DB swap (AP perspective per operator).
-  //   loading_volume  → supplier-side per migration 00044 → labeled «Входящее СНТ»
-  //   shipment_volume → buyer-side per migration 00044    → labeled «Исходящее СНТ»
-  // Column visual order keeps Входящее first (matches the on-screen registry layout).
-  { key: "loading_volume",    header: "Входящее СНТ, т",     width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
-  { key: "shipment_volume",   header: "Исходящее СНТ, т",    width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
   { key: "railway_tariff",    header: "Ж/Д тариф",           width: 12, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.railway_tariff },
+  { key: "rounded_tonnage",   header: "округл тоннаж от экспедитора", width: 16, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedTonnage(r) },
   { key: "shipped_amount",    header: "Сумма по тоннажу",    width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
   { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.currency ?? "" },
   { key: "invoice_number",    header: "№ СФ",                width: 14, read: (r) => r.invoice_number ?? "" },
@@ -181,7 +190,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     const totalRowIdx = records.length + 3;
     const totalRow = ws.getRow(totalRowIdx);
     totalRow.height = 22;
-    const TOTAL_KEYS = new Set(["loading_volume", "shipment_volume", "shipped_amount"]);
+    const TOTAL_KEYS = new Set(["shipment_volume", "rounded_tonnage", "shipped_amount"]);
     COLUMNS.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
