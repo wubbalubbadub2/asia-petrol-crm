@@ -1584,11 +1584,16 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
       <td colSpan={5} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
       </td>
-      {/* Поставщик (10 cols): name/contract/basis blank + numeric sums */}
+      {/* Поставщик (10 cols): name/contract/basis blank + numeric sums.
+          Клиент 2026-07-08: Объем / Сумма дог. / Цена — это данные
+          контракта (одинаковые для всех строк одной сделки, а если
+          сделки разные — их сумма всё равно не имеет бизнес-смысла).
+          Оставляем пустые ячейки. Отгрузка/оплата/баланс — rollup'ы,
+          их суммируем. */}
       {blank("amber")}{blank("amber")}{blank("amber")}
-      {num("amber", sum((d) => d.supplier_contracted_volume), 3)}
-      {num("amber", sum((d) => d.supplier_contracted_amount))}
-      {num("amber", sum((d) => d.supplier_price))}
+      {blank("amber")}
+      {blank("amber")}
+      {blank("amber")}
       {num("amber", sum((d) => d.supplier_shipped_amount))}
       {num("amber", sum((d) => d.supplier_shipped_volume), 3)}
       {num("amber", sum((d) => d.supplier_payment))}
@@ -1598,9 +1603,9 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
       {/* Покупатель (12 cols): + Остаток inserted between Заявлено
           and Отгр. тонн (2026-06-23). Sum is shipped − ordered. */}
       {blank("blue")}{blank("blue")}{blank("blue")}
-      {num("blue", sum((d) => d.buyer_contracted_volume), 3)}
-      {num("blue", sum((d) => d.buyer_contracted_amount))}
-      {num("blue", sum((d) => d.buyer_price))}
+      {blank("blue")}
+      {blank("blue")}
+      {blank("blue")}
       {num("blue", sum((d) => d.buyer_ordered_volume), 3)}
       {num("blue", sum((d) => (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0)), 3)}
       {num("blue", sum((d) => d.buyer_shipped_volume), 3)}
