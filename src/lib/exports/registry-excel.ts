@@ -76,7 +76,7 @@ const COLUMNS_PTS: Column[] = [
   { key: "factory",           header: "Завод",               width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
   { key: "supplier",          header: "Поставщик",           width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
   { key: "buyer",             header: "Покупатель",          width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
-  { key: "company_group",     header: "Группа компании",     width: 18, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
+  { key: "company_group",     header: "Плательщик ж/д тарифа", width: 20, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
   { key: "forwarder",         header: "Экспедитор",          width: 18, read: (r, l) => (r.forwarder_id && l.forwarder.get(r.forwarder_id)) || "" },
   { key: "supplier_appendix", header: "Прил. поставщика",    width: 14, read: (r) => r.supplier_appendix ?? "" },
   { key: "buyer_appendix",    header: "Прил. покупателя",    width: 14, read: (r) => r.buyer_appendix ?? "" },
@@ -100,7 +100,7 @@ const COLUMNS_FULL: Column[] = [
   { key: "factory",             header: "Завод",            width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
   { key: "supplier",            header: "Поставщик",        width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
   { key: "loading_volume",      header: "Входящее СНТ, т",  width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
-  { key: "company_group",       header: "Группа компании",  width: 18, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
+  { key: "company_group",       header: "Плательщик ж/д тарифа", width: 20, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
   { key: "buyer",               header: "Покупатель",       width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
   { key: "forwarder",           header: "Экспедитор",       width: 18, read: (r, l) => (r.forwarder_id && l.forwarder.get(r.forwarder_id)) || "" },
   { key: "wagon_number",        header: "№ вагона",         width: 14, read: (r) => r.wagon_number ?? "" },
@@ -116,7 +116,6 @@ const COLUMNS_FULL: Column[] = [
   { key: "supplier_appendix",   header: "Прил. поставщика", width: 14, read: (r) => r.supplier_appendix ?? "" },
   { key: "buyer_appendix",      header: "Прил. покупателя", width: 14, read: (r) => r.buyer_appendix ?? "" },
   { key: "invoice_number",      header: "№ СФ",             width: 14, read: (r) => r.invoice_number ?? "" },
-  { key: "company_group_dup",   header: "Группа комп.",     width: 18, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
   { key: "comment",             header: "Коммент.",         width: 28, read: (r) => r.comment ?? "" },
 ];
 

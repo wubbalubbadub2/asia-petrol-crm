@@ -355,7 +355,7 @@ export function BulkAddDialog({
               <Sel l="Поставщик" v={supplierId} fn={setSupplierId} opts={supplierOpts} />
               <Sel l="Покупатель" v={buyerId} fn={setBuyerId} opts={buyerOpts} />
               <Sel l="Экспедитор" v={forwarderId} fn={setForwarderId} opts={forwarders.map((f) => ({ value: f.id, label: f.name }))} />
-              <Sel l="Группа комп." v={companyGroupId} fn={setCompanyGroupId} opts={companyGroups.map((c) => ({ value: c.id, label: c.name }))} />
+              <Sel l="Плательщик ж/д тарифа" v={companyGroupId} fn={setCompanyGroupId} opts={companyGroups.map((c) => ({ value: c.id, label: c.name }))} />
               <Sel l="Ст. отправления" v={departureStationId} fn={setDepartureStationId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. назначения" v={destinationStationId} fn={setDestinationStationId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div>

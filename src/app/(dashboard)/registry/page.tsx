@@ -551,8 +551,6 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-1 py-1">
         <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
       </td>
-      {/* дубликат — read-only зеркало «группа комп.» для выравнивания с шапкой */}
-      <td className="border-r px-2 py-1 text-[10px] text-stone-500">{group.companyGroup}</td>
       <td className="px-1 py-1">
         <div className="flex gap-1">
           <input value={cm} onChange={(e) => setCm(e.target.value)} placeholder="коммент." className="flex-1 h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" />
@@ -914,7 +912,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
               <Sel l="ГСМ" v={ftId} fn={setFtId} opts={fuelTypes.map((f) => ({ value: f.id, label: f.name }))} />
               <Sel l="Завод" v={facId} fn={setFacId} opts={factories.map((f) => ({ value: f.id, label: f.name }))} />
               <Sel l="Экспедитор" v={fwId} fn={setFwId} opts={forwarders.map((f) => ({ value: f.id, label: f.name }))} />
-              <Sel l="Группа комп." v={cgId} fn={setCgId} opts={cgs.map((c) => ({ value: c.id, label: c.name }))} />
+              <Sel l="Плательщик ж/д тарифа" v={cgId} fn={setCgId} opts={cgs.map((c) => ({ value: c.id, label: c.name }))} />
               <Sel l="Ст. назначения" v={destId} fn={setDestId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. отправления" v={depId} fn={setDepId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
@@ -1883,9 +1881,9 @@ export default function RegistryPage() {
                             </span>
                           </th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="loading_volume — supplier-side. Operator 2026-06-26: Входящее СНТ = поставщик (SUM(loading_volume) = supplier_shipped_volume per 00044).">Входящее СНТ</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">
                             <span className="inline-flex items-center gap-1">
-                              группа комп.
+                              Плательщик ж/д тарифа
                               <ColumnFilterPopover
                                 colKey="company_group_id"
                                 options={columnFilterOpts.company_group_id}
@@ -1958,18 +1956,6 @@ export default function RegistryPage() {
                           </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">прил.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
-                          {/* дубликат — пользователь просил вторую колонку «Группа комп.» рядом с коммент. для удобства */}
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">
-                            <span className="inline-flex items-center gap-1">
-                              Группа комп.
-                              <ColumnFilterPopover
-                                colKey="company_group_id"
-                                options={columnFilterOpts.company_group_id}
-                                currentValue={columnFilters.company_group_id ?? ""}
-                                onChange={(v) => setColumnFilter("company_group_id", v)}
-                              />
-                            </span>
-                          </th>
                           <th className="px-2 py-1 text-left font-medium min-w-[130px]">коммент.</th>
                           <th className="px-1 py-1 w-[25px]"></th>
                         </tr></thead>
@@ -2069,8 +2055,6 @@ export default function RegistryPage() {
                                 </div>
                               </td>
                               <td className="border-r px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
-                              {/* дубликат «группа комп.» рядом с комментарием — тоже редактируемый чтобы оператор мог менять с любой стороны таблицы (просьба 2026-06-29). */}
-                              <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={(r.company_group_id && cgLabels.get(r.company_group_id)) || ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="px-1 py-0.5"><EC value={r.comment} recId={r.id} field="comment" onSaved={reload} /></td>
                               <td className="px-1 py-0.5">
                                 <button onClick={async () => {
