@@ -1296,6 +1296,29 @@ export default function RegistryPage() {
   };
   const [addingIn, setAddingIn] = useState<string | null>(null); // which group is adding
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Цепочка групп компании по каждой сделке. Ключ = deal_id, значение
+  // = массив из 3 имён (пустая строка на позициях без группы). Клиент
+  // 2026-07-08: показывать цепочку в шапке group-card реестра И
+  // добавить 3 колонки в полный Excel. Максимум бывает 3 группы.
+  const [dealChains, setDealChains] = useState<Map<string, string[]>>(new Map());
+  useEffect(() => {
+    const sb = createClient();
+    sb.from("deal_company_groups")
+      .select("deal_id, position, company_group:company_groups(name)")
+      .in("position", [1, 2, 3])
+      .then(({ data }) => {
+        const m = new Map<string, string[]>();
+        type Row = { deal_id: string; position: number; company_group: { name: string | null } | null };
+        for (const row of ((data as unknown) ?? []) as Row[]) {
+          if (!row.deal_id) continue;
+          const chain = m.get(row.deal_id) ?? ["", "", ""];
+          chain[row.position - 1] = row.company_group?.name ?? "";
+          m.set(row.deal_id, chain);
+        }
+        setDealChains(m);
+      });
+  }, []);
   // Header filters — narrow visible shipments without round-tripping
   // the server. Combined with the tab (KG/KZ) which is server-side.
   //
@@ -1380,6 +1403,7 @@ export default function RegistryPage() {
         year,
         labels: labelMaps,
         variant,
+        dealChains,
       });
       toast.success(`Выгружено ${filteredRecords.length} строк`);
     } catch (e) {
@@ -1780,6 +1804,15 @@ export default function RegistryPage() {
                   <span className="text-stone-300 text-[10px]">→</span>
                   <span className="text-[10px] text-stone-500 truncate max-w-[80px]">{g.buyer}</span>
                   <span className="text-[10px] text-stone-400">{g.forwarder}</span>
+                  {(() => {
+                    const chain = g.dealId ? (dealChains.get(g.dealId) ?? []).filter(Boolean) : [];
+                    if (chain.length === 0) return null;
+                    return (
+                      <span className="text-[10px] text-stone-500 truncate max-w-[280px]" title={`Цепочка групп компании: ${chain.join(" → ")}`}>
+                        <span className="text-stone-400">Цепочка:</span> {chain.join(" → ")}
+                      </span>
+                    );
+                  })()}
                   <span className="ml-auto flex items-center gap-3 shrink-0">
                     <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">{g.records.length} шт</span>
                     <span className="font-mono text-[11px] tabular-nums font-medium">{fmtVol(g.totalVol)} т</span>

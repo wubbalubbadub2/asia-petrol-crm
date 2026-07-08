@@ -33,6 +33,10 @@ export type RegistryExportContext = {
   year: number;
   labels: RegistryLabelMaps;
   variant: RegistryExportVariant;
+  /** Цепочка групп компании по каждой сделке (позиции 1..3, всегда
+   * массив длины 3, пустая строка на незаполненных позициях). Клиент
+   * 2026-07-08: в полный экспорт добавлены 3 колонки «Группа N». */
+  dealChains: Map<string, string[]>;
 };
 
 // Client canon 2026-07-07: tariff = money = 2 decimals.
@@ -46,7 +50,7 @@ type Column = {
   width: number;
   numFmt?: string;
   align?: "left" | "right" | "center";
-  read: (r: ShipmentRecord, l: RegistryLabelMaps) => string | number | null | undefined;
+  read: (r: ShipmentRecord, l: RegistryLabelMaps, ctx?: RegistryExportContext) => string | number | null | undefined;
 };
 
 // Same rule as the on-screen ERound cell (registry/page.tsx:114).
@@ -100,8 +104,14 @@ const COLUMNS_FULL: Column[] = [
   { key: "factory",             header: "Завод",            width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
   { key: "supplier",            header: "Поставщик",        width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
   { key: "loading_volume",      header: "Входящее СНТ, т",  width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
-  { key: "company_group",       header: "Плательщик ж/д тарифа", width: 20, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
   { key: "buyer",               header: "Покупатель",       width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
+  // Клиент 2026-07-08: 3 колонки цепочки групп компании между
+  // «Покупатель» и «Плательщик ж/д тарифа». Всегда 3 колонки, даже
+  // если в сделке меньше — максимум бывает 3.
+  { key: "company_group_1",     header: "Группа 1",         width: 18, read: (r, _l, ctx) => (r.deal_id && ctx?.dealChains.get(r.deal_id)?.[0]) || "" },
+  { key: "company_group_2",     header: "Группа 2",         width: 18, read: (r, _l, ctx) => (r.deal_id && ctx?.dealChains.get(r.deal_id)?.[1]) || "" },
+  { key: "company_group_3",     header: "Группа 3",         width: 18, read: (r, _l, ctx) => (r.deal_id && ctx?.dealChains.get(r.deal_id)?.[2]) || "" },
+  { key: "company_group",       header: "Плательщик ж/д тарифа", width: 20, read: (r, l) => (r.company_group_id && l.companyGroup.get(r.company_group_id)) || "" },
   { key: "forwarder",           header: "Экспедитор",       width: 18, read: (r, l) => (r.forwarder_id && l.forwarder.get(r.forwarder_id)) || "" },
   { key: "wagon_number",        header: "№ вагона",         width: 14, read: (r) => r.wagon_number ?? "" },
   { key: "waybill_number",      header: "№ ЖД накл.",       width: 16, read: (r) => r.waybill_number ?? "" },
@@ -193,7 +203,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     const rowFill = blendArgbWithFuel("FFFFFFFF", fuelHex, 0.12);
     columns.forEach((col, colIdx) => {
       const cell = row.getCell(colIdx + 1);
-      const v = col.read(rec, ctx.labels);
+      const v = col.read(rec, ctx.labels, ctx);
       // Date columns are stored as ISO strings (yyyy-mm-dd). Convert
       // to a real Date so Excel formats and sorts by chronology rather
       // than lexicographic string order.
@@ -239,7 +249,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
       } else if (TOTAL_KEYS.has(col.key)) {
         let sum = 0;
         for (const rec of records) {
-          const v = col.read(rec, ctx.labels);
+          const v = col.read(rec, ctx.labels, ctx);
           if (typeof v === "number" && Number.isFinite(v)) sum += v;
         }
         cell.value = sum;

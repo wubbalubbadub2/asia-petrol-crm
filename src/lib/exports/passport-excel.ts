@@ -128,12 +128,11 @@ const COLUMNS: Column[] = [
   // One column per chain position (1..6) so the operator can apply
   // Excel auto-filter on a specific group at a specific step in the
   // chain. The avg-price summary stays as the last col in the band.
+  // Клиент 2026-07-08: максимум бывает 3 группы в цепочке — 6 колонок
+  // избыточно, оставляем 3.
   { key: "company_group_1", header: "Группа 1", width: 18, band: "groups", read: (d) => companyAtPosition(d, 1) },
   { key: "company_group_2", header: "Группа 2", width: 18, band: "groups", read: (d) => companyAtPosition(d, 2) },
   { key: "company_group_3", header: "Группа 3", width: 18, band: "groups", read: (d) => companyAtPosition(d, 3) },
-  { key: "company_group_4", header: "Группа 4", width: 18, band: "groups", read: (d) => companyAtPosition(d, 4) },
-  { key: "company_group_5", header: "Группа 5", width: 18, band: "groups", read: (d) => companyAtPosition(d, 5) },
-  { key: "company_group_6", header: "Группа 6", width: 18, band: "groups", read: (d) => companyAtPosition(d, 6) },
   { key: "company_avg_price", header: "Цена гр. (avg)", width: 13, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPrice(d) },
 
   // ── Покупатель ─────────────────────────────────────────
