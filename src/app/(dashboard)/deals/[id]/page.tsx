@@ -289,6 +289,48 @@ function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
   );
 }
 
+// «Доп. расходы в цене» — по аналогии с RailwayInPriceToggle. Когда ON,
+// сумма всех shipment_registry.additional_expenses по сделке
+// плюсуется к supplier_balance (см. миграцию 00112). Клиент 2026-07-09.
+function AdditionalExpensesInPriceToggle({ dealId, value, editing, onSaved }: {
+  dealId: string; value: boolean; editing: boolean; onSaved?: () => void;
+}) {
+  const pendingVal = useRef<boolean | undefined>(undefined);
+  const [, forceRender] = useState(0);
+  const shown = pendingVal.current ?? value;
+  const ctxReload = useDealReload();
+  if (pendingVal.current !== undefined && value === pendingVal.current) {
+    pendingVal.current = undefined;
+  }
+  return (
+    <div>
+      <span className="text-[11px] text-stone-400 block">Доп. расходы в цене</span>
+      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={shown}
+          disabled={!editing}
+          onChange={(e) => {
+            const nv = e.target.checked;
+            pendingVal.current = nv;
+            forceRender((n) => n + 1);
+            updateDeal(dealId, { additional_expenses_in_price: nv } as Parameters<typeof updateDeal>[1])
+              .then(() => { onSaved?.(); ctxReload?.(); })
+              .catch(() => {
+                pendingVal.current = undefined;
+                forceRender((n) => n + 1);
+              });
+          }}
+          className={`h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 ${editing ? "" : "cursor-default"}`}
+        />
+        <span className="text-[12px] text-stone-700">
+          {shown ? "Да (плюсует к балансу)" : "Нет"}
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function EditableSelect({ label, value, displayValue, editing, field, dealId, options, onSaved }: {
   label: string; value: string | null | undefined; displayValue: string;
   editing: boolean; field: string; dealId: string;
@@ -977,7 +1019,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
+            <Field label="Доп. расходы" value={(deal as unknown as { additional_expenses_amount?: number | null }).additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
             <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
+            <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!(deal as unknown as { additional_expenses_in_price?: boolean | null }).additional_expenses_in_price} editing={editing} onSaved={reload} />
             <EditableSelect label="Коммерция" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={logisticsCurrencySymbol} />

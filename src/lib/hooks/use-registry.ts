@@ -45,6 +45,10 @@ export type ShipmentRecord = {
   company_group_id: string | null;
   additional_month: string | null;
   currency: string | null;
+  // Клиент 2026-07-09: доп расходы по ЖД per-row (migration 00112).
+  // Rollup на сделке — deals.additional_expenses_amount; галочка «в
+  // цене» — deals.additional_expenses_in_price.
+  additional_expenses?: number | null;
   created_at: string;
   // Joined — only `deal` is still embedded; deal_code / currency / year /
   // month aren't in the global refs cache and the per-row cost is
@@ -74,7 +78,7 @@ const REG_SELECT = `
   shipped_tonnage_amount, shipped_tonnage_amount_override,
   rounded_volume_override, round_volume,
   supplier_appendix, buyer_appendix,
-  invoice_number, comment, currency, created_at,
+  invoice_number, comment, currency, additional_expenses, created_at,
   deal:deals(deal_code, currency, year, month)
 `;
 
@@ -260,6 +264,7 @@ export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   round_volume?: boolean | null;
   supplier_appendix?: string | null;
   buyer_appendix?: string | null;
+  additional_expenses?: number | null;
 };
 
 export async function createRegistryEntry(values: RegistryInsert) {

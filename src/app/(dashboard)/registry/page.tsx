@@ -2005,6 +2005,7 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]" title="Дополнительные расходы по ЖД. Если в сделке включена галочка «Доп. расходы в цене», сумма плюсуется к балансу поставщика.">Доп. расх.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">
                             <span className="inline-flex items-center gap-1">
                               валюта
@@ -2112,6 +2113,7 @@ export default function RegistryPage() {
                                   suffix={currencyFor(r, tab)}
                                 />
                               </td>
+                              <td className="border-r px-1 py-0.5"><EN value={r.additional_expenses} recId={r.id} field="additional_expenses" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ES
                                   value={r.currency}
