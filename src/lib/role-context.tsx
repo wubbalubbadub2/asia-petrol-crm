@@ -25,13 +25,13 @@ export type RoleContextValue = {
 export const RoleContext = createContext<RoleContextValue | null>(null);
 
 function deriveFlags(profile: Profile | null) {
-  // Trader and accounting are read-only — they only view and export
-  // Excel (client decision, migration 00083).
+  // Клиент 2026-07-09: писать могут ТОЛЬКО admin/manager/logistics.
+  // Финансист / бухгалтер / трейдер / readonly — только просмотр +
+  // выгрузка Excel.
   const isWritable =
     profile?.role === "admin" ||
     profile?.role === "manager" ||
-    profile?.role === "logistics" ||
-    profile?.role === "finance";
+    profile?.role === "logistics";
   const isAdmin = profile?.role === "admin";
   return { isWritable, isAdmin };
 }
