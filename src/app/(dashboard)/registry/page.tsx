@@ -187,9 +187,17 @@ function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
   );
 }
 
-// Editable amount cell with override semantics. Writes both
-// shipped_tonnage_amount and shipped_tonnage_amount_override so the value
-// survives subsequent row edits. Clearing reverts to auto-compute.
+// Editable amount cell. Пишет и shipped_tonnage_amount, и override,
+// чтобы значение не пересчитывалось триггером на след. апдейте.
+//
+// Клиент 2026-07-09: UX как в Excel — правки в UI сразу, не ждут
+// ответа с бэка. Реализовано через pv-паттерн: ref на локально
+// «в полёте» значение; отдаём его в отрисовку до тех пор пока
+// value из props не догонит. При провале запроса — откат.
+//
+// Ручной ввод = override=true и всегда переопределяет авто-расчёт.
+// Очистка (пустой инпут) = override=false → триггер либо
+// пересчитает, либо оставит NULL (если базы или тарифа нет).
 function EAmount({ value, override, recId, onSaved, suffix = "" }: {
   value: number | null | undefined;
   override: boolean | null | undefined;
@@ -199,65 +207,63 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
 }) {
   const [ed, setEd] = useState(false);
   const [lv, setLv] = useState("");
+  const pv = useRef<number | null | undefined>(undefined);
+  const pvOverride = useRef<boolean | undefined>(undefined);
+  const [, force] = useState(0);
+
+  const shown = pv.current !== undefined ? pv.current : value;
+  const shownOverride = pvOverride.current !== undefined ? pvOverride.current : override;
+  if (pv.current !== undefined && value === pv.current) pv.current = undefined;
+  if (pvOverride.current !== undefined && override === pvOverride.current) pvOverride.current = undefined;
+
+  function commit(nextAmount: number | null, nextOverride: boolean) {
+    pv.current = nextAmount;
+    pvOverride.current = nextOverride;
+    force((n) => n + 1);
+    updateRegistryEntry(recId, {
+      shipped_tonnage_amount: nextAmount,
+      shipped_tonnage_amount_override: nextOverride,
+    } as RegistryUpdate).then(onSaved).catch(() => {
+      pv.current = undefined;
+      pvOverride.current = undefined;
+      force((n) => n + 1);
+    });
+  }
+
   if (!ed) return (
     <button
-      onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
-      title={override ? "Сумма переопределена вручную. Очистите поле, чтобы вернуть авто-расчёт." : "Авто-расчёт: ⌈тонн⌉ × тариф. Введите значение, чтобы переопределить."}
-      className={`w-full text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[60px] ${override ? "italic text-amber-700" : "font-medium"}`}
+      onClick={() => { setLv(shown == null ? "" : String(shown)); setEd(true); }}
+      title={shownOverride ? "Сумма переопределена вручную. Очистите поле, чтобы вернуть авто-расчёт." : "Авто-расчёт: ⌈тонн⌉ × тариф. Введите значение, чтобы переопределить."}
+      className={`w-full text-right font-mono tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[60px] ${shownOverride ? "italic text-amber-700" : "font-medium"}`}
     >
-      {fmtMoney(value)} {suffix}
+      {fmtMoney(shown)} {suffix}
     </button>
   );
   return (
     <input
       autoFocus
+      onFocus={(e) => e.currentTarget.select()}
       type="number"
       step="0.01"
       value={lv}
-      // Клиент 2026-07-09: «нельзя отредактировать сумму с первого раза».
-      // Причина — при открытии в инпут вставляется старое значение,
-      // курсор в конец → первое нажатие добавляет к существующему,
-      // а не заменяет. Selectим всё содержимое сразу, чтобы первый
-      // ввод сразу перезаписал.
-      onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setLv(e.target.value)}
       onBlur={() => {
         setEd(false);
         const raw = lv.trim();
         if (raw === "") {
-          // Клиент 2026-07-09: очистка суммы должна срабатывать всегда,
-          // не только когда была ручная override. Раньше `if (override)`
-          // блокировал update у auto-computed строк — пользователь
-          // стирал число и оно не пропадало.
-          // Сейчас: если в БД есть какое-то значение — отправляем
-          // update с NULL + override=false. Триггер потом либо
-          // авто-пересчитает (если тариф+база валидны), либо оставит
-          // NULL. Пустая строка без значения — no-op.
-          if (value != null) {
-            updateRegistryEntry(recId, {
-              shipped_tonnage_amount: null,
-              shipped_tonnage_amount_override: false,
-            } as RegistryUpdate).then(onSaved).catch(() => {});
-          }
+          if (shown != null) commit(null, false);
           return;
         }
         const n = parseFloat(raw.replace(",", "."));
         if (!Number.isFinite(n)) return;
-        // Не сохраняем повторно только если override уже true и число
-        // не поменялось. Если override был false — сохраняем всегда,
-        // чтобы пометить строку как override=true (иначе триггер
-        // пересчитает сумму обратно на следующем UPDATE тарифа/объёма).
-        if (n === value && override) return;
-        updateRegistryEntry(recId, {
-          shipped_tonnage_amount: n,
-          shipped_tonnage_amount_override: true,
-        } as RegistryUpdate).then(onSaved).catch(() => {});
+        commit(n, true);
       }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
       className="w-20 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none"
     />
   );
 }
+
 
 // Editable reference-select cell: shows label text by default, turns into <select> on click.
 function ES({ value, displayLabel, recId, field, options, onSaved, className = "" }: {
