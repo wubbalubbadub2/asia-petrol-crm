@@ -44,11 +44,12 @@ function formatDateDMY(dateStr: string): string {
   return `${d}.${m}.${y}`;
 }
 function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00:00:00").getDay(); return d === 0 || d === 6; }
-// Клиент 2026-07-07: котировки — это деньги, 2 знака после запятой,
-// как везде в приложении. Пробелы-разделители тоже разрешаем.
+// Клиент 2026-07-09: у котировок оставить 3 знака после запятой
+// (Argus/Platts source publish в 3 знаках, обрезать до 2 — потеря
+// точности). Остальные суммы в приложении по-прежнему 2 знака.
 const NUM_FMT = new Intl.NumberFormat("ru-RU", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
+  minimumFractionDigits: 3,
+  maximumFractionDigits: 3,
 });
 function fmtNum(n: number | null | undefined): string {
   return n == null ? "" : NUM_FMT.format(n);

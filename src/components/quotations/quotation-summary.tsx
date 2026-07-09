@@ -146,8 +146,8 @@ export function QuotationSummary() {
 
   function fmtNum(val: number | null): string {
     if (val == null) return "";
-    // Money canon 2026-07-07: quotations = money, 2 decimals.
-    return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Клиент 2026-07-09: у котировок 3 знака после запятой.
+    return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   }
 
   // Excel export — same matrix the user sees on screen.
