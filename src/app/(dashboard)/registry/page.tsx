@@ -251,7 +251,12 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
         setEd(false);
         const raw = lv.trim();
         if (raw === "") {
-          if (shown != null) commit(null, false);
+          // Клиент 2026-07-09: юзер очистил → это ЯВНОЕ намерение
+          // держать сумму пустой. commit(null, override=TRUE) — тогда
+          // триггер уважает и не пересчитает обратно. Раньше слали
+          // (null, false), и триггер тут же пересчитывал auto-сумму
+          // если тариф+база валидны — user видел flicker.
+          if (shown != null) commit(null, true);
           return;
         }
         const n = parseFloat(raw.replace(",", "."));
