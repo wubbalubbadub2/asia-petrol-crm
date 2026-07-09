@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,16 +59,21 @@ function formatMoney(val: number | null | undefined): string {
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function AddSurchargeDialog({
+function SurchargeDialog({
   open,
   onClose,
-  onCreated,
+  onSaved,
+  editing,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
+  /** null = режим создания, объект = режим редактирования. */
+  editing: SurchargeRecord | null;
 }) {
+  const isEdit = editing != null;
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [dealPassportNumber, setDealPassportNumber] = useState("");
   const [reason, setReason] = useState("");
@@ -81,6 +86,22 @@ function AddSurchargeDialog({
   const [claimedAmount, setClaimedAmount] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
 
+  // При открытии диалога пре-заполняем поля из editing или очищаем
+  // для создания. Этот же useEffect ловит переход create ↔ edit,
+  // если оператор откроет разные записи подряд.
+  useEffect(() => {
+    if (!open) return;
+    setDealPassportNumber(editing?.deal_passport_number ?? "");
+    setReason(editing?.reason ?? "");
+    setAmount(editing?.amount != null ? String(editing.amount) : "");
+    setPeriod(editing?.period ?? "");
+    setIssuedByName(editing?.issued_by_name ?? "");
+    setIssuedToName(editing?.issued_to_name ?? "");
+    setApprovalStatus(editing?.approval_status ?? "на рассмотрении");
+    setClaimedAmount(editing?.claimed_amount != null ? String(editing.claimed_amount) : "");
+    setPaidAmount(editing?.paid_amount != null ? String(editing.paid_amount) : "");
+  }, [open, editing]);
+
   async function handleSave() {
     if (!reason.trim()) {
       toast.error("Укажите причину");
@@ -88,7 +109,7 @@ function AddSurchargeDialog({
     }
     setSaving(true);
     const sb = createClient();
-    const { error } = await sb.from("surcharges").insert({
+    const payload = {
       deal_passport_number: dealPassportNumber || null,
       reason,
       amount: amount ? parseFloat(amount) : null,
@@ -98,39 +119,41 @@ function AddSurchargeDialog({
       approval_status: approvalStatus,
       claimed_amount: claimedAmount ? parseFloat(claimedAmount) : null,
       paid_amount: paidAmount ? parseFloat(paidAmount) : null,
-    });
+    };
+    const { error } = isEdit && editing
+      ? await sb.from("surcharges").update(payload).eq("id", editing.id)
+      : await sb.from("surcharges").insert(payload);
     setSaving(false);
     if (error) {
       toast.error("Ошибка сохранения: " + error.message);
     } else {
-      toast.success("Запись добавлена");
-      onCreated();
+      toast.success(isEdit ? "Изменения сохранены" : "Запись добавлена");
+      onSaved();
       onClose();
     }
   }
 
-  function reset() {
-    setDealPassportNumber("");
-    setReason("");
-    setAmount("");
-    setPeriod("");
-    setIssuedByName("");
-    setIssuedToName("");
-    setApprovalStatus("на рассмотрении");
-    setClaimedAmount("");
-    setPaidAmount("");
-  }
-
-  function handleClose() {
-    reset();
-    onClose();
+  async function handleDelete() {
+    if (!isEdit || !editing) return;
+    if (!confirm(`Удалить запись «${editing.reason ?? "без причины"}»?`)) return;
+    setDeleting(true);
+    const sb = createClient();
+    const { error } = await sb.from("surcharges").delete().eq("id", editing.id);
+    setDeleting(false);
+    if (error) {
+      toast.error("Ошибка удаления: " + error.message);
+    } else {
+      toast.success("Запись удалена");
+      onSaved();
+      onClose();
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={() => handleClose()}>
+    <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Добавить сверхнорматив / штраф</DialogTitle>
+          <DialogTitle>{isEdit ? "Редактировать сверхнорматив / штраф" : "Добавить сверхнорматив / штраф"}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -232,12 +255,24 @@ function AddSurchargeDialog({
         <div className="flex gap-2 mt-2">
           <Button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || deleting}
             className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
           >
-            {saving ? "Сохранение..." : "Добавить"}
+            {saving ? "Сохранение..." : isEdit ? "Сохранить" : "Добавить"}
           </Button>
-          <Button variant="outline" onClick={handleClose}>
+          {isEdit && (
+            <Button
+              variant="outline"
+              onClick={handleDelete}
+              disabled={saving || deleting}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+              title="Удалить запись"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              {deleting ? "Удаление…" : "Удалить"}
+            </Button>
+          )}
+          <Button variant="outline" onClick={onClose} disabled={saving || deleting}>
             Отмена
           </Button>
         </div>
@@ -250,7 +285,9 @@ export default function SurchargesPage() {
   const [records, setRecords] = useState<SurchargeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
+  // Один диалог для create + edit. dialogState = "add" → создание,
+  // dialogState = SurchargeRecord → редактирование, null → закрыт.
+  const [dialogState, setDialogState] = useState<"add" | SurchargeRecord | null>(null);
 
   async function loadRecords() {
     setLoading(true);
@@ -302,7 +339,7 @@ export default function SurchargesPage() {
         <Button
           size="sm"
           className="bg-amber-500 hover:bg-amber-600 text-white"
-          onClick={() => setShowAdd(true)}
+          onClick={() => setDialogState("add")}
         >
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           Добавить
@@ -330,7 +367,7 @@ export default function SurchargesPage() {
             size="sm"
             variant="outline"
             className="mt-2"
-            onClick={() => setShowAdd(true)}
+            onClick={() => setDialogState("add")}
           >
             <Plus className="mr-1 h-3.5 w-3.5" />
             Добавить первую запись
@@ -353,7 +390,12 @@ export default function SurchargesPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((rec) => (
-                <TableRow key={rec.id} className="hover:bg-amber-50/30">
+                <TableRow
+                  key={rec.id}
+                  className="hover:bg-amber-50/30 cursor-pointer group"
+                  onClick={() => setDialogState(rec)}
+                  title="Кликните, чтобы отредактировать"
+                >
                   <TableCell className="font-mono text-[12px] text-amber-700">
                     {rec.deal_passport_number ?? "—"}
                   </TableCell>
@@ -378,6 +420,9 @@ export default function SurchargesPage() {
                   <TableCell className="text-right font-mono text-[11px] tabular-nums text-green-700">
                     {formatMoney(rec.paid_amount)}
                   </TableCell>
+                  <TableCell className="w-8">
+                    <Pencil className="h-3.5 w-3.5 text-stone-300 group-hover:text-amber-600 transition-colors" />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -385,10 +430,11 @@ export default function SurchargesPage() {
         </div>
       )}
 
-      <AddSurchargeDialog
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        onCreated={loadRecords}
+      <SurchargeDialog
+        open={dialogState !== null}
+        onClose={() => setDialogState(null)}
+        onSaved={loadRecords}
+        editing={dialogState === "add" || dialogState === null ? null : dialogState}
       />
     </div>
   );
