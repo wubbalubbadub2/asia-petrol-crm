@@ -85,7 +85,7 @@ function EC({ value, recId, field, onSaved, cls = "" }: { value: string | null |
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<string | null | undefined>(undefined);
   const sh = pv.current !== undefined ? pv.current : value; if (pv.current !== undefined && value === pv.current) pv.current = undefined;
   if (!ed) return <button onClick={() => { setLv(sh ?? ""); setEd(true); }} className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] truncate ${cls}`}>{sh ?? ""}</button>;
-  return <input autoFocus value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const nv = lv.trim() || null; if (nv !== (value ?? null)) { pv.current = nv; updateRegistryEntry(recId, { [field]: nv }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />;
+  return <input autoFocus onFocus={(e) => e.currentTarget.select()} value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const nv = lv.trim() || null; if (nv !== (value ?? null)) { pv.current = nv; updateRegistryEntry(recId, { [field]: nv }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />;
 }
 function EN({ value, recId, field, onSaved }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<number | null | undefined>(undefined);
@@ -94,7 +94,7 @@ function EN({ value, recId, field, onSaved }: { value: number | null | undefined
   // else (tariff/amount — money) с 2 знаками per client canon 2026-07-07.
   const isVol = field === "loading_volume" || field === "shipment_volume";
   if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px]">{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
-  return <input autoFocus type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; updateRegistryEntry(recId, { [field]: n }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
+  return <input autoFocus onFocus={(e) => e.currentTarget.select()} type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; updateRegistryEntry(recId, { [field]: n }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
 }
 function ED({ value, recId, field, onSaved }: { value: string | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<string | null | undefined>(undefined);
@@ -150,6 +150,7 @@ function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
       {ed ? (
         <input
           autoFocus
+          onFocus={(e) => e.currentTarget.select()}
           type="number"
           step="0.01"
           value={lv}
@@ -213,6 +214,12 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
       type="number"
       step="0.01"
       value={lv}
+      // Клиент 2026-07-09: «нельзя отредактировать сумму с первого раза».
+      // Причина — при открытии в инпут вставляется старое значение,
+      // курсор в конец → первое нажатие добавляет к существующему,
+      // а не заменяет. Selectим всё содержимое сразу, чтобы первый
+      // ввод сразу перезаписал.
+      onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setLv(e.target.value)}
       onBlur={() => {
         setEd(false);
@@ -229,6 +236,10 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
         }
         const n = parseFloat(raw.replace(",", "."));
         if (!Number.isFinite(n)) return;
+        // Не сохраняем повторно только если override уже true и число
+        // не поменялось. Если override был false — сохраняем всегда,
+        // чтобы пометить строку как override=true (иначе триггер
+        // пересчитает сумму обратно на следующем UPDATE тарифа/объёма).
         if (n === value && override) return;
         updateRegistryEntry(recId, {
           shipped_tonnage_amount: n,
