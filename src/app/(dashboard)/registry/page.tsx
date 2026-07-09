@@ -225,8 +225,15 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
         setEd(false);
         const raw = lv.trim();
         if (raw === "") {
-          // Clear → revert to auto-compute on next trigger pass.
-          if (override) {
+          // Клиент 2026-07-09: очистка суммы должна срабатывать всегда,
+          // не только когда была ручная override. Раньше `if (override)`
+          // блокировал update у auto-computed строк — пользователь
+          // стирал число и оно не пропадало.
+          // Сейчас: если в БД есть какое-то значение — отправляем
+          // update с NULL + override=false. Триггер потом либо
+          // авто-пересчитает (если тариф+база валидны), либо оставит
+          // NULL. Пустая строка без значения — no-op.
+          if (value != null) {
             updateRegistryEntry(recId, {
               shipped_tonnage_amount: null,
               shipped_tonnage_amount_override: false,
