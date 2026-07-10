@@ -163,6 +163,8 @@ export function SupplierLinesEditor({
         preliminary_price: l.preliminary_price ?? null,
         preliminary_set_at: l.preliminary_set_at ?? null,
         selected_month: l.selected_month ?? null,
+        calc_mode: ((l as { calc_mode?: string }).calc_mode ?? "avg_month") as "avg_month" | "on_date",
+        selected_date: (l as { selected_date?: string | null }).selected_date ?? null,
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
@@ -338,6 +340,8 @@ export function BuyerLinesEditor({
         preliminary_price: l.preliminary_price ?? null,
         preliminary_set_at: l.preliminary_set_at ?? null,
         selected_month: l.selected_month ?? null,
+        calc_mode: ((l as { calc_mode?: string }).calc_mode ?? "avg_month") as "avg_month" | "on_date",
+        selected_date: (l as { selected_date?: string | null }).selected_date ?? null,
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
@@ -386,6 +390,13 @@ type LineVM = {
   preliminary_price: number | null;
   preliminary_set_at: string | null;
   selected_month: string | null;
+  // Клиент 2026-07-10: «Режим расчёта» для average_month subtype.
+  // 'avg_month' (default) — среднее по месяцу; 'on_date' —
+  // котировка на selected_date. Уже существует в БД (миграция
+  // 00079), теперь тянем в UI. selected_date (миграция 00114) —
+  // конкретная дата для режима on_date.
+  calc_mode: "avg_month" | "on_date";
+  selected_date: string | null;
   // Manual-formula inputs (migration 00071). fx_rate is the
   // multiplier in (quotation − discount) × fx_rate; preliminary_fx_rate
   // snapshots the value at the moment of finalize.
@@ -448,15 +459,30 @@ function LineAutoFetchQuotation({
     if (!line.price_source) return;
     // Don't overwrite a value the operator already typed.
     if (line.quotation != null) return;
-    const targetMonth = resolveTargetMonth(line.selected_month, dealMonth, dealYear);
-    if (!targetMonth) return;
-    const target_date = `${targetMonth}-15`;
+
+    // Клиент 2026-07-10: два режима расчёта.
+    //   avg_month → target_date = середина selected_month/deal.month;
+    //               p_calc_mode = 'avg_month'.
+    //   on_date   → target_date = selected_date (YYYY-MM-DD);
+    //               p_calc_mode = 'on_date'.
+    let target_date: string | null = null;
+    let p_calc_mode: "avg_month" | "on_date" = line.calc_mode;
+    if (line.calc_mode === "on_date") {
+      if (!line.selected_date) return;
+      target_date = line.selected_date;
+    } else {
+      const targetMonth = resolveTargetMonth(line.selected_month, dealMonth, dealYear);
+      if (!targetMonth) return;
+      target_date = `${targetMonth}-15`;
+      p_calc_mode = "avg_month";
+    }
+
     sbRef.current
       .rpc("compute_quotation_value" as never, {
         p_product_type_id: line.quotation_type_id,
         p_price_source: line.price_source,
         p_target_date: target_date,
-        p_calc_mode: "avg_month",
+        p_calc_mode,
       } as never)
       .then(({ data, error }) => {
         if (error || data == null) return;
@@ -466,7 +492,8 @@ function LineAutoFetchQuotation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     line.id, line.price_condition, line.quotation_type_id, line.price_source,
-    line.selected_month, line.quotation, dealMonth, dealYear,
+    line.selected_month, line.selected_date, line.calc_mode,
+    line.quotation, dealMonth, dealYear,
   ]);
   return null;
 }
@@ -617,10 +644,37 @@ function LinesEditorView({
               />
             )}
 
-            {/* Месяц расчёта — only for «Средний месяц». Lets the
-                manager pick a specific month for the monthly-avg
-                lookup; null falls back to the deal's own month. */}
+            {/* «Режим расчёта» — только для average_month subtype.
+                Клиент 2026-07-10: «avg_month» (среднее по месяцу,
+                как раньше) vs «on_date» (котировка на конкретную
+                дату — тогда вместо месяц-селектора показываем
+                date-input). До сих пор аналогичное разделение
+                было только у trigger'а. */}
             {mode === "average_month" && (
+              <SelectCell
+                label="Режим расчёта"
+                value={l.calc_mode}
+                displayValue={l.calc_mode === "on_date" ? "На дату" : "Средний месяц"}
+                editing={editing}
+                options={[
+                  { value: "avg_month", label: "Средний месяц" },
+                  { value: "on_date", label: "На дату" },
+                ]}
+                onChange={(v) => {
+                  const next = (v as "avg_month" | "on_date") || "avg_month";
+                  onUpdate(l.id, {
+                    calc_mode: next,
+                    // Сбрасываем quotation и price, чтобы auto-fetch
+                    // перезапустил с новым режимом.
+                    quotation: null,
+                    price: null,
+                  });
+                }}
+              />
+            )}
+
+            {/* Месяц расчёта — только для avg_month режима. */}
+            {mode === "average_month" && l.calc_mode !== "on_date" && (
               <SelectCell
                 label="Месяц расчёта"
                 value={l.selected_month}
@@ -629,6 +683,34 @@ function LinesEditorView({
                 options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
                 onChange={(v) => onUpdate(l.id, { selected_month: v || null })}
               />
+            )}
+
+            {/* Дата расчёта — только для on_date режима внутри
+                average_month subtype. Инпут type="date"; при пустом
+                значении котировка не будет автоматически подтянута. */}
+            {mode === "average_month" && l.calc_mode === "on_date" && (
+              <div>
+                <span className="text-[11px] text-stone-400 block">Дата расчёта</span>
+                {editing ? (
+                  <input
+                    type="date"
+                    value={l.selected_date ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value.trim();
+                      onUpdate(l.id, {
+                        selected_date: v || null,
+                        quotation: null,
+                        price: null,
+                      });
+                    }}
+                    className="w-full h-8 border border-stone-300 rounded px-2 text-[13px] bg-white hover:border-amber-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-colors font-mono"
+                  />
+                ) : (
+                  <span className="text-[13px] text-stone-800 font-mono">
+                    {l.selected_date ? new Date(l.selected_date).toLocaleDateString("ru-RU") : "—"}
+                  </span>
+                )}
+              </div>
             )}
 
             {/* «Котировка» (тип из таблицы) — surfaced for every tier so
