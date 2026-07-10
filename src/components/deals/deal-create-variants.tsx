@@ -50,6 +50,10 @@ export type VariantDraft = {
   // Custom lookup month for «Средний месяц» mode. Empty string = use
   // the deal's own month. Stored as `selected_month` on the line.
   selectedMonth: string;
+  // Клиент 2026-07-10: для average_month subtype + calc_mode='on_date'
+  // храним конкретную дату (YYYY-MM-DD). Пусто → not applicable.
+  // Персистится в БД как deal_*_lines.selected_date (миграция 00114).
+  selectedDate: string;
   // Stage of the formula price (only meaningful when priceMode !== 'manual').
   // 'preliminary' at deal-signing — all shipments use line.price. Manager
   // can flip to 'final' later from the deal detail page.
@@ -89,6 +93,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   triggerStart: "",
   triggerDays: "",
   selectedMonth: "",
+  selectedDate: "",
   priceStage: "preliminary",
   fxRate: "",
   appendix: "",
@@ -107,11 +112,17 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   trigger_basis: TriggerBasisLite | null;
   trigger_days: number | null;
   selected_month: string | null;
+  selected_date: string | null;
   price_stage: "preliminary" | "final";
   price_source: string | null;
   calc_mode: CalcMode;
 } {
   const decoded = decodePriceMode(v.priceMode);
+  // Клиент 2026-07-10: для average_month subtype юзер теперь может
+  // выбирать calc_mode (avg_month / on_date). Раньше жёстко было
+  // avg_month.
+  const effectiveCalcMode: CalcMode =
+    v.priceMode === "average_month" ? v.calcMode : v.calcMode;
   return {
     price_condition: decoded.price_condition,
     trigger_basis:   decoded.trigger_basis,
@@ -120,23 +131,26 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     trigger_days:    decoded.price_condition === "trigger"
                        ? (parseInt(v.triggerDays, 10) || 0)
                        : null,
-    // Persisted whenever the manager picks an explicit month — either
-    // via calc_mode='avg_month' on a fixed/trigger subtype, or via the
-    // «Средний месяц» subtype itself (which forces calc_mode='avg_month'
-    // and exposes only the month picker).
-    selected_month:  (v.priceMode === "average_month" || v.calcMode === "avg_month")
+    // selected_month сохраняем когда режим avg_month с явным
+    // месяцем-оверрайдом либо среднемесячный subtype в avg_month режиме.
+    selected_month:  effectiveCalcMode === "avg_month" &&
+                     (v.priceMode === "average_month" || v.calcMode === "avg_month")
                        ? (v.selectedMonth || null)
+                       : null,
+    // selected_date сохраняем только для average_month subtype в
+    // режиме on_date (миграция 00114).
+    selected_date:   v.priceMode === "average_month" && effectiveCalcMode === "on_date"
+                       ? (v.selectedDate || null)
                        : null,
     // Stage applies to all formula modes (auto, manual_formula, and
     // manual_in_formula); pure-manual stays at preliminary because there's
     // no recompute to do.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
     price_source:    v.priceSource || null,
-    // Migration 00079 — calc_mode is persisted (DB CHECK enforces
-    // 'on_date' | 'avg_month'). The «Средний месяц» subtype forces
-    // calc_mode='avg_month' since the subtype itself already implies
-    // a monthly average — the UI hides the selector in that case.
-    calc_mode:       v.priceMode === "average_month" ? "avg_month" : v.calcMode,
+    // Migration 00079: calc_mode персистится. Клиент 2026-07-10 разрешил
+    // юзеру выбирать calc_mode и для average_month subtype (раньше был
+    // hardcode 'avg_month').
+    calc_mode:       effectiveCalcMode,
   };
 }
 
@@ -232,15 +246,22 @@ function VariantRow({
     if (sub !== "fixed" && sub !== "trigger" && sub !== "average_month") return;
 
     // Resolve target_date + effective calc_mode.
-    //   • average_month subtype: target = 15-th of v.selectedMonth, calc = avg_month
+    //   • average_month + avg_month режим: target = 15-th of selectedMonth
+    //   • average_month + on_date режим:  target = selectedDate (клиент 2026-07-10)
     //   • on_date / fixed / trigger: target = anchor (+ days), calc = v.calcMode
-    //   • avg_month calc + manual month override: target = 15-th of v.selectedMonth
+    //   • avg_month calc + manual month override: target = 15-th of selectedMonth
     let p_target_date: string | null = null;
     let effectiveCalcMode: CalcMode = v.calcMode;
     if (sub === "average_month") {
-      if (!v.selectedMonth) return;
-      p_target_date = `${v.selectedMonth}-15`;
-      effectiveCalcMode = "avg_month";
+      if (v.calcMode === "on_date") {
+        if (!v.selectedDate) return;
+        p_target_date = v.selectedDate;
+        effectiveCalcMode = "on_date";
+      } else {
+        if (!v.selectedMonth) return;
+        p_target_date = `${v.selectedMonth}-15`;
+        effectiveCalcMode = "avg_month";
+      }
     } else if (v.calcMode === "avg_month" && v.selectedMonth) {
       p_target_date = `${v.selectedMonth}-15`;
     } else {
@@ -282,7 +303,7 @@ function VariantRow({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.priceMode, v.calcMode, v.quotationTypeId, v.priceSource, v.triggerStart, v.triggerDays, v.selectedMonth]);
+  }, [v.priceMode, v.calcMode, v.quotationTypeId, v.priceSource, v.triggerStart, v.triggerDays, v.selectedMonth, v.selectedDate]);
 
   // Auto-compute price whenever an input changes:
   //   • manual_formula:    price = (quotation − discount) × fxRate
@@ -522,19 +543,25 @@ function VariantRow({
           );
         })()}
 
-        {/* «Режим расчёта» — visible for Фикс цена / Триггер subtypes.
-            Hidden under «Средний месяц» where it's forced to avg_month
-            (the subtype itself already implies monthly averaging). */}
-        {priceTierOf(v.priceMode) === "formula" && v.priceMode !== "average_month" && (
+        {/* «Режим расчёта» — visible for all formula subtypes. Клиент
+            2026-07-10: для «Средний месяц» тоже добавили выбор
+            («средний месяц» / «на дату»); при «на дату» показывается
+            date-input вместо month-input. */}
+        {priceTierOf(v.priceMode) === "formula" && (
           <div>
             <Label className="text-[12px] text-stone-500">Режим расчёта</Label>
             <select
               value={v.calcMode}
               onChange={(e) => onChange({
                 calcMode: e.target.value as CalcMode,
-                // Drop the manual month override when switching back to
-                // on_date so the auto-fetch reverts to anchor+days.
+                // При смене режима сбрасываем поле противоположного
+                // якоря, чтобы auto-fetch перезапустился корректно.
                 selectedMonth: e.target.value === "avg_month" ? v.selectedMonth : "",
+                selectedDate: e.target.value === "on_date" ? v.selectedDate : "",
+                quotation: "",
+                price: "",
+                quotationManualEdited: false,
+                priceManualEdited: false,
               })}
               className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
             >
@@ -543,11 +570,11 @@ function VariantRow({
           </div>
         )}
 
-        {/* «Месяц котировки» — appears for the «Средний месяц» subtype
-            (required, the only target-date input) or as an override
-            under Фикс/Триггер + Средний месяц calc mode (overrides the
-            month derived from anchor+days). */}
+        {/* «Месяц котировки» — показывается для avg_month режима
+            (либо среднемесячный subtype в avg_month, либо
+            Фикс/Триггер + avg_month override). */}
         {priceTierOf(v.priceMode) === "formula" &&
+         v.calcMode === "avg_month" &&
          (v.priceMode === "average_month" || v.calcMode === "avg_month") && (
           <div>
             <Label className="text-[12px] text-stone-500">Месяц котировки</Label>
@@ -556,6 +583,23 @@ function VariantRow({
               value={v.selectedMonth}
               onChange={(e) => onChange({
                 selectedMonth: e.target.value,
+                quotationManualEdited: false,
+              })}
+              className="h-8 text-[13px]"
+            />
+          </div>
+        )}
+
+        {/* «Дата котировки» — для average_month subtype в режиме
+            on_date. Клиент 2026-07-10. */}
+        {v.priceMode === "average_month" && v.calcMode === "on_date" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">Дата котировки</Label>
+            <Input
+              type="date"
+              value={v.selectedDate}
+              onChange={(e) => onChange({
+                selectedDate: e.target.value,
                 quotationManualEdited: false,
               })}
               className="h-8 text-[13px]"
