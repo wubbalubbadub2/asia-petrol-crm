@@ -1020,9 +1020,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
-            <Field label="Сумма грузоотправителя" value={(deal as unknown as { additional_expenses_amount?: number | null }).additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
+            <Field label="Сумма грузоотправителя" value={deal.additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
             <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
-            <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!(deal as unknown as { additional_expenses_in_price?: boolean | null }).additional_expenses_in_price} editing={editing} onSaved={reload} />
+            <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!deal.additional_expenses_in_price} editing={editing} onSaved={reload} />
             <EditableSelect label="Коммерция" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={logisticsCurrencySymbol} />

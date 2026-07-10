@@ -1003,6 +1003,14 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       >
         <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
       </td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
+        title="Сумма грузоотправителя = SUM(shipment_registry.additional_expenses)."
+        data-col="additional_expenses_amount" data-deal-id={deal.id}
+        data-value={deal.additional_expenses_amount ?? undefined}
+      >
+        {formatComputedNum(deal.additional_expenses_amount)}
+      </td>
       <td className="px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
@@ -1081,6 +1089,7 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 2 },
   actual_shipped_volume:      { label: "Факт объем (Логистика)",      decimals: 3 },
   invoice_amount:             { label: "Сумма (Логистика)",           decimals: 2 },
+  additional_expenses_amount: { label: "Сумма грузоотправителя (Логистика)", decimals: 2 },
 };
 
 function formatWithDecimals(v: number, decimals: 2 | 3): string {
@@ -1377,7 +1386,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>
               <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>
               <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>
-              <th colSpan={9} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
+              <th colSpan={10} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
             </tr>
             <tr className="border-b">
               <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">№</th>
@@ -1420,6 +1429,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Предв. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Факт объем</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="Сумма грузоотправителя = SUM(additional_expenses) из реестра. Если галочка «Грузоотправитель в цене» — плюсует к балансу поставщика.">Сумма грузоотпр.</th>
               <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
               <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-[#d9d9d9]"></th>
             </tr>
@@ -1612,14 +1622,15 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
       {num("blue", sum((d) => d.buyer_shipped_amount))}
       {num("blue", sum((d) => d.buyer_payment))}
       {num("blue", sum((d) => d.buyer_debt))}
-      {/* Логистика (9 cols): expeditor / group / tariff blank-cells,
-          then summable numbers. Тариф is per-deal rate, not a sum —
-          leave blank. */}
+      {/* Логистика (10 cols): expeditor / group / tariff blank-cells,
+          then summable numbers, plus Сумма грузоотправителя (rollup)
+          и Коммерция+spacer в конце. */}
       {blank("stone")}{blank("stone")}{blank("stone")}
       {num("stone", sum((d) => d.preliminary_tonnage), 3)}
       {num("stone", sum((d) => d.preliminary_amount))}
       {num("stone", sum((d) => d.actual_shipped_volume), 3)}
       {num("stone", sum((d) => d.invoice_amount))}
+      {num("stone", sum((d) => d.additional_expenses_amount))}
       {blank("stone")}{blank("stone")}
     </tr>
   );

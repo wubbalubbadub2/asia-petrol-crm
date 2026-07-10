@@ -64,6 +64,8 @@ export type Deal = {
   actual_shipped_volume: number | null;
   invoice_volume: number | null;
   invoice_amount: number | null;
+  additional_expenses_amount: number | null;
+  additional_expenses_in_price: boolean | null;
   logistics_notes: string | null;
   surcharge_amount: number | null;
   surcharge_reinvoiced_to: string | null;
@@ -293,6 +295,7 @@ const LIST_SELECT = `
   forwarder_id, logistics_company_group_id, logistics_shipment_month,
   preliminary_tonnage, preliminary_amount, planned_tariff, actual_tariff,
   actual_shipped_volume, invoice_amount, invoice_volume,
+  additional_expenses_amount, additional_expenses_in_price,
   logistics_currency, currency, is_archived, is_draft, created_at,
   supplier_lines_count, buyer_lines_count,
   deal_company_groups(id, position, company_group_id, price, price_kind)

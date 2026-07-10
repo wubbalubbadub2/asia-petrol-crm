@@ -162,6 +162,7 @@ const COLUMNS: Column[] = [
   { key: "preliminary_amount", header: "Предв. сумма", width: 13, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.preliminary_amount },
   { key: "actual_shipped_volume", header: "Факт объем", width: 11, band: "logistics", numFmt: NUM_FMT_VOLUME, read: (d) => d.actual_shipped_volume },
   { key: "invoice_amount", header: "Сумма (логистика)", width: 14, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.invoice_amount },
+  { key: "additional_expenses_amount", header: "Сумма грузоотпр.", width: 15, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.additional_expenses_amount },
   { key: "supplier_manager", header: "Коммерция", width: 16, band: "logistics", read: (d) => d.supplier_manager?.full_name ?? "" },
 ];
 
@@ -354,6 +355,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
       "buyer_volume", "buyer_amount", "buyer_ordered_volume",
       "buyer_shipped_volume", "buyer_shipped_amount", "buyer_payment", "buyer_debt",
       "preliminary_tonnage", "preliminary_amount", "actual_shipped_volume", "invoice_amount",
+      "additional_expenses_amount",
     ]);
     COLUMNS.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
