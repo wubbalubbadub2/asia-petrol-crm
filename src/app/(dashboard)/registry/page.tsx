@@ -2002,10 +2002,13 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">№ ЖД накл.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="shipment_volume — buyer-side. Operator 2026-06-26: Исходящее СНТ = покупатель (SUM(shipment_volume) = buyer_shipped_volume per 00044).">Исходящее СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]">тариф</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]" title="Тариф логистов (railway_tariff). Умножается на округл. базу → «Сумма».">Тариф (логисты)</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]" title="Дополнительные расходы по ЖД. Если в сделке включена галочка «Доп. расходы в цене», сумма плюсуется к балансу поставщика.">Доп. расх.</th>
+                          {tab === "kz" && (
+                            <th className="border-r px-2 py-1 text-right font-medium min-w-[80px]" title="Тариф менеджера (manager_tariff, только KZ). Умножается на округл. базу → «Сумма грузоотправителя».">Тариф (менеджер)</th>
+                          )}
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[90px]" title="Сумма грузоотправителя. Если в сделке включена галочка «Грузоотправитель в цене» — плюсуется к балансу поставщика.">Сумма грузоотправителя</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">
                             <span className="inline-flex items-center gap-1">
                               валюта
@@ -2113,6 +2116,9 @@ export default function RegistryPage() {
                                   suffix={currencyFor(r, tab)}
                                 />
                               </td>
+                              {tab === "kz" && (
+                                <td className="border-r px-1 py-0.5"><EN value={r.manager_tariff} recId={r.id} field="manager_tariff" onSaved={reload} /></td>
+                              )}
                               <td className="border-r px-1 py-0.5"><EN value={r.additional_expenses} recId={r.id} field="additional_expenses" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ES

@@ -47,8 +47,13 @@ export type ShipmentRecord = {
   currency: string | null;
   // Клиент 2026-07-09: доп расходы по ЖД per-row (migration 00112).
   // Rollup на сделке — deals.additional_expenses_amount; галочка «в
-  // цене» — deals.additional_expenses_in_price.
+  // цене» — deals.additional_expenses_in_price (в UI переименовано
+  // на «Грузоотправитель в цене», 2026-07-10 миграция 00113).
   additional_expenses?: number | null;
+  additional_expenses_override?: boolean | null;
+  // Клиент 2026-07-10: тариф от менеджера, только KZ. Формула
+  // additional_expenses = ceil(loading_volume) × manager_tariff.
+  manager_tariff?: number | null;
   created_at: string;
   // Joined — only `deal` is still embedded; deal_code / currency / year /
   // month aren't in the global refs cache and the per-row cost is
@@ -78,7 +83,9 @@ const REG_SELECT = `
   shipped_tonnage_amount, shipped_tonnage_amount_override,
   rounded_volume_override, round_volume,
   supplier_appendix, buyer_appendix,
-  invoice_number, comment, currency, additional_expenses, created_at,
+  invoice_number, comment, currency,
+  additional_expenses, additional_expenses_override, manager_tariff,
+  created_at,
   deal:deals(deal_code, currency, year, month)
 `;
 
@@ -265,6 +272,8 @@ export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   supplier_appendix?: string | null;
   buyer_appendix?: string | null;
   additional_expenses?: number | null;
+  additional_expenses_override?: boolean | null;
+  manager_tariff?: number | null;
 };
 
 export async function createRegistryEntry(values: RegistryInsert) {

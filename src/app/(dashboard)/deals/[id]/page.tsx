@@ -289,9 +289,10 @@ function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
   );
 }
 
-// «Доп. расходы в цене» — по аналогии с RailwayInPriceToggle. Когда ON,
-// сумма всех shipment_registry.additional_expenses по сделке
-// плюсуется к supplier_balance (см. миграцию 00112). Клиент 2026-07-09.
+// «Грузоотправитель в цене» — переименовано 2026-07-10, было «Доп.
+// расходы в цене». Логика та же: когда ON, сумма всех
+// shipment_registry.additional_expenses по сделке плюсуется к
+// supplier_balance (см. миграцию 00112).
 function AdditionalExpensesInPriceToggle({ dealId, value, editing, onSaved }: {
   dealId: string; value: boolean; editing: boolean; onSaved?: () => void;
 }) {
@@ -304,7 +305,7 @@ function AdditionalExpensesInPriceToggle({ dealId, value, editing, onSaved }: {
   }
   return (
     <div>
-      <span className="text-[11px] text-stone-400 block">Доп. расходы в цене</span>
+      <span className="text-[11px] text-stone-400 block">Грузоотправитель в цене</span>
       <label className="inline-flex items-center gap-1.5 cursor-pointer">
         <input
           type="checkbox"
@@ -1019,7 +1020,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
-            <Field label="Доп. расходы" value={(deal as unknown as { additional_expenses_amount?: number | null }).additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
+            <Field label="Сумма грузоотправителя" value={(deal as unknown as { additional_expenses_amount?: number | null }).additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
             <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
             <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!(deal as unknown as { additional_expenses_in_price?: boolean | null }).additional_expenses_in_price} editing={editing} onSaved={reload} />
             <EditableSelect label="Коммерция" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
