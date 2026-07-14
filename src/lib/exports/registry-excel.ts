@@ -97,7 +97,7 @@ const COLUMNS_PTS: Column[] = [
   { key: "shipped_amount",    header: "Сумма по тоннажу",    width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
   { key: "manager_tariff",    header: "Тариф (менеджер)",    width: 14, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.manager_tariff ?? null },
   { key: "additional_expenses", header: "Сумма грузоотправителя", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.additional_expenses ?? null },
-  { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.currency ?? "" },
+  { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? "" },
   { key: "invoice_number",    header: "№ СФ",                width: 14, read: (r) => r.invoice_number ?? "" },
   { key: "comment",           header: "Комментарий",         width: 28, read: (r) => r.comment ?? "" },
 ];
@@ -131,7 +131,7 @@ const COLUMNS_FULL: Column[] = [
   { key: "rounded_tonnage",     header: "Округл. тоннаж",   width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedTonnage(r) },
   { key: "shipped_amount",      header: "Сумма",            width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
   { key: "additional_expenses", header: "Сумма грузоотправителя", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.additional_expenses ?? null },
-  { key: "currency",            header: "Валюта",           width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.currency ?? "" },
+  { key: "currency",            header: "Валюта",           width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? "" },
   { key: "destination_station", header: "Ст. назн.",        width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
   { key: "departure_station",   header: "Ст. отпр.",        width: 16, read: (r, l) => (r.departure_station_id && l.station.get(r.departure_station_id)) || "" },
   { key: "supplier_appendix",   header: "Прил. поставщика", width: 14, read: (r) => r.supplier_appendix ?? "" },

@@ -63,7 +63,11 @@ export type ShipmentRecord = {
   // single-row sub-selects per shipment, which on a 5000+-row registry
   // cost the operator the 5–6 s cold paint. They've been dropped from
   // REG_SELECT; the page resolves names from useGlobalRefs() instead.
-  deal?: { deal_code: string; currency: string | null; year: number | null; month: string | null } | null;
+  // logistics_currency — клиент 2026-07-16: «при изменении валюты в
+  // разделе логистика автоматом менялось в реестре». Fallback-цепочка
+  // валюты строки: currency строки → logistics_currency сделки →
+  // legacy deals.currency → дефолт таба.
+  deal?: { deal_code: string; currency: string | null; logistics_currency: string | null; year: number | null; month: string | null } | null;
 };
 
 // Explicit projection — was `*` pulling every shipment_registry
@@ -86,7 +90,7 @@ const REG_SELECT = `
   invoice_number, comment, currency,
   additional_expenses, additional_expenses_override, manager_tariff,
   created_at,
-  deal:deals(deal_code, currency, year, month)
+  deal:deals(deal_code, currency, logistics_currency, year, month)
 `;
 
 // Stale-while-revalidate cache keyed by tab (KG / KZ). Navigating back

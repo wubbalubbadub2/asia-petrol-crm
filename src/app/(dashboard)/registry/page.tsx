@@ -67,7 +67,10 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
 function ceil(v: number | null) { return v == null ? null : Math.ceil(v); }
 function calcAmt(v: number | null, t: number | null) { const r = ceil(v); return r == null || t == null ? null : r * t; }
 function currencyFor(r: ShipmentRecord, tab: "kg" | "kz"): string {
-  const cur = r.currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT");
+  // Клиент 2026-07-16: валюта логистики сделки должна отражаться в
+  // реестре сразу. Приоритет: явная валюта строки → logistics_currency
+  // сделки → legacy deals.currency → дефолт таба.
+  const cur = r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT");
   return CURRENCY_SYMBOLS[cur] ?? cur;
 }
 
@@ -382,7 +385,7 @@ function groupRecs(records: ShipmentRecord[], labels: GroupLabelMaps): RGroup[] 
           companyGroupId: r.company_group_id,
           destinationStationId: r.destination_station_id,
           departureStationId: r.departure_station_id,
-          currency: r.currency ?? r.deal?.currency ?? null,
+          currency: r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? null,
         },
       });
     }
@@ -1868,7 +1871,7 @@ export default function RegistryPage() {
                     <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">{g.records.length} шт</span>
                     <span className="font-mono text-[11px] tabular-nums font-medium">{fmtVol(g.totalVol)} т</span>
                     {(() => {
-                      const cs = new Set(g.records.map((r) => r.currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT")));
+                      const cs = new Set(g.records.map((r) => r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? (tab === "kg" ? "USD" : "KZT")));
                       const gcur = cs.size === 1 ? CURRENCY_SYMBOLS[[...cs][0]] ?? [...cs][0] : "смеш.";
                       return <span className="font-mono text-[11px] tabular-nums text-stone-500">{fmtMoney(g.totalAmt)} {gcur}</span>;
                     })()}
@@ -2123,7 +2126,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5">
                                 <ES
                                   value={r.currency}
-                                  displayLabel={r.currency ?? `${r.deal?.currency ?? ""} (сделка)`}
+                                  displayLabel={r.currency ?? `${r.deal?.logistics_currency ?? r.deal?.currency ?? ""} (сделка)`}
                                   recId={r.id}
                                   field="currency"
                                   options={CURRENCIES}

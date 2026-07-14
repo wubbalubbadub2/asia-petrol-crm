@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { createDeal } from "@/lib/hooks/use-deals";
 import { MONTHS_RU, getQuarterFromMonth } from "@/lib/constants/months-ru";
-import { DEAL_TYPES } from "@/lib/constants/deal-types";
+import { DEAL_TYPES, DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
@@ -77,7 +77,16 @@ export default function NewDealPage() {
   const [factoryId, setFactoryId] = useState("");
   const [fuelTypeId, setFuelTypeId] = useState("");
   const [sulfurPercent, setSulfurPercent] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  // Валюта по умолчанию следует за типом сделки (KZ → KZT, KG → USD),
+  // пока пользователь не выбрал её вручную. Клиент 2026-07-16:
+  // «стоит по умолчанию другая» — дефолт USD при типе KZ путал.
+  const [currency, setCurrencyRaw] = useState(DEAL_TYPE_CURRENCY["KZ"]);
+  const [currencyTouched, setCurrencyTouched] = useState(false);
+  const setCurrency = (v: string) => { setCurrencyTouched(true); setCurrencyRaw(v); };
+  function handleDealTypeChange(t: "KG" | "KZ" | "OIL") {
+    setDealType(t);
+    if (!currencyTouched) setCurrencyRaw(DEAL_TYPE_CURRENCY[t]);
+  }
   const [railwayInPrice, setRailwayInPrice] = useState(false);
 
   // Quotation types for price linking
@@ -463,7 +472,7 @@ export default function NewDealPage() {
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setDealType(t)}
+                    onClick={() => handleDealTypeChange(t)}
                     className={`flex-1 rounded-md px-2 py-1.5 text-[12px] font-medium border transition-colors ${
                       dealType === t
                         ? "bg-amber-100 text-amber-800 border-amber-300"
