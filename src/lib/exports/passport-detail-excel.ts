@@ -226,6 +226,46 @@ function blendArgbWithFuel(baseArgb: string, fuelHex: string | null | undefined,
   return `FF${hex(mix(br, fr))}${hex(mix(bg, fg))}${hex(mix(bb, fb))}`;
 }
 
+// «Дата оплаты» — реальные даты платежей из deal_payments (клиент
+// 2026-07-14: «даты оплат не прогрузились» — deals.*_payment_date это
+// почти пустой ручной TEXT, 7 заполненных на 792 сделки). Несколько
+// платежей на сторону → список дат dd.mm.yyyy через запятую.
+function fmtDate(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+}
+
+type PaymentDates = { supplier: string; buyer: string };
+
+async function fetchPaymentDatesByDeals(dealIds: string[]): Promise<Map<string, PaymentDates>> {
+  const { createClient } = await import("@/lib/supabase/client");
+  const sb = createClient();
+  const CHUNK = 150;
+  const chunks: string[][] = [];
+  for (let i = 0; i < dealIds.length; i += CHUNK) chunks.push(dealIds.slice(i, i + CHUNK));
+  const results = await Promise.all(chunks.map((ids) =>
+    sb
+      .from("deal_payments")
+      .select("deal_id, side, payment_date")
+      .in("deal_id", ids)
+      .order("payment_date", { ascending: true }),
+  ));
+  const raw = new Map<string, { supplier: string[]; buyer: string[] }>();
+  for (const res of results) {
+    if (res.error) throw new Error(`Оплаты: ${res.error.message}`);
+    for (const row of (res.data ?? []) as { deal_id: string; side: "supplier" | "buyer"; payment_date: string }[]) {
+      const entry = raw.get(row.deal_id) ?? { supplier: [], buyer: [] };
+      const d = fmtDate(row.payment_date);
+      if (!entry[row.side].includes(d)) entry[row.side].push(d);
+      raw.set(row.deal_id, entry);
+    }
+  }
+  const out = new Map<string, PaymentDates>();
+  for (const [dealId, e] of raw) {
+    out.set(dealId, { supplier: e.supplier.join(", "), buyer: e.buyer.join(", ") });
+  }
+  return out;
+}
+
 // Batched registry fetch for the exported deals. PostgREST caps URL
 // length, so the IN-list goes out in chunks; all chunks in parallel.
 async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, DetailShipment[]>> {
@@ -277,9 +317,10 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
   // full dcg rows (LIST_SELECT trims quotation/discount off the embed).
   const dcgChunks: string[][] = [];
   for (let i = 0; i < dealIds.length; i += 150) dcgChunks.push(dealIds.slice(i, i + 150));
-  const [lines, shipmentsByDeal, dcgResults] = await Promise.all([
+  const [lines, shipmentsByDeal, paymentDatesByDeal, dcgResults] = await Promise.all([
     fetchDealLinesForExport(dealIds),
     fetchShipmentsByDeals(dealIds),
+    fetchPaymentDatesByDeals(dealIds),
     Promise.all(dcgChunks.map((ids) =>
       sb
         .from("deal_company_groups")
@@ -309,8 +350,12 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
     const sm = d.supplier_manager_id ? managerById.get(d.supplier_manager_id) : null;
     const bm = d.buyer_manager_id ? managerById.get(d.buyer_manager_id) : null;
     const lcg = d.logistics_company_group_id ? cgById.get(d.logistics_company_group_id) : null;
+    const payDates = paymentDatesByDeal.get(d.id);
     return {
       ...d,
+      // Даты платежей из deal_payments; ручное TEXT-поле сделки — fallback.
+      supplier_payment_date: payDates?.supplier || d.supplier_payment_date,
+      buyer_payment_date: payDates?.buyer || d.buyer_payment_date,
       supplier: s ? { full_name: s.full_name, short_name: s.short_name } : d.supplier ?? null,
       buyer: b ? { full_name: b.full_name, short_name: b.short_name } : d.buyer ?? null,
       factory: f ? { name: f.name } : d.factory ?? null,

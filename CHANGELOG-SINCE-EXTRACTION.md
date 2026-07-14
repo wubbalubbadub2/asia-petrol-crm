@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-16 — Detail-экспорт: «Дата оплаты» из deal_payments
+- **What changed:** `src/lib/exports/passport-detail-excel.ts` — новый батч-фетч `fetchPaymentDatesByDeals()`; колонки «Дата оплаты» (пост./покуп.) на главной строке сделки.
+- **Type:** [EXPORT]
+- **Before → After:** читали `deals.supplier_payment_date` / `buyer_payment_date` (ручной TEXT, заполнен у 7 и 1 сделки из 792) → список реальных дат из `deal_payments.payment_date` по стороне (`side`), формат dd.mm.yyyy через запятую, по возрастанию; TEXT-поле осталось как fallback при отсутствии платежей.
+- **Client reason:** «даты оплат не прогрузились в detail excel» (2026-07-16).
+- **Rebuild impact:** presentation only (EXPORT-LAYOUTS); схема и формулы БД не менялись.
+
 ### 2026-07-14 — Экспорт паспорта: 3 варианта + новый «Паспорт (детальный)»
 - **What changed:**
   - NEW `src/lib/exports/passport-detail-excel.ts` — `exportPassportDetailToExcel()`: 63-колоночный формат по клиентскому файлу `passport-detail-2026-07-09.xlsx`; под каждой сделкой — под-строка на каждую строку `shipment_registry` (outlineLevel=1, сворачиваемые).
