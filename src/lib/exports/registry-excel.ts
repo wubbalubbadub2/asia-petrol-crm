@@ -56,7 +56,15 @@ type Column = {
 // Same rule as the on-screen ERound cell (registry/page.tsx:114).
 // For KZ registry rawVolume = loading_volume, for KG = shipment_volume.
 // Precedence: manual override → ceil(raw) when round_volume !== false → raw.
-function roundedTonnage(r: ShipmentRecord): number | null {
+// Structural param + export: passport-detail-excel reuses this for its
+// «Объем по счету-фактуре» per-shipment cells.
+export function roundedTonnage(r: {
+  registry_type: "KG" | "KZ" | null;
+  loading_volume?: number | null;
+  shipment_volume?: number | null;
+  rounded_volume_override?: number | null;
+  round_volume?: boolean | null;
+}): number | null {
   if (r.rounded_volume_override != null) return r.rounded_volume_override;
   const raw = r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume;
   if (raw == null) return null;

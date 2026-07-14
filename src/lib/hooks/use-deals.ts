@@ -222,6 +222,9 @@ export type DealLineSnapshot = {
   price_stage?: "preliminary" | "final";
   preliminary_price?: number | null;
   preliminary_quotation?: number | null;
+  // «Биржа» in the detailed passport export — the official basis of the
+  // quotation product (FOB MED / CIF NWE / …) from quotation_product_types.
+  quotation_type?: { basis: string | null } | null;
 };
 
 // Bulk-fetch the line snapshots for a set of deals. Used by the Excel
@@ -235,11 +238,11 @@ export async function fetchDealLinesForExport(
   const [supRes, buyRes] = await Promise.all([
     sb
       .from("deal_supplier_lines")
-      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation")
+      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, quotation_type:quotation_product_types(basis)")
       .in("deal_id", dealIds),
     sb
       .from("deal_buyer_lines")
-      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation")
+      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, quotation_type:quotation_product_types(basis)")
       .in("deal_id", dealIds),
   ]);
   function group(rows: { deal_id: string }[] | null) {

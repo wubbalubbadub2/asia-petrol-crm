@@ -7,6 +7,7 @@ import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -190,17 +191,26 @@ export default function DealsPage() {
 
   // Excel export — dynamic-imports exceljs so it stays out of the
   // initial bundle. Always exports the *currently filtered* rows so
-  // the file matches what's on screen.
+  // the file matches what's on screen. Three variants (client
+  // 2026-07-14): «Паспорт» (прежний формат), «Паспорт (детальный)»
+  // (сделка + под-строки по каждой отгрузке из реестра), «Паспорт
+  // (долги)» — задизейблен до утверждения формата.
   const [exporting, setExporting] = useState(false);
-  async function handleExport() {
+  async function handleExport(variant: "passport" | "detail") {
     if (exporting) return;
     setExporting(true);
     try {
-      const { exportPassportToExcel } = await import("@/lib/exports/passport-excel");
-      await exportPassportToExcel(filtered, {
-        dealType: activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL",
+      const ctx = {
+        dealType: (activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL") as "KG" | "KZ" | "ALL",
         year: yearFilter,
-      });
+      };
+      if (variant === "detail") {
+        const { exportPassportDetailToExcel } = await import("@/lib/exports/passport-detail-excel");
+        await exportPassportDetailToExcel(filtered, ctx);
+      } else {
+        const { exportPassportToExcel } = await import("@/lib/exports/passport-excel");
+        await exportPassportToExcel(filtered, ctx);
+      }
       toast.success("Файл готов");
     } catch (e) {
       toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
@@ -552,10 +562,39 @@ export default function DealsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Сделки</h1>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting || filtered.length === 0} title="Экспорт текущей выборки в Excel">
-            {exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
-            Excel
-          </Button>
+          <DropdownMenu>
+            {/* DropdownMenuTrigger has no asChild in this repo's typing —
+                trigger styled to match the sm outline Button next to it
+                (same pattern as the registry export dropdown). */}
+            <DropdownMenuTrigger
+              className="inline-flex items-center justify-center whitespace-nowrap gap-1 h-8 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium shadow-xs hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              disabled={exporting || filtered.length === 0}
+              title="Экспорт текущей выборки в Excel"
+            >
+              {exporting ? <Loader2 className="mr-0.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-0.5 h-3.5 w-3.5" />}
+              Excel
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onClick={() => handleExport("passport")} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">Паспорт</span>
+                  <span className="text-[11px] text-stone-500">Текущий формат — одна строка на сделку</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("detail")} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">Паспорт (детальный)</span>
+                  <span className="text-[11px] text-stone-500">Сделка + строки по каждой отгрузке</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                <div className="flex flex-col">
+                  <span className="font-medium">Паспорт (долги)</span>
+                  <span className="text-[11px] text-stone-500">Скоро</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Link href="/deals/new">
             <Button size="sm">
               <Plus className="mr-1.5 h-3.5 w-3.5" />
