@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-16 — Detail-экспорт: дата СНТ только при своём тоннаже
+- **What changed:** `src/lib/exports/passport-detail-excel.ts` — колонки «Дата вход. СНТ» / «Дата исход. СНТ» на под-строках.
+- **Type:** [EXPORT]
+- **Before → After:** обе даты = `registry.date` безусловно → «Дата вход. СНТ» только если заполнено `loading_volume` (Входящее СНТ), «Дата исход. СНТ» только если заполнено `shipment_volume` (Исходящее СНТ). Пустой тоннаж = пустая дата.
+- **Client reason:** KG/26/487 — «дата отгрузки» в реестре одна на строку и относится к той стороне, чей тоннаж внесён; в экспорте она разводится на две колонки, и дата без тоннажа читалась как «нулевая отгрузка с датой» (2026-07-16).
+- **Rebuild impact:** presentation only (EXPORT-LAYOUTS).
+
 ### 2026-07-16 — Валюта логистики: fallback в реестре + дефолт формы создания
 - **What changed:** `src/lib/hooks/use-registry.ts` (REG_SELECT deal-embed + тип), `src/app/(dashboard)/registry/page.tsx` (4 места fallback), `src/lib/exports/registry-excel.ts` (колонка «Валюта» в обоих вариантах), `src/app/(dashboard)/deals/new/page.tsx` (дефолт валюты).
 - **Type:** [BEHAVIOR] + [PRESENTATION]

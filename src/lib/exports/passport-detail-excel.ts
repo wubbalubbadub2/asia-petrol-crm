@@ -141,7 +141,9 @@ const COLUMNS: Column[] = [
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
   { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price, readShip: (d) => d.supplier_price },
   { key: "supplier_shipped_volume", header: "Отгр., т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.loading_volume },
-  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => s.date ?? "" },
+  // Дата только при наличии своего тоннажа (клиент 2026-07-16, KG/26/487:
+  // «если нет числа во входящем или исходящем СНТ — дату не проставляем»).
+  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.loading_volume != null ? s.date ?? "" : "") },
   // Per-wagon shipped amount mirrors the client's template formula
   // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
   { key: "supplier_shipped_amount", header: "Отгр. сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount, readShip: (d, s) => d.supplier_price != null && s.loading_volume != null ? d.supplier_price * s.loading_volume : null },
@@ -171,7 +173,7 @@ const COLUMNS: Column[] = [
   // NB: regular passport export keeps the old shipped−ordered sign.
   { key: "buyer_remainder", header: "Остаток, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => (d.buyer_ordered_volume ?? 0) - (d.buyer_shipped_volume ?? 0) },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume, readShip: (_, s) => s.shipment_volume },
-  { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", read: () => "", readShip: (_, s) => s.date ?? "" },
+  { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.shipment_volume != null ? s.date ?? "" : "") },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount, readShip: (d, s) => d.buyer_price != null && s.shipment_volume != null ? d.buyer_price * s.shipment_volume : null },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment },
   { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", read: (d) => d.buyer_payment_date ?? "" },
