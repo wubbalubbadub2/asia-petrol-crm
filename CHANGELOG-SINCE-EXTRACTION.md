@@ -26,6 +26,24 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-18 — 00118: станции сделки дозаполняют реестр + fallback в «Массово»
+- **What changed:** migration `00118_station_propagation.sql` (функция `propagate_deal_stations_to_registry`, триггер `trg_propagate_deal_stations` на deals, catch-up станций + повтор tariff catch-up); `use-registry.ts` (deal-embed + станции сделки), `registry/page.tsx` (fallback станций в bulk-контексте).
+- **Type:** [BEHAVIOR]
+- **Before → After:**
+  - Раньше: станция копировалась в строку реестра только в момент вставки; если у сделки в тот момент станции не было — строки оставались с NULL навсегда (KG/26/275: 24 строки без станции, batch 12:53 до заполнения станции на сделке, batch 12:55 — после).
+  - Теперь: появление/смена `supplier_departure_station_id` / `buyer_destination_station_id` на сделке дозаполняет строки реестра этой сделки, где станция NULL. Явно выбранные станции не перетираются.
+  - Catch-up: разово дозаполнены NULL-станции по всей базе из сделок; затем повторён tariff catch-up 00117 — строки без станций раньше не могли сматчиться со справочником тарифов.
+  - «Массово» с /registry: станции контекста теперь fallback'ятся на поля сделки, когда первая строка группы без станций.
+- **Client reason:** «в некоторых отгрузках KG/26/275 отсутствует ст. отправления» (2026-07-18).
+- **Rebuild impact:** FIELD-OWNERSHIP (станция строки реестра: сделка дозаполняет NULL, ручной выбор неприкосновенен); DATA-MODEL — новое propagation-правило.
+
+### 2026-07-18 — Сумма грузоотправителя: ручной ввод без тарифа менеджера
+- **What changed:** `registry/page.tsx` — ячейка «Сумма грузоотправителя» (`additional_expenses`) теперь коммитит `additional_expenses_override = true` при ручной правке (EN получил параметры titleManual/titleAuto).
+- **Type:** [UI-FIELD]
+- **Before → After:** ячейка писала только `additional_expenses`; BEFORE-триггер 00113 при `additional_expenses_override = FALSE` и `manager_tariff IS NULL` немедленно затирал введённое значение в NULL («ей всегда нужен тариф») → теперь ручной ввод (включая очистку) ставит override, триггер значение не трогает — семантика идентична ручной сумме `shipped_tonnage_amount` и тарифу 00117. Отображение: курсив + amber + tooltip. Формулы БД не менялись — колонка override существовала с 00113, UI её не использовал.
+- **Client reason:** «В реестре KZ в столбце сумма грузоотправления не можем вставить вручную сумму… Ей всегда нужен тариф, без тарифа сумма не вносится, а нужно чтобы вносилась» (2026-07-14).
+- **Rebuild impact:** FIELD-OWNERSHIP (additional_expenses: авто до ручного override); presentation в остальном.
+
 ### 2026-07-18 — 00117: тариф из справочника автоматически обновляет реестр
 - **What changed:** migration `00117_tariff_propagation.sql` — колонка `shipment_registry.railway_tariff_override BOOLEAN NOT NULL DEFAULT FALSE`, функция `propagate_tariff_to_registry()`, триггеры `trg_propagate_tariff_ins/upd` на `tariffs`, catch-up по всем тарифам; frontend `registry/page.tsx` (EN-ячейка «Тариф (логисты)» ставит override при ручной правке, курсив при override), `use-registry.ts` (тип + REG_SELECT + RegistryUpdate).
 - **Type:** [SCHEMA] + [BEHAVIOR] + [UI-FIELD]

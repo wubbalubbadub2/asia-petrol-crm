@@ -70,7 +70,10 @@ export type ShipmentRecord = {
   // разделе логистика автоматом менялось в реестре». Fallback-цепочка
   // валюты строки: currency строки → logistics_currency сделки →
   // legacy deals.currency → дефолт таба.
-  deal?: { deal_code: string; currency: string | null; logistics_currency: string | null; year: number | null; month: string | null } | null;
+  // Станции сделки — fallback для контекста «Массово» (клиент
+  // 2026-07-18, KG/26/275: первый batch группы был без станции, и все
+  // следующие наследовали пустоту).
+  deal?: { deal_code: string; currency: string | null; logistics_currency: string | null; year: number | null; month: string | null; supplier_departure_station_id: string | null; buyer_destination_station_id: string | null } | null;
 };
 
 // Explicit projection — was `*` pulling every shipment_registry
@@ -93,7 +96,7 @@ const REG_SELECT = `
   invoice_number, comment, currency,
   additional_expenses, additional_expenses_override, manager_tariff,
   created_at,
-  deal:deals(deal_code, currency, logistics_currency, year, month)
+  deal:deals(deal_code, currency, logistics_currency, year, month, supplier_departure_station_id, buyer_destination_station_id)
 `;
 
 // Stale-while-revalidate cache keyed by tab (KG / KZ). Navigating back

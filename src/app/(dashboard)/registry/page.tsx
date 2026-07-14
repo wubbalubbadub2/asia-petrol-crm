@@ -90,13 +90,13 @@ function EC({ value, recId, field, onSaved, cls = "" }: { value: string | null |
   if (!ed) return <button onClick={() => { setLv(sh ?? ""); setEd(true); }} className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] truncate ${cls}`}>{sh ?? ""}</button>;
   return <input autoFocus onFocus={(e) => e.currentTarget.select()} value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const nv = lv.trim() || null; if (nv !== (value ?? null)) { pv.current = nv; updateRegistryEntry(recId, { [field]: nv }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />;
 }
-function EN({ value, recId, field, onSaved, overrideField, overridden }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void; overrideField?: string; overridden?: boolean | null }) {
+function EN({ value, recId, field, onSaved, overrideField, overridden, titleManual, titleAuto }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void; overrideField?: string; overridden?: boolean | null; titleManual?: string; titleAuto?: string }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<number | null | undefined>(undefined);
   const sh = pv.current !== undefined ? pv.current : value; if (pv.current !== undefined && value === pv.current) pv.current = undefined;
   // Volume fields render with the always-3-decimals formatter; everything
   // else (tariff/amount — money) с 2 знаками per client canon 2026-07-07.
   const isVol = field === "loading_volume" || field === "shipment_volume";
-  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} title={overrideField ? (overridden ? "Тариф введён вручную — справочник Тарифы эту строку не обновляет." : "Авто из справочника Тарифы. Введите значение, чтобы закрепить вручную.") : undefined} className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${overridden ? "italic text-amber-700" : ""}`}>{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
+  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} title={overrideField ? (overridden ? (titleManual ?? "Тариф введён вручную — справочник Тарифы эту строку не обновляет.") : (titleAuto ?? "Авто из справочника Тарифы. Введите значение, чтобы закрепить вручную.")) : undefined} className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${overridden ? "italic text-amber-700" : ""}`}>{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
   // Ручная правка помечает строку override-флагом (overrideField):
   // propagation из справочника тарифов её больше не трогает. Очистка —
   // тоже ручной ввод (клиент: «ручной ввод всегда приоритетнее»).
@@ -386,8 +386,10 @@ function groupRecs(records: ShipmentRecord[], labels: GroupLabelMaps): RGroup[] 
           buyerId: r.buyer_id,
           forwarderId: r.forwarder_id,
           companyGroupId: r.company_group_id,
-          destinationStationId: r.destination_station_id,
-          departureStationId: r.departure_station_id,
+          // Fallback на станции сделки — первая строка группы может быть
+          // без станций (KG/26/275), а «Массово» наследует контекст группы.
+          destinationStationId: r.destination_station_id ?? r.deal?.buyer_destination_station_id ?? null,
+          departureStationId: r.departure_station_id ?? r.deal?.supplier_departure_station_id ?? null,
           currency: r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? null,
         },
       });
@@ -2125,7 +2127,10 @@ export default function RegistryPage() {
                               {tab === "kz" && (
                                 <td className="border-r px-1 py-0.5"><EN value={r.manager_tariff} recId={r.id} field="manager_tariff" onSaved={reload} /></td>
                               )}
-                              <td className="border-r px-1 py-0.5"><EN value={r.additional_expenses} recId={r.id} field="additional_expenses" onSaved={reload} /></td>
+                              {/* Клиент 2026-07-14: сумму грузоотправителя нужно вносить и БЕЗ
+                                  тарифа менеджера. Без override-флага BEFORE-триггер (00113)
+                                  перетирал ручной ввод (manager_tariff NULL → сумма NULL). */}
+                              <td className="border-r px-1 py-0.5"><EN value={r.additional_expenses} recId={r.id} field="additional_expenses" overrideField="additional_expenses_override" overridden={r.additional_expenses_override} titleManual="Сумма введена вручную — авто-расчёт (округл × Тариф (менеджер)) её не трогает." titleAuto="Авто: округл. база × Тариф (менеджер). Введите значение, чтобы закрепить вручную." onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ES
                                   value={r.currency}
