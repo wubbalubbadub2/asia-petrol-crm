@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-19 — Паспорт: редактирование оплат прямо в попапе колонки «Оплата»
+- **What changed:** `src/components/deals/passport-table.tsx` — `PaymentBreakdownCell`: статичный текстовый список оплат заменён на редактируемые строки (новый компонент `PaymentEditRow`), добавлены `patchPayment` / `deletePayment` / `addPayment`.
+- **Type:** [UI-FIELD]
+- **Before → After:** попап показывал оплаты read-only, менять можно было только «итог» (перезапись rollup-колонки deals) или идти в сделку → теперь в попапе каждая оплата редактируется inline (дата + сумма), удаляется («×», с подтверждением), добавляется («+ Оплата», сегодняшняя дата, сумма 0, тип «Оплата»). Записи идут напрямую в `deal_payments`; rollup `deals.supplier_payment`/`buyer_payment` пересчитывает существующий DB-триггер; кэши (`invalidateDealPayments` + `invalidateDeal`) будят список без F5. Кнопка «Изменить итог» сохранена. Пустая сумма = 0 (`amount NOT NULL` в БД).
+- **Client reason:** «когда нажимаем на колонку оплата… можем ли сделать так, чтобы оплаты и даты можно сразу в модалке менять, не проваливаясь в сделку» (2026-07-19).
+- **Rebuild impact:** presentation only — схема и формулы не менялись; для rebuild-доков: оплаты редактируются из двух мест (страница сделки + попап паспорта), оба пишут в `deal_payments`.
+
 ### 2026-07-18 — 00118: станции сделки дозаполняют реестр + fallback в «Массово»
 - **What changed:** migration `00118_station_propagation.sql` (функция `propagate_deal_stations_to_registry`, триггер `trg_propagate_deal_stations` на deals, catch-up станций + повтор tariff catch-up); `use-registry.ts` (deal-embed + станции сделки), `registry/page.tsx` (fallback станций в bulk-контексте).
 - **Type:** [BEHAVIOR]

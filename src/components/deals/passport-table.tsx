@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2, ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments } from "@/lib/hooks/use-deals";
+import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
@@ -259,32 +259,54 @@ function pluralizePayments(n: number): string {
   return `${n} оплат`;
 }
 
-// Format the lazy-loaded payments into the popover body. Matches the
-// volume popover's layout: header «N оплат», then one row per payment
-// in the form «DD.MM.YYYY: <amount> <currency>», followed by the
-// description on the next line if present. Sorted by payment_date asc
-// (the query already returns them in that order, but be defensive in
-// case of cache reuse).
-function paymentLines(
-  payments: PaymentSnap[],
-  fallbackCurrency: string,
-): string {
-  const rows = payments
-    .slice()
-    .sort((a, b) => (a.payment_date ?? "").localeCompare(b.payment_date ?? ""))
-    .flatMap((p) => {
-      const amt = p.amount != null
-        ? p.amount.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : "—";
-      const cur = p.currency ?? fallbackCurrency ?? "";
-      const d = p.payment_date
-        ? p.payment_date.slice(0, 10).split("-").reverse().join(".")
-        : "—";
-      const head = `${d}: ${amt}${cur ? ` ${cur}` : ""}`;
-      return p.description ? [head, `  ${p.description}`] : [head];
-    });
-  if (payments.length === 0) return "Нет оплат";
-  return `${pluralizePayments(payments.length)}\n${rows.join("\n")}`;
+// Editable payment row inside the popover — клиент 2026-07-19: «оплаты
+// и даты можно сразу в модалке менять, не проваливаясь в сделку».
+// Дата + сумма редактируются inline, × удаляет запись. Каждая запись
+// коммитится на blur; rollup deals.supplier_payment/buyer_payment
+// пересчитывает DB-триггер, invalidateDeal() будит список.
+function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
+  p: PaymentSnap;
+  fallbackCurrency: string;
+  onPatch: (id: string, patch: { amount?: number; payment_date?: string }) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [amount, setAmount] = useState(p.amount != null ? String(p.amount) : "");
+  const [date, setDate] = useState(p.payment_date?.slice(0, 10) ?? "");
+  return (
+    <div className="flex items-center gap-1 py-0.5">
+      <input
+        type="date"
+        value={date}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => setDate(e.target.value)}
+        onBlur={() => { if (date && date !== p.payment_date?.slice(0, 10)) onPatch(p.id, { payment_date: date }); }}
+        className="w-[118px] rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-[11px] text-stone-100 focus:outline-none focus:border-amber-400"
+      />
+      <input
+        type="number"
+        step="0.01"
+        value={amount}
+        placeholder="сумма"
+        onClick={(e) => e.stopPropagation()}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setAmount(e.target.value)}
+        onBlur={() => {
+          // amount NOT NULL в БД — пустой ввод трактуем как 0.
+          const n = amount.trim() === "" ? 0 : parseFloat(amount);
+          if (!Number.isNaN(n) && n !== p.amount) onPatch(p.id, { amount: n });
+        }}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        className="w-[92px] rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-[11px] font-mono text-right text-stone-100 focus:outline-none focus:border-amber-400"
+      />
+      <span className="text-[10px] text-stone-400 w-8">{p.currency ?? fallbackCurrency}</span>
+      <button
+        type="button"
+        title="Удалить оплату"
+        onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}
+        className="text-stone-400 hover:text-red-400 px-0.5 text-[13px] leading-none"
+      >×</button>
+    </div>
+  );
 }
 
 // UX choice (2026-06-18): single click opens the breakdown popover;
@@ -353,6 +375,48 @@ function PaymentBreakdownCell({
     }
   }
 
+  // Inline-CRUD по deal_payments прямо из попапа (клиент 2026-07-19).
+  // После каждой записи: DB-триггер пересчитывает rollup оплаты на
+  // deals; invalidateDealPayments сбрасывает Promise-кэш попапа;
+  // invalidateDeal будит список сделок (колонки Оплата/Баланс/Долг).
+  async function refreshAfterWrite() {
+    invalidateDealPayments(dealId, side);
+    try {
+      const data = await fetchDealPayments(dealId, side);
+      setPayments(data);
+    } catch { /* список обновится при следующем открытии */ }
+    invalidateDeal(dealId);
+  }
+
+  async function patchPayment(id: string, patch: { amount?: number; payment_date?: string }) {
+    const sb = createClient();
+    const { error } = await sb.from("deal_payments").update(patch).eq("id", id);
+    if (error) { toast.error(`Оплата: ${error.message}`); return; }
+    await refreshAfterWrite();
+  }
+
+  async function deletePayment(id: string) {
+    if (!confirm("Удалить оплату?")) return;
+    const sb = createClient();
+    const { error } = await sb.from("deal_payments").delete().eq("id", id);
+    if (error) { toast.error(`Оплата: ${error.message}`); return; }
+    await refreshAfterWrite();
+  }
+
+  async function addPayment() {
+    const sb = createClient();
+    const today = new Date().toISOString().slice(0, 10);
+    const { error } = await sb.from("deal_payments").insert({
+      deal_id: dealId,
+      side,
+      amount: 0,
+      payment_date: today,
+      payment_type: "payment",
+    });
+    if (error) { toast.error(`Оплата: ${error.message}`); return; }
+    await refreshAfterWrite();
+  }
+
   function startEdit() {
     setLocalVal(shown?.toString() ?? "");
     setEditing(true);
@@ -407,9 +471,29 @@ function PaymentBreakdownCell({
           style={{ top: pos.top, right: pos.right }}
           className="fixed z-50 min-w-[220px] max-w-[320px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl"
         >
-          <div className="whitespace-pre-line font-mono tabular-nums">
-            {loading || payments === null ? "Загрузка…" : paymentLines(payments, currency)}
-          </div>
+          {loading || payments === null ? (
+            <div className="font-mono">Загрузка…</div>
+          ) : (
+            <div>
+              <div className="mb-1 font-medium">{payments.length === 0 ? "Нет оплат" : pluralizePayments(payments.length)}</div>
+              {payments
+                .slice()
+                .sort((a, b) => (a.payment_date ?? "").localeCompare(b.payment_date ?? ""))
+                .map((p) => (
+                  <div key={p.id}>
+                    <PaymentEditRow p={p} fallbackCurrency={currency} onPatch={patchPayment} onDelete={deletePayment} />
+                    {p.description ? <div className="pl-1 text-[10px] text-stone-400">{p.description}</div> : null}
+                  </div>
+                ))}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); addPayment(); }}
+                className="mt-1 w-full rounded border border-stone-600 px-2 py-0.5 text-[10px] text-stone-300 hover:bg-stone-700 focus:outline-none"
+              >
+                + Оплата
+              </button>
+            </div>
+          )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); startEdit(); }}
