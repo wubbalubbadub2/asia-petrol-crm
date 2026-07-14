@@ -26,6 +26,17 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-16 — 00116: WHEN-guards на rollup-триггеры реестра (statement timeout)
+- **What changed:** migration `00116_registry_rollup_when_guards.sql` — функции `refresh_deal_shipment_totals`, `update_deal_additional_expenses`; триггеры `trg_shipment_refresh_deal` и `trg_update_deal_additional_expenses` разбиты на `*_ins_del` (безусловные) + `*_upd` (с WHEN).
+- **Type:** [FORMULA] (тела rollup-функций) + [BEHAVIOR] (условия срабатывания триггеров)
+- **Before → After:**
+  - `trg_shipment_refresh_deal`: AFTER INSERT OR UPDATE OR DELETE безусловно → UPDATE-ветка срабатывает только `WHEN (OLD.loading_volume|shipment_volume|shipped_tonnage_amount|deal_id IS DISTINCT FROM NEW.*)`; INSERT/DELETE без изменений.
+  - `trg_update_deal_additional_expenses`: AFTER INSERT OR UPDATE OR DELETE безусловно (00115) → UPDATE-ветка только `WHEN (OLD.additional_expenses|deal_id IS DISTINCT FROM NEW.*)`. WHEN сравнивает значения, а не SET-list — auto-compute из BEFORE-триггера 00113 ловится, баг 00112 не возвращается.
+  - `refresh_deal_shipment_totals()`: `UPDATE deals ... FROM (SELECT SUM ...)` + ветка `IF NOT FOUND → нули` → SUM в переменные + один UPDATE с guard'ом `AND (<поле> IS DISTINCT FROM <значение>)`; пустой реестр даёт нули через COALESCE (семантика сохранена). Сами формулы сумм НЕ менялись: `supplier_shipped_volume=SUM(loading)`, `buyer_shipped_volume=actual_shipped_volume=SUM(shipment)`, `invoice_amount=SUM(shipped_tonnage_amount)`.
+  - `update_deal_additional_expenses()`: `UPDATE deals SET additional_expenses_amount = v_sum` безусловно → `... AND additional_expenses_amount IS DISTINCT FROM v_sum`. Формула `SUM(additional_expenses)` не менялась.
+- **Client reason:** «canceling statement due to statement timeout» при быстром вводе № СФ (12:57 Алматы, 15–18 правок/мин по audit_log) — каждая правка любой ячейки реестра дважды безусловно переписывала строку deals; параллельные правки одной сделки сериализовались на её блокировке, хвост очереди превышал 8-секундный лимит Supabase и правка терялась.
+- **Rebuild impact:** DATA-MODEL/PRICING — правило для rebuild: rollup-триггеры реестра должны быть guarded (fire-on-change), иначе конкурентный ввод упирается в блокировку строки deals.
+
 ### 2026-07-16 — Detail-экспорт: дата СНТ только при своём тоннаже
 - **What changed:** `src/lib/exports/passport-detail-excel.ts` — колонки «Дата вход. СНТ» / «Дата исход. СНТ» на под-строках.
 - **Type:** [EXPORT]
