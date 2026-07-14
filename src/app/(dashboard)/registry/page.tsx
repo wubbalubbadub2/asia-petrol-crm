@@ -90,14 +90,17 @@ function EC({ value, recId, field, onSaved, cls = "" }: { value: string | null |
   if (!ed) return <button onClick={() => { setLv(sh ?? ""); setEd(true); }} className={`w-full text-left text-[11px] hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] truncate ${cls}`}>{sh ?? ""}</button>;
   return <input autoFocus onFocus={(e) => e.currentTarget.select()} value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const nv = lv.trim() || null; if (nv !== (value ?? null)) { pv.current = nv; updateRegistryEntry(recId, { [field]: nv }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-full border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none" />;
 }
-function EN({ value, recId, field, onSaved }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void }) {
+function EN({ value, recId, field, onSaved, overrideField, overridden }: { value: number | null | undefined; recId: string; field: string; onSaved: () => void; overrideField?: string; overridden?: boolean | null }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<number | null | undefined>(undefined);
   const sh = pv.current !== undefined ? pv.current : value; if (pv.current !== undefined && value === pv.current) pv.current = undefined;
   // Volume fields render with the always-3-decimals formatter; everything
   // else (tariff/amount — money) с 2 знаками per client canon 2026-07-07.
   const isVol = field === "loading_volume" || field === "shipment_volume";
-  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} className="w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px]">{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
-  return <input autoFocus onFocus={(e) => e.currentTarget.select()} type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; updateRegistryEntry(recId, { [field]: n }).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
+  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} title={overrideField ? (overridden ? "Тариф введён вручную — справочник Тарифы эту строку не обновляет." : "Авто из справочника Тарифы. Введите значение, чтобы закрепить вручную.") : undefined} className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${overridden ? "italic text-amber-700" : ""}`}>{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
+  // Ручная правка помечает строку override-флагом (overrideField):
+  // propagation из справочника тарифов её больше не трогает. Очистка —
+  // тоже ручной ввод (клиент: «ручной ввод всегда приоритетнее»).
+  return <input autoFocus onFocus={(e) => e.currentTarget.select()} type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; const patch = overrideField ? { [field]: n, [overrideField]: true } : { [field]: n }; updateRegistryEntry(recId, patch as RegistryUpdate).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
 }
 function ED({ value, recId, field, onSaved }: { value: string | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<string | null | undefined>(undefined);
@@ -2100,7 +2103,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><EC value={r.waybill_number} recId={r.id} field="waybill_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.shipment_volume} recId={r.id} field="shipment_volume" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ED value={r.date} recId={r.id} field="date" onSaved={reload} /></td>
-                              <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" overrideField="railway_tariff_override" overridden={r.railway_tariff_override} onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ERound
                                   rawVolume={r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume}

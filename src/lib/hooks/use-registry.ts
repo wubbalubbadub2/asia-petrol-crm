@@ -54,6 +54,9 @@ export type ShipmentRecord = {
   // Клиент 2026-07-10: тариф от менеджера, только KZ. Формула
   // additional_expenses = ceil(loading_volume) × manager_tariff.
   manager_tariff?: number | null;
+  // Migration 00117 — TRUE = тариф введён вручную; propagation из
+  // справочника tariffs эту строку не обновляет.
+  railway_tariff_override?: boolean | null;
   created_at: string;
   // Joined — only `deal` is still embedded; deal_code / currency / year /
   // month aren't in the global refs cache and the per-row cost is
@@ -83,7 +86,7 @@ const REG_SELECT = `
   fuel_type_id, deal_id, factory_id, supplier_id, forwarder_id,
   buyer_id, company_group_id,
   shipment_month, additional_month,
-  railway_tariff, rounded_tonnage_from_forwarder,
+  railway_tariff, railway_tariff_override, rounded_tonnage_from_forwarder,
   shipped_tonnage_amount, shipped_tonnage_amount_override,
   rounded_volume_override, round_volume,
   supplier_appendix, buyer_appendix,
@@ -278,6 +281,7 @@ export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   additional_expenses?: number | null;
   additional_expenses_override?: boolean | null;
   manager_tariff?: number | null;
+  railway_tariff_override?: boolean | null;
 };
 
 export async function createRegistryEntry(values: RegistryInsert) {

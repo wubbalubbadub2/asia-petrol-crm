@@ -26,6 +26,18 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-18 — 00117: тариф из справочника автоматически обновляет реестр
+- **What changed:** migration `00117_tariff_propagation.sql` — колонка `shipment_registry.railway_tariff_override BOOLEAN NOT NULL DEFAULT FALSE`, функция `propagate_tariff_to_registry()`, триггеры `trg_propagate_tariff_ins/upd` на `tariffs`, catch-up по всем тарифам; frontend `registry/page.tsx` (EN-ячейка «Тариф (логисты)» ставит override при ручной правке, курсив при override), `use-registry.ts` (тип + REG_SELECT + RegistryUpdate).
+- **Type:** [SCHEMA] + [BEHAVIOR] + [UI-FIELD]
+- **Before → After:**
+  - Раньше: lookup тарифа только при вставке строки реестра (UI) и разовыми backfill'ами (00047); изменение ставки в справочнике Тарифы реестр не трогало.
+  - Теперь: INSERT тарифа или изменение `planned_tariff` → UPDATE всех строк реестра c совпадением по ключу 00047 (departure + destination + fuel + forwarder + month с fallback'ом на поля сделки + год сделки), КРОМЕ строк с `railway_tariff_override = TRUE`. Обнуление ставки в справочнике реестр не трогает (защита от массового стирания).
+  - Ручная правка ячейки «Тариф (логисты)» в реестре (включая очистку) ставит `railway_tariff_override = TRUE` — строка выходит из-под propagation (семантика как у `shipped_tonnage_amount_override`: «ручной ввод всегда приоритетнее»). Отображение: курсив + amber, tooltip.
+  - Пересчёт сумм — существующей цепочкой (compute_registry_amount + guarded rollups 00116).
+  - Catch-up в миграции выравнивает уже разъехавшиеся строки (пример клиента: KG/26/270 держал 78.71 при 76.00 в справочнике).
+- **Client reason:** «when users change the тариф, in the registry тариф (логисты) does not change, but it should always get the updated тариф, unless it wasn't updated manually in registry» (2026-07-18).
+- **Rebuild impact:** DATA-MODEL (новая колонка + правило propagation), PRICING (тариф → суммы строк пересчитываются), FIELD-OWNERSHIP (тариф строки: справочник владеет до ручного override). ⚠ У строк с ручным тарифом, введённым ДО миграции, флага нет — catch-up выровнял их по справочнику (отличить задним числом невозможно, правило клиента — справочник главный).
+
 ### 2026-07-16 — 00116: WHEN-guards на rollup-триггеры реестра (statement timeout)
 - **What changed:** migration `00116_registry_rollup_when_guards.sql` — функции `refresh_deal_shipment_totals`, `update_deal_additional_expenses`; триггеры `trg_shipment_refresh_deal` и `trg_update_deal_additional_expenses` разбиты на `*_ins_del` (безусловные) + `*_upd` (с WHEN).
 - **Type:** [FORMULA] (тела rollup-функций) + [BEHAVIOR] (условия срабатывания триггеров)
