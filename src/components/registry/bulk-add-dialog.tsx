@@ -286,6 +286,8 @@ export function BulkAddDialog({
       shipment_volume: dupShipment ? p.volume : (volumeTarget === "ship" ? p.volume : null),
       loading_volume:  dupShipment ? p.volume : (volumeTarget === "load" ? p.volume : null),
       date: p.date ?? date ?? null,
+      // Дата входящего СНТ (00119) — наследует дату строки при записи налива.
+      loading_date: (dupShipment || volumeTarget === "load") ? (p.date ?? date ?? null) : null,
       waybill_number: p.waybill || null,
       invoice_number: invoiceNum || null,
       comment: bulkComment || null,

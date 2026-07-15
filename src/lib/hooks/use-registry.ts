@@ -57,6 +57,9 @@ export type ShipmentRecord = {
   // Migration 00117 — TRUE = тариф введён вручную; propagation из
   // справочника tariffs эту строку не обновляет.
   railway_tariff_override?: boolean | null;
+  // Migration 00119 — дата входящего СНТ. `date` — дата исходящего СНТ
+  // (клиент 2026-07-15: у каждого СНТ своя колонка с датой).
+  loading_date?: string | null;
   created_at: string;
   // Joined — only `deal` is still embedded; deal_code / currency / year /
   // month aren't in the global refs cache and the per-row cost is
@@ -83,7 +86,7 @@ export type ShipmentRecord = {
 // saving ~8 sub-selects × N rows of wire payload + JSON parse per
 // chunk.
 const REG_SELECT = `
-  id, registry_type, row_number, quarter, month, date,
+  id, registry_type, row_number, quarter, month, date, loading_date,
   waybill_number, wagon_number, shipment_volume, loading_volume,
   destination_station_id, departure_station_id,
   fuel_type_id, deal_id, factory_id, supplier_id, forwarder_id,
@@ -272,6 +275,7 @@ import { invalidateAllDealsLists, invalidateDeal } from "./use-deals";
 type RegistryInsert = TablesInsert<"shipment_registry"> & {
   supplier_appendix?: string | null;
   buyer_appendix?: string | null;
+  loading_date?: string | null;
 };
 // Override field is post-migration-00050; types here may run ahead of the
 // generated database.ts until `npm run types:db` is rerun.
@@ -285,6 +289,7 @@ export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   additional_expenses_override?: boolean | null;
   manager_tariff?: number | null;
   railway_tariff_override?: boolean | null;
+  loading_date?: string | null;
 };
 
 export async function createRegistryEntry(values: RegistryInsert) {

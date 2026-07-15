@@ -513,6 +513,8 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       wagon_number: w, shipment_volume: parseFloat(v),
       waybill_number: wb || null,
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
+      // 00119: дата входящего СНТ — своя колонка; наследует дату строки при записи налива.
+      loading_date: lv ? (dt || null) : null,
       currency: curOverride || null, comment: cm || null,
       supplier_line_id: supLineMatch?.id ?? null,
       buyer_line_id: buyLineMatch?.id ?? null,
@@ -851,6 +853,9 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
       shipment_volume: dupShipment ? p.volume : (volumeTarget === "ship" ? p.volume : null),
       loading_volume:  dupShipment ? p.volume : (volumeTarget === "load" ? p.volume : null),
       date: p.date || null,
+      // Дата входящего СНТ (00119) — своя колонка; при вставке
+      // наследует дату строки, если пишется налив.
+      loading_date: (dupShipment || volumeTarget === "load") ? (p.date || null) : null,
       waybill_number: p.waybill || null,
       supplier_line_id: supplierLineId || null,
       buyer_line_id: buyerLineId || null,
@@ -1973,6 +1978,7 @@ export default function RegistryPage() {
                             </span>
                           </th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="loading_volume — supplier-side. Operator 2026-06-26: Входящее СНТ = поставщик (SUM(loading_volume) = supplier_shipped_volume per 00044).">Входящее СНТ</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]" title="loading_date — дата входящего СНТ (клиент 2026-07-15: у каждого СНТ своя дата).">дата вход. СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">
                             <span className="inline-flex items-center gap-1">
                               Плательщик ж/д тарифа
@@ -2009,7 +2015,7 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">№ вагона</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">№ ЖД накл.</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="shipment_volume — buyer-side. Operator 2026-06-26: Исходящее СНТ = покупатель (SUM(shipment_volume) = buyer_shipped_volume per 00044).">Исходящее СНТ</th>
-                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]">дата отгр.</th>
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]" title="date — дата исходящего СНТ (бывш. «дата отгр.»).">дата исход. СНТ</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]" title="Тариф логистов (railway_tariff). Умножается на округл. базу → «Сумма».">Тариф (логисты)</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
@@ -2098,6 +2104,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={(r.factory_id && factoryLabels.get(r.factory_id)) || ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.supplier_id} displayLabel={(r.supplier_id && supplierLabels.get(r.supplier_id)) || ""} recId={r.id} field="supplier_id" options={supplierOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5"><ED value={r.loading_date} recId={r.id} field="loading_date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={(r.company_group_id && cgLabels.get(r.company_group_id)) || ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={(r.buyer_id && buyerLabels.get(r.buyer_id)) || ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.forwarder_id} displayLabel={(r.forwarder_id && forwarderLabels.get(r.forwarder_id)) || ""} recId={r.id} field="forwarder_id" options={fwOpts} onSaved={reload} className="text-stone-500" /></td>

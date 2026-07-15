@@ -26,6 +26,16 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-15 — 00119: раздельные даты входящего и исходящего СНТ в реестре
+- **What changed:** migration `00119_loading_date.sql` — колонка `shipment_registry.loading_date DATE` + backfill; `use-registry.ts` (тип, REG_SELECT, RegistryInsert/Update); `registry/page.tsx` (новая колонка «дата вход. СНТ» после «Входящее СНТ», «дата отгр.» переименована в «дата исход. СНТ», оба диалога добавления пишут loading_date при записи налива); `bulk-add-dialog.tsx` (то же); `registry-excel.ts` (FULL: +«Дата вход. СНТ», «Дата отгр.» → «Дата исход. СНТ»; PTS не тронут — фикс. формат экспедитора); `passport-detail-excel.ts` («Дата вход. СНТ» теперь из loading_date).
+- **Type:** [SCHEMA] + [UI-FIELD] + [EXPORT]
+- **Before → After:**
+  - Была одна дата на строку (`date`, «дата отгр.») → теперь `date` = дата исходящего СНТ (semantics не менялась — на ней resolve_shipment_year_month, autoprice, сортировка), `loading_date` = дата входящего СНТ.
+  - Backfill: `loading_date = date` там, где заполнен налив (`loading_volume IS NOT NULL`) — ровно то, что detail-экспорт уже показывал как «Дата вход. СНТ». Audit/activity триггеры заглушены на время backfill.
+  - Вставка строк (одиночная + оба «Массово»): `loading_date` наследует дату строки, когда пишется налив (`volumeTarget=load` или «Продублировать отгрузку»).
+- **Client reason:** «давай в реестре разделим даты входящего и исходящего СНТ. У каждого будет своя колонка с датой» (2026-07-15).
+- **Rebuild impact:** DATA-MODEL (новая колонка + правило: date=исходящее, loading_date=входящее); EXPORT-LAYOUTS.
+
 ### 2026-07-19 — Паспорт: редактирование оплат прямо в попапе колонки «Оплата»
 - **What changed:** `src/components/deals/passport-table.tsx` — `PaymentBreakdownCell`: статичный текстовый список оплат заменён на редактируемые строки (новый компонент `PaymentEditRow`), добавлены `patchPayment` / `deletePayment` / `addPayment`.
 - **Type:** [UI-FIELD]

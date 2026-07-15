@@ -38,6 +38,7 @@ type DetailShipment = {
   deal_id: string;
   registry_type: "KG" | "KZ" | null;
   date: string | null;
+  loading_date: string | null;
   loading_volume: number | null;
   shipment_volume: number | null;
   shipped_tonnage_amount: number | null;
@@ -141,9 +142,9 @@ const COLUMNS: Column[] = [
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
   { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price, readShip: (d) => d.supplier_price },
   { key: "supplier_shipped_volume", header: "Отгр., т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.loading_volume },
-  // Дата только при наличии своего тоннажа (клиент 2026-07-16, KG/26/487:
-  // «если нет числа во входящем или исходящем СНТ — дату не проставляем»).
-  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.loading_volume != null ? s.date ?? "" : "") },
+  // С 00119 дата входящего СНТ — собственная колонка loading_date
+  // (правило «дата только при своём тоннаже» теперь живёт в данных).
+  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => s.loading_date ?? "" },
   // Per-wagon shipped amount mirrors the client's template formula
   // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
   { key: "supplier_shipped_amount", header: "Отгр. сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount, readShip: (d, s) => d.supplier_price != null && s.loading_volume != null ? d.supplier_price * s.loading_volume : null },
@@ -279,7 +280,7 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
   const results = await Promise.all(chunks.map((ids) =>
     sb
       .from("shipment_registry")
-      .select("deal_id, registry_type, date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix")
+      .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix")
       .in("deal_id", ids)
       .order("date", { ascending: true }),
   ));

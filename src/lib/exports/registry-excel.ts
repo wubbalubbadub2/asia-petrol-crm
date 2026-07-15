@@ -114,6 +114,7 @@ const COLUMNS_FULL: Column[] = [
   { key: "factory",             header: "Завод",            width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
   { key: "supplier",            header: "Поставщик",        width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
   { key: "loading_volume",      header: "Входящее СНТ, т",  width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
+  { key: "loading_date",        header: "Дата вход. СНТ",   width: 12, read: (r) => r.loading_date ?? "" },
   { key: "buyer",               header: "Покупатель",       width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
   // Клиент 2026-07-08: 3 колонки цепочки групп компании между
   // «Покупатель» и «Плательщик ж/д тарифа». Всегда 3 колонки, даже
@@ -126,7 +127,7 @@ const COLUMNS_FULL: Column[] = [
   { key: "wagon_number",        header: "№ вагона",         width: 14, read: (r) => r.wagon_number ?? "" },
   { key: "waybill_number",      header: "№ ЖД накл.",       width: 16, read: (r) => r.waybill_number ?? "" },
   { key: "shipment_volume",     header: "Исходящее СНТ, т", width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.shipment_volume },
-  { key: "date",                header: "Дата отгр.",       width: 12, read: (r) => r.date ?? "" },
+  { key: "date",                header: "Дата исход. СНТ",  width: 12, read: (r) => r.date ?? "" },
   { key: "railway_tariff",      header: "Тариф (логисты)",  width: 14, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.railway_tariff },
   { key: "rounded_tonnage",     header: "Округл. тоннаж",   width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedTonnage(r) },
   { key: "shipped_amount",      header: "Сумма",            width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
