@@ -100,10 +100,13 @@ const VOLUME_FIELDS_BY_LABEL = new Set([
   "Объем плановый", "Факт объем",
 ]);
 
-function Field({ label, value, suffix, editing, field, dealId, inputType, onSaved }: {
+function Field({ label, value, suffix, editing, field, dealId, inputType, onSaved, extraPatch }: {
   label: string; value: string | number | null | undefined; suffix?: string;
   editing?: boolean; field?: string; dealId?: string; onSaved?: () => void;
   inputType?: "text" | "number" | "date";
+  // Доп. поля, дописываемые в PATCH при ручной правке — напр. override-флаг
+  // («Тариф факт» 00120: ручной ввод закрепляет значение от авто-расчёта).
+  extraPatch?: Record<string, boolean>;
 }) {
   const isVolume = VOLUME_FIELDS_BY_LABEL.has(label);
   const ctxReload = useDealReload();
@@ -165,7 +168,7 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
             if (newVal !== value) {
               pendingVal.current = newVal as string | number | null;
               forceRender((n) => n + 1);
-              updateDeal(dealId, { [field]: newVal })
+              updateDeal(dealId, { [field]: newVal, ...(extraPatch ?? {}) })
                 .then(() => {
                   onSaved?.();
                   ctxReload?.();
@@ -1015,7 +1018,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               options={MONTHS_RU.map((m) => ({ value: m, label: m }))}
             />
             <Field label="Тариф план" value={deal.planned_tariff} suffix={logisticsCurrencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
-            <Field label="Тариф факт" value={deal.actual_tariff} suffix={logisticsCurrencySymbol} editing={editing} field="actual_tariff" dealId={deal.id} inputType="number" />
+            <Field label="Тариф факт" value={deal.actual_tariff} suffix={`${logisticsCurrencySymbol} (авто: Сумма ÷ СНТ)`} editing={editing} field="actual_tariff" dealId={deal.id} inputType="number" extraPatch={{ actual_tariff_override: true }} />
+            <Field label="Тариф факт (грузоотпр.)" value={deal.shipper_actual_tariff} suffix={`${logisticsCurrencySymbol} (авто: Сумма грузоотпр. ÷ вход. СНТ)`} editing={editing} field="shipper_actual_tariff" dealId={deal.id} inputType="number" extraPatch={{ shipper_actual_tariff_override: true }} />
             <Field label="Объем плановый" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />

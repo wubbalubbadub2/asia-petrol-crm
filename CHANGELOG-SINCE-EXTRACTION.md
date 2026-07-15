@@ -26,6 +26,19 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-15 — 00120: два фактических тарифа (авто из реестра) + автоподстановка «Объем план»
+- **What changed:** migration `00120_actual_tariffs.sql` (колонки `deals.actual_tariff_override`, `deals.shipper_actual_tariff`, `deals.shipper_actual_tariff_override`; `compute_deal_derived_fields` расширена; backfill-пересчёт всех сделок); `use-deals.ts` (тип + LIST_SELECT); `passport-table.tsx` (2 новые колонки, EditableNumCell с override, totals); `deals/[id]/page.tsx` (Field с extraPatch, «Тариф факт» с override + новое поле «Тариф факт (грузоотпр.)»); `deals/new/page.tsx` («Объем план» преинициализируется объемом поставщика).
+- **Type:** [FORMULA] + [SCHEMA] + [UI-FIELD]
+- **Before → After:**
+  - `deals.actual_tariff`: ручное поле → авто-расчёт в `compute_deal_derived_fields`: `invoice_amount ÷ базовый объем СНТ` (KZ → `supplier_shipped_volume` = SUM входящего, KG/прочие → `actual_shipped_volume` = SUM исходящего); NULL если суммы/объема нет. Ручная правка ставит `actual_tariff_override = TRUE` — авто-расчёт поле не трогает. ⚠ Прошлые ручные значения перетёрты backfill'ом (у них override=FALSE; правило клиента «факт всегда с реестра»).
+  - Новое `deals.shipper_actual_tariff` («Тариф факт грузоотпр.»): `additional_expenses_amount ÷ supplier_shipped_volume` (входящее СНТ), тот же override-паттерн.
+  - Паспорт: колонка «Тариф факт» между «Предв. сумма» и «Факт объем»; колонка «Тариф факт (грузоотпр.)» между «Сумма» и «Сумма грузоотпр.». Обе editable-with-override (курсив+amber при ручном вводе), в Итого — пусто (ставки не суммируются).
+  - Сделка (Логистика): «Тариф факт» теперь авто с override; новое поле «Тариф факт (грузоотпр.)».
+  - Форма создания: «Объем план» подставляется из «Объем, т» поставщика, пока логист не ввёл своё (вариант «б», подтверждён).
+  - Detail-экспорт «жд тариф факт» автоматически стал расчётным (читал `actual_tariff`).
+- **Client reason:** «Тариф фактический берётся с реестра: итоговая сумма делённая на объем входящего/исходящего СНТ… считается автоматом и может меняться вручную… в сделке в разделе логистика нужно добавить второй тариф факт… Объем план исходит от объема поставщика по договору» (2026-07-15).
+- **Rebuild impact:** PRICING (новая формула фактических тарифов), DATA-MODEL (3 новые колонки), FIELD-OWNERSHIP (actual_tariff: авто до override; preliminary_tonnage: prefill от supplier volume).
+
 ### 2026-07-15 — 00119: раздельные даты входящего и исходящего СНТ в реестре
 - **What changed:** migration `00119_loading_date.sql` — колонка `shipment_registry.loading_date DATE` + backfill; `use-registry.ts` (тип, REG_SELECT, RegistryInsert/Update); `registry/page.tsx` (новая колонка «дата вход. СНТ» после «Входящее СНТ», «дата отгр.» переименована в «дата исход. СНТ», оба диалога добавления пишут loading_date при записи налива); `bulk-add-dialog.tsx` (то же); `registry-excel.ts` (FULL: +«Дата вход. СНТ», «Дата отгр.» → «Дата исход. СНТ»; PTS не тронут — фикс. формат экспедитора); `passport-detail-excel.ts` («Дата вход. СНТ» теперь из loading_date).
 - **Type:** [SCHEMA] + [UI-FIELD] + [EXPORT]

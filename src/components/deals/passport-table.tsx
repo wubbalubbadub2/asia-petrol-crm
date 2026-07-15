@@ -519,8 +519,11 @@ const VOLUME_FIELDS = new Set([
   "preliminary_tonnage", "actual_shipped_volume", "invoice_volume",
 ]);
 
-function EditableNumCell({ value, dealId, field }: {
+function EditableNumCell({ value, dealId, field, overrideField, overridden }: {
   value: number | null | undefined; dealId: string; field: string;
+  // 00120: ручная правка авто-вычисляемого поля закрепляет значение —
+  // в PATCH дописывается override-флаг, отображение курсив+amber.
+  overrideField?: string; overridden?: boolean | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
@@ -530,14 +533,15 @@ function EditableNumCell({ value, dealId, field }: {
   const isVol = VOLUME_FIELDS.has(field);
   if (!editing) return (
     <button onClick={() => { setLocalVal(shown?.toString() ?? ""); setEditing(true); }}
-      className="w-full text-right font-mono text-[12px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px]">
+      title={overrideField ? (overridden ? "Введено вручную — авто-расчёт не трогает." : "Авто-расчёт. Введите значение, чтобы закрепить вручную.") : undefined}
+      className={`w-full text-right font-mono text-[12px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px] ${overridden ? "italic text-amber-700" : ""}`}>
       {isVol ? formatVol(shown) : formatNum(shown)}
     </button>
   );
   return (
     <input autoFocus type="number" step={isVol ? "0.001" : "0.01"} value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
-      onBlur={() => { setEditing(false); const num = parseNum(localVal); if (num !== value) { pendingVal.current = num; updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; }); } }}
+      onBlur={() => { setEditing(false); const num = parseNum(localVal); if (num !== value) { pendingVal.current = num; const patch = overrideField ? { [field]: num, [overrideField]: true } : { [field]: num }; updateDeal(dealId, patch).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
       className="w-16 border border-amber-300 rounded px-1 py-0 text-[12px] font-mono text-right bg-amber-50/50 focus:outline-none focus:border-amber-500" />
   );
@@ -1062,6 +1066,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
         data-col="preliminary_amount" data-deal-id={deal.id}
         data-value={deal.preliminary_amount ?? undefined}
       >{formatComputedNum(deal.preliminary_amount)}</td>
+      {/* Тариф факт (логисты) — 00120: авто = Сумма ÷ объем СНТ; ручная
+          правка закрепляет (actual_tariff_override). */}
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="actual_tariff" data-deal-id={deal.id}
+        data-value={deal.actual_tariff ?? undefined}
+      ><EditableNumCell value={deal.actual_tariff} dealId={deal.id} field="actual_tariff" overrideField="actual_tariff_override" overridden={deal.actual_tariff_override} /></td>
       <VolumeBreakdownCell
         dealId={deal.id}
         value={deal.actual_shipped_volume}
@@ -1087,6 +1098,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       >
         <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
       </td>
+      {/* Тариф факт (грузоотпр.) — 00120: авто = Сумма грузоотпр. ÷
+          входящее СНТ; ручная правка закрепляет. */}
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="shipper_actual_tariff" data-deal-id={deal.id}
+        data-value={deal.shipper_actual_tariff ?? undefined}
+      ><EditableNumCell value={deal.shipper_actual_tariff} dealId={deal.id} field="shipper_actual_tariff" overrideField="shipper_actual_tariff_override" overridden={deal.shipper_actual_tariff_override} /></td>
       <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
         title="Сумма грузоотправителя = SUM(shipment_registry.additional_expenses)."
@@ -1169,6 +1187,8 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   buyer_payment:              { label: "Оплата (Покупатель)",         decimals: 2 },
   buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
   planned_tariff:             { label: "Тариф",                       decimals: 2 },
+  actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 2 },
+  shipper_actual_tariff:      { label: "Тариф факт грузоотпр.",       decimals: 2 },
   preliminary_tonnage:        { label: "Объем план (Логистика)",      decimals: 3 },
   preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 2 },
   actual_shipped_volume:      { label: "Факт объем (Логистика)",      decimals: 3 },
@@ -1470,7 +1490,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>
               <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>
               <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>
-              <th colSpan={10} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
+              <th colSpan={12} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
             </tr>
             <tr className="border-b">
               <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">№</th>
@@ -1511,8 +1531,10 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Тариф</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Объем план</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Предв. сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#d9d9d9]" title="Тариф факт (логисты) = Сумма ÷ объем СНТ (KZ — входящее, KG — исходящее). Авто; ручной ввод закрепляет.">Тариф факт</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Факт объем</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#d9d9d9]" title="Тариф факт (грузоотпр.) = Сумма грузоотправителя ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф факт (грузоотпр.)</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="Сумма грузоотправителя = SUM(additional_expenses) из реестра. Если галочка «Грузоотправитель в цене» — плюсует к балансу поставщика.">Сумма грузоотпр.</th>
               <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
               <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-[#d9d9d9]"></th>
@@ -1706,14 +1728,16 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
       {num("blue", sum((d) => d.buyer_shipped_amount))}
       {num("blue", sum((d) => d.buyer_payment))}
       {num("blue", sum((d) => d.buyer_debt))}
-      {/* Логистика (10 cols): expeditor / group / tariff blank-cells,
-          then summable numbers, plus Сумма грузоотправителя (rollup)
-          и Коммерция+spacer в конце. */}
+      {/* Логистика (12 cols): expeditor / group / tariff blank-cells,
+          затем суммируемые числа. Оба «Тариф факт» (00120) — ставки,
+          не суммы: blank. Коммерция+spacer в конце. */}
       {blank("stone")}{blank("stone")}{blank("stone")}
       {num("stone", sum((d) => d.preliminary_tonnage), 3)}
       {num("stone", sum((d) => d.preliminary_amount))}
+      {blank("stone")}
       {num("stone", sum((d) => d.actual_shipped_volume), 3)}
       {num("stone", sum((d) => d.invoice_amount))}
+      {blank("stone")}
       {num("stone", sum((d) => d.additional_expenses_amount))}
       {blank("stone")}{blank("stone")}
     </tr>

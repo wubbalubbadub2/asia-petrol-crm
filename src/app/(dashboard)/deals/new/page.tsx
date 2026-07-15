@@ -95,7 +95,11 @@ export default function NewDealPage() {
   // Supplier scalars (one per side)
   const [supplierId, setSupplierId] = useState("");
   const [supplierContract, setSupplierContract] = useState("");
-  const [supplierVolume, setSupplierVolume] = useState("");
+  const [supplierVolume, setSupplierVolumeRaw] = useState("");
+  const setSupplierVolume = (v: string) => {
+    setSupplierVolumeRaw(v);
+    if (!preliminaryTonnageTouched) setPreliminaryTonnageRaw(v);
+  };
   const [supplierVariants, setSupplierVariants] = useState<VariantDraft[]>([{ ...EMPTY_VARIANT }]);
 
   // Buyer scalars (one per side)
@@ -153,7 +157,12 @@ export default function NewDealPage() {
   const [forwarderId, setForwarderId] = useState("");
   const [logisticsCompanyGroupId, setLogisticsCompanyGroupId] = useState("");
   const [plannedTariff, setPlannedTariff] = useState("");
-  const [preliminaryTonnage, setPreliminaryTonnage] = useState("");
+  // «Объем план исходит от объема поставщика по договору» (клиент
+  // 2026-07-15, вариант «б»): подставляется как начальное значение и
+  // следует за объемом поставщика, пока логист не ввёл своё.
+  const [preliminaryTonnage, setPreliminaryTonnageRaw] = useState("");
+  const [preliminaryTonnageTouched, setPreliminaryTonnageTouched] = useState(false);
+  const setPreliminaryTonnage = (v: string) => { setPreliminaryTonnageTouched(true); setPreliminaryTonnageRaw(v); };
   // Логистика: месяц отгрузки. Когда задан — tariff lookup идёт за
   // этот месяц, а не за месяц создания сделки (migration 00069).
   const [logisticsShipmentMonth, setLogisticsShipmentMonth] = useState("");

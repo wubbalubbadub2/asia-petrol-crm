@@ -61,6 +61,12 @@ export type Deal = {
   preliminary_tonnage: number | null;
   preliminary_amount: number | null;
   actual_tariff: number | null;
+  // 00120: тариф факт считается автоматом (Сумма ÷ объем СНТ); override
+  // закрепляет ручной ввод. shipper_actual_tariff — тариф факт
+  // грузоотправителя (Сумма грузоотпр. ÷ входящее СНТ).
+  actual_tariff_override?: boolean | null;
+  shipper_actual_tariff?: number | null;
+  shipper_actual_tariff_override?: boolean | null;
   actual_shipped_volume: number | null;
   invoice_volume: number | null;
   invoice_amount: number | null;
@@ -297,6 +303,7 @@ const LIST_SELECT = `
   buyer_destination_station_id, supplier_departure_station_id,
   forwarder_id, logistics_company_group_id, logistics_shipment_month,
   preliminary_tonnage, preliminary_amount, planned_tariff, actual_tariff,
+  actual_tariff_override, shipper_actual_tariff, shipper_actual_tariff_override,
   actual_shipped_volume, invoice_amount, invoice_volume,
   additional_expenses_amount, additional_expenses_in_price,
   logistics_currency, currency, is_archived, is_draft, created_at,
