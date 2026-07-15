@@ -249,7 +249,9 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     const totalRowIdx = records.length + 3;
     const totalRow = ws.getRow(totalRowIdx);
     totalRow.height = 22;
-    const TOTAL_KEYS = new Set(["shipment_volume", "rounded_tonnage", "shipped_amount"]);
+    // Клиент 2026-07-15: «итоги не появились» — входящее СНТ и сумма
+    // грузоотправителя не суммировались. Тарифы — ставки, не суммируем.
+    const TOTAL_KEYS = new Set(["shipment_volume", "loading_volume", "rounded_tonnage", "shipped_amount", "additional_expenses"]);
     columns.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };

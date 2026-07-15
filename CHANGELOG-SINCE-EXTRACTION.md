@@ -26,6 +26,15 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-15 — Итоги в реестре: sticky-бар внизу экрана + полные суммы в Excel
+- **What changed:** `registry/page.tsx` (`grandTotals` useMemo + sticky-бар внизу страницы), `registry-excel.ts` (TOTAL_KEYS).
+- **Type:** [PRESENTATION]
+- **Before → After:**
+  - Экран: итогов внизу не было (только в шапке каждой группы) → sticky-бар внизу вьюпорта с суммами по всей отфильтрованной выборке: Входящее СНТ, Исходящее СНТ, Округл (та же логика, что ячейка: override → CEIL при round_volume → raw, база по табу), Сумма и Сумма грузоотправителя — деньги группируются по валюте («1 234,00 $ · 567,00 ₸» при смешанной выборке).
+  - Excel «Итого»: суммировались только исходящее СНТ/округл/сумма → добавлены Входящее СНТ (`loading_volume`) и Сумма грузоотправителя (`additional_expenses`). Тарифы не суммируются (ставки).
+- **Client reason:** «итоги не появились внизу в реестре» (2026-07-15).
+- **Rebuild impact:** presentation only.
+
 ### 2026-07-15 — 00120: два фактических тарифа (авто из реестра) + автоподстановка «Объем план»
 - **What changed:** migration `00120_actual_tariffs.sql` (колонки `deals.actual_tariff_override`, `deals.shipper_actual_tariff`, `deals.shipper_actual_tariff_override`; `compute_deal_derived_fields` расширена; backfill-пересчёт всех сделок); `use-deals.ts` (тип + LIST_SELECT); `passport-table.tsx` (2 новые колонки, EditableNumCell с override, totals); `deals/[id]/page.tsx` (Field с extraPatch, «Тариф факт» с override + новое поле «Тариф факт (грузоотпр.)»); `deals/new/page.tsx` («Объем план» преинициализируется объемом поставщика).
 - **Type:** [FORMULA] + [SCHEMA] + [UI-FIELD]
