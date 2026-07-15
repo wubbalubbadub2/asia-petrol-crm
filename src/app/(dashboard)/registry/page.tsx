@@ -204,6 +204,50 @@ function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
 // Ручной ввод = override=true и всегда переопределяет авто-расчёт.
 // Очистка (пустой инпут) = override=false → триггер либо
 // пересчитает, либо оставит NULL (если базы или тарифа нет).
+// Итоговая строка группы-сделки — последняя строка таблицы (клиент
+// 2026-07-15). Колонки повторяют скелет строки записи: суммируются
+// Входящее/Исходящее СНТ, округл (по логике ERound), сумма и сумма
+// грузоотправителя; остальные ячейки пустые. Деньги — по валюте
+// (внутри сделки валюта обычно одна; при смеси перечисляем).
+function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg" | "kz" }) {
+  let loading = 0, shipment = 0, rounded = 0;
+  const amountByCur = new Map<string, number>();
+  const shipperByCur = new Map<string, number>();
+  for (const r of records) {
+    loading += r.loading_volume ?? 0;
+    shipment += r.shipment_volume ?? 0;
+    const raw = r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume;
+    const rr = r.rounded_volume_override != null
+      ? r.rounded_volume_override
+      : (raw == null ? null : (r.round_volume !== false ? Math.ceil(raw) : raw));
+    rounded += rr ?? 0;
+    const cur = currencyFor(r, tab);
+    if (r.shipped_tonnage_amount != null) amountByCur.set(cur, (amountByCur.get(cur) ?? 0) + r.shipped_tonnage_amount);
+    if (r.additional_expenses != null) shipperByCur.set(cur, (shipperByCur.get(cur) ?? 0) + r.additional_expenses);
+  }
+  const fmtByCur = (m: Map<string, number>) =>
+    [...m.entries()].map(([c, v]) => `${fmtMoney(v)} ${c}`).join(" · ");
+  const num = "border-r px-1 py-1 text-right font-mono text-[11px] tabular-nums font-semibold";
+  return (
+    <tr className="bg-amber-50 border-t-2 border-amber-400">
+      {/* checkbox..поставщик (7 колонок) */}
+      <td colSpan={7} className="border-r px-2 py-1 text-[11px] font-semibold text-stone-600">Итого · {records.length} отгр.</td>
+      <td className={num}>{fmtVol(loading)}</td>
+      {/* дата вход. СНТ + Плательщик + покупатель + экспедитор + вагон + накладная */}
+      <td colSpan={6} className="border-r" />
+      <td className={num}>{fmtVol(shipment)}</td>
+      {/* дата исход. СНТ + Тариф (логисты) */}
+      <td colSpan={2} className="border-r" />
+      <td className={num}>{fmtVol(rounded)}</td>
+      <td className={num}>{fmtByCur(amountByCur)}</td>
+      {tab === "kz" && <td className="border-r" />}
+      <td className={num}>{fmtByCur(shipperByCur)}</td>
+      {/* валюта + ст. назн. + ст. отпр. + прил. + № СФ + коммент + delete */}
+      <td colSpan={7} />
+    </tr>
+  );
+}
+
 function EAmount({ value, override, recId, onSaved, suffix = "" }: {
   value: number | null | undefined;
   override: boolean | null | undefined;
@@ -1553,30 +1597,6 @@ export default function RegistryPage() {
   const groups = groupRecs(filteredRecords, labelMaps);
   const toggle = (k: string) => setExpanded((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
 
-  // Итоги по всей отфильтрованной выборке — sticky-бар внизу страницы
-  // (клиент 2026-07-15: «итоги не появились внизу в реестре»). Деньги
-  // группируются по валюте (в выборке могут смешаться $ и ₸).
-  const grandTotals = useMemo(() => {
-    let loading = 0, shipment = 0, rounded = 0;
-    const amountByCur = new Map<string, number>();
-    const shipperByCur = new Map<string, number>();
-    for (const r of filteredRecords) {
-      loading += r.loading_volume ?? 0;
-      shipment += r.shipment_volume ?? 0;
-      // Та же логика, что в ERound: override → ceil при round_volume → raw.
-      const raw = tab === "kz" ? r.loading_volume : r.shipment_volume;
-      const rr = r.rounded_volume_override != null
-        ? r.rounded_volume_override
-        : (raw == null ? null : (r.round_volume !== false ? Math.ceil(raw) : raw));
-      rounded += rr ?? 0;
-      const cur = currencyFor(r, tab);
-      if (r.shipped_tonnage_amount != null) amountByCur.set(cur, (amountByCur.get(cur) ?? 0) + r.shipped_tonnage_amount);
-      if (r.additional_expenses != null) shipperByCur.set(cur, (shipperByCur.get(cur) ?? 0) + r.additional_expenses);
-    }
-    const fmtByCur = (m: Map<string, number>) =>
-      [...m.entries()].map(([c, v]) => `${fmtMoney(v)} ${c}`).join(" · ") || "—";
-    return { loading, shipment, rounded, amount: fmtByCur(amountByCur), shipper: fmtByCur(shipperByCur) };
-  }, [filteredRecords, tab]);
 
   // Deals dropdown — derived from the current tab's records so we only
   // list deals that actually have shipments here.
@@ -2205,6 +2225,10 @@ export default function RegistryPage() {
                           {addingIn === g.key && (
                             <InlineAdd dealId={g.dealId} group={g} regType={tab === "kg" ? "KG" : "KZ"} onDone={() => { reload(); setAddingIn(null); }} onCancel={() => setAddingIn(null)} />
                           )}
+                          {/* Итог по сделке — последняя строка группы
+                              (клиент 2026-07-15: «по каждой сделке внизу
+                              последней строкой», не общий итог). */}
+                          <GroupTotalsRow records={g.records} tab={tab} />
                         </tbody>
                       </table>
                     </DoubleScrollX>
@@ -2226,18 +2250,6 @@ export default function RegistryPage() {
           })}
         </div>
       }
-      {/* Итоги по отфильтрованной выборке — клиент 2026-07-15. Sticky к
-          низу вьюпорта, чтобы суммы были видны при любом скролле. */}
-      {filteredRecords.length > 0 && (
-        <div className="sticky bottom-0 z-30 mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-md border border-amber-200 bg-amber-50/95 px-3 py-2 text-[11px] text-stone-700 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] backdrop-blur-sm">
-          <span className="font-semibold">Итого · {filteredRecords.length} записей:</span>
-          <span>Входящее СНТ: <span className="font-mono tabular-nums font-medium">{fmtVol(grandTotals.loading)}</span> т</span>
-          <span>Исходящее СНТ: <span className="font-mono tabular-nums font-medium">{fmtVol(grandTotals.shipment)}</span> т</span>
-          <span>Округл: <span className="font-mono tabular-nums font-medium">{fmtVol(grandTotals.rounded)}</span> т</span>
-          <span>Сумма: <span className="font-mono tabular-nums font-medium">{grandTotals.amount}</span></span>
-          <span>Сумма грузоотпр.: <span className="font-mono tabular-nums font-medium">{grandTotals.shipper}</span></span>
-        </div>
-      )}
       <AddDialog
         open={showAdd}
         onClose={() => { setShowAdd(false); setAddMinimized(false); }}
