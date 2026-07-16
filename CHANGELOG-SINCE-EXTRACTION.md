@@ -26,6 +26,15 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-16 — Попап оплат: мгновенный Баланс + «Изменить итог» закрывает попап
+- **What changed:** `passport-table.tsx` — `PaymentBreakdownCell` получил проп `balance`; оптимистика переведена на `applyDealPatch` (кэш сделок патчится синхронно: оплата + баланс/долг одним патчем); локальный pending-механизм удалён; `startEdit` закрывает попап.
+- **Type:** [PRESENTATION]
+- **Before → After:**
+  - Баланс/Долг обновлялись через 1–2 с (ждали серверный rollup и refetch) → патчатся в кэш мгновенно вместе с оплатой: `Δбаланса = −Δоплаты` (supplier: баланс = отгружено − оплата + …), `Δдолга = +Δоплаты` (buyer: долг = оплата − отгружено). Серверная правда затем тихо замещает (значения совпадают).
+  - «Изменить итог» держал попап открытым во время ввода → попап закрывается сразу, ячейка уходит в inline-edit; сам «итог» тоже стал оптимистичным (оплата + баланс сразу, revert на ошибке).
+- **Client reason:** «when we click on изменить итог the modal should close… the sum field is updated immediately, but balance after 1-2 seconds» (2026-07-16).
+- **Rebuild impact:** presentation only; формулы Δ повторяют триггер `compute_deal_derived_fields` — при изменении формулы баланса в БД пересмотреть локальные дельты.
+
 ### 2026-07-16 — Попап оплат: оптимистичные правки (Excel-режим)
 - **What changed:** `passport-table.tsx` — `PaymentBreakdownCell`: `applyOptimistic`/`revertOptimistic`, client-side UUID для новых оплат, `pendingBase` ref для снятия оптимистичного итога при приходе серверного.
 - **Type:** [PRESENTATION]

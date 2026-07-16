@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2, ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal } from "@/lib/hooks/use-deals";
+import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
@@ -319,10 +319,13 @@ function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
 // keeps the inline-edit affordance discoverable (visible whenever the
 // popover is open).
 function PaymentBreakdownCell({
-  dealId, value, side, currency, className, dataCol, dataValue,
+  dealId, value, balance, side, currency, className, dataCol, dataValue,
 }: {
   dealId: string;
   value: number | null | undefined;
+  // Текущий Баланс (supplier) / Долг (buyer) — для мгновенного локального
+  // пересчёта при оптимистичной правке оплаты: Δбаланса = ∓Δоплаты.
+  balance: number | null | undefined;
   side: "supplier" | "buyer";
   currency: string;
   className?: string;
@@ -332,18 +335,10 @@ function PaymentBreakdownCell({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
-  const pendingVal = useRef<number | null | undefined>(undefined);
-  // Значение пропа на момент оптимистичной правки: как только проп
-  // изменился (fresh rollup от бэка приехал в список) — pending
-  // снимается, дальше живёт серверное значение. Без этого pending с
-  // приблизительным локальным итогом (SUM платежей без currency-фильтра
-  // rollup'а) мог бы залипнуть навсегда.
-  const pendingBase = useRef<number | null | undefined>(undefined);
-  const shown = pendingVal.current !== undefined ? pendingVal.current : value;
-  if (pendingVal.current !== undefined && (value === pendingVal.current || value !== pendingBase.current)) {
-    pendingVal.current = undefined;
-    pendingBase.current = undefined;
-  }
+  // Оптимистичность через applyDealPatch: кэш сделок мутируется сразу,
+  // проп value/balance приходит новым в этот же рендер — локальный
+  // pending-механизм не нужен.
+  const shown = value;
   const [payments, setPayments] = useState<PaymentSnap[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
@@ -393,14 +388,27 @@ function PaymentBreakdownCell({
   // оптимистичными.
   function applyOptimistic(next: PaymentSnap[]) {
     setPayments(next);
-    pendingBase.current = value;
-    pendingVal.current = next.reduce((s, p) => s + (p.amount ?? 0), 0);
+    const newTotal = next.reduce((s, p) => s + (p.amount ?? 0), 0);
+    const delta = newTotal - (value ?? 0);
+    // Оплата + Баланс/Долг патчатся в кэш сделок синхронно — обе ячейки
+    // строки обновляются в этот же рендер (клиент 2026-07-16: «баланс
+    // после 1-2 секунд» — ждал серверный rollup). Формулы триггера:
+    // supplier_balance = отгружено − оплата + … → Δбаланса = −Δоплаты;
+    // buyer_debt = оплата − отгружено → Δдолга = +Δоплаты.
+    if (side === "supplier") {
+      applyDealPatch(dealId, { supplier_payment: newTotal, supplier_balance: (balance ?? 0) - delta });
+    } else {
+      applyDealPatch(dealId, { buyer_payment: newTotal, buyer_debt: (balance ?? 0) + delta });
+    }
   }
 
-  function revertOptimistic(prev: PaymentSnap[] | null, message: string) {
+  function revertOptimistic(prev: PaymentSnap[] | null, prevValue: number | null | undefined, prevBalance: number | null | undefined, message: string) {
     setPayments(prev);
-    pendingVal.current = undefined;
-    pendingBase.current = undefined;
+    if (side === "supplier") {
+      applyDealPatch(dealId, { supplier_payment: prevValue ?? 0, supplier_balance: prevBalance ?? 0 });
+    } else {
+      applyDealPatch(dealId, { buyer_payment: prevValue ?? 0, buyer_debt: prevBalance ?? 0 });
+    }
     toast.error(`Оплата: ${message}`);
   }
 
@@ -410,21 +418,21 @@ function PaymentBreakdownCell({
   }
 
   async function patchPayment(id: string, patch: { amount?: number; payment_date?: string }) {
-    const prev = payments;
+    const prev = payments; const prevValue = value; const prevBalance = balance;
     applyOptimistic((prev ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").update(patch).eq("id", id);
-    if (error) { revertOptimistic(prev, error.message); return; }
+    if (error) { revertOptimistic(prev, prevValue, prevBalance, error.message); return; }
     syncCachesInBackground();
   }
 
   async function deletePayment(id: string) {
     if (!confirm("Удалить оплату?")) return;
-    const prev = payments;
+    const prev = payments; const prevValue = value; const prevBalance = balance;
     applyOptimistic((prev ?? []).filter((p) => p.id !== id));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").delete().eq("id", id);
-    if (error) { revertOptimistic(prev, error.message); return; }
+    if (error) { revertOptimistic(prev, prevValue, prevBalance, error.message); return; }
     syncCachesInBackground();
   }
 
@@ -433,7 +441,7 @@ function PaymentBreakdownCell({
     // редактируема, без ожидания серверного id.
     const id = crypto.randomUUID();
     const today = new Date().toISOString().slice(0, 10);
-    const prev = payments;
+    const prev = payments; const prevValue = value; const prevBalance = balance;
     applyOptimistic([
       ...(prev ?? []),
       { id, payment_date: today, amount: 0, currency: null, description: null, payment_type: "payment" },
@@ -447,27 +455,36 @@ function PaymentBreakdownCell({
       payment_date: today,
       payment_type: "payment",
     });
-    if (error) { revertOptimistic(prev, error.message); return; }
+    if (error) { revertOptimistic(prev, prevValue, prevBalance, error.message); return; }
     syncCachesInBackground();
   }
 
   function startEdit() {
     setLocalVal(shown?.toString() ?? "");
     setEditing(true);
-    // Don't close the popover — the user might want to glance at the
-    // breakdown while typing the summary value. It closes when they
-    // commit (Enter / blur) or hit Escape.
+    // Клиент 2026-07-16: «when we click on изменить итог the modal
+    // should close» — попап закрывается, ячейка уходит в inline-edit.
+    setOpen(false);
   }
 
   function commitEdit() {
     setEditing(false);
-    setOpen(false);
     const num = parseNum(localVal);
     if (num !== value) {
-      pendingVal.current = num;
-      pendingBase.current = value;
+      // Оптимистично: оплата + баланс патчатся сразу, запрос в фоне,
+      // откат при ошибке (updateDeal сам покажет toast).
+      const prevValue = value; const prevBalance = balance;
+      const delta = (num ?? 0) - (value ?? 0);
+      if (side === "supplier") {
+        applyDealPatch(dealId, { supplier_payment: num, supplier_balance: (balance ?? 0) - delta });
+      } else {
+        applyDealPatch(dealId, { buyer_payment: num, buyer_debt: (balance ?? 0) + delta });
+      }
       const field = side === "supplier" ? "supplier_payment" : "buyer_payment";
-      updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; pendingBase.current = undefined; });
+      updateDeal(dealId, { [field]: num }).catch(() => {
+        if (side === "supplier") applyDealPatch(dealId, { supplier_payment: prevValue ?? 0, supplier_balance: prevBalance ?? 0 });
+        else applyDealPatch(dealId, { buyer_payment: prevValue ?? 0, buyer_debt: prevBalance ?? 0 });
+      });
     }
   }
 
@@ -961,6 +978,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       <PaymentBreakdownCell
         dealId={deal.id}
         value={deal.supplier_payment}
+        balance={deal.supplier_balance}
         side="supplier"
         currency={deal.supplier_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
@@ -1060,6 +1078,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
       <PaymentBreakdownCell
         dealId={deal.id}
         value={deal.buyer_payment}
+        balance={deal.buyer_debt}
         side="buyer"
         currency={deal.buyer_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
