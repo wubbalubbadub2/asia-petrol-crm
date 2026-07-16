@@ -333,8 +333,17 @@ function PaymentBreakdownCell({
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
   const pendingVal = useRef<number | null | undefined>(undefined);
+  // Значение пропа на момент оптимистичной правки: как только проп
+  // изменился (fresh rollup от бэка приехал в список) — pending
+  // снимается, дальше живёт серверное значение. Без этого pending с
+  // приблизительным локальным итогом (SUM платежей без currency-фильтра
+  // rollup'а) мог бы залипнуть навсегда.
+  const pendingBase = useRef<number | null | undefined>(undefined);
   const shown = pendingVal.current !== undefined ? pendingVal.current : value;
-  if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
+  if (pendingVal.current !== undefined && (value === pendingVal.current || value !== pendingBase.current)) {
+    pendingVal.current = undefined;
+    pendingBase.current = undefined;
+  }
   const [payments, setPayments] = useState<PaymentSnap[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
@@ -376,45 +385,70 @@ function PaymentBreakdownCell({
   }
 
   // Inline-CRUD по deal_payments прямо из попапа (клиент 2026-07-19).
-  // После каждой записи: DB-триггер пересчитывает rollup оплаты на
-  // deals; invalidateDealPayments сбрасывает Promise-кэш попапа;
-  // invalidateDeal будит список сделок (колонки Оплата/Баланс/Долг).
-  async function refreshAfterWrite() {
+  // Правило клиента 2026-07-16: «на фронте мы всегда меняем сразу — как
+  // в Excel». Список и итог в ячейке мутируются ОПТИМИСТИЧНО до ответа
+  // бэка; запрос уходит в фоне; при ошибке — откат + toast. Кэши
+  // (payments-Promise + deals-список) инвалидируются в фоне — визуально
+  // ничего не перерисовывается, серверные значения совпадают с
+  // оптимистичными.
+  function applyOptimistic(next: PaymentSnap[]) {
+    setPayments(next);
+    pendingBase.current = value;
+    pendingVal.current = next.reduce((s, p) => s + (p.amount ?? 0), 0);
+  }
+
+  function revertOptimistic(prev: PaymentSnap[] | null, message: string) {
+    setPayments(prev);
+    pendingVal.current = undefined;
+    pendingBase.current = undefined;
+    toast.error(`Оплата: ${message}`);
+  }
+
+  function syncCachesInBackground() {
     invalidateDealPayments(dealId, side);
-    try {
-      const data = await fetchDealPayments(dealId, side);
-      setPayments(data);
-    } catch { /* список обновится при следующем открытии */ }
     invalidateDeal(dealId);
   }
 
   async function patchPayment(id: string, patch: { amount?: number; payment_date?: string }) {
+    const prev = payments;
+    applyOptimistic((prev ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").update(patch).eq("id", id);
-    if (error) { toast.error(`Оплата: ${error.message}`); return; }
-    await refreshAfterWrite();
+    if (error) { revertOptimistic(prev, error.message); return; }
+    syncCachesInBackground();
   }
 
   async function deletePayment(id: string) {
     if (!confirm("Удалить оплату?")) return;
+    const prev = payments;
+    applyOptimistic((prev ?? []).filter((p) => p.id !== id));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").delete().eq("id", id);
-    if (error) { toast.error(`Оплата: ${error.message}`); return; }
-    await refreshAfterWrite();
+    if (error) { revertOptimistic(prev, error.message); return; }
+    syncCachesInBackground();
   }
 
   async function addPayment() {
-    const sb = createClient();
+    // id генерируем на клиенте — строка появляется мгновенно и сразу
+    // редактируема, без ожидания серверного id.
+    const id = crypto.randomUUID();
     const today = new Date().toISOString().slice(0, 10);
+    const prev = payments;
+    applyOptimistic([
+      ...(prev ?? []),
+      { id, payment_date: today, amount: 0, currency: null, description: null, payment_type: "payment" },
+    ]);
+    const sb = createClient();
     const { error } = await sb.from("deal_payments").insert({
+      id,
       deal_id: dealId,
       side,
       amount: 0,
       payment_date: today,
       payment_type: "payment",
     });
-    if (error) { toast.error(`Оплата: ${error.message}`); return; }
-    await refreshAfterWrite();
+    if (error) { revertOptimistic(prev, error.message); return; }
+    syncCachesInBackground();
   }
 
   function startEdit() {
@@ -431,8 +465,9 @@ function PaymentBreakdownCell({
     const num = parseNum(localVal);
     if (num !== value) {
       pendingVal.current = num;
+      pendingBase.current = value;
       const field = side === "supplier" ? "supplier_payment" : "buyer_payment";
-      updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; });
+      updateDeal(dealId, { [field]: num }).catch(() => { pendingVal.current = undefined; pendingBase.current = undefined; });
     }
   }
 
