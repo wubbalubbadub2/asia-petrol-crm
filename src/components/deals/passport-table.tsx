@@ -1227,8 +1227,8 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_contracted_volume: { label: "Объем контракт (Поставщик)", decimals: 3 },
   supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 2 },
   supplier_price:             { label: "Цена (Поставщик)",           decimals: 2 },
-  supplier_shipped_amount:    { label: "Отгр. сумма (Поставщик)",    decimals: 2 },
-  supplier_shipped_volume:    { label: "Отгр. тонн (Поставщик)",     decimals: 3 },
+  supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 2 },
+  supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
   supplier_payment:           { label: "Оплата (Поставщик)",         decimals: 2 },
   supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
@@ -1559,8 +1559,8 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Объем</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Сумма дог.</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#fce3d6]">Цена</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Отгр. сумма</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Отгр. тонн</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Приход, сумма</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Приход, тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Оплата</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]">Баланс</th>
               {/* Company groups: 2 cols */}

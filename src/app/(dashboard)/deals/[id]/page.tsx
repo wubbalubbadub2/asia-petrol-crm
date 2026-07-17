@@ -846,7 +846,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
 
         {/* Rollups — derived from registry / payments */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
-          <Field label="Сумма отгрузки" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
+          <Field label="Приход, сумма" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
           <Field label="Оплата" value={deal.supplier_payment} suffix={`${supplierCurrencySymbol} (оплаты)`} />
           <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
           <Field label="Баланс" value={deal.supplier_balance} suffix={`${supplierCurrencySymbol} (авто)`} />

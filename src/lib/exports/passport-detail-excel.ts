@@ -155,13 +155,13 @@ const COLUMNS: Column[] = [
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
   { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price, readShip: (d) => d.supplier_price },
-  { key: "supplier_shipped_volume", header: "Отгр., т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
+  { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
   // С 00119 дата входящего СНТ — собственная колонка loading_date
   // (правило «дата только при своём тоннаже» теперь живёт в данных).
   { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => s.ship?.loading_date ?? "" },
   // Per-wagon shipped amount mirrors the client's template formula
   // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
-  { key: "supplier_shipped_amount", header: "Отгр. сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount, readShip: (d, s) => d.supplier_price != null && s.ship?.loading_volume != null ? d.supplier_price * s.ship.loading_volume : null },
+  { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount, readShip: (d, s) => d.supplier_price != null && s.ship?.loading_volume != null ? d.supplier_price * s.ship.loading_volume : null },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment, readShip: (_, s) => s.supPay?.amount ?? null },
   { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? fmtDate(s.supPay.payment_date) : "") },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },

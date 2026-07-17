@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-17 — Переименование колонок поставщика: «Отгр.» → «Приход»
+- **What changed:** `passport-table.tsx` (заголовки supplier-бэнда + NUMERIC_COLS), `passport-excel.ts`, `passport-detail-excel.ts` (supplier-колонки), `deals/[id]/page.tsx` («Сумма отгрузки» → «Приход, сумма»).
+- **Type:** [PRESENTATION]
+- **Before → After:** у поставщика «Отгр. тонн» → «Приход, тонн» (паспорт) / «Отгр., т» → «Приход, т» (оба Excel); «Отгр. сумма» → «Приход, сумма» (везде); в сделке «Сумма отгрузки» → «Приход, сумма». Колонки покупателя не тронуты (остаются «Отгр.»). DB-колонки те же (`supplier_shipped_volume`/`supplier_shipped_amount`).
+- **Client reason:** «у поставщика в сделке и во всех эксельках поменять колонки: Отгр. тонн → Приход, тонн; Отгр. сумма → Приход, сумма» (2026-07-17).
+- **Rebuild impact:** presentation only (словарь терминов: сторона поставщика = «приход»).
+
 ### 2026-07-17 — Detail-экспорт: каждая оплата на своей под-строке
 - **What changed:** `passport-detail-excel.ts` — тип `SubRow` (`{ship, supPay, buyPay}`), `fetchPaymentsByDeals` (сырые платежи вместо склеенных дат), zip-цикл под-строк, колонки «Оплата»/«Дата оплаты» обеих сторон получили readShip.
 - **Type:** [EXPORT]
