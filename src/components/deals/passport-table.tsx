@@ -264,6 +264,12 @@ function pluralizePayments(n: number): string {
 // Дата + сумма редактируются inline, × удаляет запись. Каждая запись
 // коммитится на blur; rollup deals.supplier_payment/buyer_payment
 // пересчитывает DB-триггер, invalidateDeal() будит список.
+// Знак вклада оплаты в rollup: возврат/перезачёт минусуют (00062).
+function signedAmount(p: PaymentSnap): number {
+  const sign = p.payment_type === "refund" || p.payment_type === "offset" ? -1 : 1;
+  return (p.amount ?? 0) * sign;
+}
+
 function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
   p: PaymentSnap;
   fallbackCurrency: string;
@@ -298,6 +304,11 @@ function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
         className="w-[92px] rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-[11px] font-mono text-right text-stone-100 focus:outline-none focus:border-amber-400"
       />
+      {(p.payment_type === "refund" || p.payment_type === "offset") && (
+        <span className="text-[9px] text-red-400 font-medium" title="Минусует итог">
+          {p.payment_type === "refund" ? "возврат" : "перезачёт"}
+        </span>
+      )}
       <span className="text-[10px] text-stone-400 w-8">{p.currency ?? fallbackCurrency}</span>
       <button
         type="button"
@@ -388,7 +399,7 @@ function PaymentBreakdownCell({
   // оптимистичными.
   function applyOptimistic(next: PaymentSnap[]) {
     setPayments(next);
-    const newTotal = next.reduce((s, p) => s + (p.amount ?? 0), 0);
+    const newTotal = next.reduce((s, p) => s + signedAmount(p), 0);
     const delta = newTotal - (value ?? 0);
     // Оплата + Баланс/Долг патчатся в кэш сделок синхронно — обе ячейки
     // строки обновляются в этот же рендер (клиент 2026-07-16: «баланс

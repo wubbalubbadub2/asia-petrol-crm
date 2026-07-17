@@ -50,7 +50,11 @@ type DetailShipment = {
   buyer_appendix: string | null;
 };
 
-// Одна оплата (deal_payments) для под-строки.
+// Одна оплата (deal_payments) для под-строки. amount — ПОДПИСАННАЯ
+// сумма: в БД хранится плюсом, знак даёт payment_type (возврат/
+// перезачёт → минус) — та же конвенция, что в rollup 00062 и на
+// странице сделки (клиент 2026-07-17: «в системе минусом, а в
+// выгрузке плюсом»).
 type PaymentLite = { amount: number | null; payment_date: string | null };
 
 // Под-строка сделки (клиент 2026-07-17): i-я отгрузка + i-я оплата
@@ -264,16 +268,17 @@ async function fetchPaymentsByDeals(dealIds: string[]): Promise<Map<string, Deal
   const results = await Promise.all(chunks.map((ids) =>
     sb
       .from("deal_payments")
-      .select("deal_id, side, amount, payment_date")
+      .select("deal_id, side, amount, payment_date, payment_type")
       .in("deal_id", ids)
       .order("payment_date", { ascending: true }),
   ));
   const out = new Map<string, DealPayments>();
   for (const res of results) {
     if (res.error) throw new Error(`Оплаты: ${res.error.message}`);
-    for (const row of (res.data ?? []) as { deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null }[]) {
+    for (const row of (res.data ?? []) as { deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null }[]) {
       const entry = out.get(row.deal_id) ?? { supplier: [], buyer: [] };
-      entry[row.side].push({ amount: row.amount, payment_date: row.payment_date });
+      const sign = row.payment_type === "refund" || row.payment_type === "offset" ? -1 : 1;
+      entry[row.side].push({ amount: row.amount != null ? row.amount * sign : null, payment_date: row.payment_date });
       out.set(row.deal_id, entry);
     }
   }

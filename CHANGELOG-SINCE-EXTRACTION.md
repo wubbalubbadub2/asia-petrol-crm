@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-17 — Возврат/перезачёт минусом в detail-выгрузке и попапе оплат
+- **What changed:** `passport-detail-excel.ts` (`fetchPaymentsByDeals` тянет `payment_type`, сумма подписывается), `passport-table.tsx` (helper `signedAmount`, оптимистичный итог попапа со знаком, красный лейбл «возврат»/«перезачёт» в строке попапа).
+- **Type:** [EXPORT] + [PRESENTATION]
+- **Before → After:** сумма оплаты бралась сырой из `deal_payments.amount` (в БД возвраты хранятся плюсом, знак задаёт `payment_type` — конвенция rollup 00062) → в detail-выгрузке под-строка возврата/перезачёта показывается минусом (красный формат Excel), оптимистичный итог попапа считает `SUM(amount × знак)`, в строке попапа лейбл «возврат»/«перезачёт». Сам ввод суммы в попапе остаётся плюсом (как в БД).
+- **Client reason:** «когда тип оплаты возврат или перезачет, в системе сумма минусом, но в выгрузке плюсом» (2026-07-17, пример: возврат 87 790 у сделки с итогом 2 144 450).
+- **Rebuild impact:** presentation/EXPORT-LAYOUTS; правило для rebuild: знак суммы оплаты всегда выводится из payment_type, в БД — модуль.
+
 ### 2026-07-17 — Переименование колонок поставщика: «Отгр.» → «Приход»
 - **What changed:** `passport-table.tsx` (заголовки supplier-бэнда + NUMERIC_COLS), `passport-excel.ts`, `passport-detail-excel.ts` (supplier-колонки), `deals/[id]/page.tsx` («Сумма отгрузки» → «Приход, сумма»).
 - **Type:** [PRESENTATION]
