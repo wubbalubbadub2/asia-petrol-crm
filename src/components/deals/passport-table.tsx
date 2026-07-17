@@ -14,6 +14,7 @@ import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
+import { useUserPref } from "@/lib/hooks/use-user-pref";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -917,7 +918,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
   return (
     <tr
       style={rowStyle}
-      className="border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]"
+      className="pt-row border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]"
     >
       {/* Identity. Clicking the deal code opens the deal as a new
           workspace tab so the operator never loses the list view
@@ -1311,6 +1312,86 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
   // (each <th> has min-w-[NN] declared above), and PassportTotalsRow
   // can still sit at the natural bottom of <tbody>.
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Per-user колонки (клиент 2026-07-17): скрытие + закрепление ──
+  const [colPref, setColPref] = useUserPref<PassportColumnsPref>("passport_columns", { hidden: [], pinUntil: null });
+  const ptHidden = useMemo(() => new Set(colPref.hidden), [colPref.hidden]);
+  const ptHiddenDealCount = useMemo(
+    () => PT_UNITS.filter((u) => u.band === "deal" && ptHidden.has(u.key)).length,
+    [ptHidden],
+  );
+  // Видимые колонки на band — для динамических colSpan бэндовой шапки.
+  // «№» входит в deal, колонка удаления — в logistics.
+  const ptBandSpan = useMemo(() => {
+    const span: Record<PtBand, number> = { deal: 1, supplier: 0, groups: 0, buyer: 0, logistics: 1 };
+    for (const u of PT_UNITS) if (!ptHidden.has(u.key)) span[u.band] += u.h.length;
+    return span;
+  }, [ptHidden]);
+  // Закреплённый префикс: все видимые колонки с h ≤ maxH(pinUntil).
+  const ptPinMaxH = useMemo(() => {
+    if (!colPref.pinUntil) return 0;
+    const u = PT_UNITS.find((x) => x.key === colPref.pinUntil);
+    return u ? Math.max(...u.h) : 0;
+  }, [colPref.pinUntil]);
+  // Измеренные ширины заголовков → left-офсеты для sticky. Скрытые
+  // колонки дают offsetWidth 0 и не двигают офсет.
+  const [ptLefts, setPtLefts] = useState<number[]>([]);
+  useEffect(() => {
+    if (!ptPinMaxH) { setPtLefts([]); return; }
+    const measure = () => {
+      const row = scrollRef.current?.querySelector("tr.pt-cols");
+      if (!row) return;
+      const ths = Array.from(row.children) as HTMLElement[];
+      const lefts: number[] = [];
+      let acc = 0;
+      for (let i = 0; i < ths.length && i < ptPinMaxH; i++) {
+        lefts[i + 1] = acc; // 1-based h
+        acc += ths[i].offsetWidth;
+      }
+      setPtLefts(lefts);
+    };
+    measure();
+    const t = setTimeout(measure, 300); // после раскладки шрифтов/данных
+    window.addEventListener("resize", measure);
+    return () => { clearTimeout(t); window.removeEventListener("resize", measure); };
+  }, [ptPinMaxH, ptHidden, deals.length]);
+  // Генерация CSS: display:none для скрытых, sticky-left для закреплённых.
+  const ptColCss = useMemo(() => {
+    const rules: string[] = [];
+    for (const u of PT_UNITS) {
+      if (!ptHidden.has(u.key)) continue;
+      for (const h of u.h) rules.push(`.pt-scope tr.pt-cols th:nth-child(${h}){display:none;}`);
+      rules.push(`.pt-scope tr.pt-row td:nth-child(${u.body}){display:none;}`);
+      // В итоговой строке ячейки deal-колонок сидят внутри «Итого»
+      // (colSpan) — для них правило не нужно.
+      if (u.band !== "deal") {
+        for (const h of u.h) rules.push(`.pt-scope tr.pt-totals td:nth-child(${h - 4}){display:none;}`);
+      }
+    }
+    if (ptPinMaxH && ptLefts.length) {
+      for (const u of PT_UNITS) {
+        if (ptHidden.has(u.key)) continue;
+        for (const h of u.h) {
+          if (h > ptPinMaxH) continue;
+          const left = ptLefts[h];
+          if (left == null) continue;
+          rules.push(`.pt-scope tr.pt-cols th:nth-child(${h}){position:sticky;left:${left}px;z-index:25;}`);
+          rules.push(`.pt-scope tr.pt-row td:nth-child(${u.body}){position:sticky;left:${left}px;z-index:5;background-color:#fff;}`);
+          rules.push(`.pt-scope tr.pt-row td:nth-child(${u.body})::before{content:"";position:absolute;inset:0;background:var(--row-bg);z-index:-1;}`);
+          if (u.band !== "deal") {
+            rules.push(`.pt-scope tr.pt-totals td:nth-child(${h - 4}){position:sticky;left:${left}px;z-index:5;background-color:#f5f5f4;}`);
+          }
+        }
+      }
+      // Визуальный разделитель на последней закреплённой колонке.
+      const lastVisible = PT_UNITS.filter((u) => !ptHidden.has(u.key) && Math.max(...u.h) <= ptPinMaxH).pop();
+      if (lastVisible) {
+        const h = Math.max(...lastVisible.h);
+        rules.push(`.pt-scope tr.pt-cols th:nth-child(${h}),.pt-scope tr.pt-row td:nth-child(${lastVisible.body}){box-shadow:2px 0 0 0 rgb(217 119 6 / 0.45);}`);
+      }
+    }
+    return rules.join("");
+  }, [ptHidden, ptPinMaxH, ptLefts]);
   const rowVirtualizer = useVirtualizer({
     count: deals.length,
     getScrollElement: () => scrollRef.current,
@@ -1504,7 +1585,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
           + `}`,
         ).join("")}</style>
       )}
-      <div className="flex flex-col h-full">
+      {ptColCss && <style>{ptColCss}</style>}
+      <div className="flex flex-col h-full pt-scope">
+      {/* Тулбар настроек колонок — per-user (00121). */}
+      <div className="flex justify-end pb-1">
+        <ColumnManager pref={colPref} onChange={setColPref} />
+      </div>
       {/* Пара кастомных скроллбаров (top + bottom) синхронизированных
           с scrollRef. Один общий dim state — иначе верхний может
           отрисоваться с scrollWidth=clientWidth (первое измерение до
@@ -1551,13 +1637,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 so the top-band label and its detail cells share a
                 single visual identity. */}
             <tr>
-              <th colSpan={5} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#b4c6e7]">Сделка</th>
-              <th colSpan={10} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>
-              <th colSpan={2} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>
-              <th colSpan={12} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>
-              <th colSpan={12} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
+              {ptBandSpan.deal > 0 && <th colSpan={ptBandSpan.deal} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#b4c6e7]">Сделка</th>}
+              {ptBandSpan.supplier > 0 && <th colSpan={ptBandSpan.supplier} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>}
+              {ptBandSpan.groups > 0 && <th colSpan={ptBandSpan.groups} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>}
+              {ptBandSpan.buyer > 0 && <th colSpan={ptBandSpan.buyer} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>}
+              <th colSpan={ptBandSpan.logistics} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
             </tr>
-            <tr className="border-b">
+            <tr className="pt-cols border-b">
               <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">№</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[75px] bg-[#b4c6e7]">Месяц</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#b4c6e7]">Завод</th>
@@ -1625,7 +1711,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
                 Sits OUTSIDE the virtualized range (after the bottom
                 spacer) so it always renders at the natural bottom of
                 the table regardless of scroll position. */}
-            {!isColdLoad && <PassportTotalsRow deals={deals} />}
+            {!isColdLoad && <PassportTotalsRow deals={deals} hiddenDealCount={ptHiddenDealCount} />}
           </tbody>
         </table>
       </div>
@@ -1676,6 +1762,62 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
 //  any column.
 // ─────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────
+//  Per-user колонки: скрытие + закрепление (клиент 2026-07-17,
+//  migration 00121). Каждая единица — колонка (или пара «Группы»,
+//  слитая в теле colSpan=2). h — 1-based nth-child в строке заголовков
+//  (tr.pt-cols); body — nth-child в строке данных (tr.pt-row); в
+//  итоговой строке (tr.pt-totals) ячейка колонки h — это child (h−4),
+//  т.к. первая ячейка «Итого» спанит колонки 1..5.
+//  «№» (h1) и колонка удаления (h41) не скрываются и не закрепляются
+//  отдельно («№» закреплена всегда).
+type PtBand = "deal" | "supplier" | "groups" | "buyer" | "logistics";
+type PtUnit = { key: string; label: string; band: PtBand; h: number[]; body: number };
+const PT_UNITS: PtUnit[] = [
+  { key: "month", label: "Месяц", band: "deal", h: [2], body: 2 },
+  { key: "factory", label: "Завод", band: "deal", h: [3], body: 3 },
+  { key: "fuel", label: "ГСМ", band: "deal", h: [4], body: 4 },
+  { key: "sulfur", label: "%S", band: "deal", h: [5], body: 5 },
+  { key: "supplier", label: "Поставщик", band: "supplier", h: [6], body: 6 },
+  { key: "supplier_contract", label: "Договор", band: "supplier", h: [7], body: 7 },
+  { key: "supplier_basis", label: "Базис", band: "supplier", h: [8], body: 8 },
+  { key: "supplier_volume", label: "Объем", band: "supplier", h: [9], body: 9 },
+  { key: "supplier_amount", label: "Сумма дог.", band: "supplier", h: [10], body: 10 },
+  { key: "supplier_price", label: "Цена", band: "supplier", h: [11], body: 11 },
+  { key: "supplier_shipped_amount", label: "Приход, сумма", band: "supplier", h: [12], body: 12 },
+  { key: "supplier_shipped_volume", label: "Приход, тонн", band: "supplier", h: [13], body: 13 },
+  { key: "supplier_payment", label: "Оплата", band: "supplier", h: [14], body: 14 },
+  { key: "supplier_balance", label: "Баланс", band: "supplier", h: [15], body: 15 },
+  { key: "groups", label: "Группы компании", band: "groups", h: [16, 17], body: 16 },
+  { key: "buyer", label: "Покупатель", band: "buyer", h: [18], body: 17 },
+  { key: "buyer_contract", label: "Договор", band: "buyer", h: [19], body: 18 },
+  { key: "buyer_basis", label: "Базис", band: "buyer", h: [20], body: 19 },
+  { key: "buyer_volume", label: "Объем", band: "buyer", h: [21], body: 20 },
+  { key: "buyer_amount", label: "Сумма дог.", band: "buyer", h: [22], body: 21 },
+  { key: "buyer_price", label: "Цена", band: "buyer", h: [23], body: 22 },
+  { key: "buyer_ordered", label: "Заявлено", band: "buyer", h: [24], body: 23 },
+  { key: "buyer_remainder", label: "Остаток", band: "buyer", h: [25], body: 24 },
+  { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer", h: [26], body: 25 },
+  { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer", h: [27], body: 26 },
+  { key: "buyer_payment", label: "Оплата", band: "buyer", h: [28], body: 27 },
+  { key: "buyer_debt", label: "Долг", band: "buyer", h: [29], body: 28 },
+  { key: "forwarder", label: "Экспедитор", band: "logistics", h: [30], body: 29 },
+  { key: "logistics_group", label: "Группа комп.", band: "logistics", h: [31], body: 30 },
+  { key: "planned_tariff", label: "Тариф", band: "logistics", h: [32], body: 31 },
+  { key: "preliminary_tonnage", label: "Объем план", band: "logistics", h: [33], body: 32 },
+  { key: "preliminary_amount", label: "Предв. сумма", band: "logistics", h: [34], body: 33 },
+  { key: "actual_tariff", label: "Тариф факт", band: "logistics", h: [35], body: 34 },
+  { key: "actual_volume", label: "Факт объем", band: "logistics", h: [36], body: 35 },
+  { key: "invoice_amount", label: "Сумма", band: "logistics", h: [37], body: 36 },
+  { key: "shipper_tariff", label: "Тариф факт (грузоотпр.)", band: "logistics", h: [38], body: 37 },
+  { key: "additional_expenses", label: "Сумма грузоотпр.", band: "logistics", h: [39], body: 38 },
+  { key: "manager", label: "Коммерция", band: "logistics", h: [40], body: 39 },
+];
+const PT_BAND_LABELS: Record<PtBand, string> = {
+  deal: "Сделка", supplier: "Поставщик", groups: "Группы компании", buyer: "Покупатель", logistics: "Логистика",
+};
+type PassportColumnsPref = { hidden: string[]; pinUntil: string | null };
+
 const TOTAL_COLS = 36;
 
 type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
@@ -1725,8 +1867,92 @@ function VirtualizedRows({
   );
 }
 
+// ── Панель «Столбцы»: чекбоксы видимости по бэндам + «Закрепить до» ──
+// Per-user (00121); закреплять можно только видимую колонку — префикс
+// слева до неё включительно становится sticky.
+function ColumnManager({ pref, onChange }: { pref: PassportColumnsPref; onChange: (p: PassportColumnsPref) => void }) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const hidden = new Set(pref.hidden);
+  function toggle(key: string) {
+    const next = new Set(hidden);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    // Скрыли колонку, до которой закреплено — сбрасываем закрепление
+    // на ближайшую видимую слева, чтобы префикс оставался осмысленным.
+    let pinUntil = pref.pinUntil;
+    if (pinUntil && next.has(pinUntil)) {
+      const maxH = Math.max(...(PT_UNITS.find((u) => u.key === pinUntil)?.h ?? [0]));
+      const prevVisible = PT_UNITS.filter((u) => !next.has(u.key) && Math.max(...u.h) < maxH).pop();
+      pinUntil = prevVisible?.key ?? null;
+    }
+    onChange({ hidden: [...next], pinUntil });
+  }
+  const bands: PtBand[] = ["deal", "supplier", "groups", "buyer", "logistics"];
+  const pinnable = PT_UNITS.filter((u) => !hidden.has(u.key));
+  const customized = pref.hidden.length > 0 || pref.pinUntil != null;
+  return (
+    <div className="relative" ref={panelRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1 h-6 rounded-md border px-2 text-[11px] transition-colors cursor-pointer ${customized ? "border-amber-300 bg-amber-50 text-amber-800" : "border-stone-200 bg-white text-stone-500 hover:bg-stone-50"}`}
+        title="Скрытие и закрепление столбцов — сохраняется за вашим аккаунтом"
+      >
+        Столбцы{pref.hidden.length > 0 ? ` (−${pref.hidden.length})` : ""}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-40 w-[560px] rounded-md border border-stone-200 bg-white p-3 shadow-xl">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-stone-600">Видимость столбцов (только у вас)</span>
+            <button
+              type="button"
+              onClick={() => onChange({ hidden: [], pinUntil: null })}
+              className="text-[11px] text-amber-700 hover:underline cursor-pointer"
+            >Сбросить</button>
+          </div>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-2 max-h-[320px] overflow-y-auto">
+            {bands.map((b) => (
+              <div key={b}>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">{PT_BAND_LABELS[b]}</div>
+                {PT_UNITS.filter((u) => u.band === b).map((u) => (
+                  <label key={u.key} className="flex items-center gap-1.5 py-0.5 text-[11px] text-stone-700 cursor-pointer">
+                    <input type="checkbox" className="h-3 w-3 cursor-pointer" checked={!hidden.has(u.key)} onChange={() => toggle(u.key)} />
+                    {u.label}
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2 border-t border-stone-100 pt-2">
+            <span className="text-[11px] text-stone-500">Закрепить столбцы до:</span>
+            <select
+              value={pref.pinUntil ?? ""}
+              onChange={(e) => onChange({ ...pref, pinUntil: e.target.value || null })}
+              className="h-6 rounded border border-stone-200 bg-white px-1 text-[11px] cursor-pointer focus:outline-none focus:border-amber-400"
+            >
+              <option value="">— только «№» —</option>
+              {pinnable.map((u) => (
+                <option key={u.key} value={u.key}>{PT_BAND_LABELS[u.band]} · {u.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Totals row — pure presentational, computes sums on the fly.
-function PassportTotalsRow({ deals }: { deals: Deal[] }) {
+function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hiddenDealCount?: number }) {
   const sum = (pick: (d: Deal) => number | null | undefined): number => {
     let s = 0;
     for (const d of deals) {
@@ -1760,9 +1986,9 @@ function PassportTotalsRow({ deals }: { deals: Deal[] }) {
   // the row was bleeding above the page-level sticky filter bar in
   // Chrome). The totals row sits at the natural bottom of the table.
   return (
-    <tr className="border-t-2 border-stone-300">
-      {/* Сделка (5 cols): label spans them */}
-      <td colSpan={5} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
+    <tr className="pt-totals border-t-2 border-stone-300">
+      {/* Сделка: label спанит видимые deal-колонки (5 − скрытые). */}
+      <td colSpan={5 - hiddenDealCount} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
       </td>
       {/* Поставщик (10 cols): name/contract/basis blank + numeric sums.
