@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Парсеры XML-фидов НБ РК/НБ КР + formatKzDate (TDD)
+- **What changed:** NEW `src/lib/fx/parse.ts` (3 экспорта: `parseNbrkUsdKzt`, `parseNbkrUsdKgs`, `formatKzDate`); NEW `src/__tests__/fx-parse.test.ts` (5 тестов, TDD RED→GREEN).
+- **Type:** [BEHAVIOR]
+- **Before → After:** нет парсеров XML-фидов → 3 чистые функции для извлечения курсов USD из фидов НБ РК (фиксированный номинал, точка) и НБ КР (переменный номинал, запятая), утилита форматирования даты в DD.MM.YYYY (UTC).
+- **Client reason:** основы для rate-loading-сервиса (Task 2 из FX-отчётов).
+- **Rebuild impact:** presentation only (парсеры используются rate-loader'ом, не видны клиенту).
+
 ### 2026-07-20 — 00122: fx_rates — таблица курсов НБ РК/НБ КР для FX-отчётов
 - **What changed:** migration `00122_fx_rates.sql` (таблица `fx_rates(date, base_currency, quote_currency, rate, source, created_at)` с PK `(date, base_currency, quote_currency)` и RLS на SELECT (authenticated) / ALL (is_admin()); поддерживаемые пары валют: USD/KZT (source 'nbrk' — НБ РК), USD/KGS (source 'nbkr' — НБ КР), 'manual' для ручной правки).
 - **Type:** [SCHEMA]
