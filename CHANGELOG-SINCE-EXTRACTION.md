@@ -39,6 +39,128 @@ Entry template:
 - **Before → After:** каждый чанк из 150 сделок запрашивался одним `.in(...).order(...)` без `.range()` → PostgREST молча обрезал ответ на дефолтном лимите 1000 строк (Max-Rows); сделки, чьи строки реестра/оплат сортировались после отсечки, теряли ВСЕ под-строки на главной строке, оставаясь «1 строка без деталей». Подтверждено на реальных данных: чанк из 150 id (куда попадает KG/26/346) даёт 1613 строк `shipment_registry` — дефолтный (без range) запрос возвращает ровно 1000 и 0 из них принадлежат KG/26/346; постраничный запрос (0-999 + 1000-1999) даёт все 1613 без дублей/пропусков, и 6 строк KG/26/346 появляются. → теперь оба батч-фетчера пейджинятся до короткой страницы, поэтому строк-в-чанке-более-1000 больше не обрезает данные независимо от того, сколько сделок в экспорте.
 - **Client reason:** баг-репорт со скриншотом: «Паспорт (детальный)» с фильтром на KG/26/346 → 7 строк (верно); без фильтра (полный список) → та же сделка 1 строка без под-строк.
 - **Rebuild impact:** EXPORT-LAYOUTS / DATA-MODEL — общее правило проекта: любой batched `.in(...)`-запрос к таблице, где строк на группу id может быть много (`shipment_registry`, `deal_payments`, и по аналогии любые будущие детальные выгрузки), обязан пагинироваться через `fetchAllPaginated`, а не полагаться на единичный `.select()`.
+### 2026-07-20 — FX финальный ревью ветки: fail-closed cron, согласованные USD/KZT суммы, индекс fx_rates
+- **What changed:** `src/app/api/cron/fx-rates/route.ts` (auth-check), `supabase/migrations/00124_fx_reports.sql` (`fx_report_flows`, `fx_report_price` — не применены, правка миграций до deploy безопасна), `supabase/migrations/00122_fx_rates.sql` (индекс, не применена).
+- **Type:** [FORMULA] (fx_report_flows) + [BEHAVIOR] (cron auth) + [SCHEMA] (индекс)
+- **Before → After:**
+  - Cron-роут: `if (secret && auth !== ...) 401` (fail-OPEN — при незаданном `CRON_SECRET` эндпойнт публично триггерился без авторизации) → `if (!secret || auth !== ...) 401` (fail-CLOSED — отсутствие секрета теперь тоже 401, а не «пропустить проверку»).
+  - `fx_report_flows`: финальный `SELECT` считал `SUM(... 'USD' ...)` и `SUM(... 'KZT' ...)` как две независимые агрегации по `events` — `SUM` отбрасывает NULL по-колоночно, поэтому строка с NULL в USD-конвертации (нет курса), но не-NULL в KZT (identity для KZT-native), попадала в KZT-сумму, но не в USD-сумму → USD и KZT описывали разные популяции строк. Добавлена промежуточная CTE `converted` (те же ветки dated/fallback-month, тот же period filter без изменений), считающая `u`/`k` один раз на строку; финальный `SUM(CASE WHEN u IS NOT NULL AND k IS NOT NULL THEN u/k END)` теперь включает строку в ОБЕ суммы только когда обе конвертации не-NULL — USD и KZT снова про одну и ту же популяцию строк. `events`-CTE (UNION ALL 4 метрик) не менялся.
+  - `fx_rates`: добавлен `CREATE INDEX IF NOT EXISTS fx_rates_pair_date_idx ON fx_rates (base_currency, quote_currency, date DESC)` — PK ведёт с `date`, per-row lookup в `fx_rate()` ищет по (пара, date DESC), для чего PK не покрывающий.
+  - `fx_report_price`: без функциональных изменений — добавлен только комментарий, поясняющий расхождение с `fx_report_flows` (построчный отчёт исключает строки без обеих дат СНТ, а не кладёт их в fallback-месяц).
+- **Client reason:** финальный ревью всей FX-ветки (`feat/fx-reports`) перед деплоем — 2 Important + 1 рекомендация + 1 уточняющий комментарий.
+- **Rebuild impact:** PRICING (формула агрегации `fx_report_flows` — правило для rebuild: USD/KZT суммы по одному отчёту-агрегату должны считаться по одной и той же отфильтрованной популяции строк, не двумя независимыми `SUM(CASE...)`); DATA-MODEL (индекс на `fx_rates` — lookup-паттерн `fx_rate()` требует (pair, date DESC), не покрыт PK).
+
+### 2026-07-20 — Task 12: вкладка «Отчёты» приведена к DESIGN.md + строгий тип report
+- **What changed:** `src/app/(dashboard)/reports/page.tsx` — сырые `<select>`/`<input type="date">` заменены на проектные примитивы (`Select`/`SelectTrigger`/`SelectItem`, `Input`, `Label` из `@/components/ui`); убран лишний `p-4` (страница уже получает отступ от `main` в `(dashboard)/layout.tsx`); `report` типизирован как `ReportKey = (typeof REPORTS)[number]["key"]` вместо bare `string` (опечатка в ключе теперь ошибка компиляции); метрик-фильтр `flows.filter(r => r.metric === report)` не тронут. `src/components/reports/flow-report.tsx` и `src/components/reports/price-report.tsx` — стиль таблиц приведён к паттерну `registry/page.tsx`/`passport-table.tsx`: заголовок `bg-stone-100 text-stone-500`, границы `border-stone-200`/`border-stone-100`, компактные ячейки `px-2 py-1(.5)`, числа `font-mono tabular-nums text-right`, hover-only подсветка строк (без зебры, по DESIGN.md «alternating row shading on hover only»); добавлена подпись-заголовок над каждой таблицей (`<h2>` с названием отчёта + «· USD / KZT»), включая пустое состояние — устраняет замечание ревью «tables lacked a caption».
+- **Type:** [PRESENTATION]
+- **Client reason:** Task 12 (причёсывание по DESIGN.md) — код-часть; деплой/E2E/финальная запись фичи выполняются контроллером отдельно после применения миграций 00122–00124.
+- **Rebuild impact:** presentation only — DESIGN.md токены (цвета stone/amber, JetBrains Mono для чисел, 28px-плотность) применены к существующим RPC/данным Task 7/8, формулы и схема не менялись.
+
+### 2026-07-20 — Вкладка «Отчёты» (/reports) — оболочка + переключатель отчёта и период
+- **What changed:** `src/lib/constants/nav-items.ts` — импорт `BarChart3` из `lucide-react`, пункт меню «Отчёты» (`/reports`) добавлен после «Реестр отгрузки». NEW `src/app/(dashboard)/reports/page.tsx` — клиентская страница-оболочка: селектор отчёта (`FLOW_METRICS` + «Цена (по СНТ)»), поля периода `from`/`to`, загрузка через `fetchFlows`/`fetchPrice` (Task 8), рендер `FlowReport`/`PriceReport` (Task 10/11); строки потоков предварительно фильтруются по выбранной метрике (`flows.filter(r => r.metric === report)`) перед передачей в `FlowReport`, т.к. сам компонент не фильтрует.
+- **Type:** [UI]
+- **Client reason:** Task 9 — интеграция вкладки «Отчёты» в навигацию и роутинг.
+- **Rebuild impact:** presentation only — новых DB-объектов и формул нет, только UI-обвязка вокруг существующих RPC/компонентов.
+
+### 2026-07-20 — Компонент отчёта Цена PriceReport
+- **What changed:** NEW `src/components/reports/price-report.tsx` — компонент таблицы цен (Price Report), отображает цены поставщика и покупателя (приход/исход) в USD и KZT с форматированием чисел
+- **Type:** [PRESENTATION]
+- **Client reason:** Task 11 — компонент таблицы цен для вкладки «Отчёты»
+- **Rebuild impact:** presentation only
+
+### 2026-07-20 — Компонент потокового отчёта FlowReport
+- **What changed:** NEW `src/components/reports/flow-report.tsx` — компонент таблицы потоков (Flow Report), отображает ежемесячные суммы по типам сделок в USD и KZT
+- **Type:** [PRESENTATION]
+- **Client reason:** Task 10 — компонент потокового отчёта для вкладки «Отчёты»
+- **Rebuild impact:** presentation only
+
+### 2026-07-20 — Фикс CI: детерминированный placeholder-env вместо loadEnv в vitest.config.ts
+- **What changed:** `vitest.config.ts` — убран импорт `loadEnv` из `vite` и вызов `Object.assign(process.env, loadEnv(...))`, конфиг возвращён к обычному объекту (без `({ mode }) => …`); `setupFiles: []` → `setupFiles: ["./vitest.setup.ts"]`. NEW `vitest.setup.ts` (repo root) — с двумя строками `process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://localhost:54321"` / `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key"`.
+- **Type:** [BEHAVIOR]
+- **Before → After:**
+  - Env для `src/lib/supabase/client.ts` (бросает при импорте, если `NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY` не заданы): `loadEnv(mode, cwd, "")` читал `.env.local` целиком (пустой prefix → включая `SUPABASE_SERVICE_ROLE_KEY`, RLS-bypass секрет) → детерминированные placeholder-значения через `??=` в `vitest.setup.ts`, не зависящие от `.env.local` вообще; реальный локальный `.env.local`, если экспортирован в shell, по-прежнему имеет приоритет благодаря `??=`.
+- **Client reason:** Ревью Task 8 нашло: у CI unit-test джобы нет `.env.local` (в `.gitignore`, никогда не создаётся в CI) → `loadEnv` ничего не находит → `process.env` пуст → падает весь `npm test` на каждый push/PR; локально проходило только благодаря реальному dev-файлу `.env.local`. Плюс `loadEnv(mode, cwd, "")` без префикса лишний раз тянул service-role секрет в Node test-процесс.
+- **Rebuild impact:** presentation/infra only — тестовая инфраструктура, схема и формулы БД не менялись. Проверено: `env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY npx vitest run src/__tests__/fx-report-shape.test.ts` (симуляция CI) — PASS; `npx vitest run` — только исходный неродственный `bulk-wagons.test.ts` failure остаётся; `npx tsc --noEmit` — чисто.
+
+### 2026-07-20 — Слой данных отчётов FX: use-fx-reports.ts + groupFlows
+- **What changed:** NEW `src/lib/hooks/use-fx-reports.ts` — `fetchFlows()`/`fetchPrice()` (клиентские обёртки над RPC `fx_report_flows`/`fx_report_price` из миграции 00124), типы `FlowRow`/`PriceRow`, константа `FLOW_METRICS` (порядок/лейблы метрик для вкладки «Отчёты»), чистая функция `groupFlows()`. NEW `src/__tests__/fx-report-shape.test.ts` (TDD: RED → GREEN на `groupFlows`). Также `vitest.config.ts` — добавлен `loadEnv()` (из `vite`) в `defineConfig`, мержится в `process.env`.
+- **Type:** [BEHAVIOR]
+- **Before → After:**
+  - Клиентского доступа к RPC 00124 не было → `fetchFlows(from, to)`/`fetchPrice(from, to)` вызывают RPC через узкий структурный каст `(createClient() as unknown as { rpc: Rpc }).rpc` (`database.ts` ещё не знает новых RPC — тот же stale-types приём, что в `use-user-pref.ts`; без `any` и без lint-disable).
+  - `groupFlows(rows: FlowRow[])` — чистая агрегация: группирует строки `fx_report_flows` по `metric` (`byMetric`) и суммирует `usd`/`kzt` по метрике (`totals`), с `?? 0` на случай null-сумм.
+  - Побочный фикс инфраструктуры: `vitest.config.ts` не подтягивал `.env.local` в `process.env` (Vitest, в отличие от Next.js, не делает этого сам) — импорт `use-fx-reports.ts` тянет `@/lib/supabase/client`, который бросает `Error("Missing Supabase env vars…")` при импорте модуля, если переменные не заданы. Это первый тест, который импортирует что-либо из `src/lib/hooks`, поэтому проблема не проявлялась раньше. Исправлено через `loadEnv(mode, process.cwd(), "")` (пакет `vite`) в `defineConfig(({ mode }) => …)`.
+- **Client reason:** Task 8 контракта FX-отчётов (слой данных для будущего UI вкладки «Отчёты»).
+- **Rebuild impact:** presentation/data-layer only — новых DB-объектов нет (использует RPC 00124), формулы БД не менялись. `vitest.config.ts` фикс — инфраструктурный, влияет на все будущие тесты, импортирующие hooks с `createClient()`.
+
+### 2026-07-20 — [MIGRATION 00124] fx_report_flows / fx_report_price — RPC отчётов
+- **What changed:** migration `00124_fx_reports.sql` — 2 SQL-функции (RPC): `fx_report_flows(p_from date, p_to date)` и `fx_report_price(p_from date, p_to date)`.
+- **Type:** [FORMULA]
+- **Before → After:**
+  - Отчёты по потокам денег и ценам: две RPC-функции для вкладки «Отчёты» реализуют расчёты с конвертацией по дате события. `fx_report_flows()` строит таблицу 4 метрик (supply_in, ship_out, pay_supplier, pay_buyer) с group by (metric, deal_type, year, month), конвертирует каждую сумму по дате события (loading_date/date/payment_date); при отсутствии даты использует среднемесячный курс месяца из d.month. Результат: (metric, deal_type, year, month, usd, kzt) с SUM по конвертированным суммам. Бездатные события включаются в результат только если их fallback-месяц попадает в запрошенный период (WHERE: `ev_date IS NOT NULL AND … BETWEEN` OR `ev_date IS NULL AND fb_year|fb_month NOT NULL AND make_date(fb_year, fb_month, 1) BETWEEN start-of-month(p_from) AND p_to`). `fx_report_price()` выводит per-row цены поставщика и покупателя (converted в USD/KZT), с делением на объём (loading_volume/shipment_volume) для получения per-unit цены, также с fallback на fx_convert_month() если нет даты события.
+  - Обе функции в режиме STABLE; вызывают fx_convert() и fx_convert_month() из миграции 00123, через которые зависят от fx_rate/fx_rate_month и таблицы fx_rates.
+- **Client reason:** вкладка «Отчёты» на UI требует RPC для вытягивания данных с конвертацией в базовые валюты (USD/KZT).
+- **Rebuild impact:** DATA-MODEL/PRICING (новые RPC для отчётной части; завершает реализацию модуля FX-конвертации для FX-отчётов).
+
+### 2026-07-20 — [MIGRATION 00123] fx_convert / fx_rate / month_num — функции конвертации
+- **What changed:** migration `00123_fx_functions.sql` — 5 SQL-функций: `month_num(text)`, `fx_rate(base, quote, date)`, `fx_rate_month(base, quote, year, month)`, `fx_convert(amount, from, to, date)`, `fx_convert_month(amount, from, to, year, month)`.
+- **Type:** [FORMULA]
+- **Before → After:**
+  - Конвертация валют: нет системного способа конвертировать суммы между USD/KZT/KGS → функции реализуют пивот через USD (промежуточный): `KZT→USD ÷ fx_rate(USD, KZT)`, затем `USD→target × fx_rate(USD, target)`. Обратное (target→USD) меняет ÷/× местами. Логика `fx_rate()` берёт курс на дату (дата ≤ p_date); логика `fx_rate_month()` — среднее значение за месяц. При отсутствии курса возвращается NULL (защита от ошибочных расчётов). Если `p_from = p_to`, сумма не меняется. Если `p_amount IS NULL`, результат NULL.
+  - `month_num(text)` — служебная функция: преобразует русский месяц ('январь'…'декабрь') в число (1…12), используется в UI фильтров месяцев, не входит в основной расчёт.
+  - Четыре функции (`fx_rate`, `fx_rate_month`, `fx_convert`, `fx_convert_month`) в режиме STABLE; `month_num` — IMMUTABLE. Верификация — ручной SQL-probe после применения миграции (`fx_convert(1100000, 'USD', 'KZT', DATE '2026-06-24')` должен вернуть корректный результат).
+- **Client reason:** функции конвертации для отчётов с валютами (Task 6 из плана FX-отчётов), базис для калькуляции итогов по USD.
+- **Rebuild impact:** DATA-MODEL/PRICING (новые функции для расчёта итогов в отчётах; формула пивота USD используется везде, где требуется конвертация между KZT/KGS).
+
+### 2026-07-20 — fix(fx-backfill): вежливая задержка на каждой итерации + surfacing ошибок earliest()
+- **What changed:** `scripts/fx-backfill.mjs` (lines 24–51) — изменена структура дня-цикла и функция `earliest()`.
+- **Type:** [SCRIPT]
+- **Before → After:**
+  - День-цикл: вежливая задержка 120мс была в конце итерации; `continue` при выходных/no-rate перепрыгивал её → дозвоны к НБ РК в выходные подряд без паузы. Теперь: обёртка `try { ...per-iteration... } finally { await delay(120) }` гарантирует delay на КАЖДОЙ итерации (continue не пропускает finally); внутренний try/catch для fetch+upsert сохранён.
+  - `earliest()`: запросы q1/q2 не проверяли `.error` — ошибка БД молча падала на fallback 2026-01-01. Добавлена обработка: если `q1.error || q2.error`, то `console.warn()` с сообщением, затем graceful fallback (не throw).
+- **Client reason:** review finding при подготовке Phase 5 (FX-отчёты).
+- **Rebuild impact:** presentation only — скрипт utility, не меняет схему; graceful error-surfacing.
+
+### 2026-07-20 — [SCRIPT] fx-backfill.mjs — backfill истории USD/KZT
+- **What changed:** NEW `scripts/fx-backfill.mjs` — самостоятельный Node-скрипт (без импорта Next-алиасов `@/`), использует `@supabase/supabase-js` напрямую с service-role ключом (`SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` из env). Флаг `--dry` для прогона без записи.
+- **Type:** [SCRIPT]
+- **Before → After:** курсов до самой ранней даты события в `fx_rates` не было (таблица 00122 и cron 00121/Task 4 наполняют её только начиная с момента внедрения) → скрипт вычисляет самую раннюю дату (`min(shipment_registry.date, deal_payments.payment_date)`, фоллбек `2026-01-01`), проходит по будним дням от неё до сегодня, тянет курс USD с НБ РК (`get_rates.cfm?fdate=dd.mm.yyyy`) и делает upsert в `fx_rates` (`onConflict: date,base_currency,quote_currency`, `source: 'nbrk'`) с паузой 120мс между запросами; выходные пропускаются (покрываются fallback `date <= X` в `fx_rate` из Task 3). KGS-историю не тянет (у НБ КР нет чистого date-параметра) — при необходимости бэкфиллится вручную (`source='manual'`).
+- **Client reason:** заполнение исторических курсов USD/KZT для конвертации отчётов по уже существующим сделкам/платежам (Task 5 из плана FX-отчётов).
+- **Rebuild impact:** presentation/data-fill only — одноразовый скрипт, схему `fx_rates` (00122) не меняет; запуск — human checkpoint (нужны реальные `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` и сеть).
+
+### 2026-07-20 — [API] /api/cron/fx-rates — ежедневная загрузка курсов (Vercel Cron)
+- **What changed:** NEW `src/app/api/cron/fx-rates/route.ts` (`GET`, `runtime = "nodejs"`, `dynamic = "force-dynamic"`); `vercel.json` (+`crons` — daily `0 6 * * *`, оставлен `regions: ["fra1"]`); `.env.example` (+`CRON_SECRET=` после `SUPABASE_SERVICE_ROLE_KEY`).
+- **Type:** [BEHAVIOR]
+- **Before → After:** `ingestDailyRates` (Task 3) существовал изолированно, без вызывающего слоя → тонкий cron-роут дёргает его раз в день (06:00 UTC — после закрытия банковских операций накануне; на Hobby-тарифе Vercel это единственная доступная частота). Auth — сравнение `Authorization: Bearer <CRON_SECRET>` с `process.env.CRON_SECRET`; при переезде с Vercel меняется только этот файл + расписание, ядро (`ingest.ts`) не трогается.
+- **Client reason:** автоматическая ежедневная загрузка курсов НБ РК/НБ КР для FX-конвертации отчётов (Task 4 из плана).
+- **Rebuild impact:** presentation only (внутренний cron-эндпоинт, не виден клиенту напрямую); FIELD-OWNERSHIP/DATA-MODEL не затронуты — новый env-ключ `CRON_SECRET` требует ручной настройки в Vercel (человеческий чекпоинт, см. task-4-brief.md Step 6).
+
+### 2026-07-20 — Ядро загрузки курсов НБ РК/НБ КР (`ingest.ts`, TDD)
+- **What changed:** NEW `src/lib/fx/ingest.ts` (`nbrkUrl`, `NBKR_URL`, `fetchNbrkRate`, `fetchNbkrRate`, `ingestDailyRates`); NEW `src/__tests__/fx-ingest.test.ts` (4 теста, TDD RED→GREEN, покрывают только чистые части — URL-билдеры и fetch-функции с фейковым `fetch`).
+- **Type:** [BEHAVIOR]
+- **Before → After:** парсеры фидов (Task 2) существовали изолированно, без слоя загрузки → `ingest.ts` строит URL обоих банков, тянет и парсит их (`fetchNbrkRate`/`fetchNbkrRate` принимают опциональный `fetchFn` для тестируемости), и `ingestDailyRates` через `createAdminClient()` делает upsert обеих строк (`USD/KZT` из НБ РК, `USD/KGS` из НБ КР) в `fx_rates` по конфликту `(date, base_currency, quote_currency)`. Upsert использует узкий структурный `as unknown as {...}` каст (тот же приём, что в `use-user-pref.ts`) — `database.ts` ещё не знает `fx_rates` до перегенерации типов (Task 8). `ingestDailyRates` не покрыт unit-тестом (сеть + БД) — верифицируется интеграционно через cron-роут (Task 4).
+- **Client reason:** ядро rate-loading для FX-конвертации отчётов (Task 3 из плана).
+- **Rebuild impact:** presentation only (внутренний загрузочный сервис, не виден клиенту напрямую).
+
+### 2026-07-20 — Закалена NBKR-парсер + добавлены тесты для отсутствия USD и лишних тегов
+- **What changed:** `src/lib/fx/parse.ts` (`parseNbkrUsdKgs`), `src/__tests__/fx-parse.test.ts` (+2 теста).
+- **Type:** [BEHAVIOR]
+- **Before → After:** regex для НБ КР требовал только пробелы между `<Currency ISOCode="USD">` и `<Nominal>` — лишний тег (напр. `<NumCode>840</NumCode>`) ломал матч → на `[\s\S]*?` (любые символы, ленивое); добавлены тесты: выброс при отсутствии USD и парсинг при наличии лишних тегов. Номинал, коммы, правило деления не менялись.
+- **Client reason:** review finding Task 2 (FX-отчёты).
+- **Rebuild impact:** presentation only (парсер используется rate-loader'ом).
+
+### 2026-07-20 — Парсеры XML-фидов НБ РК/НБ КР + formatKzDate (TDD)
+- **What changed:** NEW `src/lib/fx/parse.ts` (3 экспорта: `parseNbrkUsdKzt`, `parseNbkrUsdKgs`, `formatKzDate`); NEW `src/__tests__/fx-parse.test.ts` (5 тестов, TDD RED→GREEN).
+- **Type:** [BEHAVIOR]
+- **Before → After:** нет парсеров XML-фидов → 3 чистые функции для извлечения курсов USD из фидов НБ РК (фиксированный номинал, точка) и НБ КР (переменный номинал, запятая), утилита форматирования даты в DD.MM.YYYY (UTC).
+- **Client reason:** основы для rate-loading-сервиса (Task 2 из FX-отчётов).
+- **Rebuild impact:** presentation only (парсеры используются rate-loader'ом, не видны клиенту).
+
+### 2026-07-20 — 00122: fx_rates — таблица курсов НБ РК/НБ КР для FX-отчётов
+- **What changed:** migration `00122_fx_rates.sql` (таблица `fx_rates(date, base_currency, quote_currency, rate, source, created_at)` с PK `(date, base_currency, quote_currency)` и RLS на SELECT (authenticated) / ALL (is_admin()); поддерживаемые пары валют: USD/KZT (source 'nbrk' — НБ РК), USD/KGS (source 'nbkr' — НБ КР), 'manual' для ручной правки).
+- **Type:** [SCHEMA]
+- **Before → After:** нет курсов валют в системе → таблица `fx_rates` хранит курсы с привязкой к дате, базовой/целевой валюте и источнику для конвертации отчётов в USD
+- **Client reason:** «Обработка сбор по валюте» — нужна таблица курсов ЦБ РК и КР для конвертации сумм в отчётах
+- **Rebuild impact:** DATA-MODEL (новая таблица для курсов валют, базис для FX-отчётов)
 
 ### 2026-07-17 — 00121: per-user скрытие и закрепление столбцов паспорта
 - **What changed:** migration `00121_user_prefs.sql` (таблица `user_prefs(user_id, key, value JSONB)` + RLS owner-only + updated_at триггер); NEW `src/lib/hooks/use-user-pref.ts` (кэш + debounce-upsert 600мс, оптимистично); `passport-table.tsx` — реестр колонок `PT_UNITS` (39 скрываемых единиц; «Группы компании» — одна единица, в теле она colSpan=2), панель `ColumnManager` («Столбцы»: чекбоксы по бэндам + «Закрепить до» + «Сбросить»), генерация CSS (display:none по nth-child для скрытых; sticky-left с измеренными офсетами для закреплённого префикса), динамические colSpan бэндовой шапки и первой ячейки «Итого».

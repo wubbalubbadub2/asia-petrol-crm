@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: [],
+    setupFiles: ["./vitest.setup.ts"],
     // Orphan worktrees from past `isolation: "worktree"` agent runs
     // live under .claude/worktrees/* and contain stale copies of the
     // test suite that fail with assertions matching an older config.
