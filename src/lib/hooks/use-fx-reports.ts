@@ -16,20 +16,25 @@ export const FLOW_METRICS = [
 ] as const;
 
 // database.ts не знает новых RPC (stale types) — узкий структурный каст,
-// тот же приём, что в use-user-pref.ts.
-type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
-function rpc(): Rpc {
-  return (createClient() as unknown as { rpc: Rpc }).rpc;
+// тот же приём, что в use-user-pref.ts. Вызываем .rpc КАК МЕТОД клиента
+// (sb.rpc(...)), а не извлекаем метод в переменную — иначе теряется
+// this-binding и supabase-js падает в рантайме.
+type RpcClient = {
+  rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+};
+async function callRpc(name: string, args: Record<string, unknown>) {
+  const sb = createClient() as unknown as RpcClient;
+  return sb.rpc(name, args);
 }
 
 export async function fetchFlows(from: string, to: string): Promise<FlowRow[]> {
-  const { data, error } = await rpc()("fx_report_flows", { p_from: from, p_to: to });
+  const { data, error } = await callRpc("fx_report_flows", { p_from: from, p_to: to });
   if (error) throw new Error(error.message);
   return (data ?? []) as FlowRow[];
 }
 
 export async function fetchPrice(from: string, to: string): Promise<PriceRow[]> {
-  const { data, error } = await rpc()("fx_report_price", { p_from: from, p_to: to });
+  const { data, error } = await callRpc("fx_report_price", { p_from: from, p_to: to });
   if (error) throw new Error(error.message);
   return (data ?? []) as PriceRow[];
 }

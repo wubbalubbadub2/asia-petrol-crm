@@ -325,3 +325,10 @@ Entry template:
   - Под-строки несут только значения вагона: тоннажи (`loading_volume`/`shipment_volume`), даты, `Отгр. сумма = цена сделки × тоннаж вагона` (клиентская формула `O$4*P5`), приложения (`supplier_appendix`/`buyer_appendix` с fallback на договор сделки), жд-данные (`railway_tariff`, `shipped_tonnage_amount`, rounded tonnage). Агрегаты сделки (Оплата/Баланс/Заявлено/Остаток/Долг/группы-числа) — только на главной строке (иначе SUM задваивается).
 - **Client reason:** клиент прислал размеченный шаблон (`files/Паспорт/`) — нужна детальная выгрузка с расшифровкой по отгрузкам; формат «долги» ждёт утверждения.
 - **Rebuild impact:** EXPORT-LAYOUTS (новый вариант выгрузки); FIELD-OWNERSHIP не затронут (новых DB-полей нет); PRICING не затронут (формулы в БД не менялись — расчёт `цена × тоннаж` только в файле экспорта).
+
+### 2026-07-20 — Fix: /reports падал — .rpc вызывался без this-binding
+- **What changed:** `src/lib/hooks/use-fx-reports.ts` — `callRpc` теперь зовёт `sb.rpc(name, args)` КАК МЕТОД клиента, а не извлекает `.rpc` в переменную и вызывает отдельно.
+- **Type:** [BEHAVIOR]
+- **Before → After:** было `const rpc = (createClient() as ...).rpc; await rpc()(name,args)` → метод `.rpc` терял `this`-привязку к SupabaseClient, supabase-js падал в рантайме, вкладка «Отчёты» показывала «Ошибка:». Стало `sb.rpc(name,args)` — this сохранён, RPC отрабатывают. Поймано E2E-пробой на проде (tsc такое не ловит).
+- **Client reason:** после применения миграций /reports показывала ошибку вместо отчётов.
+- **Rebuild impact:** none (правка вызова).
