@@ -26,6 +26,15 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — [MIGRATION 00124] fx_report_flows / fx_report_price — RPC отчётов
+- **What changed:** migration `00124_fx_reports.sql` — 2 SQL-функции (RPC): `fx_report_flows(p_from date, p_to date)` и `fx_report_price(p_from date, p_to date)`.
+- **Type:** [FORMULA]
+- **Before → After:**
+  - Отчёты по потокам денег и ценам: две RPC-функции для вкладки «Отчёты» реализуют расчёты с конвертацией по дате события. `fx_report_flows()` строит таблицу 4 метрик (supply_in, ship_out, pay_supplier, pay_buyer) с group by (metric, deal_type, year, month), конвертирует каждую сумму по дате события (loading_date/date/payment_date); при отсутствии даты использует среднемесячный курс месяца из d.month. Результат: (metric, deal_type, year, month, usd, kzt) с SUM по конвертированным суммам. `fx_report_price()` выводит per-row цены поставщика и покупателя (converted в USD/KZT), с делением на объём (loading_volume/shipment_volume) для получения per-unit цены, также с fallback на fx_convert_month() если нет даты события.
+  - Обе функции в режиме STABLE; вызывают fx_convert() и fx_convert_month() из миграции 00123, через которые зависят от fx_rate/fx_rate_month и таблицы fx_rates.
+- **Client reason:** вкладка «Отчёты» на UI требует RPC для вытягивания данных с конвертацией в базовые валюты (USD/KZT).
+- **Rebuild impact:** DATA-MODEL/PRICING (новые RPC для отчётной части; завершает реализацию модуля FX-конвертации для FX-отчётов).
+
 ### 2026-07-20 — [MIGRATION 00123] fx_convert / fx_rate / month_num — функции конвертации
 - **What changed:** migration `00123_fx_functions.sql` — 5 SQL-функций: `month_num(text)`, `fx_rate(base, quote, date)`, `fx_rate_month(base, quote, year, month)`, `fx_convert(amount, from, to, date)`, `fx_convert_month(amount, from, to, year, month)`.
 - **Type:** [FORMULA]
