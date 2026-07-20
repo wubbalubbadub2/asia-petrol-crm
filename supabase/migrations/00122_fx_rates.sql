@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS fx_rates (
   PRIMARY KEY (date, base_currency, quote_currency)
 );
 
+-- Per-row конвертация ищет по (пара, дата DESC); PK ведёт с date,
+-- поэтому отдельный индекс под lookup fx_rate().
+CREATE INDEX IF NOT EXISTS fx_rates_pair_date_idx
+  ON fx_rates (base_currency, quote_currency, date DESC);
+
 ALTER TABLE fx_rates ENABLE ROW LEVEL SECURITY;
 
 -- Чтение — любой аутентифицированный (отчёты). Запись — только

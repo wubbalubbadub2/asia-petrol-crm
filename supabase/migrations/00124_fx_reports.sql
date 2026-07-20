@@ -40,18 +40,23 @@ WITH events AS (
          COALESCE(EXTRACT(MONTH FROM p.payment_date)::int, month_num(d.month))
     FROM deal_payments p JOIN deals d ON d.id = p.deal_id
    WHERE p.side = 'buyer'
+), converted AS (
+  SELECT metric, deal_type, fb_year, fb_month,
+         CASE WHEN ev_date IS NOT NULL
+              THEN fx_convert(amount, cur, 'USD', ev_date)
+              ELSE fx_convert_month(amount, cur, 'USD', fb_year, fb_month) END AS u,
+         CASE WHEN ev_date IS NOT NULL
+              THEN fx_convert(amount, cur, 'KZT', ev_date)
+              ELSE fx_convert_month(amount, cur, 'KZT', fb_year, fb_month) END AS k
+    FROM events
+   WHERE (ev_date IS NOT NULL AND ev_date BETWEEN p_from AND p_to)
+      OR (ev_date IS NULL AND fb_year IS NOT NULL AND fb_month IS NOT NULL
+          AND make_date(fb_year, fb_month, 1) BETWEEN date_trunc('month', p_from)::date AND p_to)
 )
 SELECT metric, deal_type, fb_year AS year, fb_month AS month,
-       SUM(CASE WHEN ev_date IS NOT NULL
-                THEN fx_convert(amount, cur, 'USD', ev_date)
-                ELSE fx_convert_month(amount, cur, 'USD', fb_year, fb_month) END) AS usd,
-       SUM(CASE WHEN ev_date IS NOT NULL
-                THEN fx_convert(amount, cur, 'KZT', ev_date)
-                ELSE fx_convert_month(amount, cur, 'KZT', fb_year, fb_month) END) AS kzt
-  FROM events
- WHERE (ev_date IS NOT NULL AND ev_date BETWEEN p_from AND p_to)
-    OR (ev_date IS NULL AND fb_year IS NOT NULL AND fb_month IS NOT NULL
-        AND make_date(fb_year, fb_month, 1) BETWEEN date_trunc('month', p_from)::date AND p_to)
+       SUM(CASE WHEN u IS NOT NULL AND k IS NOT NULL THEN u END) AS usd,
+       SUM(CASE WHEN u IS NOT NULL AND k IS NOT NULL THEN k END) AS kzt
+  FROM converted
  GROUP BY metric, deal_type, fb_year, fb_month
  ORDER BY fb_year, fb_month, metric, deal_type;
 $$;
@@ -85,6 +90,9 @@ RETURNS TABLE(
             ELSE fx_convert_month(d.buyer_price * r.shipment_volume, d.buyer_currency, 'KZT', d.year, month_num(d.month)) END
       ) / r.shipment_volume END
   FROM shipment_registry r JOIN deals d ON d.id = r.deal_id
+  -- Построчный отчёт: строка без обеих дат СНТ не имеет места в периоде и
+  -- исключается (в отличие от fx_report_flows, где агрегат кладёт бездатные
+  -- события на fallback-месяц).
   WHERE COALESCE(r.date, r.loading_date) BETWEEN p_from AND p_to
   ORDER BY COALESCE(r.date, r.loading_date), d.deal_code;
 $$;
