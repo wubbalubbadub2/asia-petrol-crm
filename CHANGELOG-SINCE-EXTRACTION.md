@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Fix: detail-выгрузка теряла под-строки на полном экспорте (1000-row cap)
+- **What changed:** `src/lib/exports/passport-detail-excel.ts` — `fetchPaymentsByDeals` и `fetchShipmentsByDeals`: батч-запросы `.in("deal_id", chunk)` (150 id/чанк) переведены на постраничный `fetchAllPaginated` (`src/lib/supabase/fetch-all.ts`, уже используется в tariffs/archive/dt-kt/use-applications) с детерминированным tie-breaker в `.order()` (payment_date+id / date+deal_id+id).
+- **Type:** [EXPORT] + [BEHAVIOR]
+- **Before → After:** каждый чанк из 150 сделок запрашивался одним `.in(...).order(...)` без `.range()` → PostgREST молча обрезал ответ на дефолтном лимите 1000 строк (Max-Rows); сделки, чьи строки реестра/оплат сортировались после отсечки, теряли ВСЕ под-строки на главной строке, оставаясь «1 строка без деталей». Подтверждено на реальных данных: чанк из 150 id (куда попадает KG/26/346) даёт 1613 строк `shipment_registry` — дефолтный (без range) запрос возвращает ровно 1000 и 0 из них принадлежат KG/26/346; постраничный запрос (0-999 + 1000-1999) даёт все 1613 без дублей/пропусков, и 6 строк KG/26/346 появляются. → теперь оба батч-фетчера пейджинятся до короткой страницы, поэтому строк-в-чанке-более-1000 больше не обрезает данные независимо от того, сколько сделок в экспорте.
+- **Client reason:** баг-репорт со скриншотом: «Паспорт (детальный)» с фильтром на KG/26/346 → 7 строк (верно); без фильтра (полный список) → та же сделка 1 строка без под-строк.
+- **Rebuild impact:** EXPORT-LAYOUTS / DATA-MODEL — общее правило проекта: любой batched `.in(...)`-запрос к таблице, где строк на группу id может быть много (`shipment_registry`, `deal_payments`, и по аналогии любые будущие детальные выгрузки), обязан пагинироваться через `fetchAllPaginated`, а не полагаться на единичный `.select()`.
+
 ### 2026-07-17 — 00121: per-user скрытие и закрепление столбцов паспорта
 - **What changed:** migration `00121_user_prefs.sql` (таблица `user_prefs(user_id, key, value JSONB)` + RLS owner-only + updated_at триггер); NEW `src/lib/hooks/use-user-pref.ts` (кэш + debounce-upsert 600мс, оптимистично); `passport-table.tsx` — реестр колонок `PT_UNITS` (39 скрываемых единиц; «Группы компании» — одна единица, в теле она colSpan=2), панель `ColumnManager` («Столбцы»: чекбоксы по бэндам + «Закрепить до» + «Сбросить»), генерация CSS (display:none по nth-child для скрытых; sticky-left с измеренными офсетами для закреплённого префикса), динамические colSpan бэндовой шапки и первой ячейки «Итого».
 - **Type:** [SCHEMA] + [UI-FIELD] + [PRESENTATION]

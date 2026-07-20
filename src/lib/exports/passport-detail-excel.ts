@@ -30,8 +30,17 @@
 import type { Deal } from "@/lib/hooks/use-deals";
 import type { ExportContext } from "@/lib/exports/passport-excel";
 import { roundedTonnage } from "@/lib/exports/registry-excel";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 type Side = "supplier" | "buyer";
+
+// database.ts is stale on several columns read here (round_volume,
+// supplier_appendix, dcg.quotation/discount — see notes at each call
+// site), so the Supabase query builder's inferred row type doesn't
+// structurally match our slim row types. Same cast the pre-existing
+// code already used at the point of consuming `res.data`; now needed
+// one level up too, on the query passed into fetchAllPaginated.
+type PostgrestPage<T> = PromiseLike<{ data: T[] | null; error: PostgrestError | null }>;
 
 // Slim registry row for the sub-rows — only what the columns read.
 type DetailShipment = {
@@ -259,23 +268,48 @@ type DealPayments = { supplier: PaymentLite[]; buyer: PaymentLite[] };
 
 // Клиент 2026-07-17: каждая оплата — своя под-строка. Тянем сырые
 // платежи по стороне (дата+сумма), сортировка по дате.
+//
+// BUG (2026-07-20): a plain `.in("deal_id", chunk).order(...)` query
+// has no `.range()`, so PostgREST's default 1000-row `Max-Rows` cap
+// silently truncates any chunk whose combined row count exceeds 1000
+// — deals sorted past the cutoff lose their sub-rows entirely. A
+// full unfiltered export easily blows past this (measured: one 150-id
+// chunk alone returned 1613 shipment_registry rows), while a single-
+// deal-filter export stays tiny and never hits the cap — matching the
+// exact symptom reported (KG/26/346 has sub-rows when filtered alone,
+// none when exported with the full list). Fixed the same way
+// tariffs/archive/dt-kt pages and use-applications.ts already do:
+// page through with fetchAllPaginated (same fetch-all.ts helper the
+// project already has for this exact class of bug — see its doc
+// comment: "already cost us bugs in shipment_registry, quotations,
+// and the quotation svod").
 async function fetchPaymentsByDeals(dealIds: string[]): Promise<Map<string, DealPayments>> {
-  const { createClient } = await import("@/lib/supabase/client");
+  const [{ createClient }, { fetchAllPaginated }] = await Promise.all([
+    import("@/lib/supabase/client"),
+    import("@/lib/supabase/fetch-all"),
+  ]);
   const sb = createClient();
   const CHUNK = 150;
   const chunks: string[][] = [];
   for (let i = 0; i < dealIds.length; i += CHUNK) chunks.push(dealIds.slice(i, i + CHUNK));
   const results = await Promise.all(chunks.map((ids) =>
-    sb
-      .from("deal_payments")
-      .select("deal_id, side, amount, payment_date, payment_type")
-      .in("deal_id", ids)
-      .order("payment_date", { ascending: true }),
+    fetchAllPaginated<{ deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null }>((from, to) =>
+      sb
+        .from("deal_payments")
+        .select("deal_id, side, amount, payment_date, payment_type")
+        .in("deal_id", ids)
+        // Tie-breaker (id) makes the range() paging deterministic —
+        // ties on payment_date alone can straddle a page boundary and
+        // get skipped or duplicated across pages.
+        .order("payment_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PostgrestPage<{ deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null }>,
+    ),
   ));
   const out = new Map<string, DealPayments>();
   for (const res of results) {
     if (res.error) throw new Error(`Оплаты: ${res.error.message}`);
-    for (const row of (res.data ?? []) as { deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null }[]) {
+    for (const row of res.data) {
       const entry = out.get(row.deal_id) ?? { supplier: [], buyer: [] };
       const sign = row.payment_type === "refund" || row.payment_type === "offset" ? -1 : 1;
       entry[row.side].push({ amount: row.amount != null ? row.amount * sign : null, payment_date: row.payment_date });
@@ -287,25 +321,38 @@ async function fetchPaymentsByDeals(dealIds: string[]): Promise<Map<string, Deal
 
 // Batched registry fetch for the exported deals. PostgREST caps URL
 // length, so the IN-list goes out in chunks; all chunks in parallel.
+// Each chunk is itself paged with fetchAllPaginated (see bug note on
+// fetchPaymentsByDeals above) so a chunk whose row count exceeds the
+// 1000-row Max-Rows cap still comes back complete.
 async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, DetailShipment[]>> {
-  const { createClient } = await import("@/lib/supabase/client");
+  const [{ createClient }, { fetchAllPaginated }] = await Promise.all([
+    import("@/lib/supabase/client"),
+    import("@/lib/supabase/fetch-all"),
+  ]);
   const sb = createClient();
   const CHUNK = 150;
   const chunks: string[][] = [];
   for (let i = 0; i < dealIds.length; i += CHUNK) chunks.push(dealIds.slice(i, i + CHUNK));
   const results = await Promise.all(chunks.map((ids) =>
-    sb
-      .from("shipment_registry")
-      .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix")
-      .in("deal_id", ids)
-      .order("date", { ascending: true }),
+    fetchAllPaginated<DetailShipment>((from, to) =>
+      sb
+        .from("shipment_registry")
+        .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix")
+        .in("deal_id", ids)
+        // Tie-breaker (deal_id, id) — same determinism reasoning as
+        // above; `date` alone has plenty of duplicate values here.
+        .order("date", { ascending: true })
+        .order("deal_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PostgrestPage<DetailShipment>,
+    ),
   ));
   const byDeal = new Map<string, DetailShipment[]>();
   for (const res of results) {
     if (res.error) throw new Error(`Реестр отгрузок: ${res.error.message}`);
     // database.ts is stale on round_volume / supplier_appendix (same
     // note in use-registry.ts) — PostgREST returns them fine.
-    for (const row of (res.data ?? []) as unknown as DetailShipment[]) {
+    for (const row of res.data) {
       const arr = byDeal.get(row.deal_id) ?? [];
       arr.push(row);
       byDeal.set(row.deal_id, arr);
