@@ -26,6 +26,12 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Компонент потокового отчёта FlowReport
+- **What changed:** NEW `src/components/reports/flow-report.tsx` — компонент таблицы потоков (Flow Report), отображает ежемесячные суммы по типам сделок в USD и KZT
+- **Type:** [PRESENTATION]
+- **Client reason:** Task 10 — компонент потокового отчёта для вкладки «Отчёты»
+- **Rebuild impact:** presentation only
+
 ### 2026-07-20 — Фикс CI: детерминированный placeholder-env вместо loadEnv в vitest.config.ts
 - **What changed:** `vitest.config.ts` — убран импорт `loadEnv` из `vite` и вызов `Object.assign(process.env, loadEnv(...))`, конфиг возвращён к обычному объекту (без `({ mode }) => …`); `setupFiles: []` → `setupFiles: ["./vitest.setup.ts"]`. NEW `vitest.setup.ts` (repo root) — с двумя строками `process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://localhost:54321"` / `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key"`.
 - **Type:** [BEHAVIOR]
