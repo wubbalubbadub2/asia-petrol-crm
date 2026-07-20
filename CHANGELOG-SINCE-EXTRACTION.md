@@ -26,6 +26,16 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — [MIGRATION 00123] fx_convert / fx_rate / month_num — функции конвертации
+- **What changed:** migration `00123_fx_functions.sql` — 5 SQL-функций: `month_num(text)`, `fx_rate(base, quote, date)`, `fx_rate_month(base, quote, year, month)`, `fx_convert(amount, from, to, date)`, `fx_convert_month(amount, from, to, year, month)`.
+- **Type:** [FORMULA]
+- **Before → After:**
+  - Конвертация валют: нет системного способа конвертировать суммы между USD/KZT/KGS → функции реализуют пивот через USD (промежуточный): `KZT→USD ÷ fx_rate(USD, KZT)`, затем `USD→target × fx_rate(USD, target)`. Обратное (target→USD) меняет ÷/× местами. Логика `fx_rate()` берёт курс на дату (дата ≤ p_date); логика `fx_rate_month()` — среднее значение за месяц. При отсутствии курса возвращается NULL (защита от ошибочных расчётов). Если `p_from = p_to`, сумма не меняется. Если `p_amount IS NULL`, результат NULL.
+  - `month_num(text)` — служебная функция: преобразует русский месяц ('январь'…'декабрь') в число (1…12), используется в UI фильтров месяцев, не входит в основной расчёт.
+  - Функции в режиме STABLE (зависят только от таблицы `fx_rates`, которая меняется редко) и покрыты тестами (Task 3, probe на `fx_convert(1100000, 'USD', 'KZT', DATE '2026-06-24')`).
+- **Client reason:** функции конвертации для отчётов с валютами (Task 6 из плана FX-отчётов), базис для калькуляции итогов по USD.
+- **Rebuild impact:** DATA-MODEL/PRICING (новые функции для расчёта итогов в отчётах; формула пивота USD используется везде, где требуется конвертация между KZT/KGS).
+
 ### 2026-07-20 — fix(fx-backfill): вежливая задержка на каждой итерации + surfacing ошибок earliest()
 - **What changed:** `scripts/fx-backfill.mjs` (lines 24–51) — изменена структура дня-цикла и функция `earliest()`.
 - **Type:** [SCRIPT]
