@@ -26,6 +26,16 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Слой данных отчётов FX: use-fx-reports.ts + groupFlows
+- **What changed:** NEW `src/lib/hooks/use-fx-reports.ts` — `fetchFlows()`/`fetchPrice()` (клиентские обёртки над RPC `fx_report_flows`/`fx_report_price` из миграции 00124), типы `FlowRow`/`PriceRow`, константа `FLOW_METRICS` (порядок/лейблы метрик для вкладки «Отчёты»), чистая функция `groupFlows()`. NEW `src/__tests__/fx-report-shape.test.ts` (TDD: RED → GREEN на `groupFlows`). Также `vitest.config.ts` — добавлен `loadEnv()` (из `vite`) в `defineConfig`, мержится в `process.env`.
+- **Type:** [BEHAVIOR]
+- **Before → After:**
+  - Клиентского доступа к RPC 00124 не было → `fetchFlows(from, to)`/`fetchPrice(from, to)` вызывают RPC через узкий структурный каст `(createClient() as unknown as { rpc: Rpc }).rpc` (`database.ts` ещё не знает новых RPC — тот же stale-types приём, что в `use-user-pref.ts`; без `any` и без lint-disable).
+  - `groupFlows(rows: FlowRow[])` — чистая агрегация: группирует строки `fx_report_flows` по `metric` (`byMetric`) и суммирует `usd`/`kzt` по метрике (`totals`), с `?? 0` на случай null-сумм.
+  - Побочный фикс инфраструктуры: `vitest.config.ts` не подтягивал `.env.local` в `process.env` (Vitest, в отличие от Next.js, не делает этого сам) — импорт `use-fx-reports.ts` тянет `@/lib/supabase/client`, который бросает `Error("Missing Supabase env vars…")` при импорте модуля, если переменные не заданы. Это первый тест, который импортирует что-либо из `src/lib/hooks`, поэтому проблема не проявлялась раньше. Исправлено через `loadEnv(mode, process.cwd(), "")` (пакет `vite`) в `defineConfig(({ mode }) => …)`.
+- **Client reason:** Task 8 контракта FX-отчётов (слой данных для будущего UI вкладки «Отчёты»).
+- **Rebuild impact:** presentation/data-layer only — новых DB-объектов нет (использует RPC 00124), формулы БД не менялись. `vitest.config.ts` фикс — инфраструктурный, влияет на все будущие тесты, импортирующие hooks с `createClient()`.
+
 ### 2026-07-20 — [MIGRATION 00124] fx_report_flows / fx_report_price — RPC отчётов
 - **What changed:** migration `00124_fx_reports.sql` — 2 SQL-функции (RPC): `fx_report_flows(p_from date, p_to date)` и `fx_report_price(p_from date, p_to date)`.
 - **Type:** [FORMULA]
