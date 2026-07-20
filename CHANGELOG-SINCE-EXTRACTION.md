@@ -26,6 +26,12 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Вкладка «Отчёты» (/reports) — оболочка + переключатель отчёта и период
+- **What changed:** `src/lib/constants/nav-items.ts` — импорт `BarChart3` из `lucide-react`, пункт меню «Отчёты» (`/reports`) добавлен после «Реестр отгрузки». NEW `src/app/(dashboard)/reports/page.tsx` — клиентская страница-оболочка: селектор отчёта (`FLOW_METRICS` + «Цена (по СНТ)»), поля периода `from`/`to`, загрузка через `fetchFlows`/`fetchPrice` (Task 8), рендер `FlowReport`/`PriceReport` (Task 10/11); строки потоков предварительно фильтруются по выбранной метрике (`flows.filter(r => r.metric === report)`) перед передачей в `FlowReport`, т.к. сам компонент не фильтрует.
+- **Type:** [UI]
+- **Client reason:** Task 9 — интеграция вкладки «Отчёты» в навигацию и роутинг.
+- **Rebuild impact:** presentation only — новых DB-объектов и формул нет, только UI-обвязка вокруг существующих RPC/компонентов.
+
 ### 2026-07-20 — Компонент отчёта Цена PriceReport
 - **What changed:** NEW `src/components/reports/price-report.tsx` — компонент таблицы цен (Price Report), отображает цены поставщика и покупателя (приход/исход) в USD и KZT с форматированием чисел
 - **Type:** [PRESENTATION]

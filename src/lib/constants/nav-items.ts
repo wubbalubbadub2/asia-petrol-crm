@@ -11,6 +11,7 @@ import {
   Upload,
   Archive,
   Settings,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -52,6 +53,11 @@ export const navItems: NavItem[] = [
     label: "Реестр отгрузки",
     href: "/registry",
     icon: Truck,
+  },
+  {
+    label: "Отчёты",
+    href: "/reports",
+    icon: BarChart3,
   },
   {
     label: "ДТ-КТ Логистика",
