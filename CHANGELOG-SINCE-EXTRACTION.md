@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — [API] /api/cron/fx-rates — ежедневная загрузка курсов (Vercel Cron)
+- **What changed:** NEW `src/app/api/cron/fx-rates/route.ts` (`GET`, `runtime = "nodejs"`, `dynamic = "force-dynamic"`); `vercel.json` (+`crons` — daily `0 6 * * *`, оставлен `regions: ["fra1"]`); `.env.example` (+`CRON_SECRET=` после `SUPABASE_SERVICE_ROLE_KEY`).
+- **Type:** [BEHAVIOR]
+- **Before → After:** `ingestDailyRates` (Task 3) существовал изолированно, без вызывающего слоя → тонкий cron-роут дёргает его раз в день (06:00 UTC — после закрытия банковских операций накануне; на Hobby-тарифе Vercel это единственная доступная частота). Auth — сравнение `Authorization: Bearer <CRON_SECRET>` с `process.env.CRON_SECRET`; при переезде с Vercel меняется только этот файл + расписание, ядро (`ingest.ts`) не трогается.
+- **Client reason:** автоматическая ежедневная загрузка курсов НБ РК/НБ КР для FX-конвертации отчётов (Task 4 из плана).
+- **Rebuild impact:** presentation only (внутренний cron-эндпоинт, не виден клиенту напрямую); FIELD-OWNERSHIP/DATA-MODEL не затронуты — новый env-ключ `CRON_SECRET` требует ручной настройки в Vercel (человеческий чекпоинт, см. task-4-brief.md Step 6).
+
 ### 2026-07-20 — Ядро загрузки курсов НБ РК/НБ КР (`ingest.ts`, TDD)
 - **What changed:** NEW `src/lib/fx/ingest.ts` (`nbrkUrl`, `NBKR_URL`, `fetchNbrkRate`, `fetchNbkrRate`, `ingestDailyRates`); NEW `src/__tests__/fx-ingest.test.ts` (4 теста, TDD RED→GREEN, покрывают только чистые части — URL-билдеры и fetch-функции с фейковым `fetch`).
 - **Type:** [BEHAVIOR]

@@ -1,4 +1,7 @@
 {
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "crons": [
+    { "path": "/api/cron/fx-rates", "schedule": "0 6 * * *" }
+  ]
 }
 
