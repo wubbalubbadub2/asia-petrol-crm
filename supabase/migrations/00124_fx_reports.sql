@@ -49,7 +49,9 @@ SELECT metric, deal_type, fb_year AS year, fb_month AS month,
                 THEN fx_convert(amount, cur, 'KZT', ev_date)
                 ELSE fx_convert_month(amount, cur, 'KZT', fb_year, fb_month) END) AS kzt
   FROM events
- WHERE ev_date IS NULL OR ev_date BETWEEN p_from AND p_to
+ WHERE (ev_date IS NOT NULL AND ev_date BETWEEN p_from AND p_to)
+    OR (ev_date IS NULL AND fb_year IS NOT NULL AND fb_month IS NOT NULL
+        AND make_date(fb_year, fb_month, 1) BETWEEN date_trunc('month', p_from)::date AND p_to)
  GROUP BY metric, deal_type, fb_year, fb_month
  ORDER BY fb_year, fb_month, metric, deal_type;
 $$;
