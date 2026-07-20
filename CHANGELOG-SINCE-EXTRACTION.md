@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — 00122: fx_rates — таблица курсов НБ РК/НБ КР для FX-отчётов
+- **What changed:** migration `00122_fx_rates.sql` (таблица `fx_rates(date, base_currency, quote_currency, rate, source, created_at)` с PK `(date, base_currency, quote_currency)` и RLS на SELECT (authenticated) / ALL (is_admin()); поддерживаемые пары валют: USD/KZT (source 'nbrk' — НБ РК), USD/KGS (source 'nbkr' — НБ КР), 'manual' для ручной правки).
+- **Type:** [SCHEMA]
+- **Before → After:** нет курсов валют в системе → таблица `fx_rates` хранит курсы с привязкой к дате, базовой/целевой валюте и источнику для конвертации отчётов в USD
+- **Client reason:** «Обработка сбор по валюте» — нужна таблица курсов ЦБ РК и КР для конвертации сумм в отчётах
+- **Rebuild impact:** DATA-MODEL (новая таблица для курсов валют, базис для FX-отчётов)
+
 ### 2026-07-17 — 00121: per-user скрытие и закрепление столбцов паспорта
 - **What changed:** migration `00121_user_prefs.sql` (таблица `user_prefs(user_id, key, value JSONB)` + RLS owner-only + updated_at триггер); NEW `src/lib/hooks/use-user-pref.ts` (кэш + debounce-upsert 600мс, оптимистично); `passport-table.tsx` — реестр колонок `PT_UNITS` (39 скрываемых единиц; «Группы компании» — одна единица, в теле она colSpan=2), панель `ColumnManager` («Столбцы»: чекбоксы по бэндам + «Закрепить до» + «Сбросить»), генерация CSS (display:none по nth-child для скрытых; sticky-left с измеренными офсетами для закреплённого префикса), динамические colSpan бэндовой шапки и первой ячейки «Итого».
 - **Type:** [SCHEMA] + [UI-FIELD] + [PRESENTATION]
