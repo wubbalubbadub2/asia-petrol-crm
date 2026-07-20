@@ -236,31 +236,63 @@ export type DealLineSnapshot = {
 // Bulk-fetch the line snapshots for a set of deals. Used by the Excel
 // export so the heavy column data isn't paid for on every passport
 // refresh. One round-trip per side, IN-list scoped to visible deals.
+//
+// BUG (2026-07-20): a full-year export can pass hundreds of deal ids
+// through a single unchunked, unpaginated `.in("deal_id", dealIds)`.
+// A deal can have several supplier/buyer lines each, so the combined
+// row count can exceed PostgREST's default 1000-row Max-Rows cap and
+// get silently truncated — same bug class fixed in
+// src/lib/exports/passport-detail-excel.ts (fetchPaymentsByDeals /
+// fetchShipmentsByDeals). Fixed the same way: chunk ids by 150 (same
+// CHUNK the exporter uses) and page each chunk with fetchAllPaginated,
+// with a deterministic (deal_id, id) tie-breaker so page boundaries
+// can't straddle a tie and skip/duplicate rows.
 export async function fetchDealLinesForExport(
   dealIds: string[],
 ): Promise<{ supplier: Map<string, DealLineSnapshot[]>; buyer: Map<string, DealLineSnapshot[]> }> {
   if (dealIds.length === 0) return { supplier: new Map(), buyer: new Map() };
+  const { fetchAllPaginated } = await import("@/lib/supabase/fetch-all");
   const sb = createClient();
-  const [supRes, buyRes] = await Promise.all([
-    sb
-      .from("deal_supplier_lines")
-      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, quotation_type:quotation_product_types(basis)")
-      .in("deal_id", dealIds),
-    sb
-      .from("deal_buyer_lines")
-      .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, quotation_type:quotation_product_types(basis)")
-      .in("deal_id", dealIds),
+  const CHUNK = 150;
+  const chunks: string[][] = [];
+  for (let i = 0; i < dealIds.length; i += CHUNK) chunks.push(dealIds.slice(i, i + CHUNK));
+
+  type LineRow = { id: string; deal_id: string } & Record<string, unknown>;
+  async function fetchSide(table: "deal_supplier_lines" | "deal_buyer_lines") {
+    const results = await Promise.all(chunks.map((ids) =>
+      fetchAllPaginated<LineRow>((from, to) =>
+        sb
+          .from(table)
+          .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, quotation_type:quotation_product_types(basis)")
+          .in("deal_id", ids)
+          .order("deal_id", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to) as unknown as PromiseLike<{ data: LineRow[] | null; error: import("@supabase/supabase-js").PostgrestError | null }>,
+      ),
+    ));
+    const rows: LineRow[] = [];
+    for (const res of results) {
+      if (res.error) throw new Error(`${table}: ${res.error.message}`);
+      rows.push(...res.data);
+    }
+    return rows;
+  }
+
+  const [supRows, buyRows] = await Promise.all([
+    fetchSide("deal_supplier_lines"),
+    fetchSide("deal_buyer_lines"),
   ]);
-  function group(rows: { deal_id: string }[] | null) {
+
+  function group(rows: { deal_id: string }[]) {
     const m = new Map<string, DealLineSnapshot[]>();
-    for (const r of rows ?? []) {
+    for (const r of rows) {
       const arr = m.get(r.deal_id) ?? [];
       arr.push(r as unknown as DealLineSnapshot);
       m.set(r.deal_id, arr);
     }
     return m;
   }
-  return { supplier: group(supRes.data), buyer: group(buyRes.data) };
+  return { supplier: group(supRows), buyer: group(buyRows) };
 }
 
 // LIST_SELECT — minimal projection for the deals list. We dropped the

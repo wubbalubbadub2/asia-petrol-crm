@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Fix: ещё два batched-запроса в detail-экспорте без пагинации (1000-row cap, follow-up)
+- **What changed:** `src/lib/hooks/use-deals.ts` — `fetchDealLinesForExport` (~строки 239-291): единый unchunked `.in("deal_id", dealIds)` по `deal_supplier_lines`/`deal_buyer_lines` заменён на чанки по 150 id + постраничный `fetchAllPaginated` на каждый чанк, tie-breaker `.order("deal_id").order("id")`; возвращаемая форма (`{ supplier: Map, buyer: Map }`) не изменилась — оба вызывающих места (`passport-excel.ts`, `passport-detail-excel.ts`) не тронуты. `src/lib/exports/passport-detail-excel.ts` — фетч `deal_company_groups` (~строки 382-409): уже был чанкирован по 150, но не пагинирован через `.range()`; переведён на `fetchAllPaginated` с тем же tie-breaker (`deal_id`+`id`), как остальные фетчеры файла.
+- **Type:** [EXPORT] + [BEHAVIOR]
+- **Before → After:** (1) `fetchDealLinesForExport` бил один `.in(...)` без `.range()` по ВСЕМУ списку сделок годового экспорта (не чанкировано вообще) → при большом количестве строк по сделкам (несколько supplier/buyer lines на сделку × сотни сделок) PostgREST мог молча обрезать ответ на 1000 строк, теряя «Биржа»/quotation/price данные для сделок, отсортированных после отсечки → теперь чанки по 150 id, каждый чанк пагинируется до короткой страницы. (2) `deal_company_groups`-фетч был чанкирован (≤~450 строк/чанк — сейчас безопасно), но не пагинирован — тот же паттерн-риск как обе функции, исправленные в предыдущем коммите → добавлен `.range()`-пейджинг для консистентности и запаса на рост числа company-groups на сделку.
+- **Client reason:** ревью нашло два дополнительных места того же класса бага после исправления `fetchPaymentsByDeals`/`fetchShipmentsByDeals` в предыдущем коммите (abb49dc).
+- **Rebuild impact:** EXPORT-LAYOUTS / DATA-MODEL — закрывает то же правило: любой batched `.in(...)`-запрос к таблице с потенциально большим числом строк на группу id обязан пагинироваться через `fetchAllPaginated`, а не полагаться на единичный `.select()`/чанкирование без `.range()`.
+
 ### 2026-07-20 — Fix: detail-выгрузка теряла под-строки на полном экспорте (1000-row cap)
 - **What changed:** `src/lib/exports/passport-detail-excel.ts` — `fetchPaymentsByDeals` и `fetchShipmentsByDeals`: батч-запросы `.in("deal_id", chunk)` (150 id/чанк) переведены на постраничный `fetchAllPaginated` (`src/lib/supabase/fetch-all.ts`, уже используется в tariffs/archive/dt-kt/use-applications) с детерминированным tie-breaker в `.order()` (payment_date+id / date+deal_id+id).
 - **Type:** [EXPORT] + [BEHAVIOR]

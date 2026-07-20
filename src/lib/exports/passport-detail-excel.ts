@@ -361,10 +361,13 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
   return byDeal;
 }
 
+type DcgRow = { deal_id: string; id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; discount: number | null };
+
 export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
-  const [{ fetchDealLinesForExport }, { getGlobalRefs, getCachedRefsSync }] = await Promise.all([
+  const [{ fetchDealLinesForExport }, { getGlobalRefs, getCachedRefsSync }, { fetchAllPaginated }] = await Promise.all([
     import("@/lib/hooks/use-deals"),
     import("@/lib/refs"),
+    import("@/lib/supabase/fetch-all"),
   ]);
   const refs = getCachedRefsSync() ?? await getGlobalRefs();
   const supplierById = new Map(refs.suppliers.map((c) => [c.id, c]));
@@ -381,6 +384,12 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
 
   // Three parallel round-trips: lines (Биржа/цены), shipments (sub-rows),
   // full dcg rows (LIST_SELECT trims quotation/discount off the embed).
+  //
+  // dcg fetch is chunked by 150 same as the others, but (until now) not
+  // range-paginated — same latent 1000-row Max-Rows truncation risk as
+  // fetchPaymentsByDeals/fetchShipmentsByDeals above (currently safe at
+  // ≤~450 rows/chunk, but paginate it too for consistency and safety
+  // margin as company-group counts per deal grow).
   const dcgChunks: string[][] = [];
   for (let i = 0; i < dealIds.length; i += 150) dcgChunks.push(dealIds.slice(i, i + 150));
   const [lines, shipmentsByDeal, paymentsByDeal, dcgResults] = await Promise.all([
@@ -388,19 +397,25 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
     fetchShipmentsByDeals(dealIds),
     fetchPaymentsByDeals(dealIds),
     Promise.all(dcgChunks.map((ids) =>
-      sb
-        .from("deal_company_groups")
-        .select("deal_id, id, position, company_group_id, price, price_kind, quotation, discount")
-        .in("deal_id", ids),
+      fetchAllPaginated<DcgRow>((from, to) =>
+        sb
+          .from("deal_company_groups")
+          .select("deal_id, id, position, company_group_id, price, price_kind, quotation, discount")
+          .in("deal_id", ids)
+          // Tie-breaker (id) — same determinism reasoning as the
+          // payments/shipments fetchers above.
+          .order("deal_id", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to) as unknown as PostgrestPage<DcgRow>,
+      ),
     )),
   ]);
 
-  type DcgRow = { deal_id: string; id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; discount: number | null };
   const dcgByDeal = new Map<string, DcgRow[]>();
   for (const res of dcgResults) {
     if (res.error) throw new Error(`Группы компании: ${res.error.message}`);
     // database.ts is stale on dcg.quotation/discount (added in 00089).
-    for (const row of (res.data ?? []) as unknown as DcgRow[]) {
+    for (const row of res.data) {
       const arr = dcgByDeal.get(row.deal_id) ?? [];
       arr.push(row);
       dcgByDeal.set(row.deal_id, arr);
