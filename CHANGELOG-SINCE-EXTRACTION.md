@@ -26,6 +26,15 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — fix(fx-backfill): вежливая задержка на каждой итерации + surfacing ошибок earliest()
+- **What changed:** `scripts/fx-backfill.mjs` (lines 24–51) — изменена структура дня-цикла и функция `earliest()`.
+- **Type:** [SCRIPT]
+- **Before → After:**
+  - День-цикл: вежливая задержка 120мс была в конце итерации; `continue` при выходных/no-rate перепрыгивал её → дозвоны к НБ РК в выходные подряд без паузы. Теперь: обёртка `try { ...per-iteration... } finally { await delay(120) }` гарантирует delay на КАЖДОЙ итерации (continue не пропускает finally); внутренний try/catch для fetch+upsert сохранён.
+  - `earliest()`: запросы q1/q2 не проверяли `.error` — ошибка БД молча падала на fallback 2026-01-01. Добавлена обработка: если `q1.error || q2.error`, то `console.warn()` с сообщением, затем graceful fallback (не throw).
+- **Client reason:** review finding при подготовке Phase 5 (FX-отчёты).
+- **Rebuild impact:** presentation only — скрипт utility, не меняет схему; graceful error-surfacing.
+
 ### 2026-07-20 — [SCRIPT] fx-backfill.mjs — backfill истории USD/KZT
 - **What changed:** NEW `scripts/fx-backfill.mjs` — самостоятельный Node-скрипт (без импорта Next-алиасов `@/`), использует `@supabase/supabase-js` напрямую с service-role ключом (`SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` из env). Флаг `--dry` для прогона без записи.
 - **Type:** [SCRIPT]

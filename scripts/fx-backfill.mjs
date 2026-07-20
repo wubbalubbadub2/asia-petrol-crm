@@ -24,6 +24,8 @@ async function nbrk(d) {
 async function earliest() {
   const q1 = await sb.from("shipment_registry").select("date").not("date","is",null).order("date",{ascending:true}).limit(1);
   const q2 = await sb.from("deal_payments").select("payment_date").not("payment_date","is",null).order("payment_date",{ascending:true}).limit(1);
+  if (q1.error) console.warn(`shipment_registry query error: ${q1.error.message}`);
+  if (q2.error) console.warn(`deal_payments query error: ${q2.error.message}`);
   const dates = [q1.data?.[0]?.date, q2.data?.[0]?.payment_date].filter(Boolean).sort();
   return dates[0] ? new Date(dates[0] + "T00:00:00Z") : new Date(Date.UTC(2026,0,1));
 }
@@ -33,20 +35,23 @@ const end = new Date();
 console.log(`Backfill USD/KZT ${iso(start)} → ${iso(end)}${DRY ? " (dry)" : ""}`);
 let ok = 0, skip = 0;
 for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-  const dow = d.getUTCDay();
-  if (dow === 0 || dow === 6) { skip++; continue; }          // выходные — пропуск, покрываются fallback date<=X
   try {
-    const rate = await nbrk(new Date(d));
-    if (!rate) { skip++; continue; }
-    if (!DRY) {
-      const { error } = await sb.from("fx_rates").upsert(
-        { date: iso(d), base_currency: "USD", quote_currency: "KZT", rate, source: "nbrk" },
-        { onConflict: "date,base_currency,quote_currency" });
-      if (error) throw new Error(error.message);
-    }
-    ok++;
-    if (ok % 20 === 0) console.log(`  …${iso(d)} = ${rate}`);
-  } catch (e) { console.warn(`  ${iso(d)}: ${e.message}`); skip++; }
-  await new Promise((r) => setTimeout(r, 120));               // вежливо к серверу НБ РК
+    const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) { skip++; continue; }          // выходные — пропуск, покрываются fallback date<=X
+    try {
+      const rate = await nbrk(new Date(d));
+      if (!rate) { skip++; continue; }
+      if (!DRY) {
+        const { error } = await sb.from("fx_rates").upsert(
+          { date: iso(d), base_currency: "USD", quote_currency: "KZT", rate, source: "nbrk" },
+          { onConflict: "date,base_currency,quote_currency" });
+        if (error) throw new Error(error.message);
+      }
+      ok++;
+      if (ok % 20 === 0) console.log(`  …${iso(d)} = ${rate}`);
+    } catch (e) { console.warn(`  ${iso(d)}: ${e.message}`); skip++; }
+  } finally {
+    await new Promise((r) => setTimeout(r, 120));               // вежливо к серверу НБ РК — гарантия на каждой итерации
+  }
 }
 console.log(`Готово: ${ok} курсов записано, ${skip} пропущено.`);
