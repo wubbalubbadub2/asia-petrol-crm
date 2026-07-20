@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — [SCRIPT] fx-backfill.mjs — backfill истории USD/KZT
+- **What changed:** NEW `scripts/fx-backfill.mjs` — самостоятельный Node-скрипт (без импорта Next-алиасов `@/`), использует `@supabase/supabase-js` напрямую с service-role ключом (`SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` из env). Флаг `--dry` для прогона без записи.
+- **Type:** [SCRIPT]
+- **Before → After:** курсов до самой ранней даты события в `fx_rates` не было (таблица 00122 и cron 00121/Task 4 наполняют её только начиная с момента внедрения) → скрипт вычисляет самую раннюю дату (`min(shipment_registry.date, deal_payments.payment_date)`, фоллбек `2026-01-01`), проходит по будним дням от неё до сегодня, тянет курс USD с НБ РК (`get_rates.cfm?fdate=dd.mm.yyyy`) и делает upsert в `fx_rates` (`onConflict: date,base_currency,quote_currency`, `source: 'nbrk'`) с паузой 120мс между запросами; выходные пропускаются (покрываются fallback `date <= X` в `fx_rate` из Task 3). KGS-историю не тянет (у НБ КР нет чистого date-параметра) — при необходимости бэкфиллится вручную (`source='manual'`).
+- **Client reason:** заполнение исторических курсов USD/KZT для конвертации отчётов по уже существующим сделкам/платежам (Task 5 из плана FX-отчётов).
+- **Rebuild impact:** presentation/data-fill only — одноразовый скрипт, схему `fx_rates` (00122) не меняет; запуск — human checkpoint (нужны реальные `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` и сеть).
+
 ### 2026-07-20 — [API] /api/cron/fx-rates — ежедневная загрузка курсов (Vercel Cron)
 - **What changed:** NEW `src/app/api/cron/fx-rates/route.ts` (`GET`, `runtime = "nodejs"`, `dynamic = "force-dynamic"`); `vercel.json` (+`crons` — daily `0 6 * * *`, оставлен `regions: ["fra1"]`); `.env.example` (+`CRON_SECRET=` после `SUPABASE_SERVICE_ROLE_KEY`).
 - **Type:** [BEHAVIOR]
