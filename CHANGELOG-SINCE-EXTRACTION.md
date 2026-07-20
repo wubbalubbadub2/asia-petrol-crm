@@ -26,6 +26,12 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Компонент отчёта Цена PriceReport
+- **What changed:** NEW `src/components/reports/price-report.tsx` — компонент таблицы цен (Price Report), отображает цены поставщика и покупателя (приход/исход) в USD и KZT с форматированием чисел
+- **Type:** [PRESENTATION]
+- **Client reason:** Task 11 — компонент таблицы цен для вкладки «Отчёты»
+- **Rebuild impact:** presentation only
+
 ### 2026-07-20 — Компонент потокового отчёта FlowReport
 - **What changed:** NEW `src/components/reports/flow-report.tsx` — компонент таблицы потоков (Flow Report), отображает ежемесячные суммы по типам сделок в USD и KZT
 - **Type:** [PRESENTATION]
