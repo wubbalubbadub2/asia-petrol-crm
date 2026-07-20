@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Ядро загрузки курсов НБ РК/НБ КР (`ingest.ts`, TDD)
+- **What changed:** NEW `src/lib/fx/ingest.ts` (`nbrkUrl`, `NBKR_URL`, `fetchNbrkRate`, `fetchNbkrRate`, `ingestDailyRates`); NEW `src/__tests__/fx-ingest.test.ts` (4 теста, TDD RED→GREEN, покрывают только чистые части — URL-билдеры и fetch-функции с фейковым `fetch`).
+- **Type:** [BEHAVIOR]
+- **Before → After:** парсеры фидов (Task 2) существовали изолированно, без слоя загрузки → `ingest.ts` строит URL обоих банков, тянет и парсит их (`fetchNbrkRate`/`fetchNbkrRate` принимают опциональный `fetchFn` для тестируемости), и `ingestDailyRates` через `createAdminClient()` делает upsert обеих строк (`USD/KZT` из НБ РК, `USD/KGS` из НБ КР) в `fx_rates` по конфликту `(date, base_currency, quote_currency)`. Upsert использует узкий структурный `as unknown as {...}` каст (тот же приём, что в `use-user-pref.ts`) — `database.ts` ещё не знает `fx_rates` до перегенерации типов (Task 8). `ingestDailyRates` не покрыт unit-тестом (сеть + БД) — верифицируется интеграционно через cron-роут (Task 4).
+- **Client reason:** ядро rate-loading для FX-конвертации отчётов (Task 3 из плана).
+- **Rebuild impact:** presentation only (внутренний загрузочный сервис, не виден клиенту напрямую).
+
 ### 2026-07-20 — Закалена NBKR-парсер + добавлены тесты для отсутствия USD и лишних тегов
 - **What changed:** `src/lib/fx/parse.ts` (`parseNbkrUsdKgs`), `src/__tests__/fx-parse.test.ts` (+2 теста).
 - **Type:** [BEHAVIOR]
