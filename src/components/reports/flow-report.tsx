@@ -1,6 +1,6 @@
 // src/components/reports/flow-report.tsx
+import { FLOW_METRICS, type FlowRow } from "@/lib/hooks/use-fx-reports";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
-import type { FlowRow } from "@/lib/hooks/use-fx-reports";
 
 const fmt = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
@@ -8,8 +8,24 @@ const fmt = (v: number | null) =>
 const monthLabel = (m: number) => MONTHS_RU[m - 1] ?? String(m);
 
 export function FlowReport({ metric, rows }: { metric: string; rows: FlowRow[] }) {
-  void metric;
-  if (rows.length === 0) return <div className="text-sm text-neutral-500">Нет данных за период.</div>;
+  // Caption resolves the human-readable report label from FLOW_METRICS so
+  // the user always sees which report + currencies they're looking at
+  // (review note: tables lacked a caption).
+  const label = FLOW_METRICS.find((m) => m.key === metric)?.label ?? metric;
+  const caption = (
+    <h2 className="text-[15px] font-semibold text-stone-900">
+      {label} <span className="font-normal text-stone-400">· USD / KZT</span>
+    </h2>
+  );
+
+  if (rows.length === 0) {
+    return (
+      <div className="space-y-2">
+        {caption}
+        <div className="text-[13px] text-stone-500">Нет данных за период.</div>
+      </div>
+    );
+  }
 
   // Сортировка по (год, месяц, тип сделки).
   const sorted = [...rows].sort(
@@ -19,34 +35,37 @@ export function FlowReport({ metric, rows }: { metric: string; rows: FlowRow[] }
   const totalKzt = rows.reduce((s, r) => s + (r.kzt ?? 0), 0);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="text-sm border-collapse">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="px-3 py-1.5">Период</th>
-            <th className="px-3 py-1.5">Тип</th>
-            <th className="px-3 py-1.5 text-right">USD</th>
-            <th className="px-3 py-1.5 text-right">KZT</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((r, i) => (
-            <tr key={`${r.year}-${r.month}-${r.deal_type}-${i}`} className="border-b">
-              <td className="px-3 py-1.5">{monthLabel(r.month)} {r.year}</td>
-              <td className="px-3 py-1.5">{r.deal_type}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r.usd)}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r.kzt)}</td>
+    <div className="space-y-2">
+      {caption}
+      <div className="overflow-x-auto rounded-md border border-stone-200 bg-white">
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="bg-stone-100 text-stone-500">
+            <tr className="border-b border-stone-200">
+              <th className="border-r border-stone-200 px-2 py-1.5 text-left font-medium">Период</th>
+              <th className="border-r border-stone-200 px-2 py-1.5 text-left font-medium">Тип</th>
+              <th className="border-r border-stone-200 px-2 py-1.5 text-right font-medium">USD</th>
+              <th className="px-2 py-1.5 text-right font-medium">KZT</th>
             </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 font-semibold">
-            <td className="px-3 py-1.5" colSpan={2}>Итого</td>
-            <td className="px-3 py-1.5 text-right tabular-nums">{fmt(totalUsd)}</td>
-            <td className="px-3 py-1.5 text-right tabular-nums">{fmt(totalKzt)}</td>
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map((r, i) => (
+              <tr key={`${r.year}-${r.month}-${r.deal_type}-${i}`} className="border-b border-stone-100 hover:bg-stone-50">
+                <td className="border-r border-stone-100 px-2 py-1 text-stone-700">{monthLabel(r.month)} {r.year}</td>
+                <td className="border-r border-stone-100 px-2 py-1 text-stone-700">{r.deal_type}</td>
+                <td className="border-r border-stone-100 px-2 py-1 text-right font-mono tabular-nums text-stone-700">{fmt(r.usd)}</td>
+                <td className="px-2 py-1 text-right font-mono tabular-nums text-stone-700">{fmt(r.kzt)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+              <td className="border-r border-stone-200 px-2 py-1.5" colSpan={2}>Итого</td>
+              <td className="border-r border-stone-200 px-2 py-1.5 text-right font-mono tabular-nums">{fmt(totalUsd)}</td>
+              <td className="px-2 py-1.5 text-right font-mono tabular-nums">{fmt(totalKzt)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   );
 }

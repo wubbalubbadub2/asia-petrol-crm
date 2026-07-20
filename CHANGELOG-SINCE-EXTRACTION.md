@@ -26,6 +26,12 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Task 12: вкладка «Отчёты» приведена к DESIGN.md + строгий тип report
+- **What changed:** `src/app/(dashboard)/reports/page.tsx` — сырые `<select>`/`<input type="date">` заменены на проектные примитивы (`Select`/`SelectTrigger`/`SelectItem`, `Input`, `Label` из `@/components/ui`); убран лишний `p-4` (страница уже получает отступ от `main` в `(dashboard)/layout.tsx`); `report` типизирован как `ReportKey = (typeof REPORTS)[number]["key"]` вместо bare `string` (опечатка в ключе теперь ошибка компиляции); метрик-фильтр `flows.filter(r => r.metric === report)` не тронут. `src/components/reports/flow-report.tsx` и `src/components/reports/price-report.tsx` — стиль таблиц приведён к паттерну `registry/page.tsx`/`passport-table.tsx`: заголовок `bg-stone-100 text-stone-500`, границы `border-stone-200`/`border-stone-100`, компактные ячейки `px-2 py-1(.5)`, числа `font-mono tabular-nums text-right`, hover-only подсветка строк (без зебры, по DESIGN.md «alternating row shading on hover only»); добавлена подпись-заголовок над каждой таблицей (`<h2>` с названием отчёта + «· USD / KZT»), включая пустое состояние — устраняет замечание ревью «tables lacked a caption».
+- **Type:** [PRESENTATION]
+- **Client reason:** Task 12 (причёсывание по DESIGN.md) — код-часть; деплой/E2E/финальная запись фичи выполняются контроллером отдельно после применения миграций 00122–00124.
+- **Rebuild impact:** presentation only — DESIGN.md токены (цвета stone/amber, JetBrains Mono для чисел, 28px-плотность) применены к существующим RPC/данным Task 7/8, формулы и схема не менялись.
+
 ### 2026-07-20 — Вкладка «Отчёты» (/reports) — оболочка + переключатель отчёта и период
 - **What changed:** `src/lib/constants/nav-items.ts` — импорт `BarChart3` из `lucide-react`, пункт меню «Отчёты» (`/reports`) добавлен после «Реестр отгрузки». NEW `src/app/(dashboard)/reports/page.tsx` — клиентская страница-оболочка: селектор отчёта (`FLOW_METRICS` + «Цена (по СНТ)»), поля периода `from`/`to`, загрузка через `fetchFlows`/`fetchPrice` (Task 8), рендер `FlowReport`/`PriceReport` (Task 10/11); строки потоков предварительно фильтруются по выбранной метрике (`flows.filter(r => r.metric === report)`) перед передачей в `FlowReport`, т.к. сам компонент не фильтрует.
 - **Type:** [UI]
