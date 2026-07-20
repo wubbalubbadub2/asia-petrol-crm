@@ -26,6 +26,14 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Фикс CI: детерминированный placeholder-env вместо loadEnv в vitest.config.ts
+- **What changed:** `vitest.config.ts` — убран импорт `loadEnv` из `vite` и вызов `Object.assign(process.env, loadEnv(...))`, конфиг возвращён к обычному объекту (без `({ mode }) => …`); `setupFiles: []` → `setupFiles: ["./vitest.setup.ts"]`. NEW `vitest.setup.ts` (repo root) — с двумя строками `process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://localhost:54321"` / `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key"`.
+- **Type:** [BEHAVIOR]
+- **Before → After:**
+  - Env для `src/lib/supabase/client.ts` (бросает при импорте, если `NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY` не заданы): `loadEnv(mode, cwd, "")` читал `.env.local` целиком (пустой prefix → включая `SUPABASE_SERVICE_ROLE_KEY`, RLS-bypass секрет) → детерминированные placeholder-значения через `??=` в `vitest.setup.ts`, не зависящие от `.env.local` вообще; реальный локальный `.env.local`, если экспортирован в shell, по-прежнему имеет приоритет благодаря `??=`.
+- **Client reason:** Ревью Task 8 нашло: у CI unit-test джобы нет `.env.local` (в `.gitignore`, никогда не создаётся в CI) → `loadEnv` ничего не находит → `process.env` пуст → падает весь `npm test` на каждый push/PR; локально проходило только благодаря реальному dev-файлу `.env.local`. Плюс `loadEnv(mode, cwd, "")` без префикса лишний раз тянул service-role секрет в Node test-процесс.
+- **Rebuild impact:** presentation/infra only — тестовая инфраструктура, схема и формулы БД не менялись. Проверено: `env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY npx vitest run src/__tests__/fx-report-shape.test.ts` (симуляция CI) — PASS; `npx vitest run` — только исходный неродственный `bulk-wagons.test.ts` failure остаётся; `npx tsc --noEmit` — чисто.
+
 ### 2026-07-20 — Слой данных отчётов FX: use-fx-reports.ts + groupFlows
 - **What changed:** NEW `src/lib/hooks/use-fx-reports.ts` — `fetchFlows()`/`fetchPrice()` (клиентские обёртки над RPC `fx_report_flows`/`fx_report_price` из миграции 00124), типы `FlowRow`/`PriceRow`, константа `FLOW_METRICS` (порядок/лейблы метрик для вкладки «Отчёты»), чистая функция `groupFlows()`. NEW `src/__tests__/fx-report-shape.test.ts` (TDD: RED → GREEN на `groupFlows`). Также `vitest.config.ts` — добавлен `loadEnv()` (из `vite`) в `defineConfig`, мержится в `process.env`.
 - **Type:** [BEHAVIOR]
