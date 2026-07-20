@@ -15,7 +15,7 @@ export function parseNbrkUsdKzt(xml: string): number {
 /** KGS за 1 USD из фида НБ КР (daily.xml), с учётом номинала. */
 export function parseNbkrUsdKgs(xml: string): number {
   const m = xml.match(
-    /<Currency\s+ISOCode="USD">\s*<Nominal>\s*(\d+)\s*<\/Nominal>\s*<Value>\s*([\d.,]+)\s*<\/Value>/i,
+    /<Currency\s+ISOCode="USD">[\s\S]*?<Nominal>\s*(\d+)\s*<\/Nominal>\s*<Value>\s*([\d.,]+)\s*<\/Value>/i,
   );
   if (!m) throw new Error("НБ КР: курс USD не найден в фиде");
   const nominal = Number(m[1]) || 1;

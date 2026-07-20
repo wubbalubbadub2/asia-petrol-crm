@@ -28,4 +28,11 @@ describe("fx parse", () => {
   it("кидает ошибку, если USD не найден", () => {
     expect(() => parseNbrkUsdKzt("<rates></rates>")).toThrow();
   });
+  it("НБ КР: кидает ошибку, если USD не найден", () => {
+    expect(() => parseNbkrUsdKgs("<CurrencyRates></CurrencyRates>")).toThrow();
+  });
+  it("НБ КР: терпит лишний тег между Currency и Nominal", () => {
+    const xml = `<CurrencyRates><Currency ISOCode="USD"><NumCode>840</NumCode><Nominal>1</Nominal><Value>87,4500</Value></Currency></CurrencyRates>`;
+    expect(parseNbkrUsdKgs(xml)).toBeCloseTo(87.45, 2);
+  });
 });

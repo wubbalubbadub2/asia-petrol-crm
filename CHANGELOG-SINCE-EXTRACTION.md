@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-20 — Закалена NBKR-парсер + добавлены тесты для отсутствия USD и лишних тегов
+- **What changed:** `src/lib/fx/parse.ts` (`parseNbkrUsdKgs`), `src/__tests__/fx-parse.test.ts` (+2 теста).
+- **Type:** [BEHAVIOR]
+- **Before → After:** regex для НБ КР требовал только пробелы между `<Currency ISOCode="USD">` и `<Nominal>` — лишний тег (напр. `<NumCode>840</NumCode>`) ломал матч → на `[\s\S]*?` (любые символы, ленивое); добавлены тесты: выброс при отсутствии USD и парсинг при наличии лишних тегов. Номинал, коммы, правило деления не менялись.
+- **Client reason:** review finding Task 2 (FX-отчёты).
+- **Rebuild impact:** presentation only (парсер используется rate-loader'ом).
+
 ### 2026-07-20 — Парсеры XML-фидов НБ РК/НБ КР + formatKzDate (TDD)
 - **What changed:** NEW `src/lib/fx/parse.ts` (3 экспорта: `parseNbrkUsdKzt`, `parseNbkrUsdKgs`, `formatKzDate`); NEW `src/__tests__/fx-parse.test.ts` (5 тестов, TDD RED→GREEN).
 - **Type:** [BEHAVIOR]
