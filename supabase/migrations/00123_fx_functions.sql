@@ -40,7 +40,7 @@ BEGIN
   END IF;
   IF p_to = 'USD' THEN RETURN v_usd; END IF;
   v_r := fx_rate('USD', p_to, p_date);
-  IF v_r IS NULL THEN RETURN NULL; END IF;
+  IF v_r IS NULL OR v_r = 0 THEN RETURN NULL; END IF;
   RETURN v_usd * v_r;
 END $$;
 
@@ -58,6 +58,6 @@ BEGIN
   END IF;
   IF p_to = 'USD' THEN RETURN v_usd; END IF;
   v_r := fx_rate_month('USD', p_to, p_year, p_month);
-  IF v_r IS NULL THEN RETURN NULL; END IF;
+  IF v_r IS NULL OR v_r = 0 THEN RETURN NULL; END IF;
   RETURN v_usd * v_r;
 END $$;
