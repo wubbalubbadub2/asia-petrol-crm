@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — Fix: CHECK-констрейнты в 00125 теперь идемпотентные (re-run-safe)
+- **What changed:** migration `00125_payment_deferral.sql` — два `ALTER TABLE deals ADD CONSTRAINT ...` заменены на guarded DO-блоки с exception-обработкой `duplicate_object`.
+- **Type:** [SCHEMA]
+- **Before → After:** `ALTER TABLE deals ADD CONSTRAINT deals_supplier_deferral_mode_chk ...` безусловно → две функции в `DO $$...END $$` блоках с `EXCEPTION WHEN duplicate_object THEN NULL`, ловящих повторный запуск миграции; 8 `ADD COLUMN IF NOT EXISTS` не менялась; имена и CHECK-выражения констрейнтов идентичны.
+- **Client reason:** review finding — миграция применяется рукой в SQL Editor, двойной запуск без `IF NOT EXISTS` вызывал ошибку; тепреь re-run-safe.
+- **Rebuild impact:** none (рефакторинг миграции, схема БД неизменна).
+
 ### 2026-07-21 — 00125: поля отсрочки платежа на deals для отчёта «Паспорт (долги)»
 - **What changed:** migration `00125_payment_deferral.sql` (8 колонок на `deals`: `supplier_deferral_days INT`, `supplier_deferral_mode TEXT`, `supplier_deferral_note TEXT`, `supplier_planned_pay_date DATE`, и аналогичные `buyer_*` + 2 CHECK constraints для `supplier_deferral_mode` и `buyer_deferral_mode` со значениями 'shipment'/'other')
 - **Type:** [SCHEMA]

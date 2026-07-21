@@ -13,8 +13,16 @@ ALTER TABLE deals
   ADD COLUMN IF NOT EXISTS buyer_deferral_note       TEXT,
   ADD COLUMN IF NOT EXISTS buyer_planned_pay_date    DATE;
 
-ALTER TABLE deals
-  ADD CONSTRAINT deals_supplier_deferral_mode_chk
-    CHECK (supplier_deferral_mode IS NULL OR supplier_deferral_mode IN ('shipment','other')),
-  ADD CONSTRAINT deals_buyer_deferral_mode_chk
+DO $$
+BEGIN
+  ALTER TABLE deals ADD CONSTRAINT deals_supplier_deferral_mode_chk
+    CHECK (supplier_deferral_mode IS NULL OR supplier_deferral_mode IN ('shipment','other'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER TABLE deals ADD CONSTRAINT deals_buyer_deferral_mode_chk
     CHECK (buyer_deferral_mode IS NULL OR buyer_deferral_mode IN ('shipment','other'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
