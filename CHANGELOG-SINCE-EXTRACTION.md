@@ -26,6 +26,53 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — UI: сайдбар — секция «Отчёты», пункт «Отчёт по валютам»
+- **What changed:** `src/lib/constants/nav-items.ts` — добавлено поле `section` ("nav"|"ops"|"reports"); пункт «Отчёты» → «Отчёт по валютам», секция "reports". `src/components/layout/sidebar.tsx` — рендер трёх секций по `section` (было — нарезка по индексу `slice`). `src/app/(dashboard)/reports/page.tsx` — заголовок «Отчёты» → «Отчёт по валютам».
+- **Type:** [UI]
+- **Before → After:** сайдбар делил пункты на «Навигация»/«Операции» через `slice(0,4)`/`slice(4)` → теперь три группы по явному `section`, добавлена «Отчёты» (пока один пункт «Отчёт по валютам»; будущие отчёты добавляются как пункты этой секции). Админ-пункты (Архив/Настройки) по-прежнему скрыты фильтром `!adminOnly`.
+- **Client reason:** «вынести отчёты как отдельную секцию, внутри — по пункту на каждый отчёт; текущий назвать Отчёт по валютам».
+- **Rebuild impact:** none.
+### 2026-07-21 — Fix: «Условия оплаты» на /deals/[id] — review findings (CollapsibleSection + optimistic reveal)
+- **What changed:** `src/app/(dashboard)/deals/[id]/page.tsx` — блок «Условия оплаты» (supplier/buyer deferral terms) вынесен в новый компонент `PaymentConditionsSection({ deal, editing })`, вставлен вместо инлайн-блока в рендере; старый standalone `ModeSelect` удалён (логика инлайнена внутрь `PaymentConditionsSection` через `renderModeSelect`).
+- **Type:** [UI] + [BEHAVIOR]
+- **Before → After:**
+  - (Fix 1, визуальная консистентность / DESIGN.md) Голый `<div>`/`<h3>Условия оплаты</h3>` → обёрнут в `<CollapsibleSection title="Условия оплаты" headerBg={SECTION_COLORS.deal} storageKey={...}>`, как остальные секции страницы (Поставщик/Покупатель/Группа компаний/Логистика/Ответственные).
+  - (Fix 2, optimistic UI) Режим (`ModeSelect`) не имел локального pending-state → `updateDeal` инвалидирует deal bundle ПОЛНЫМ refetch (не in-place patch), поэтому при выборе «прочее» поля «Заметка»/«Плановая дата» (гейт на `deal.*_deferral_mode === "other"`) появлялись только после round-trip к серверу. → добавлено локальное состояние `supMode`/`buyMode` (`useState` + `useEffect` синк с `deal.*`), select одновременно делает `setLocal(nv)` (мгновенно) и `updateDeal(...)` (с revert на `.catch`); reveal полей гейтится на локальный state, а не на `deal.*` — появляется мгновенно, как в Excel.
+- **Client reason:** ревью Task 3 (payment-deferral блок) нашло 2 расхождения с проектным стандартом (DESIGN.md consistency + optimistic-UI rule).
+- **Rebuild impact:** none (только UI/client-state, DB-поля и формулы не менялись).
+
+
+### 2026-07-21 — UI/Fix: вкладка «Отчёты» — лейблы в дропдауне, селектор года, пагинация «Цены»
+- **What changed:** `src/app/(dashboard)/reports/page.tsx` — дропдаун отчёта показывает человекочитаемый лейбл (а не ключ `ship_out`); day-picker'ы «С»/«По» заменены на селектор **Год** (отчёты помесячные); панель фильтров в `Card`, ровные размеры на shared `Select`. `src/lib/hooks/use-fx-reports.ts` — `fetchPrice`/`fetchFlows` тянут результат RPC постранично (`callRpcAll`), т.к. `fx_report_price` построчный по СНТ и упирался в лимит PostgREST 1000 строк → отчёт «Цена» молча обрезался.
+- **Type:** [UI] + [BEHAVIOR]
+- **Before → After:** (1) дропдаун показывал сырые ключи метрик → показывает лейблы. (2) day-picker для помесячного отчёта → выбор года (период = весь год). (3) «Цена» отдавала ≤1000 строк → все строки за год.
+- **Client reason:** фидбэк со скриншотом: ключи в дропдауне, лишний date-picker, неровный layout/не shared-компоненты.
+- **Rebuild impact:** none.
+
+
+### 2026-07-21 — Fix: proxy редиректил /api/cron на /login (cron курсов не работал)
+- **What changed:** `src/proxy.ts` — исключение из auth-гейта расширено с `/api/keepalive` на `/api/cron` тоже.
+- **Type:** [BEHAVIOR]
+- **Before → After:** proxy (Next 16 middleware) пропускал мимо auth только `/api/keepalive`; `/api/cron/fx-rates` уходил в `updateSession` → 307-редирект на /login, обработчик не выполнялся, Vercel Cron не мог загрузить курсы. → теперь `/api/cron/*` пропускается к своему обработчику (у него собственная проверка CRON_SECRET). Поймано E2E: `curl` cron-роута отдавал 307.
+- **Client reason:** после установки CRON_SECRET ежедневная загрузка курсов всё равно не срабатывала.
+- **Rebuild impact:** none.
+
+
+### 2026-07-21 — Fix: backfill стартовал с «античных» дат (опечатки в данных)
+- **What changed:** `scripts/fx-backfill.mjs` — `earliest()` теперь фильтрует даты `>= 2025-01-01` (FLOOR) при поиске стартовой даты.
+- **Type:** [SCRIPT]
+- **Before → After:** брал min(`shipment_registry.date`, `deal_payments.payment_date`) без нижнего предела → в данных есть опечатки (строка реестра сделки KG/26/101 с `date=0226-02-28`, ещё `2006-06-01`), поэтому backfill стартовал с ~226/2006 года и молотил тысячи лет неудачных fetch'ей к НБ РК. → теперь стартует с реальной ранней даты (2025-11), диапазон 2025-11…сегодня.
+- **Client reason:** backfill курсов завис/не заполнял; выявлены строки с битыми датами.
+- **Rebuild impact:** none (one-off скрипт).
+
+
+### 2026-07-20 — Fix: /reports падал — .rpc вызывался без this-binding
+- **What changed:** `src/lib/hooks/use-fx-reports.ts` — `callRpc` теперь зовёт `sb.rpc(name, args)` КАК МЕТОД клиента, а не извлекает `.rpc` в переменную и вызывает отдельно.
+- **Type:** [BEHAVIOR]
+- **Before → After:** было `const rpc = (createClient() as ...).rpc; await rpc()(name,args)` → метод `.rpc` терял `this`-привязку к SupabaseClient, supabase-js падал в рантайме, вкладка «Отчёты» показывала «Ошибка:». Стало `sb.rpc(name,args)` — this сохранён, RPC отрабатывают. Поймано E2E-пробой на проде (tsc такое не ловит).
+- **Client reason:** после применения миграций /reports показывала ошибку вместо отчётов.
+- **Rebuild impact:** none (правка вызова).
+
 ### 2026-07-21 — [EXPORT] Паспорт (долги) — фиксы: знак просрочки покупателя + имя файла
 - **What changed:** `src/lib/exports/passport-detail-excel.ts` — `buyerOverdue` helper (line 394) и download filename (line 669)
 - **Type:** [FORMULA]
@@ -367,47 +414,3 @@ Entry template:
   - Под-строки несут только значения вагона: тоннажи (`loading_volume`/`shipment_volume`), даты, `Отгр. сумма = цена сделки × тоннаж вагона` (клиентская формула `O$4*P5`), приложения (`supplier_appendix`/`buyer_appendix` с fallback на договор сделки), жд-данные (`railway_tariff`, `shipped_tonnage_amount`, rounded tonnage). Агрегаты сделки (Оплата/Баланс/Заявлено/Остаток/Долг/группы-числа) — только на главной строке (иначе SUM задваивается).
 - **Client reason:** клиент прислал размеченный шаблон (`files/Паспорт/`) — нужна детальная выгрузка с расшифровкой по отгрузкам; формат «долги» ждёт утверждения.
 - **Rebuild impact:** EXPORT-LAYOUTS (новый вариант выгрузки); FIELD-OWNERSHIP не затронут (новых DB-полей нет); PRICING не затронут (формулы в БД не менялись — расчёт `цена × тоннаж` только в файле экспорта).
-
-### 2026-07-20 — Fix: /reports падал — .rpc вызывался без this-binding
-- **What changed:** `src/lib/hooks/use-fx-reports.ts` — `callRpc` теперь зовёт `sb.rpc(name, args)` КАК МЕТОД клиента, а не извлекает `.rpc` в переменную и вызывает отдельно.
-- **Type:** [BEHAVIOR]
-- **Before → After:** было `const rpc = (createClient() as ...).rpc; await rpc()(name,args)` → метод `.rpc` терял `this`-привязку к SupabaseClient, supabase-js падал в рантайме, вкладка «Отчёты» показывала «Ошибка:». Стало `sb.rpc(name,args)` — this сохранён, RPC отрабатывают. Поймано E2E-пробой на проде (tsc такое не ловит).
-- **Client reason:** после применения миграций /reports показывала ошибку вместо отчётов.
-- **Rebuild impact:** none (правка вызова).
-
-### 2026-07-21 — Fix: backfill стартовал с «античных» дат (опечатки в данных)
-- **What changed:** `scripts/fx-backfill.mjs` — `earliest()` теперь фильтрует даты `>= 2025-01-01` (FLOOR) при поиске стартовой даты.
-- **Type:** [SCRIPT]
-- **Before → After:** брал min(`shipment_registry.date`, `deal_payments.payment_date`) без нижнего предела → в данных есть опечатки (строка реестра сделки KG/26/101 с `date=0226-02-28`, ещё `2006-06-01`), поэтому backfill стартовал с ~226/2006 года и молотил тысячи лет неудачных fetch'ей к НБ РК. → теперь стартует с реальной ранней даты (2025-11), диапазон 2025-11…сегодня.
-- **Client reason:** backfill курсов завис/не заполнял; выявлены строки с битыми датами.
-- **Rebuild impact:** none (one-off скрипт).
-
-### 2026-07-21 — Fix: proxy редиректил /api/cron на /login (cron курсов не работал)
-- **What changed:** `src/proxy.ts` — исключение из auth-гейта расширено с `/api/keepalive` на `/api/cron` тоже.
-- **Type:** [BEHAVIOR]
-- **Before → After:** proxy (Next 16 middleware) пропускал мимо auth только `/api/keepalive`; `/api/cron/fx-rates` уходил в `updateSession` → 307-редирект на /login, обработчик не выполнялся, Vercel Cron не мог загрузить курсы. → теперь `/api/cron/*` пропускается к своему обработчику (у него собственная проверка CRON_SECRET). Поймано E2E: `curl` cron-роута отдавал 307.
-- **Client reason:** после установки CRON_SECRET ежедневная загрузка курсов всё равно не срабатывала.
-- **Rebuild impact:** none.
-
-### 2026-07-21 — UI/Fix: вкладка «Отчёты» — лейблы в дропдауне, селектор года, пагинация «Цены»
-- **What changed:** `src/app/(dashboard)/reports/page.tsx` — дропдаун отчёта показывает человекочитаемый лейбл (а не ключ `ship_out`); day-picker'ы «С»/«По» заменены на селектор **Год** (отчёты помесячные); панель фильтров в `Card`, ровные размеры на shared `Select`. `src/lib/hooks/use-fx-reports.ts` — `fetchPrice`/`fetchFlows` тянут результат RPC постранично (`callRpcAll`), т.к. `fx_report_price` построчный по СНТ и упирался в лимит PostgREST 1000 строк → отчёт «Цена» молча обрезался.
-- **Type:** [UI] + [BEHAVIOR]
-- **Before → After:** (1) дропдаун показывал сырые ключи метрик → показывает лейблы. (2) day-picker для помесячного отчёта → выбор года (период = весь год). (3) «Цена» отдавала ≤1000 строк → все строки за год.
-- **Client reason:** фидбэк со скриншотом: ключи в дропдауне, лишний date-picker, неровный layout/не shared-компоненты.
-- **Rebuild impact:** none.
-
-### 2026-07-21 — Fix: «Условия оплаты» на /deals/[id] — review findings (CollapsibleSection + optimistic reveal)
-- **What changed:** `src/app/(dashboard)/deals/[id]/page.tsx` — блок «Условия оплаты» (supplier/buyer deferral terms) вынесен в новый компонент `PaymentConditionsSection({ deal, editing })`, вставлен вместо инлайн-блока в рендере; старый standalone `ModeSelect` удалён (логика инлайнена внутрь `PaymentConditionsSection` через `renderModeSelect`).
-- **Type:** [UI] + [BEHAVIOR]
-- **Before → After:**
-  - (Fix 1, визуальная консистентность / DESIGN.md) Голый `<div>`/`<h3>Условия оплаты</h3>` → обёрнут в `<CollapsibleSection title="Условия оплаты" headerBg={SECTION_COLORS.deal} storageKey={...}>`, как остальные секции страницы (Поставщик/Покупатель/Группа компаний/Логистика/Ответственные).
-  - (Fix 2, optimistic UI) Режим (`ModeSelect`) не имел локального pending-state → `updateDeal` инвалидирует deal bundle ПОЛНЫМ refetch (не in-place patch), поэтому при выборе «прочее» поля «Заметка»/«Плановая дата» (гейт на `deal.*_deferral_mode === "other"`) появлялись только после round-trip к серверу. → добавлено локальное состояние `supMode`/`buyMode` (`useState` + `useEffect` синк с `deal.*`), select одновременно делает `setLocal(nv)` (мгновенно) и `updateDeal(...)` (с revert на `.catch`); reveal полей гейтится на локальный state, а не на `deal.*` — появляется мгновенно, как в Excel.
-- **Client reason:** ревью Task 3 (payment-deferral блок) нашло 2 расхождения с проектным стандартом (DESIGN.md consistency + optimistic-UI rule).
-- **Rebuild impact:** none (только UI/client-state, DB-поля и формулы не менялись).
-
-### 2026-07-21 — UI: сайдбар — секция «Отчёты», пункт «Отчёт по валютам»
-- **What changed:** `src/lib/constants/nav-items.ts` — добавлено поле `section` ("nav"|"ops"|"reports"); пункт «Отчёты» → «Отчёт по валютам», секция "reports". `src/components/layout/sidebar.tsx` — рендер трёх секций по `section` (было — нарезка по индексу `slice`). `src/app/(dashboard)/reports/page.tsx` — заголовок «Отчёты» → «Отчёт по валютам».
-- **Type:** [UI]
-- **Before → After:** сайдбар делил пункты на «Навигация»/«Операции» через `slice(0,4)`/`slice(4)` → теперь три группы по явному `section`, добавлена «Отчёты» (пока один пункт «Отчёт по валютам»; будущие отчёты добавляются как пункты этой секции). Админ-пункты (Архив/Настройки) по-прежнему скрыты фильтром `!adminOnly`.
-- **Client reason:** «вынести отчёты как отдельную секцию, внутри — по пункту на каждый отчёт; текущий назвать Отчёт по валютам».
-- **Rebuild impact:** none.
