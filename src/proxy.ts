@@ -17,8 +17,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
   // Public API endpoints — keep them out of the auth gate so the Vercel
-  // cron + client-side keepalive don't get bounced to /login.
-  if (request.nextUrl.pathname.startsWith("/api/keepalive")) {
+  // cron + client-side keepalive don't get bounced to /login. The cron
+  // route does its own CRON_SECRET bearer check, so RLS/auth gate here
+  // would only 307-redirect Vercel's scheduled call away from the handler.
+  if (
+    request.nextUrl.pathname.startsWith("/api/keepalive") ||
+    request.nextUrl.pathname.startsWith("/api/cron")
+  ) {
     return NextResponse.next();
   }
   return await updateSession(request);

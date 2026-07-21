@@ -339,3 +339,10 @@ Entry template:
 - **Before → After:** брал min(`shipment_registry.date`, `deal_payments.payment_date`) без нижнего предела → в данных есть опечатки (строка реестра сделки KG/26/101 с `date=0226-02-28`, ещё `2006-06-01`), поэтому backfill стартовал с ~226/2006 года и молотил тысячи лет неудачных fetch'ей к НБ РК. → теперь стартует с реальной ранней даты (2025-11), диапазон 2025-11…сегодня.
 - **Client reason:** backfill курсов завис/не заполнял; выявлены строки с битыми датами.
 - **Rebuild impact:** none (one-off скрипт).
+
+### 2026-07-21 — Fix: proxy редиректил /api/cron на /login (cron курсов не работал)
+- **What changed:** `src/proxy.ts` — исключение из auth-гейта расширено с `/api/keepalive` на `/api/cron` тоже.
+- **Type:** [BEHAVIOR]
+- **Before → After:** proxy (Next 16 middleware) пропускал мимо auth только `/api/keepalive`; `/api/cron/fx-rates` уходил в `updateSession` → 307-редирект на /login, обработчик не выполнялся, Vercel Cron не мог загрузить курсы. → теперь `/api/cron/*` пропускается к своему обработчику (у него собственная проверка CRON_SECRET). Поймано E2E: `curl` cron-роута отдавал 307.
+- **Client reason:** после установки CRON_SECRET ежедневная загрузка курсов всё равно не срабатывала.
+- **Rebuild impact:** none.
