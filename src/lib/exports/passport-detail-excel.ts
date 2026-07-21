@@ -81,11 +81,13 @@ type Column = {
   key: string;
   header: string;
   width: number;
-  band: "deal" | "supplier" | "groups" | "buyer" | "logistics";
+  band: "deal" | "supplier" | "groups" | "buyer" | "logistics" | "debt";
   numFmt?: string;
   read: (deal: Deal) => string | number | null | undefined;
   // Sub-row value. Omitted → cell stays empty on sub-rows.
   readShip?: (deal: Deal, s: SubRow) => string | number | null | undefined;
+  // debt-variant only: red/bold highlight on the sub-row cell when true.
+  redIf?: (deal: Deal, s: SubRow) => boolean;
 };
 
 const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
@@ -229,6 +231,7 @@ const BAND_STYLE: Record<Column["band"], { label: string; bg: string; text: stri
   groups:    { label: "Группы компании", bg: "FFF3E8FF", text: "FF6B21A8" },
   buyer:     { label: "Покупатель",      bg: "FFE0F2FE", text: "FF1E40AF" },
   logistics: { label: "Логистика",       bg: "FFF4F4F3", text: "FF44403C" },
+  debt:      { label: "Отсрочка / плановая оплата", bg: "FFFDF2F2", text: "FF991B1B" },
 };
 
 const HEADER_BG = "FF1C1917";
@@ -363,7 +366,53 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
 
 type DcgRow = { deal_id: string; id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; discount: number | null };
 
-export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
+// ── «Паспорт (долги)» — debt variant additions ──────────────────
+// 6 extra columns (deferral terms + planned payment date, per side)
+// appended after COLUMNS when opts.variant === "debt". Planned date =
+// shipment mode → basis date (loading_date for supplier, date for
+// buyer) + N days; "other" mode → the manually-set planned_pay_date.
+// Overdue (red/bold) = planned date is in the past AND the deal still
+// carries a balance/debt on that side.
+function addDaysISO(dateStr: string | null | undefined, days: number | null | undefined): string | null {
+  if (!dateStr || days == null) return null;
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function supplierPlanned(d: Deal, s: SubRow): string | null {
+  if (d.supplier_deferral_mode === "shipment") return addDaysISO(s.ship?.loading_date ?? null, d.supplier_deferral_days);
+  if (d.supplier_deferral_mode === "other") return d.supplier_planned_pay_date ?? null;
+  return null;
+}
+function buyerPlanned(d: Deal, s: SubRow): string | null {
+  if (d.buyer_deferral_mode === "shipment") return addDaysISO(s.ship?.date ?? null, d.buyer_deferral_days);
+  if (d.buyer_deferral_mode === "other") return d.buyer_planned_pay_date ?? null;
+  return null;
+}
+const DEBT_TODAY = new Date().toISOString().slice(0, 10);
+const supplierOverdue = (d: Deal, s: SubRow) => { const p = supplierPlanned(d, s); return !!p && p < DEBT_TODAY && (d.supplier_balance ?? 0) > 0; };
+const buyerOverdue = (d: Deal, s: SubRow) => { const p = buyerPlanned(d, s); return !!p && p < DEBT_TODAY && (d.buyer_debt ?? 0) > 0; };
+
+const DEBT_COLUMNS: Column[] = [
+  { key: "sup_defer_days", header: "Отсрочка платежа Прод., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.supplier_deferral_days ?? "" },
+  { key: "sup_defer_basis", header: "Дата начала отсрочки (Прод.)", width: 16, band: "debt", read: () => "",
+    readShip: (d) => d.supplier_deferral_mode === "shipment" ? "с даты отгрузки" : d.supplier_deferral_mode === "other" ? (d.supplier_deferral_note ?? "прочее") : "" },
+  { key: "sup_planned", header: "Плановая дата оплаты Прод.", width: 14, band: "debt", read: () => "",
+    readShip: (d, s) => { const p = supplierPlanned(d, s); return p ? fmtDate(p) : ""; }, redIf: (d, s) => supplierOverdue(d, s) },
+  { key: "buy_defer_days", header: "Отсрочка платежа Покуп., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.buyer_deferral_days ?? "" },
+  { key: "buy_defer_basis", header: "Дата начала отсрочки (Покуп.)", width: 16, band: "debt", read: () => "",
+    readShip: (d) => d.buyer_deferral_mode === "shipment" ? "с даты отгрузки" : d.buyer_deferral_mode === "other" ? (d.buyer_deferral_note ?? "прочее") : "" },
+  { key: "buy_planned", header: "Плановая дата оплаты Покуп.", width: 14, band: "debt", read: () => "",
+    readShip: (d, s) => { const p = buyerPlanned(d, s); return p ? fmtDate(p) : ""; }, redIf: (d, s) => buyerOverdue(d, s) },
+];
+
+export async function exportPassportDetailToExcel(
+  deals: Deal[],
+  ctx: ExportContext,
+  opts?: { variant?: "detail" | "debt" },
+): Promise<void> {
+  const isDebt = opts?.variant === "debt";
+  const columns = isDebt ? [...COLUMNS, ...DEBT_COLUMNS] : COLUMNS;
   const [{ fetchDealLinesForExport }, { getGlobalRefs, getCachedRefsSync }, { fetchAllPaginated }] = await Promise.all([
     import("@/lib/hooks/use-deals"),
     import("@/lib/refs"),
@@ -455,10 +504,11 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
   wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
 
-  const sheetName =
-    ctx.dealType === "KG" ? "Паспорт (дет.) KG" :
-    ctx.dealType === "KZ" ? "Паспорт (дет.) KZ" :
-    "Сделки (детально)";
+  const sheetName = isDebt
+    ? (ctx.dealType === "KG" ? "Паспорт (долги) KG" : ctx.dealType === "KZ" ? "Паспорт (долги) KZ" : "Паспорт (долги)")
+    : (ctx.dealType === "KG" ? "Паспорт (дет.) KG" :
+       ctx.dealType === "KZ" ? "Паспорт (дет.) KZ" :
+       "Сделки (детально)");
   const ws = wb.addWorksheet(sheetName, {
     views: [{ state: "frozen", xSplit: 1, ySplit: 3 }],
     pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
@@ -467,7 +517,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
 
   // ── Title row ────────────────────────────────────────────
   ws.getRow(1).height = 24;
-  ws.mergeCells(1, 1, 1, COLUMNS.length);
+  ws.mergeCells(1, 1, 1, columns.length);
   const titleCell = ws.getCell(1, 1);
   titleCell.value = `${sheetName} · ${ctx.year}${deals.length ? `  ·  ${deals.length} сделок` : ""}`;
   titleCell.font = { bold: true, size: 13, color: { argb: HEADER_TEXT } };
@@ -477,10 +527,10 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
   // ── Band row ─────────────────────────────────────────────
   ws.getRow(2).height = 18;
   let bandStart = 1;
-  for (let i = 0; i < COLUMNS.length; i++) {
-    const next = COLUMNS[i + 1];
-    if (!next || next.band !== COLUMNS[i].band) {
-      const style = BAND_STYLE[COLUMNS[i].band];
+  for (let i = 0; i < columns.length; i++) {
+    const next = columns[i + 1];
+    if (!next || next.band !== columns[i].band) {
+      const style = BAND_STYLE[columns[i].band];
       if (i + 1 > bandStart) ws.mergeCells(2, bandStart, 2, i + 1);
       const cell = ws.getCell(2, bandStart);
       cell.value = style.label;
@@ -495,7 +545,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
   // ── Column header row ────────────────────────────────────
   const headerRow = ws.getRow(3);
   headerRow.height = 30;
-  COLUMNS.forEach((col, idx) => {
+  columns.forEach((col, idx) => {
     const cell = headerRow.getCell(idx + 1);
     cell.value = col.header;
     cell.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
@@ -514,7 +564,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
 
     const dealRow = ws.getRow(r++);
     dealRow.height = 18;
-    COLUMNS.forEach((col, colIdx) => {
+    columns.forEach((col, colIdx) => {
       const cell = dealRow.getCell(colIdx + 1);
       const v = col.read(deal);
       cell.value = v == null ? "" : v;
@@ -528,7 +578,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
       if (col.numFmt) cell.numFmt = col.numFmt;
     });
     for (const key of ["supplier_balance", "buyer_debt"] as const) {
-      const idx = COLUMNS.findIndex((c) => c.key === key);
+      const idx = columns.findIndex((c) => c.key === key);
       if (idx === -1) continue;
       const cell = dealRow.getCell(idx + 1);
       if (typeof cell.value === "number" && cell.value < 0) {
@@ -553,7 +603,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
       const row = ws.getRow(r++);
       row.height = 16;
       row.outlineLevel = 1;
-      COLUMNS.forEach((col, colIdx) => {
+      columns.forEach((col, colIdx) => {
         const cell = row.getCell(colIdx + 1);
         const v = col.readShip ? col.readShip(deal, sub) : null;
         cell.value = v == null ? "" : v;
@@ -565,6 +615,9 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
           bottom: { style: "thin", color: { argb: "FFF5F5F4" } },
         };
         if (col.numFmt) cell.numFmt = col.numFmt;
+        if (col.redIf && col.redIf(deal, sub)) {
+          cell.font = { ...cell.font, bold: true, color: { argb: "FFB91C1C" } };
+        }
       });
     }
   }
@@ -581,7 +634,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
       "preliminary_tonnage", "preliminary_amount", "actual_shipped_volume",
       "invoice_volume", "invoice_amount",
     ]);
-    COLUMNS.forEach((col, idx) => {
+    columns.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
       cell.font = { bold: true, size: 10 };
@@ -602,7 +655,7 @@ export async function exportPassportDetailToExcel(deals: Deal[], ctx: ExportCont
     });
   }
 
-  ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3, column: COLUMNS.length } };
+  ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3, column: columns.length } };
 
   // ── Download ────────────────────────────────────────────
   const buffer = await wb.xlsx.writeBuffer();

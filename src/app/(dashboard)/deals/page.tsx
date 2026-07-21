@@ -194,9 +194,10 @@ export default function DealsPage() {
   // the file matches what's on screen. Three variants (client
   // 2026-07-14): «Паспорт» (прежний формат), «Паспорт (детальный)»
   // (сделка + под-строки по каждой отгрузке из реестра), «Паспорт
-  // (долги)» — задизейблен до утверждения формата.
+  // (долги)» — detail export + отсрочка/плановая дата оплаты columns,
+  // red font on overdue planned dates (variant of the same exporter).
   const [exporting, setExporting] = useState(false);
-  async function handleExport(variant: "passport" | "detail") {
+  async function handleExport(variant: "passport" | "detail" | "debt") {
     if (exporting) return;
     setExporting(true);
     try {
@@ -207,6 +208,9 @@ export default function DealsPage() {
       if (variant === "detail") {
         const { exportPassportDetailToExcel } = await import("@/lib/exports/passport-detail-excel");
         await exportPassportDetailToExcel(filtered, ctx);
+      } else if (variant === "debt") {
+        const { exportPassportDetailToExcel } = await import("@/lib/exports/passport-detail-excel");
+        await exportPassportDetailToExcel(filtered, ctx, { variant: "debt" });
       } else {
         const { exportPassportToExcel } = await import("@/lib/exports/passport-excel");
         await exportPassportToExcel(filtered, ctx);
@@ -587,10 +591,10 @@ export default function DealsPage() {
                   <span className="text-[11px] text-stone-500">Сделка + строки по каждой отгрузке</span>
                 </div>
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>
+              <DropdownMenuItem onClick={() => handleExport("debt")} disabled={exporting}>
                 <div className="flex flex-col">
                   <span className="font-medium">Паспорт (долги)</span>
-                  <span className="text-[11px] text-stone-500">Скоро</span>
+                  <span className="text-[11px] text-stone-500">Детальный + отсрочка/плановая оплата</span>
                 </div>
               </DropdownMenuItem>
             </DropdownMenuContent>

@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — [EXPORT] «Паспорт (долги)» — detail + 6 колонок отсрочки/плановых дат, красный на просрочке; опция дропдауна включена
+- **What changed:** `src/lib/exports/passport-detail-excel.ts` — `Column.redIf?: (deal, s: SubRow) => boolean`; band-union `+ "debt"` and `BAND_STYLE.debt`; new helpers `addDaysISO`/`supplierPlanned`/`buyerPlanned`/`supplierOverdue`/`buyerOverdue` + `DEBT_COLUMNS` (6 cols: Отсрочка платежа дн./Дата начала отсрочки/Плановая дата оплаты × Прод./Покуп.); `exportPassportDetailToExcel(deals, ctx, opts?: { variant?: "detail" | "debt" })` — `columns = isDebt ? [...COLUMNS, ...DEBT_COLUMNS] : COLUMNS`, all in-body `COLUMNS` refs (band row, header row, deal row, sub-row, totals row, autoFilter) switched to `columns`; sub-row loop applies `redIf` after font is set (bold + `FFB91C1C`); debt sheet name «Паспорт (долги) KG/KZ». `src/app/(dashboard)/deals/page.tsx` — `handleExport` signature `"passport" | "detail" | "debt"`, new debt branch calling the same exporter with `{ variant: "debt" }`; 3rd dropdown item («Паспорт (долги)») un-disabled.
+- **Type:** [EXPORT]
+- **Before → After:** «Паспорт (долги)» dropdown item was `disabled` («Скоро») → now exports the detail sheet plus 6 deferral/planned-payment columns, with red/bold font on planned dates that are in the past AND the deal still carries a balance/debt on that side (supplier_balance>0 / buyer_debt>0). Planned date = shipment mode → basis date (loading_date for supplier, date for buyer) + N days; "other" mode → manually-set `*_planned_pay_date`. Detail export (`variant` omitted/"detail") behavior unchanged — `columns` defaults to the original `COLUMNS` array.
+- **Client reason:** client-approved format for the debt passport (per Task 3/4 spec) — reuse the detail exporter (DRY) instead of a duplicate file.
+- **Rebuild impact:** presentation only — no new DB reads beyond what the detail exporter already fetches (deferral fields came from `Deal` type, Task 2).
+
 ### 2026-07-21 — [UI-FIELD] Блок «Условия оплаты» на сделке (отсрочка: дни/режим/заметка/ручная дата)
 - **What changed:** `src/app/(dashboard)/deals/[id]/page.tsx` — новый мини-компонент `ModeSelect` (рядом с `Field`); новый раздел «Условия оплаты» (между секциями «Группа компаний» и «Логистика»), два столбца (Поставщик/Покупатель), каждый: `Field` дни (number) + `ModeSelect` режим (shipment/other) + при режиме "other" — `Field` заметка (text) и `Field` плановая дата (date).
 - **Type:** [UI-FIELD]
