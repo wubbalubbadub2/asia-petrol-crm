@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — 00125: поля отсрочки платежа на deals для отчёта «Паспорт (долги)»
+- **What changed:** migration `00125_payment_deferral.sql` (8 колонок на `deals`: `supplier_deferral_days INT`, `supplier_deferral_mode TEXT`, `supplier_deferral_note TEXT`, `supplier_planned_pay_date DATE`, и аналогичные `buyer_*` + 2 CHECK constraints для `supplier_deferral_mode` и `buyer_deferral_mode` со значениями 'shipment'/'other')
+- **Type:** [SCHEMA]
+- **Before → After:** нет данных об отсрочке платежей на сделках → каждая сделка содержит условия оплаты по стороне (поставщик/покупатель): дни отсрочки, режим расчёта (с даты отгрузки или прочее), плановая дата оплаты и заметка
+- **Client reason:** основы для отчёта «Паспорт (долги)» (Task 1 из features паспорта должников)
+- **Rebuild impact:** DATA-MODEL (новые колонки на `deals` для хранения условий платежа; базис для debt-отчётов)
+
 ### 2026-07-20 — Fix: ещё два batched-запроса в detail-экспорте без пагинации (1000-row cap, follow-up)
 - **What changed:** `src/lib/hooks/use-deals.ts` — `fetchDealLinesForExport` (~строки 239-291): единый unchunked `.in("deal_id", dealIds)` по `deal_supplier_lines`/`deal_buyer_lines` заменён на чанки по 150 id + постраничный `fetchAllPaginated` на каждый чанк, tie-breaker `.order("deal_id").order("id")`; возвращаемая форма (`{ supplier: Map, buyer: Map }`) не изменилась — оба вызывающих места (`passport-excel.ts`, `passport-detail-excel.ts`) не тронуты. `src/lib/exports/passport-detail-excel.ts` — фетч `deal_company_groups` (~строки 382-409): уже был чанкирован по 150, но не пагинирован через `.range()`; переведён на `fetchAllPaginated` с тем же tie-breaker (`deal_id`+`id`), как остальные фетчеры файла.
 - **Type:** [EXPORT] + [BEHAVIOR]
