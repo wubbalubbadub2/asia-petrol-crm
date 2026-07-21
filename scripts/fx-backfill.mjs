@@ -22,8 +22,12 @@ async function nbrk(d) {
 
 // Самая ранняя дата события: min по отгрузкам и оплатам.
 async function earliest() {
-  const q1 = await sb.from("shipment_registry").select("date").not("date","is",null).order("date",{ascending:true}).limit(1);
-  const q2 = await sb.from("deal_payments").select("payment_date").not("payment_date","is",null).order("payment_date",{ascending:true}).limit(1);
+  // Нижний предел старта: всё реальное — 2025–2026, всё раньше — опечатки
+  // ввода дат (напр. 0226 или 2006 вместо 2026). Без предела backfill
+  // стартует с античности/2006 и молотит годы неудачных fetch'ей.
+  const FLOOR = "2025-01-01";
+  const q1 = await sb.from("shipment_registry").select("date").gte("date",FLOOR).order("date",{ascending:true}).limit(1);
+  const q2 = await sb.from("deal_payments").select("payment_date").gte("payment_date",FLOOR).order("payment_date",{ascending:true}).limit(1);
   if (q1.error) console.warn(`shipment_registry query error: ${q1.error.message}`);
   if (q2.error) console.warn(`deal_payments query error: ${q2.error.message}`);
   const dates = [q1.data?.[0]?.date, q2.data?.[0]?.payment_date].filter(Boolean).sort();

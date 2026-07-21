@@ -332,3 +332,10 @@ Entry template:
 - **Before → After:** было `const rpc = (createClient() as ...).rpc; await rpc()(name,args)` → метод `.rpc` терял `this`-привязку к SupabaseClient, supabase-js падал в рантайме, вкладка «Отчёты» показывала «Ошибка:». Стало `sb.rpc(name,args)` — this сохранён, RPC отрабатывают. Поймано E2E-пробой на проде (tsc такое не ловит).
 - **Client reason:** после применения миграций /reports показывала ошибку вместо отчётов.
 - **Rebuild impact:** none (правка вызова).
+
+### 2026-07-21 — Fix: backfill стартовал с «античных» дат (опечатки в данных)
+- **What changed:** `scripts/fx-backfill.mjs` — `earliest()` теперь фильтрует даты `>= 2025-01-01` (FLOOR) при поиске стартовой даты.
+- **Type:** [SCRIPT]
+- **Before → After:** брал min(`shipment_registry.date`, `deal_payments.payment_date`) без нижнего предела → в данных есть опечатки (строка реестра сделки KG/26/101 с `date=0226-02-28`, ещё `2006-06-01`), поэтому backfill стартовал с ~226/2006 года и молотил тысячи лет неудачных fetch'ей к НБ РК. → теперь стартует с реальной ранней даты (2025-11), диапазон 2025-11…сегодня.
+- **Client reason:** backfill курсов завис/не заполнял; выявлены строки с битыми датами.
+- **Rebuild impact:** none (one-off скрипт).
