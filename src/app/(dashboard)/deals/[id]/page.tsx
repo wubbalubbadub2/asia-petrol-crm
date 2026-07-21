@@ -200,6 +200,41 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
   );
 }
 
+// Compact select for deferral "mode" fields (supplier/buyer_deferral_mode).
+// Two modes: "с даты отгрузки" (auto-anchored on shipment date, no extra
+// inputs needed) vs "прочее" (manual note + planned pay date shown by the
+// caller when this value is "other"). Mirrors Field's edit/view split but
+// with a native <select> since there's a fixed enum, not free text.
+function ModeSelect({ label, value, field, dealId, editing }: {
+  label: string;
+  value: "shipment" | "other" | null | undefined;
+  field: string; dealId: string; editing?: boolean;
+}) {
+  const human = value === "shipment" ? "с даты отгрузки" : value === "other" ? "прочее" : "—";
+  if (!editing) {
+    return (
+      <div>
+        <span className="text-[11px] text-stone-400 block">{label}</span>
+        <span className="text-[13px] text-stone-700">{human}</span>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <span className="text-[11px] text-stone-400 block">{label}</span>
+      <select
+        className="h-7 rounded border border-stone-200 bg-white px-1 text-[13px] focus:border-amber-400 focus:outline-none"
+        value={value ?? ""}
+        onChange={(e) => updateDeal(dealId, { [field]: (e.target.value || null) as never })}
+      >
+        <option value="">—</option>
+        <option value="shipment">с даты отгрузки</option>
+        <option value="other">прочее</option>
+      </select>
+    </div>
+  );
+}
+
 // Editable select for reference fields
 function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy, onSaved }: {
   editing: boolean;
@@ -973,6 +1008,35 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         {/* Company chain documents */}
         <DocumentsSection dealId={deal.id} section="company_chain" title="Документы — Цепочка компании" initialAttachments={bundleAttachments["company_chain"] ?? []} />
       </CollapsibleSection>
+
+      {/* Условия оплаты (отсрочка) */}
+      <div className="space-y-2">
+        <h3 className="text-[14px] font-medium text-stone-800">Условия оплаты</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <div className="text-[12px] font-medium text-stone-500">Поставщик</div>
+            <Field label="Отсрочка, дн." value={deal.supplier_deferral_days} inputType="number" editing={editing} field="supplier_deferral_days" dealId={deal.id} />
+            <ModeSelect label="Режим" value={deal.supplier_deferral_mode} field="supplier_deferral_mode" dealId={deal.id} editing={editing} />
+            {deal.supplier_deferral_mode === "other" && (
+              <>
+                <Field label="Заметка" value={deal.supplier_deferral_note} inputType="text" editing={editing} field="supplier_deferral_note" dealId={deal.id} />
+                <Field label="Плановая дата (ручная)" value={deal.supplier_planned_pay_date} inputType="date" editing={editing} field="supplier_planned_pay_date" dealId={deal.id} />
+              </>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <div className="text-[12px] font-medium text-stone-500">Покупатель</div>
+            <Field label="Отсрочка, дн." value={deal.buyer_deferral_days} inputType="number" editing={editing} field="buyer_deferral_days" dealId={deal.id} />
+            <ModeSelect label="Режим" value={deal.buyer_deferral_mode} field="buyer_deferral_mode" dealId={deal.id} editing={editing} />
+            {deal.buyer_deferral_mode === "other" && (
+              <>
+                <Field label="Заметка" value={deal.buyer_deferral_note} inputType="text" editing={editing} field="buyer_deferral_note" dealId={deal.id} />
+                <Field label="Плановая дата (ручная)" value={deal.buyer_planned_pay_date} inputType="date" editing={editing} field="buyer_planned_pay_date" dealId={deal.id} />
+              </>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ===== LOGISTICS ===== */}
       <CollapsibleSection

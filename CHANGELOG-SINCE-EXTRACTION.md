@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — [UI-FIELD] Блок «Условия оплаты» на сделке (отсрочка: дни/режим/заметка/ручная дата)
+- **What changed:** `src/app/(dashboard)/deals/[id]/page.tsx` — новый мини-компонент `ModeSelect` (рядом с `Field`); новый раздел «Условия оплаты» (между секциями «Группа компаний» и «Логистика»), два столбца (Поставщик/Покупатель), каждый: `Field` дни (number) + `ModeSelect` режим (shipment/other) + при режиме "other" — `Field` заметка (text) и `Field` плановая дата (date).
+- **Type:** [UI-FIELD]
+- **Before → After:** страница сделки не показывала поля отсрочки (Task 1/2 добавили только БД-схему и типы) → теперь оператор видит и редактирует supplier/buyer_deferral_days, _mode, _note, planned_pay_date прямо на карточке сделки; сохранение оптимистичное через существующий `updateDeal`.
+- **Client reason:** Task 3 паспорта (долги) — поля отсрочки должны быть доступны для ввода на UI, не только в БД.
+- **Rebuild impact:** presentation only — данные уже были доступны клиенту (Task 1), это чисто UI-слой.
+
 ### 2026-07-21 — Deal type + LIST_SELECT — поля отсрочки
 - **What changed:** `src/lib/hooks/use-deals.ts` — `type Deal`: 8 новых полей (supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date, и аналогичные buyer_*); `LIST_SELECT` query: добавлены те же 8 колонок в SELECT-проекцию.
 - **Type:** [BEHAVIOR]
