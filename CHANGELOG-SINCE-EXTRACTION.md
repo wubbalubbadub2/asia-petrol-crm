@@ -346,3 +346,10 @@ Entry template:
 - **Before → After:** proxy (Next 16 middleware) пропускал мимо auth только `/api/keepalive`; `/api/cron/fx-rates` уходил в `updateSession` → 307-редирект на /login, обработчик не выполнялся, Vercel Cron не мог загрузить курсы. → теперь `/api/cron/*` пропускается к своему обработчику (у него собственная проверка CRON_SECRET). Поймано E2E: `curl` cron-роута отдавал 307.
 - **Client reason:** после установки CRON_SECRET ежедневная загрузка курсов всё равно не срабатывала.
 - **Rebuild impact:** none.
+
+### 2026-07-21 — UI/Fix: вкладка «Отчёты» — лейблы в дропдауне, селектор года, пагинация «Цены»
+- **What changed:** `src/app/(dashboard)/reports/page.tsx` — дропдаун отчёта показывает человекочитаемый лейбл (а не ключ `ship_out`); day-picker'ы «С»/«По» заменены на селектор **Год** (отчёты помесячные); панель фильтров в `Card`, ровные размеры на shared `Select`. `src/lib/hooks/use-fx-reports.ts` — `fetchPrice`/`fetchFlows` тянут результат RPC постранично (`callRpcAll`), т.к. `fx_report_price` построчный по СНТ и упирался в лимит PostgREST 1000 строк → отчёт «Цена» молча обрезался.
+- **Type:** [UI] + [BEHAVIOR]
+- **Before → After:** (1) дропдаун показывал сырые ключи метрик → показывает лейблы. (2) day-picker для помесячного отчёта → выбор года (период = весь год). (3) «Цена» отдавала ≤1000 строк → все строки за год.
+- **Client reason:** фидбэк со скриншотом: ключи в дропдауне, лишний date-picker, неровный layout/не shared-компоненты.
+- **Rebuild impact:** none.

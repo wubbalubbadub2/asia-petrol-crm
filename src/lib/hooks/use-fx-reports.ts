@@ -19,24 +19,35 @@ export const FLOW_METRICS = [
 // тот же приём, что в use-user-pref.ts. Вызываем .rpc КАК МЕТОД клиента
 // (sb.rpc(...)), а не извлекаем метод в переменную — иначе теряется
 // this-binding и supabase-js падает в рантайме.
-type RpcClient = {
-  rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
-};
-async function callRpc(name: string, args: Record<string, unknown>) {
+type RpcResult = { data: unknown; error: { message: string } | null };
+type RpcBuilder = PromiseLike<RpcResult> & { range: (from: number, to: number) => PromiseLike<RpcResult> };
+type RpcClient = { rpc: (name: string, args: Record<string, unknown>) => RpcBuilder };
+
+// Постранично тянем весь результат RPC. PostgREST режет ответ табличной
+// функции на дефолтном лимите 1000 строк — fx_report_price построчный по
+// СНТ и легко превышает 1000, иначе отчёт молча обрезается.
+async function callRpcAll<T>(name: string, args: Record<string, unknown>): Promise<T[]> {
   const sb = createClient() as unknown as RpcClient;
-  return sb.rpc(name, args);
+  const pageSize = 1000;
+  const all: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb.rpc(name, args).range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
 }
 
 export async function fetchFlows(from: string, to: string): Promise<FlowRow[]> {
-  const { data, error } = await callRpc("fx_report_flows", { p_from: from, p_to: to });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as FlowRow[];
+  return callRpcAll<FlowRow>("fx_report_flows", { p_from: from, p_to: to });
 }
 
 export async function fetchPrice(from: string, to: string): Promise<PriceRow[]> {
-  const { data, error } = await callRpc("fx_report_price", { p_from: from, p_to: to });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as PriceRow[];
+  return callRpcAll<PriceRow>("fx_report_price", { p_from: from, p_to: to });
 }
 
 export function groupFlows(rows: FlowRow[]): {
