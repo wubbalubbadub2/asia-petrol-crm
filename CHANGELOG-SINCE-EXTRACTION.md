@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — [EXPORT] Паспорт (долги) — фиксы: знак просрочки покупателя + имя файла
+- **What changed:** `src/lib/exports/passport-detail-excel.ts` — `buyerOverdue` helper (line 394) и download filename (line 669)
+- **Type:** [FORMULA]
+- **Before → After:** `buyerOverdue` была `(d.buyer_debt ?? 0) > 0` (неправильно: флагировала переплаченных покупателей) → теперь `(d.buyer_debt ?? 0) < 0` (правильно: флагирует покупателей, которые ещё должны нам); filename был `passport-detail-...` для всех вариантов → теперь `passport-debt-...` когда экспортируется вариант долгов (`isDebt: true`)
+- **Client reason:** критичное исправление: долговой отчёт должен красить только реальные долги (buyer_debt < 0), не переплаты; имя файла должно отличаться для долговой выгрузки
+- **Rebuild impact:** presentation only — поле buyer_debt существовало, просто неправильно интерпретировалось в условии
+
 ### 2026-07-21 — [EXPORT] «Паспорт (долги)» — detail + 6 колонок отсрочки/плановых дат, красный на просрочке; опция дропдауна включена
 - **What changed:** `src/lib/exports/passport-detail-excel.ts` — `Column.redIf?: (deal, s: SubRow) => boolean`; band-union `+ "debt"` and `BAND_STYLE.debt`; new helpers `addDaysISO`/`supplierPlanned`/`buyerPlanned`/`supplierOverdue`/`buyerOverdue` + `DEBT_COLUMNS` (6 cols: Отсрочка платежа дн./Дата начала отсрочки/Плановая дата оплаты × Прод./Покуп.); `exportPassportDetailToExcel(deals, ctx, opts?: { variant?: "detail" | "debt" })` — `columns = isDebt ? [...COLUMNS, ...DEBT_COLUMNS] : COLUMNS`, all in-body `COLUMNS` refs (band row, header row, deal row, sub-row, totals row, autoFilter) switched to `columns`; sub-row loop applies `redIf` after font is set (bold + `FFB91C1C`); debt sheet name «Паспорт (долги) KG/KZ». `src/app/(dashboard)/deals/page.tsx` — `handleExport` signature `"passport" | "detail" | "debt"`, new debt branch calling the same exporter with `{ variant: "debt" }`; 3rd dropdown item («Паспорт (долги)») un-disabled.
 - **Type:** [EXPORT]

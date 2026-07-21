@@ -391,7 +391,7 @@ function buyerPlanned(d: Deal, s: SubRow): string | null {
 }
 const DEBT_TODAY = new Date().toISOString().slice(0, 10);
 const supplierOverdue = (d: Deal, s: SubRow) => { const p = supplierPlanned(d, s); return !!p && p < DEBT_TODAY && (d.supplier_balance ?? 0) > 0; };
-const buyerOverdue = (d: Deal, s: SubRow) => { const p = buyerPlanned(d, s); return !!p && p < DEBT_TODAY && (d.buyer_debt ?? 0) > 0; };
+const buyerOverdue = (d: Deal, s: SubRow) => { const p = buyerPlanned(d, s); return !!p && p < DEBT_TODAY && (d.buyer_debt ?? 0) < 0; };
 
 const DEBT_COLUMNS: Column[] = [
   { key: "sup_defer_days", header: "Отсрочка платежа Прод., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.supplier_deferral_days ?? "" },
@@ -666,7 +666,7 @@ export async function exportPassportDetailToExcel(
   const a = document.createElement("a");
   const datestamp = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `passport-detail-${ctx.dealType.toLowerCase()}-${ctx.year}-${datestamp}.xlsx`;
+  a.download = `passport-${isDebt ? "debt" : "detail"}-${ctx.dealType.toLowerCase()}-${ctx.year}-${datestamp}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
