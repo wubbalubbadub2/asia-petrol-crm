@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-21 — Deal type + LIST_SELECT — поля отсрочки
+- **What changed:** `src/lib/hooks/use-deals.ts` — `type Deal`: 8 новых полей (supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date, и аналогичные buyer_*); `LIST_SELECT` query: добавлены те же 8 колонок в SELECT-проекцию.
+- **Type:** [BEHAVIOR]
+- **Before → After:** Deal type не включал поля отсрочки платежей, LIST_SELECT не выбирал их → теперь оба содержат полный набор; поля доступны в списке сделок и в экспортерах.
+- **Client reason:** пропуск из Task 1 (миграция 00125) — поля БД должны быть в типе и в запросе, иначе данные недоступны приложению.
+- **Rebuild impact:** DATA-MODEL — поля отсрочки теперь доступны на клиенте для рендеринга и экспорта.
+
 ### 2026-07-21 — Fix: CHECK-констрейнты в 00125 теперь идемпотентные (re-run-safe)
 - **What changed:** migration `00125_payment_deferral.sql` — два `ALTER TABLE deals ADD CONSTRAINT ...` заменены на guarded DO-блоки с exception-обработкой `duplicate_object`.
 - **Type:** [SCHEMA]

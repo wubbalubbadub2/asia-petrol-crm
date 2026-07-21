@@ -53,6 +53,14 @@ export type Deal = {
   buyer_payment: number | null;
   buyer_payment_date: string | null;
   buyer_debt: number | null;
+  supplier_deferral_days: number | null;
+  supplier_deferral_mode: "shipment" | "other" | null;
+  supplier_deferral_note: string | null;
+  supplier_planned_pay_date: string | null;
+  buyer_deferral_days: number | null;
+  buyer_deferral_mode: "shipment" | "other" | null;
+  buyer_deferral_note: string | null;
+  buyer_planned_pay_date: string | null;
   forwarder_id: string | null;
   logistics_company_group_id: string | null;
   // Migration 00069 — overrides deal.month for tariff lookups when set.
@@ -340,6 +348,8 @@ const LIST_SELECT = `
   additional_expenses_amount, additional_expenses_in_price,
   logistics_currency, currency, is_archived, is_draft, created_at,
   supplier_lines_count, buyer_lines_count,
+  supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date,
+  buyer_deferral_days, buyer_deferral_mode, buyer_deferral_note, buyer_planned_pay_date,
   deal_company_groups(id, position, company_group_id, price, price_kind)
 `;
 // quotation + discount were missing from this projection — operator
