@@ -182,7 +182,7 @@ export function Sidebar({
               Навигация
             </p>
           )}
-          {filteredItems.slice(0, 4).map((item) => (
+          {filteredItems.filter((i) => i.section === "nav" && !i.adminOnly).map((item) => (
             <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} collapsed={collapsed} />
           ))}
 
@@ -192,7 +192,17 @@ export function Sidebar({
               Операции
             </p>
           )}
-          {filteredItems.filter((i) => !i.adminOnly).slice(4).map((item) => (
+          {filteredItems.filter((i) => i.section === "ops" && !i.adminOnly).map((item) => (
+            <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} collapsed={collapsed} />
+          ))}
+
+          <div className="my-3 border-t border-slate-800/50" />
+          {!collapsed && (
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+              Отчёты
+            </p>
+          )}
+          {filteredItems.filter((i) => i.section === "reports" && !i.adminOnly).map((item) => (
             <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} collapsed={collapsed} />
           ))}
         </div>

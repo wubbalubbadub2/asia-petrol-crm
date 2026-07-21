@@ -404,3 +404,10 @@ Entry template:
   - (Fix 2, optimistic UI) Режим (`ModeSelect`) не имел локального pending-state → `updateDeal` инвалидирует deal bundle ПОЛНЫМ refetch (не in-place patch), поэтому при выборе «прочее» поля «Заметка»/«Плановая дата» (гейт на `deal.*_deferral_mode === "other"`) появлялись только после round-trip к серверу. → добавлено локальное состояние `supMode`/`buyMode` (`useState` + `useEffect` синк с `deal.*`), select одновременно делает `setLocal(nv)` (мгновенно) и `updateDeal(...)` (с revert на `.catch`); reveal полей гейтится на локальный state, а не на `deal.*` — появляется мгновенно, как в Excel.
 - **Client reason:** ревью Task 3 (payment-deferral блок) нашло 2 расхождения с проектным стандартом (DESIGN.md consistency + optimistic-UI rule).
 - **Rebuild impact:** none (только UI/client-state, DB-поля и формулы не менялись).
+
+### 2026-07-21 — UI: сайдбар — секция «Отчёты», пункт «Отчёт по валютам»
+- **What changed:** `src/lib/constants/nav-items.ts` — добавлено поле `section` ("nav"|"ops"|"reports"); пункт «Отчёты» → «Отчёт по валютам», секция "reports". `src/components/layout/sidebar.tsx` — рендер трёх секций по `section` (было — нарезка по индексу `slice`). `src/app/(dashboard)/reports/page.tsx` — заголовок «Отчёты» → «Отчёт по валютам».
+- **Type:** [UI]
+- **Before → After:** сайдбар делил пункты на «Навигация»/«Операции» через `slice(0,4)`/`slice(4)` → теперь три группы по явному `section`, добавлена «Отчёты» (пока один пункт «Отчёт по валютам»; будущие отчёты добавляются как пункты этой секции). Админ-пункты (Архив/Настройки) по-прежнему скрыты фильтром `!adminOnly`.
+- **Client reason:** «вынести отчёты как отдельную секцию, внутри — по пункту на каждый отчёт; текущий назвать Отчёт по валютам».
+- **Rebuild impact:** none.
