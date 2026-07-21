@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { updateDeal } from "@/lib/hooks/use-deals";
+import { updateDeal, type Deal } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { createClient } from "@/lib/supabase/client";
@@ -200,41 +200,6 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
   );
 }
 
-// Compact select for deferral "mode" fields (supplier/buyer_deferral_mode).
-// Two modes: "с даты отгрузки" (auto-anchored on shipment date, no extra
-// inputs needed) vs "прочее" (manual note + planned pay date shown by the
-// caller when this value is "other"). Mirrors Field's edit/view split but
-// with a native <select> since there's a fixed enum, not free text.
-function ModeSelect({ label, value, field, dealId, editing }: {
-  label: string;
-  value: "shipment" | "other" | null | undefined;
-  field: string; dealId: string; editing?: boolean;
-}) {
-  const human = value === "shipment" ? "с даты отгрузки" : value === "other" ? "прочее" : "—";
-  if (!editing) {
-    return (
-      <div>
-        <span className="text-[11px] text-stone-400 block">{label}</span>
-        <span className="text-[13px] text-stone-700">{human}</span>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <span className="text-[11px] text-stone-400 block">{label}</span>
-      <select
-        className="h-7 rounded border border-stone-200 bg-white px-1 text-[13px] focus:border-amber-400 focus:outline-none"
-        value={value ?? ""}
-        onChange={(e) => updateDeal(dealId, { [field]: (e.target.value || null) as never })}
-      >
-        <option value="">—</option>
-        <option value="shipment">с даты отгрузки</option>
-        <option value="other">прочее</option>
-      </select>
-    </div>
-  );
-}
-
 // Editable select for reference fields
 function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy, onSaved }: {
   editing: boolean;
@@ -415,6 +380,88 @@ function EditableSelect({ label, value, displayValue, editing, field, dealId, op
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
       </div>
     </div>
+  );
+}
+
+// «Условия оплаты» (отсрочка) — supplier + buyer deferral terms.
+// Extracted into its own component (rather than the inline ModeSelect
+// used before) because the mode <select> needs a LOCAL optimistic echo:
+// updateDeal() invalidates the deal bundle with a hard refetch (full RPC
+// round-trip), not an in-place patch — same reason Field and
+// SectionCurrencyPicker each keep a `pendingVal` ref. Without it, picking
+// «прочее» wouldn't reveal the «Заметка»/«Плановая дата» fields (gated on
+// *_deferral_mode === "other") until the round-trip finished, breaking
+// the reveal-on-select interaction and the project's optimistic-UI rule.
+function PaymentConditionsSection({ deal, editing }: { deal: Deal; editing: boolean }) {
+  const [supMode, setSupMode] = useState(deal.supplier_deferral_mode);
+  const [buyMode, setBuyMode] = useState(deal.buyer_deferral_mode);
+  useEffect(() => setSupMode(deal.supplier_deferral_mode), [deal.supplier_deferral_mode]);
+  useEffect(() => setBuyMode(deal.buyer_deferral_mode), [deal.buyer_deferral_mode]);
+
+  function renderModeSelect(
+    label: string,
+    value: "shipment" | "other" | null,
+    field: "supplier_deferral_mode" | "buyer_deferral_mode",
+    setLocal: (v: "shipment" | "other" | null) => void,
+  ) {
+    const human = value === "shipment" ? "с даты отгрузки" : value === "other" ? "прочее" : "—";
+    if (!editing) {
+      return (
+        <div>
+          <span className="text-[11px] text-stone-400 block">{label}</span>
+          <span className="text-[13px] text-stone-700">{human}</span>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <span className="text-[11px] text-stone-400 block">{label}</span>
+        <select
+          className="h-7 rounded border border-stone-200 bg-white px-1 text-[13px] focus:border-amber-400 focus:outline-none"
+          value={value ?? ""}
+          onChange={(e) => {
+            const nv = (e.target.value || null) as "shipment" | "other" | null;
+            // Optimistic: reveal/hide the "other" fields instantly,
+            // before the round-trip. Revert on rejection.
+            setLocal(nv);
+            updateDeal(deal.id, { [field]: nv } as never).catch(() => setLocal(value));
+          }}
+        >
+          <option value="">—</option>
+          <option value="shipment">с даты отгрузки</option>
+          <option value="other">прочее</option>
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <CollapsibleSection title="Условия оплаты" headerBg={SECTION_COLORS.deal} storageKey={`deal:${deal.id}:section:payment-conditions`}>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <div className="text-[12px] font-medium text-stone-500">Поставщик</div>
+          <Field label="Отсрочка, дн." value={deal.supplier_deferral_days} inputType="number" editing={editing} field="supplier_deferral_days" dealId={deal.id} />
+          {renderModeSelect("Режим", supMode, "supplier_deferral_mode", setSupMode)}
+          {supMode === "other" && (
+            <>
+              <Field label="Заметка" value={deal.supplier_deferral_note} inputType="text" editing={editing} field="supplier_deferral_note" dealId={deal.id} />
+              <Field label="Плановая дата (ручная)" value={deal.supplier_planned_pay_date} inputType="date" editing={editing} field="supplier_planned_pay_date" dealId={deal.id} />
+            </>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[12px] font-medium text-stone-500">Покупатель</div>
+          <Field label="Отсрочка, дн." value={deal.buyer_deferral_days} inputType="number" editing={editing} field="buyer_deferral_days" dealId={deal.id} />
+          {renderModeSelect("Режим", buyMode, "buyer_deferral_mode", setBuyMode)}
+          {buyMode === "other" && (
+            <>
+              <Field label="Заметка" value={deal.buyer_deferral_note} inputType="text" editing={editing} field="buyer_deferral_note" dealId={deal.id} />
+              <Field label="Плановая дата (ручная)" value={deal.buyer_planned_pay_date} inputType="date" editing={editing} field="buyer_planned_pay_date" dealId={deal.id} />
+            </>
+          )}
+        </div>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -1009,34 +1056,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <DocumentsSection dealId={deal.id} section="company_chain" title="Документы — Цепочка компании" initialAttachments={bundleAttachments["company_chain"] ?? []} />
       </CollapsibleSection>
 
-      {/* Условия оплаты (отсрочка) */}
-      <div className="space-y-2">
-        <h3 className="text-[14px] font-medium text-stone-800">Условия оплаты</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <div className="text-[12px] font-medium text-stone-500">Поставщик</div>
-            <Field label="Отсрочка, дн." value={deal.supplier_deferral_days} inputType="number" editing={editing} field="supplier_deferral_days" dealId={deal.id} />
-            <ModeSelect label="Режим" value={deal.supplier_deferral_mode} field="supplier_deferral_mode" dealId={deal.id} editing={editing} />
-            {deal.supplier_deferral_mode === "other" && (
-              <>
-                <Field label="Заметка" value={deal.supplier_deferral_note} inputType="text" editing={editing} field="supplier_deferral_note" dealId={deal.id} />
-                <Field label="Плановая дата (ручная)" value={deal.supplier_planned_pay_date} inputType="date" editing={editing} field="supplier_planned_pay_date" dealId={deal.id} />
-              </>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <div className="text-[12px] font-medium text-stone-500">Покупатель</div>
-            <Field label="Отсрочка, дн." value={deal.buyer_deferral_days} inputType="number" editing={editing} field="buyer_deferral_days" dealId={deal.id} />
-            <ModeSelect label="Режим" value={deal.buyer_deferral_mode} field="buyer_deferral_mode" dealId={deal.id} editing={editing} />
-            {deal.buyer_deferral_mode === "other" && (
-              <>
-                <Field label="Заметка" value={deal.buyer_deferral_note} inputType="text" editing={editing} field="buyer_deferral_note" dealId={deal.id} />
-                <Field label="Плановая дата (ручная)" value={deal.buyer_planned_pay_date} inputType="date" editing={editing} field="buyer_planned_pay_date" dealId={deal.id} />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* ===== PAYMENT CONDITIONS (deferral) ===== */}
+      <PaymentConditionsSection deal={deal} editing={editing} />
 
       {/* ===== LOGISTICS ===== */}
       <CollapsibleSection

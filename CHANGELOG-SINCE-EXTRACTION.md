@@ -381,3 +381,12 @@ Entry template:
 - **Before → After:** (1) дропдаун показывал сырые ключи метрик → показывает лейблы. (2) day-picker для помесячного отчёта → выбор года (период = весь год). (3) «Цена» отдавала ≤1000 строк → все строки за год.
 - **Client reason:** фидбэк со скриншотом: ключи в дропдауне, лишний date-picker, неровный layout/не shared-компоненты.
 - **Rebuild impact:** none.
+
+### 2026-07-21 — Fix: «Условия оплаты» на /deals/[id] — review findings (CollapsibleSection + optimistic reveal)
+- **What changed:** `src/app/(dashboard)/deals/[id]/page.tsx` — блок «Условия оплаты» (supplier/buyer deferral terms) вынесен в новый компонент `PaymentConditionsSection({ deal, editing })`, вставлен вместо инлайн-блока в рендере; старый standalone `ModeSelect` удалён (логика инлайнена внутрь `PaymentConditionsSection` через `renderModeSelect`).
+- **Type:** [UI] + [BEHAVIOR]
+- **Before → After:**
+  - (Fix 1, визуальная консистентность / DESIGN.md) Голый `<div>`/`<h3>Условия оплаты</h3>` → обёрнут в `<CollapsibleSection title="Условия оплаты" headerBg={SECTION_COLORS.deal} storageKey={...}>`, как остальные секции страницы (Поставщик/Покупатель/Группа компаний/Логистика/Ответственные).
+  - (Fix 2, optimistic UI) Режим (`ModeSelect`) не имел локального pending-state → `updateDeal` инвалидирует deal bundle ПОЛНЫМ refetch (не in-place patch), поэтому при выборе «прочее» поля «Заметка»/«Плановая дата» (гейт на `deal.*_deferral_mode === "other"`) появлялись только после round-trip к серверу. → добавлено локальное состояние `supMode`/`buyMode` (`useState` + `useEffect` синк с `deal.*`), select одновременно делает `setLocal(nv)` (мгновенно) и `updateDeal(...)` (с revert на `.catch`); reveal полей гейтится на локальный state, а не на `deal.*` — появляется мгновенно, как в Excel.
+- **Client reason:** ревью Task 3 (payment-deferral блок) нашло 2 расхождения с проектным стандартом (DESIGN.md consistency + optimistic-UI rule).
+- **Rebuild impact:** none (только UI/client-state, DB-поля и формулы не менялись).
