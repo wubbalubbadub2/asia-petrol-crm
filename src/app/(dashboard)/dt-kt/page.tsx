@@ -242,6 +242,16 @@ export default function DtKtPage() {
       ),
     ]);
     setRecords((recs ?? []) as unknown as DtKtRecord[]);
+    // Оплаты кладём в состояние СРАЗУ за записями — до (медленного)
+    // фетча сумм реестра. Иначе первый рендер успевает показать
+    // fallback на хранимую dt_kt_logistics.payment, и пользователь
+    // видит мигание устаревшей цифры перед правильной.
+    const pMap: Record<string, DtKtPayment[]> = {};
+    for (const p of (payData ?? []) as (DtKtPayment & { dt_kt_id: string })[]) {
+      if (!pMap[p.dt_kt_id]) pMap[p.dt_kt_id] = [];
+      pMap[p.dt_kt_id].push(p);
+    }
+    setDtktPayments(pMap);
     // Registry sums grouped by (forwarder_id, company_group_id). Each
     // dt_kt_logistics row is keyed on that triple (+ year), so a forwarder
     // with multiple group companies has multiple buckets that must NOT be
@@ -272,13 +282,6 @@ export default function DtKtPage() {
     } else {
       setRegistrySums(regData as RegistrySums[]);
     }
-    // Group payments by dt_kt_id
-    const pMap: Record<string, DtKtPayment[]> = {};
-    for (const p of (payData ?? []) as (DtKtPayment & { dt_kt_id: string })[]) {
-      if (!pMap[p.dt_kt_id]) pMap[p.dt_kt_id] = [];
-      pMap[p.dt_kt_id].push(p);
-    }
-    setDtktPayments(pMap);
     setLoading(false);
   }
 
