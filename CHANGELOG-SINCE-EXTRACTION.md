@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-22 — Task 1: индекс курсов FxRates
+- **What changed:** `src/lib/fx/rates.ts` — модуль индекса курсов валют (класс `FxRates`, функция `prevDayISO`, тип `FxRateRow`); `src/__tests__/fx-rates.test.ts` — 12 unit-тестов.
+- **Type:** [BEHAVIOR]
+- **Before → After:** нет → индекс курсов с фильтром по правилу «эффективная дата ≤ вчера» (сегодняшний курс не используется, он ещё не зафиксирован). Поддерживает поиск курса на дату (binary search), среднемесячный курс (фолбэк без даты), конвертацию через USD-пивот.
+- **Client reason:** основа отчёта «Сбор по валюте» (Task 2).
+- **Rebuild impact:** presentation only (чистый модуль, тестированный отдельно)
+
 ### 2026-07-22 — UI: видимая полоса прокрутки в выпадающих списках
 - **What changed:** `src/app/globals.css` — утилита `.ap-scroll-y` (видимый вертикальный scrollbar, Stone 300 / Stone 400). `src/components/ui/command.tsx` — `no-scrollbar` (класс нигде не объявлен) → `ap-scroll-y` + кастомный компонент `ScrollThumbY` (DOM-бегунок справа, с перетаскиванием мышью), список обёрнут в `relative`-div. `src/components/ui/select.tsx`, `src/components/ui/dropdown-menu.tsx` — класс `.ap-scroll-y` на popup-контейнер.
 - **Почему DOM-бегунок, а не CSS:** проверено playwright'ом на проде — macOS Chromium рисует overlay-scrollbar поверх контента, `-webkit-appearance:none` не помогает, ширина не резервируется (тот же вывод, что у `DoubleScrollX`). CSS-полоса работает на Windows/Linux, DOM-бегунок — везде.
