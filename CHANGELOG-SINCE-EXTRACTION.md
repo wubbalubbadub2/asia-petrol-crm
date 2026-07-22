@@ -27,7 +27,8 @@ Entry template:
 <!-- Entries below, newest first -->
 
 ### 2026-07-22 — UI: видимая полоса прокрутки в выпадающих списках
-- **What changed:** `src/app/globals.css` — утилита `.ap-scroll-y` (видимый вертикальный scrollbar, Stone 300 / Stone 400, `-webkit-appearance:none` чтобы выключить macOS overlay-режим). `src/components/ui/command.tsx` — `no-scrollbar` (класс нигде не объявлен) → `ap-scroll-y`. `src/components/ui/select.tsx`, `src/components/ui/dropdown-menu.tsx` — тот же класс на popup-контейнер.
+- **What changed:** `src/app/globals.css` — утилита `.ap-scroll-y` (видимый вертикальный scrollbar, Stone 300 / Stone 400). `src/components/ui/command.tsx` — `no-scrollbar` (класс нигде не объявлен) → `ap-scroll-y` + кастомный компонент `ScrollThumbY` (DOM-бегунок справа, с перетаскиванием мышью), список обёрнут в `relative`-div. `src/components/ui/select.tsx`, `src/components/ui/dropdown-menu.tsx` — класс `.ap-scroll-y` на popup-контейнер.
+- **Почему DOM-бегунок, а не CSS:** проверено playwright'ом на проде — macOS Chromium рисует overlay-scrollbar поверх контента, `-webkit-appearance:none` не помогает, ширина не резервируется (тот же вывод, что у `DoubleScrollX`). CSS-полоса работает на Windows/Linux, DOM-бегунок — везде.
 - **Type:** [PRESENTATION]
 - **Before → After:** presentation only — список в дропдауне обрезался по max-height (напр. «Все месяцы отгр.» в реестре: 358px контента в 280px окне), а native overlay-scrollbar на macOS исчезает через ~1 с → не видно, что ниже есть ещё значения. Теперь полоса видна всегда.
 - **Client reason:** «в отгрузках когда смотришь по датам нужно добавить сбоку бегунок».

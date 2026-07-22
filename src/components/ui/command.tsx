@@ -93,18 +93,123 @@ function CommandList({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.List>) {
+  const listRef = React.useRef<HTMLDivElement>(null)
   return (
-    <CommandPrimitive.List
-      data-slot="command-list"
-      className={cn(
-        // ap-scroll-y вместо no-scrollbar (shadcn'овский класс, который в
-        // проекте вообще ничем не объявлен): список обрезается по
-        // max-height, и оператор должен ВИДЕТЬ, что ниже есть ещё значения.
-        "ap-scroll-y max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
-        className
-      )}
-      {...props}
-    />
+    // relative-обёртка нужна для кастомного бегунка справа. Клиент
+    // 2026-07-22: «в отгрузках когда смотришь по датам нужно добавить
+    // сбоку бегунок» — список месяцев обрезан по max-height, а native
+    // overlay-scrollbar на macOS исчезает через секунду, поэтому не
+    // видно, что ниже есть ещё значения. Тот же вывод, что у
+    // DoubleScrollX: единственный надёжный путь — рисовать полосу
+    // своим DOM-элементом.
+    <div className="relative">
+      <CommandPrimitive.List
+        ref={listRef}
+        data-slot="command-list"
+        className={cn(
+          // ap-scroll-y вместо no-scrollbar (shadcn'овский класс, нигде в
+          // проекте не объявленный): на Windows/Linux этого достаточно —
+          // там scrollbar классический и место резервирует.
+          "ap-scroll-y max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+          className
+        )}
+        {...props}
+      />
+      <ScrollThumbY targetRef={listRef} />
+    </div>
+  )
+}
+
+/**
+ * Кастомный вертикальный бегунок поверх правого края прокручиваемого
+ * элемента. Виден всегда, пока контент не влезает; тянется мышью.
+ */
+function ScrollThumbY({
+  targetRef,
+}: {
+  targetRef: React.RefObject<HTMLDivElement | null>
+}) {
+  const [dim, setDim] = React.useState({ scrollHeight: 0, clientHeight: 0, scrollTop: 0 })
+  const [dragging, setDragging] = React.useState(false)
+  const dragRef = React.useRef<{ clientY: number; startScrollTop: number } | null>(null)
+
+  React.useLayoutEffect(() => {
+    const el = targetRef.current
+    if (!el) return
+    const measure = () =>
+      setDim({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, scrollTop: el.scrollTop })
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    // Поиск в списке меняет набор строк → высота контента другая.
+    const mo = new MutationObserver(measure)
+    mo.observe(el, { childList: true, subtree: true })
+    const onScroll = () => setDim((d) => ({ ...d, scrollTop: el.scrollTop }))
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      ro.disconnect()
+      mo.disconnect()
+      el.removeEventListener("scroll", onScroll)
+    }
+  }, [targetRef])
+
+  const overflowing = dim.scrollHeight > dim.clientHeight + 1
+  if (!overflowing) return null
+
+  const trackHeight = dim.clientHeight
+  const thumbHeight = Math.max(24, Math.floor((trackHeight * dim.clientHeight) / dim.scrollHeight))
+  const maxThumbTop = Math.max(0, trackHeight - thumbHeight)
+  const maxScrollTop = Math.max(1, dim.scrollHeight - dim.clientHeight)
+  const thumbTop = (dim.scrollTop / maxScrollTop) * maxThumbTop
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+    dragRef.current = { clientY: e.clientY, startScrollTop: dim.scrollTop }
+    setDragging(true)
+  }
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging || !dragRef.current || !targetRef.current) return
+    const dy = e.clientY - dragRef.current.clientY
+    const scale = maxThumbTop > 0 ? maxScrollTop / maxThumbTop : 0
+    targetRef.current.scrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, dragRef.current.startScrollTop + dy * scale),
+    )
+  }
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return
+    ;(e.currentTarget as Element).releasePointerCapture(e.pointerId)
+    setDragging(false)
+    dragRef.current = null
+  }
+
+  return (
+    <div
+      aria-hidden
+      className="absolute top-0 right-0.5 w-1.5"
+      style={{ height: trackHeight, pointerEvents: "none" }}
+    >
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{
+          position: "absolute",
+          top: thumbTop,
+          height: thumbHeight,
+          width: "100%",
+          borderRadius: 3,
+          background: dragging ? "#78716c" : "#d6d3d1",
+          cursor: dragging ? "grabbing" : "grab",
+          pointerEvents: "auto",
+          touchAction: "none",
+          transition: dragging ? "none" : "background 0.12s",
+        }}
+      />
+    </div>
   )
 }
 
