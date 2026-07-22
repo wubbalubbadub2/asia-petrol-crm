@@ -207,6 +207,38 @@
   background: #78716c !important;
 }
 
+/* Видимая вертикальная полоса прокрутки внутри выпадающих списков
+ * (Command / фильтры столбцов / «Все месяцы отгр.» и т.п.).
+ * Клиент 2026-07-22: «в отгрузках когда смотришь по датам нужно
+ * добавить сбоку бегунок» — список месяцев обрезан по max-height,
+ * а macOS'ный overlay-scrollbar исчезает через ~1 секунду и не
+ * резервирует место, поэтому не видно, что ниже есть ещё значения.
+ * -webkit-appearance:none выключает overlay-режим (тот же приём,
+ * что в .dsx-hide-native-h выше). Цвета — Stone 300 / Stone 400
+ * из DESIGN.md. */
+.ap-scroll-y {
+  scrollbar-width: thin;                    /* Firefox */
+  scrollbar-color: #d6d3d1 transparent;
+}
+.ap-scroll-y::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 10px;
+}
+.ap-scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ap-scroll-y::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 24px;
+}
+.ap-scroll-y::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+  background-clip: padding-box;
+}
+
 /* Tabular numerics only (no slashed-zero). Operator 2026-06-23 round
  * 3: «шрифт надо поменять… везде должен быть один и тот же стиль».
  * The whole UI now ships Carlito (Calibri-equivalent), the same font

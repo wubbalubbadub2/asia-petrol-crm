@@ -97,7 +97,10 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+        // ap-scroll-y вместо no-scrollbar (shadcn'овский класс, который в
+        // проекте вообще ничем не объявлен): список обрезается по
+        // max-height, и оператор должен ВИДЕТЬ, что ниже есть ещё значения.
+        "ap-scroll-y max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
         className
       )}
       {...props}

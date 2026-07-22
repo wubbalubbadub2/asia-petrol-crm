@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-22 — UI: видимая полоса прокрутки в выпадающих списках
+- **What changed:** `src/app/globals.css` — утилита `.ap-scroll-y` (видимый вертикальный scrollbar, Stone 300 / Stone 400, `-webkit-appearance:none` чтобы выключить macOS overlay-режим). `src/components/ui/command.tsx` — `no-scrollbar` (класс нигде не объявлен) → `ap-scroll-y`. `src/components/ui/select.tsx`, `src/components/ui/dropdown-menu.tsx` — тот же класс на popup-контейнер.
+- **Type:** [PRESENTATION]
+- **Before → After:** presentation only — список в дропдауне обрезался по max-height (напр. «Все месяцы отгр.» в реестре: 358px контента в 280px окне), а native overlay-scrollbar на macOS исчезает через ~1 с → не видно, что ниже есть ещё значения. Теперь полоса видна всегда.
+- **Client reason:** «в отгрузках когда смотришь по датам нужно добавить сбоку бегунок».
+- **Rebuild impact:** presentation only
+
 ### 2026-07-22 — ДТ-КТ: «Оплата» считалась от устаревшего хранимого итога
 - **What changed:** миграция `00126_dt_kt_payment_sync.sql` — функция `update_dt_kt_payment_total()` + триггер `trg_dt_kt_payment_total` на `dt_kt_payments` (AFTER INSERT/UPDATE/DELETE), backfill `dt_kt_logistics.payment` по всем записям + assert на отсутствие расхождений. `src/app/(dashboard)/dt-kt/page.tsx` — `paymentOf(rec)` (сумма строк оплат) вместо `rec.payment` в колонке «Оплата», в итоговой строке и в `computeSaldo` (сигнатура: добавлен параметр `payment`).
 - **Type:** [FORMULA] + [SCHEMA] + [PRESENTATION]
