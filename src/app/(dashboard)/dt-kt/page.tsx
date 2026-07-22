@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { Plus, Filter, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
@@ -92,8 +92,11 @@ function InlineDtText({ value, onSave, placeholder = "" }: { value: string | nul
   );
 }
 
-function computeSaldo(row: DtKtRecord, shipped: number) {
-  return n(row.opening_balance) + n(row.payment) - shipped - n(row.fines) - n(row.surcharge_preliminary) - n(row.ogem) - n(row.refund);
+// payment передаётся отдельно: это сумма строк dt_kt_payments (см.
+// paymentOf), а не хранимая row.payment — иначе сальдо считалось бы от
+// устаревшего итога оплат.
+function computeSaldo(row: DtKtRecord, shipped: number, payment: number) {
+  return n(row.opening_balance) + payment - shipped - n(row.fines) - n(row.surcharge_preliminary) - n(row.ogem) - n(row.refund);
 }
 
 // --- Add Dialog with multiple payments ---
@@ -281,36 +284,66 @@ export default function DtKtPage() {
 
   useEffect(() => { load(); }, [yearFilter]);
 
+  // Все правки — оптимистичные: состояние меняется сразу (как в Excel),
+  // запрос уходит следом, при ошибке откатываемся на снимок + toast.
+  // Раньше здесь стоял await load() — полный рефетч страницы на каждый
+  // ввод; из-за него же колонка «Оплата» визуально «не менялась».
   async function updateDtKt(id: string, patch: TablesUpdate<"dt_kt_logistics">) {
+    const snapshot = records;
+    setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } as DtKtRecord : r)));
     const { error } = await sb.current.from("dt_kt_logistics").update(patch).eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    await load();
+    if (error) { setRecords(snapshot); toast.error(error.message); }
   }
   async function updatePayment(id: string, patch: TablesUpdate<"dt_kt_payments">) {
+    const snapshot = dtktPayments;
+    setDtktPayments((prev) => {
+      const next: Record<string, DtKtPayment[]> = {};
+      for (const [k, list] of Object.entries(prev)) {
+        next[k] = list.map((p) => (p.id === id ? { ...p, ...patch } as DtKtPayment : p));
+      }
+      return next;
+    });
     const { error } = await sb.current.from("dt_kt_payments").update(patch).eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    await load();
+    if (error) { setDtktPayments(snapshot); toast.error(error.message); }
   }
   async function addPayment(dtKtId: string, forwarderId: string | null, companyGroupId: string | null) {
     if (!forwarderId || !companyGroupId) {
       toast.error("Не удалось определить экспедитора или группу компании для оплаты");
       return;
     }
-    const { error } = await sb.current.from("dt_kt_payments").insert({
+    setExpandedPayments(dtKtId);
+    const { data, error } = await sb.current.from("dt_kt_payments").insert({
       dt_kt_id: dtKtId,
       forwarder_id: forwarderId,
       company_group_id: companyGroupId,
       payment_date: new Date().toISOString().split("T")[0],
       amount: 0,
-    });
-    if (error) { toast.error(error.message); return; }
-    setExpandedPayments(dtKtId);
-    await load();
+    }).select("id, dt_kt_id, payment_date, amount, description, currency").single();
+    if (error || !data) { toast.error(error?.message ?? "Не удалось добавить оплату"); return; }
+    const row = data as unknown as DtKtPayment;
+    setDtktPayments((prev) => ({ ...prev, [dtKtId]: [...(prev[dtKtId] ?? []), row] }));
   }
   async function deletePayment(id: string) {
+    const snapshot = dtktPayments;
+    setDtktPayments((prev) => {
+      const next: Record<string, DtKtPayment[]> = {};
+      for (const [k, list] of Object.entries(prev)) next[k] = list.filter((p) => p.id !== id);
+      return next;
+    });
     const { error } = await sb.current.from("dt_kt_payments").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    await load();
+    if (error) { setDtktPayments(snapshot); toast.error(error.message); }
+  }
+
+  // «Оплата» = СУММА строк оплат, а не хранимая dt_kt_logistics.payment.
+  // Хранимая заполнялась один раз при создании записи и не
+  // пересчитывалась при правке оплат (клиент 2026-07-22: 458 117,80
+  // вместо 727 792,30 по 11 оплатам). Триггер 00126 теперь держит
+  // колонку в БД, но считаем ещё и здесь — от уже загруженных строк,
+  // чтобы цифра менялась мгновенно, без ожидания ответа сервера.
+  // Fallback на хранимую — для записей вообще без детальных оплат.
+  function paymentOf(rec: DtKtRecord) {
+    const pays = dtktPayments[rec.id];
+    return pays && pays.length > 0 ? pays.reduce((s, p) => s + n(p.amount), 0) : n(rec.payment);
   }
 
   function getRegistrySum(fwId: string | null, cgId: string | null) {
@@ -346,7 +379,7 @@ export default function DtKtPage() {
       if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
       if (onlyNegativeSaldo) {
         const reg = getRegistrySum(r.forwarder_id, r.company_group_id);
-        if (computeSaldo(r, reg.amt) >= 0) return false;
+        if (computeSaldo(r, reg.amt, paymentOf(r)) >= 0) return false;
       }
       if (q) {
         const fwName = ((r.forwarder as { name?: string } | null)?.name ?? "").toLowerCase();
@@ -355,7 +388,7 @@ export default function DtKtPage() {
       }
       return true;
     });
-  }, [records, forwarderFilter, companyGroupFilter, onlyNegativeSaldo, search, registrySums]);
+  }, [records, forwarderFilter, companyGroupFilter, onlyNegativeSaldo, search, registrySums, dtktPayments]);
 
   const activeFilterCount =
     (forwarderFilter ? 1 : 0) +
@@ -370,18 +403,19 @@ export default function DtKtPage() {
     let opening = 0, payment = 0, regVol = 0, regAmt = 0, refund = 0, fines = 0, surcharge = 0, ogem = 0, saldo = 0;
     for (const r of filtered) {
       const reg = getRegistrySum(r.forwarder_id, r.company_group_id);
+      const pay = paymentOf(r);
       opening += n(r.opening_balance);
-      payment += n(r.payment);
+      payment += pay;
       regVol += reg.vol;
       regAmt += reg.amt;
       refund += n(r.refund);
       fines += n(r.fines);
       surcharge += n(r.surcharge_preliminary);
       ogem += n(r.ogem);
-      saldo += computeSaldo(r, reg.amt);
+      saldo += computeSaldo(r, reg.amt, pay);
     }
     return { opening, payment, regVol, regAmt, refund, fines, surcharge, ogem, saldo };
-  }, [filtered, registrySums]);
+  }, [filtered, registrySums, dtktPayments]);
 
   function clearAllFilters() {
     setForwarderFilter("");
@@ -482,11 +516,16 @@ export default function DtKtPage() {
             <TableBody>
               {filtered.map((rec) => {
                 const reg = getRegistrySum(rec.forwarder_id, rec.company_group_id);
-                const saldo = computeSaldo(rec, reg.amt);
-                const pays = dtktPayments[rec.id] ?? [];
+                const pay = paymentOf(rec);
+                const saldo = computeSaldo(rec, reg.amt, pay);
+                // Сортировка на клиенте: правка даты оптимистична, рефетча
+                // (который раньше приносил порядок с сервера) больше нет.
+                const pays = [...(dtktPayments[rec.id] ?? [])]
+                  .sort((a, b) => (a.payment_date ?? "").localeCompare(b.payment_date ?? ""));
+                const expanded = expandedPayments === rec.id;
                 return (
-                  <>
-                    <TableRow key={rec.id} className="hover:bg-amber-50/30">
+                  <Fragment key={rec.id}>
+                    <TableRow className="hover:bg-amber-50/30">
                       <TableCell className="text-[12px] text-stone-700">{(rec.forwarder as any)?.name ?? "—"}</TableCell>
                       <TableCell className="text-[12px] text-stone-600">{(rec.company_group as any)?.name ?? "—"}</TableCell>
                       <TableCell className="font-mono text-[12px]">{rec.year ?? "—"}</TableCell>
@@ -494,9 +533,9 @@ export default function DtKtPage() {
                         <InlineDtNum value={rec.opening_balance} onSave={(v) => updateDtKt(rec.id, { opening_balance: v })} />
                       </TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums">
-                        <button onClick={() => setExpandedPayments(expandedPayments === rec.id ? null : rec.id)}
+                        <button onClick={() => setExpandedPayments(expanded ? null : rec.id)}
                           className="hover:bg-amber-50 rounded px-1 underline decoration-dotted decoration-stone-300">
-                          {fmt(rec.payment)} {pays.length > 0 && <span className="text-[9px] text-stone-400">({pays.length})</span>}
+                          {fmt(pay)} {pays.length > 0 && <span className="text-[9px] text-stone-400">({pays.length})</span>}
                         </button>
                       </TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums text-blue-600">{reg.vol > 0 ? fmt(reg.vol) : "—"}</TableCell>
@@ -526,47 +565,61 @@ export default function DtKtPage() {
                         </button>
                       </TableCell>
                     </TableRow>
-                    {/* Expanded editable payments */}
-                    {expandedPayments === rec.id && (
-                      <TableRow key={`${rec.id}-pays`}>
-                        <TableCell colSpan={13} className="bg-stone-50/50 px-4 py-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-[10px] font-medium text-stone-500">Оплаты ({pays.length}):</p>
-                            <Button size="sm" variant="outline" onClick={() => addPayment(rec.id, rec.forwarder_id, rec.company_group_id)} className="h-6 text-[10px]">
-                              <Plus className="h-3 w-3 mr-1" />Добавить оплату
-                            </Button>
-                          </div>
-                          {pays.length === 0 ? (
-                            <p className="text-[11px] text-stone-400">Нет оплат</p>
-                          ) : (
-                            <div className="space-y-0.5">
-                              {pays.map((p) => (
-                                <div key={p.id} className="flex items-center gap-3 text-[11px]">
-                                  <span className="w-28"><InlineDtDate value={p.payment_date} onSave={(v) => v ? updatePayment(p.id, { payment_date: v }) : Promise.resolve()} /></span>
-                                  <span className="w-28 text-right">
-                                    <InlineDtNum value={p.amount} onSave={(v) => v != null ? updatePayment(p.id, { amount: v }) : Promise.resolve()} />
-                                  </span>
-                                  <span className="text-[10px] text-stone-500 w-10">{currencySymbol(p.currency ?? "KZT")}</span>
-                                  <select
-                                    value={p.currency ?? ""}
-                                    onChange={(e) => updatePayment(p.id, { currency: e.target.value || null })}
-                                    className="h-6 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300"
-                                  >
-                                    <option value="">авто</option>
-                                    {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                                  </select>
-                                  <span className="flex-1"><InlineDtText value={p.description} onSave={(v) => updatePayment(p.id, { description: v })} placeholder="описание" /></span>
-                                  <button onClick={() => { if (confirm("Удалить оплату?")) deletePayment(p.id); }} className="text-stone-300 hover:text-red-500 transition-colors">
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                    {/* Раскрытые оплаты — строками ТАБЛИЦЫ, а не свободной
+                        версткой внутри colSpan. Суммы стоят ровно под
+                        колонкой «Оплата» и под её итогом (клиент
+                        2026-07-22: «расположение колонки оплат и итоговой
+                        суммы путает пользователей»). */}
+                    {expanded && (
+                      <TableRow className="bg-stone-50/60 hover:bg-stone-50/60">
+                        <TableCell colSpan={4} className="py-1 pl-4 text-[10px] font-medium text-stone-500">
+                          Оплаты ({pays.length}):
+                        </TableCell>
+                        <TableCell colSpan={9} className="py-1 text-right">
+                          <Button size="sm" variant="outline" onClick={() => addPayment(rec.id, rec.forwarder_id, rec.company_group_id)} className="h-6 text-[10px]">
+                            <Plus className="h-3 w-3 mr-1" />Добавить оплату
+                          </Button>
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                    {expanded && pays.length === 0 && (
+                      <TableRow className="bg-stone-50/60 hover:bg-stone-50/60">
+                        <TableCell colSpan={13} className="py-1 pl-4 text-[11px] text-stone-400">Нет оплат</TableCell>
+                      </TableRow>
+                    )}
+                    {expanded && pays.map((p) => (
+                      <TableRow key={p.id} className="bg-stone-50/60 hover:bg-amber-50/40">
+                        <TableCell className="py-0.5 pl-4 text-[11px]">
+                          <InlineDtDate value={p.payment_date} onSave={(v) => v ? updatePayment(p.id, { payment_date: v }) : Promise.resolve()} />
+                        </TableCell>
+                        <TableCell colSpan={2} className="py-0.5 text-[11px]">
+                          <InlineDtText value={p.description} onSave={(v) => updatePayment(p.id, { description: v })} placeholder="описание" />
+                        </TableCell>
+                        <TableCell className="py-0.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-[10px] text-stone-400">{currencySymbol(p.currency ?? "KZT")}</span>
+                            <select
+                              value={p.currency ?? ""}
+                              onChange={(e) => updatePayment(p.id, { currency: e.target.value || null })}
+                              className="h-6 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300"
+                            >
+                              <option value="">авто</option>
+                              {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                            </select>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-0.5 text-right">
+                          <InlineDtNum value={p.amount} onSave={(v) => v != null ? updatePayment(p.id, { amount: v }) : Promise.resolve()} />
+                        </TableCell>
+                        <TableCell colSpan={7} />
+                        <TableCell className="py-0.5">
+                          <button onClick={() => { if (confirm("Удалить оплату?")) deletePayment(p.id); }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 );
               })}
             </TableBody>

@@ -26,6 +26,23 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-22 — ДТ-КТ: «Оплата» считалась от устаревшего хранимого итога
+- **What changed:** миграция `00126_dt_kt_payment_sync.sql` — функция `update_dt_kt_payment_total()` + триггер `trg_dt_kt_payment_total` на `dt_kt_payments` (AFTER INSERT/UPDATE/DELETE), backfill `dt_kt_logistics.payment` по всем записям + assert на отсутствие расхождений. `src/app/(dashboard)/dt-kt/page.tsx` — `paymentOf(rec)` (сумма строк оплат) вместо `rec.payment` в колонке «Оплата», в итоговой строке и в `computeSaldo` (сигнатура: добавлен параметр `payment`).
+- **Type:** [FORMULA] + [SCHEMA] + [PRESENTATION]
+- **Before → After:**
+  - `dt_kt_logistics.payment` — **Before:** заполнялась ОДИН раз при создании записи (диалог «Добавить запись ДТ-КТ» складывал введённые оплаты); правка/добавление/удаление строк `dt_kt_payments` итог не пересчитывали. **After:** триггер держит `payment = COALESCE(SUM(dt_kt_payments.amount WHERE dt_kt_id = …), 0)` на любое изменение строки оплаты (перенос платежа на другую запись пересчитывает и старую, и новую).
+  - Колонка «Оплата» в UI — **Before:** `fmt(rec.payment)` (хранимая). **After:** `fmt(paymentOf(rec))` = сумма загруженных строк оплат, fallback на `rec.payment` только если детальных строк нет вовсе.
+  - Сальдо — **Before:** `opening + rec.payment − shipped − fines − surcharge − ogem − refund`. **After:** `opening + paymentOf(rec) − shipped − fines − surcharge − ogem − refund` (остальные слагаемые не менялись).
+- **Client reason:** «паспорт сумму оплат неверно считает, несколько раз обновляла данные — так и остаются неверными, по факту 727791» — PTC-Operator/ОМИ/2026 показывал 458 117,80 (первые 5 оплат) вместо 727 792,30 по 11 оплатам; вторая расхождённая запись PTC-Operator/ОРТ: 3 498 807,44 против 5 584 197,56 (23 оплаты).
+- **Rebuild impact:** DATA-MODEL (`dt_kt_logistics.payment` — производная колонка, не вводится вручную), PRICING (сальдо ДТ-КТ)
+
+### 2026-07-22 — ДТ-КТ: оплаты выровнены по колонкам + оптимистичные правки
+- **What changed:** `src/app/(dashboard)/dt-kt/page.tsx` — раскрытые оплаты рендерятся строками таблицы (дата | описание | валюта | сумма под колонкой «Оплата» | удалить) вместо свободной вёрстки внутри `colSpan={13}`; `updateDtKt` / `updatePayment` / `addPayment` / `deletePayment` переведены на оптимистичное обновление состояния со снимком-откатом (был `await load()` — полный рефетч на каждый ввод); сортировка оплат по дате на клиенте; `<>` → `<Fragment key>` в `filtered.map`.
+- **Type:** [PRESENTATION] + [BEHAVIOR]
+- **Before → After:** presentation only — суммы оплат стояли в левой части строки под «Группа комп.», теперь ровно под колонкой «Оплата» и её итогом.
+- **Client reason:** «расположение колонки оплат и итоговой суммы по оплатам путают пользователей» + правки не отражались мгновенно.
+- **Rebuild impact:** presentation only
+
 ### 2026-07-21 — UI: сайдбар — секция «Отчёты», пункт «Отчёт по валютам»
 - **What changed:** `src/lib/constants/nav-items.ts` — добавлено поле `section` ("nav"|"ops"|"reports"); пункт «Отчёты» → «Отчёт по валютам», секция "reports". `src/components/layout/sidebar.tsx` — рендер трёх секций по `section` (было — нарезка по индексу `slice`). `src/app/(dashboard)/reports/page.tsx` — заголовок «Отчёты» → «Отчёт по валютам».
 - **Type:** [UI]
