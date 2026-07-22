@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-22 — Task 2: ядро конвертации сделки convertDeal
+- **What changed:** `src/lib/fx/convert-deal.ts` — экспорты `monthNumRu`, `convertDeal`, типы `PriceRow`, `PaymentRow`, `LogisticsRow`, `DealEvents`, `FxDealRow`. `src/__tests__/fx-convert-deal.test.ts` — 10 unit-тестов (TDD RED→GREEN).
+- **Type:** [BEHAVIOR]
+- **Before → After:** нет → чистая функция `convertDeal(deal, events, fx, target)` собирает денежные суммы сделки из трёх источников (цены отгрузки, платежи, логистика), конвертирует каждую сумму в целевую валюту по курсу даты события (или среднемесячный по fallback при отсутствии даты). Формула баланса/долга повторяет паспорт (миграция 00112) слово в слово. Галочки «жд/грузоотправитель в цене» проверяют исходные валюты сделки, не целевую, чтобы условие не выполнялось всегда после конвертации. Если хоть один курс отсутствует, вся сумма = null и строка помечается `incomplete: true`.
+- **Client reason:** основа отчёта «Сбор по валюте» (Task 2, таблица сделок с пересчётом всех денег в выбранную валюту).
+- **Rebuild impact:** presentation only (чистая логика, использует `FxRates` из Task 1 и типы Deal, не трогает БД).
+
 ### 2026-07-22 — Task 1: индекс курсов FxRates
 - **What changed:** `src/lib/fx/rates.ts` — модуль индекса курсов валют (класс `FxRates`, функция `prevDayISO`, тип `FxRateRow`); `src/__tests__/fx-rates.test.ts` — 12 unit-тестов.
 - **Type:** [BEHAVIOR]
