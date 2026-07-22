@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-22 — Отчёт «Сбор по валюте»: загрузчик событий сделок
+- **What changed:** `src/lib/data/deal-events.ts` — НОВЫЙ. `fetchByDealIds()` (чанки по 150 id + `fetchAllPaginated`, обязательный tie-breaker `id` в сортировке, иначе бросает), `fetchDealEvents()` (цены `deal_shipment_prices`, оплаты `deal_payments` со знаком по `payment_type`, логистика `shipment_registry` — сгруппировано по `deal_id`), `fetchFxRatesRange()`.
+- **Type:** [BEHAVIOR]
+- **Before → After:** новый модуль, поведения не менял. Знак платежа повторяет конвенцию rollup 00062 (`refund`/`offset` → минус).
+- **Client reason:** источник данных для отчёта «Сбор по валюте» (ТЗ «Обработка сбор по валюте (1).docx»).
+- **Rebuild impact:** DATA-MODEL — фиксирует, что «Приход сумма» живёт в `deal_shipment_prices` (у каждой строки своя `shipment_date`), а не считается как «цена × объём»
+
 ### 2026-07-22 — Task 2: ядро конвертации сделки convertDeal
 - **What changed:** `src/lib/fx/convert-deal.ts` — экспорты `monthNumRu`, `convertDeal`, типы `PriceRow`, `PaymentRow`, `LogisticsRow`, `DealEvents`, `FxDealRow`. `src/__tests__/fx-convert-deal.test.ts` — 10 unit-тестов (TDD RED→GREEN).
 - **Type:** [BEHAVIOR]
