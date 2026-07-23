@@ -4,6 +4,7 @@
 // один в один как в паспорте) → useFxCollection (конвертация валют,
 // без сети при смене ₸/$) → CollectionTable (рендер). Кнопка выгрузки
 // в Excel — Task 8, здесь её нет.
+import { useState } from "react";
 import { useQueryState, parseAsInteger, parseAsStringEnum } from "nuqs";
 import { useDeals } from "@/lib/hooks/use-deals";
 import { usePassportFilters } from "@/components/reports/passport-filters";
@@ -11,6 +12,7 @@ import { useFxCollection } from "@/lib/hooks/use-fx-collection";
 import { CollectionTable } from "@/components/reports/collection-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -29,11 +31,39 @@ export default function CollectionReportPage() {
   const { filtered, activeFilterCount, clearAll, bar } = usePassportFilters(deals, dealType);
   const { rows, loading: fxLoading, error } = useFxCollection(filtered, currency);
 
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const [{ exportPassportDetailToExcel }, { fetchFxRatesRange }] = await Promise.all([
+        import("@/lib/exports/passport-detail-excel"),
+        import("@/lib/data/deal-events"),
+      ]);
+      const rates = await fetchFxRatesRange("2025-01-01", new Date().toISOString().slice(0, 10));
+      // ExportContext = { dealType: "KG" | "KZ" | "ALL"; year: number }
+      // (см. src/lib/exports/passport-excel.ts:180) — вкладка «Все»
+      // маппится в "ALL".
+      await exportPassportDetailToExcel(
+        filtered,
+        { dealType: dealType ?? "ALL", year },
+        { variant: "detail", fx: { target: currency, rates } },
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Сбор по валюте</h1>
-        {/* Кнопка Excel добавляется в Task 8 */}
+        <Button size="sm" variant="outline" disabled={exporting || filtered.length === 0}
+                onClick={handleExport} className="h-8 text-xs">
+          {exporting ? "Выгрузка…" : "Excel"}
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

@@ -31,6 +31,7 @@ import type { Deal } from "@/lib/hooks/use-deals";
 import type { ExportContext } from "@/lib/exports/passport-excel";
 import { roundedTonnage } from "@/lib/exports/registry-excel";
 import type { PostgrestError } from "@supabase/supabase-js";
+import type { FxRateRow } from "@/lib/fx/rates";
 
 type Side = "supplier" | "buyer";
 
@@ -57,6 +58,12 @@ type DetailShipment = {
   shipment_month: string | null;
   supplier_appendix: string | null;
   buyer_appendix: string | null;
+  additional_expenses?: number | null;
+  currency?: string | null;
+  // Заполняются только в fx-режиме: цена, пересчитанная по курсу даты
+  // ЭТОЙ строки. Пусто в обычной выгрузке.
+  fx_supplier_price?: number | null;
+  fx_buyer_price?: number | null;
 };
 
 // Одна оплата (deal_payments) для под-строки. amount — ПОДПИСАННАЯ
@@ -169,14 +176,19 @@ const COLUMNS: Column[] = [
   { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation, readShip: (d) => d.supplier_quotation },
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
-  { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price, readShip: (d) => d.supplier_price },
+  { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price,
+    readShip: (d, s) => s.ship?.fx_supplier_price ?? d.supplier_price },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
   // С 00119 дата входящего СНТ — собственная колонка loading_date
   // (правило «дата только при своём тоннаже» теперь живёт в данных).
   { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => s.ship?.loading_date ?? "" },
   // Per-wagon shipped amount mirrors the client's template formula
   // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
-  { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount, readShip: (d, s) => d.supplier_price != null && s.ship?.loading_volume != null ? d.supplier_price * s.ship.loading_volume : null },
+  { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount,
+    readShip: (d, s) => {
+      const price = s.ship?.fx_supplier_price ?? d.supplier_price;
+      return price != null && s.ship?.loading_volume != null ? price * s.ship.loading_volume : null;
+    } },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment, readShip: (_, s) => s.supPay?.amount ?? null },
   { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? fmtDate(s.supPay.payment_date) : "") },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
@@ -196,7 +208,8 @@ const COLUMNS: Column[] = [
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
   { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
-  { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price, readShip: (d) => d.buyer_price },
+  { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price,
+    readShip: (d, s) => s.ship?.fx_buyer_price ?? d.buyer_price },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   // Положительный остаток: Заявлено − Отгружено (клиентская аннотация
   // «остаток сделать плюсовой»; template: =AT4-SUM(AV5:AV9) → 387.3).
@@ -204,7 +217,11 @@ const COLUMNS: Column[] = [
   { key: "buyer_remainder", header: "Остаток, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => (d.buyer_ordered_volume ?? 0) - (d.buyer_shipped_volume ?? 0) },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume, readShip: (_, s) => s.ship?.shipment_volume ?? null },
   { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.ship?.shipment_volume != null ? s.ship.date ?? "" : "") },
-  { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount, readShip: (d, s) => d.buyer_price != null && s.ship?.shipment_volume != null ? d.buyer_price * s.ship.shipment_volume : null },
+  { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount,
+    readShip: (d, s) => {
+      const price = s.ship?.fx_buyer_price ?? d.buyer_price;
+      return price != null && s.ship?.shipment_volume != null ? price * s.ship.shipment_volume : null;
+    } },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment, readShip: (_, s) => s.buyPay?.amount ?? null },
   { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.buyPay?.payment_date ? fmtDate(s.buyPay.payment_date) : "") },
   { key: "buyer_debt", header: "Долг / переплата", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_debt },
@@ -340,7 +357,7 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
     fetchAllPaginated<DetailShipment>((from, to) =>
       sb
         .from("shipment_registry")
-        .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix")
+        .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix, additional_expenses, currency")
         .in("deal_id", ids)
         // Tie-breaker (deal_id, id) — same determinism reasoning as
         // above; `date` alone has plenty of duplicate values here.
@@ -409,7 +426,7 @@ const DEBT_COLUMNS: Column[] = [
 export async function exportPassportDetailToExcel(
   deals: Deal[],
   ctx: ExportContext,
-  opts?: { variant?: "detail" | "debt" },
+  opts?: { variant?: "detail" | "debt"; fx?: { target: string; rates: FxRateRow[] } },
 ): Promise<void> {
   const isDebt = opts?.variant === "debt";
   const columns = isDebt ? [...COLUMNS, ...DEBT_COLUMNS] : COLUMNS;
@@ -499,16 +516,79 @@ export async function exportPassportDetailToExcel(
     };
   });
 
+  // ── Режим валюты (отчёт «Сбор по валюте») ────────────────────
+  // Выгрузка та же самая, меняются только деньги: каждое значение
+  // берёт курс даты СВОЕЙ строки. Объёмы не трогаем.
+  if (opts?.fx) {
+    const { FxRates } = await import("@/lib/fx/rates");
+    const { convertDeal, monthNumRu } = await import("@/lib/fx/convert-deal");
+    const { fetchDealEvents } = await import("@/lib/data/deal-events");
+    const target = opts.fx.target;
+    const fx = new FxRates(opts.fx.rates, new Date().toISOString().slice(0, 10));
+    const eventsByDeal = await fetchDealEvents(dealIds);
+
+    deals = deals.map((d) => {
+      const m = monthNumRu(d.month);
+      const fb = d.year != null && m != null ? { year: d.year, month: m } : null;
+      const agg = convertDeal(d, eventsByDeal.get(d.id) ?? { prices: [], payments: [], logistics: [] }, fx, target);
+
+      // Под-строки: цены и суммы по датам своих строк.
+      const ships = shipmentsByDeal.get(d.id) ?? [];
+      shipmentsByDeal.set(d.id, ships.map((s) => ({
+        ...s,
+        fx_supplier_price: fx.convert(d.supplier_price, d.supplier_currency, target, s.loading_date, fb),
+        fx_buyer_price: fx.convert(d.buyer_price, d.buyer_currency, target, s.date, fb),
+        shipped_tonnage_amount: fx.convert(
+          s.shipped_tonnage_amount, s.currency ?? d.logistics_currency, target, s.loading_date ?? s.date, fb),
+        railway_tariff: fx.convert(
+          s.railway_tariff, s.currency ?? d.logistics_currency, target, s.loading_date ?? s.date, fb),
+      })));
+
+      const pays = paymentsByDeal.get(d.id);
+      if (pays) {
+        paymentsByDeal.set(d.id, {
+          supplier: pays.supplier.map((p) => ({
+            ...p, amount: fx.convert(p.amount, d.supplier_currency, target, p.payment_date, fb),
+          })),
+          buyer: pays.buyer.map((p) => ({
+            ...p, amount: fx.convert(p.amount, d.buyer_currency, target, p.payment_date, fb),
+          })),
+        });
+      }
+
+      // Итоги сделки — из того же ядра, что и таблица на экране.
+      return {
+        ...d,
+        supplier_price: agg.supplierPrice,
+        supplier_shipped_amount: agg.supplierAmount,
+        supplier_payment: agg.supplierPayment,
+        supplier_balance: agg.supplierBalance,
+        buyer_price: agg.buyerPrice,
+        buyer_shipped_amount: agg.buyerAmount,
+        buyer_payment: agg.buyerPayment,
+        buyer_debt: agg.buyerDebt,
+        invoice_amount: agg.railAmount,
+        actual_tariff: agg.actualTariff,
+        supplier_contracted_amount: fx.convert(d.supplier_contracted_amount, d.supplier_currency, target, null, fb),
+        buyer_contracted_amount: fx.convert(d.buyer_contracted_amount, d.buyer_currency, target, null, fb),
+        preliminary_amount: fx.convert(d.preliminary_amount, d.logistics_currency, target, null, fb),
+        planned_tariff: fx.convert(d.planned_tariff, d.logistics_currency, target, null, fb),
+      };
+    });
+  }
+
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
 
-  const sheetName = isDebt
-    ? (ctx.dealType === "KG" ? "Паспорт (долги) KG" : ctx.dealType === "KZ" ? "Паспорт (долги) KZ" : "Паспорт (долги)")
-    : (ctx.dealType === "KG" ? "Паспорт (дет.) KG" :
-       ctx.dealType === "KZ" ? "Паспорт (дет.) KZ" :
-       "Сделки (детально)");
+  const sheetName = opts?.fx
+    ? `Сбор по валюте ${opts.fx.target}`
+    : isDebt
+      ? (ctx.dealType === "KG" ? "Паспорт (долги) KG" : ctx.dealType === "KZ" ? "Паспорт (долги) KZ" : "Паспорт (долги)")
+      : (ctx.dealType === "KG" ? "Паспорт (дет.) KG" :
+         ctx.dealType === "KZ" ? "Паспорт (дет.) KZ" :
+         "Сделки (детально)");
   const ws = wb.addWorksheet(sheetName, {
     views: [{ state: "frozen", xSplit: 1, ySplit: 3 }],
     pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
