@@ -2,8 +2,8 @@
 // Страница отчёта «Сбор по валюте» (Task 7 спеки) — склейка готовых слоёв:
 // useDeals (сеть, год/архив) → usePassportFilters (клиентские фильтры,
 // один в один как в паспорте) → useFxCollection (конвертация валют,
-// без сети при смене ₸/$) → CollectionTable (рендер). Кнопка выгрузки
-// в Excel — Task 8, здесь её нет.
+// без сети при смене ₸/$) → CollectionTable (рендер). Кнопка Excel
+// выгружает формат «Паспорт Детальный» в выбранной валюте.
 import { useState } from "react";
 import { useQueryState, parseAsInteger, parseAsStringEnum } from "nuqs";
 import { useDeals } from "@/lib/hooks/use-deals";
