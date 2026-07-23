@@ -26,6 +26,12 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Фикс: пустые колонки имён в отчёте «Сбор по валюте»
+- **What changed:** `src/lib/hooks/use-fx-collection.ts` — перед вызовом `convertDeal` сделка обогащается именами (`supplier`, `buyer`, `factory`, `fuel_type`, `forwarder`, `logistics_company_group`, `deal_company_groups[].company_group`), резолвя их по `*_id` из глобального refs-кэша (`useGlobalRefs`), тем же способом, что уже делает `passport-detail-excel.ts`. Деньги/объёмы не тронуты.
+- **Type:** [PRESENTATION]
+- **Client reason:** `useDeals` использует `LIST_SELECT`, который намеренно не встраивает join-объекты имён (страница сделок резолвит их из refs-кэша сама) — `convertDeal` же читает `deal.factory?.name` и т.п. напрямую, поэтому на экране `/reports/collection` колонки Завод, ГСМ, Поставщик, Покупатель, Экспедитор и обе «Группа компании» были пусты у всех строк. В Excel-экспорте той же проблемы не было — экспортёр пересобирает имена из refs-кэша сам.
+- **Rebuild impact:** presentation only
+
 ### 2026-07-23 — Task 9: кламп курса на вчерашний день в SQL-функциях
 - **What changed:** миграция `00127_fx_rate_yesterday.sql` — функции `fx_rate(p_base TEXT, p_quote TEXT, p_date DATE)` и `fx_rate_month(p_base TEXT, p_quote TEXT, p_year INT, p_month INT)` переписаны с клампом на вчерашний день.
 - **Type:** [FORMULA]
