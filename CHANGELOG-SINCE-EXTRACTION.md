@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Task 6: таблица «Сбор по валюте» — 25 колонок
+- **What changed:** `src/components/reports/collection-table.tsx` — НОВЫЙ
+- **Type:** [PRESENTATION]
+- **Before → After:** presentation only
+- **Client reason:** основной компонент отчёта «Сбор по валюте» (ТЗ файла files/Обработка сбор по валюте (1).docx)
+- **Rebuild impact:** presentation only
+
 ### 2026-07-23 — Task 5: фильтры отчёта — осознанная копия фильтров паспорта
 - **What changed:** `src/components/reports/passport-filters.tsx` — НОВЫЙ. Хук `usePassportFilters(deals, dealType)` экспортирует `{ filtered, activeFilterCount, clearAll, bar }`. `src/app/(dashboard)/deals/page.tsx` не изменён ни строкой.
 - **Type:** [BEHAVIOR]
