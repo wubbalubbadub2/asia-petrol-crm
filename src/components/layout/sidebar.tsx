@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { Fuel, PanelLeftClose, PanelLeftOpen, type LucideIcon } from "lucide-react";
@@ -69,18 +70,22 @@ function NavLinkBody({
 
 function NavLink({
   item,
-  pathname,
+  activeHref,
   onNavigate,
   collapsed,
 }: {
   item: NavItem;
-  pathname: string;
+  activeHref: string | null;
   onNavigate?: () => void;
   collapsed: boolean;
 }) {
-  const isActive =
-    pathname === item.href ||
-    (item.href !== "/" && pathname.startsWith(item.href));
+  // activeHref — заранее посчитанный в Sidebar «самый длинный подходящий»
+  // href среди ВСЕХ пунктов меню (см. computeActiveHref ниже). Простое
+  // pathname.startsWith(item.href + "/") тут не спасает: /reports —
+  // родительский сегмент для /reports/collection, поэтому оба пункта
+  // подошли бы под startsWith одновременно. Сравнение с самым длинным
+  // (самым специфичным) совпадением оставляет активным только один.
+  const isActive = item.href === activeHref;
 
   const { openTab } = useTabs();
 
@@ -129,6 +134,25 @@ export function Sidebar({
   const filteredItems = navItems.filter(
     (item) => !item.adminOnly || isAdmin
   );
+
+  // Самый длинный (самый специфичный) href среди пунктов меню, под который
+  // подходит текущий путь. Например /reports/collection подходит и под
+  // «Сбор по валюте» (/reports/collection, точное совпадение), и под
+  // «Анализ по валюте» (/reports, префикс-сегмент) — выигрывает более
+  // длинный, так что подсвечивается ровно один пункт.
+  const activeHref = useMemo(() => {
+    let best: string | null = null;
+    for (const item of filteredItems) {
+      const matches =
+        pathname === item.href ||
+        (item.href !== "/" && pathname.startsWith(item.href + "/"));
+      if (matches && (best === null || item.href.length > best.length)) {
+        best = item.href;
+      }
+    }
+    return best;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, filteredItems.length]);
 
   return (
     <>
@@ -183,7 +207,7 @@ export function Sidebar({
             </p>
           )}
           {filteredItems.filter((i) => i.section === "nav" && !i.adminOnly).map((item) => (
-            <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} collapsed={collapsed} />
+            <NavLink key={item.href + item.label} item={item} activeHref={activeHref} onNavigate={onNavigate} collapsed={collapsed} />
           ))}
 
           <div className="my-3 border-t border-slate-800/50" />
@@ -193,7 +217,7 @@ export function Sidebar({
             </p>
           )}
           {filteredItems.filter((i) => i.section === "ops" && !i.adminOnly).map((item) => (
-            <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} collapsed={collapsed} />
+            <NavLink key={item.href + item.label} item={item} activeHref={activeHref} onNavigate={onNavigate} collapsed={collapsed} />
           ))}
 
           <div className="my-3 border-t border-slate-800/50" />
@@ -203,7 +227,7 @@ export function Sidebar({
             </p>
           )}
           {filteredItems.filter((i) => i.section === "reports" && !i.adminOnly).map((item) => (
-            <NavLink key={item.href + item.label} item={item} pathname={pathname} onNavigate={onNavigate} collapsed={collapsed} />
+            <NavLink key={item.href + item.label} item={item} activeHref={activeHref} onNavigate={onNavigate} collapsed={collapsed} />
           ))}
         </div>
 

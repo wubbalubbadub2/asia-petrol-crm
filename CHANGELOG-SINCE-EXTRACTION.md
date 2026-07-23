@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Task 7: страница «Сбор по валюте» + навигация
+- **What changed:** `src/app/(dashboard)/reports/collection/page.tsx` — НОВЫЙ (склейка `useDeals` + `usePassportFilters` (Task 5) + `useFxCollection` (Task 4) + `CollectionTable` (Task 6): вкладки KG/KZ/Все, тумблер ₸/$, поле года, всё в URL через nuqs; кнопка Excel не добавлена — Task 8). `src/lib/constants/nav-items.ts` — секция «Отчёты» теперь два пункта: «Сбор по валюте» (`/reports/collection`, иконка `Table2`) и «Анализ по валюте» (`/reports`, иконка `BarChart3`, было «Отчёт по валютам»). `src/app/(dashboard)/reports/page.tsx` — заголовок «Отчёт по валютам» → «Анализ по валюте». `src/components/layout/sidebar.tsx` — подсветка активного пункта переписана: раньше `NavLink` сам решал `isActive` через `pathname.startsWith(item.href)`; теперь `Sidebar` считает один раз `activeHref` — среди всех пунктов ищет САМЫЙ ДЛИННЫЙ href, под который подходит текущий путь (`pathname === href` или `pathname.startsWith(href + "/")`), и передаёт его в `NavLink`, который сравнивает `item.href === activeHref`.
+- **Type:** [BEHAVIOR]
+- **Before → After:** подсветка активного пункта в сайдбаре. Before: `isActive = pathname === item.href || pathname.startsWith(item.href)` (без `+"/"`) — при открытом `/reports/collection` подсвечивались ОБА пункта «Отчёта» (и `/reports`, и `/reports/collection`, т.к. оба — префиксы пути). Правка из брифа (`startsWith(item.href + "/")`) была недостаточной: `/reports/collection` — валидный вложенный сегмент `/reports/`, так что `startsWith("/reports/")` всё ещё истинно для пункта «Анализ по валюте» — оба пункта остались бы подсвечены. After: `Sidebar` вычисляет `activeHref` = самый длинный (самый специфичный) href среди ВСЕХ пунктов, под который подходит `pathname`; `NavLink` активен, только если его `href === activeHref`. Для `/reports/collection` побеждает более длинный `/reports/collection` — подсвечен ровно один пункт. Для `/deals/{id}` (без вложенного nav-пункта) побеждает `/deals` — поведение не изменилось.
+- **Client reason:** «Сбор по валюте» — новый отчёт (спека, Task 7), нужен пункт меню и работающая маршрутизация без визуального бага двойной подсветки.
+- **Rebuild impact:** presentation only
+
 ### 2026-07-23 — Task 6: таблица «Сбор по валюте» — 25 колонок
 - **What changed:** `src/components/reports/collection-table.tsx` — НОВЫЙ
 - **Type:** [PRESENTATION]

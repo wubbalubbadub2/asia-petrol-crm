@@ -12,6 +12,7 @@ import {
   Archive,
   Settings,
   BarChart3,
+  Table2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -93,7 +94,13 @@ export const navItems: NavItem[] = [
   },
   // ── Отчёты ── (по пункту на каждый отчёт)
   {
-    label: "Отчёт по валютам",
+    label: "Сбор по валюте",
+    href: "/reports/collection",
+    icon: Table2,
+    section: "reports",
+  },
+  {
+    label: "Анализ по валюте",
     href: "/reports",
     icon: BarChart3,
     section: "reports",

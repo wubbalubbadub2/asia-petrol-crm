@@ -47,7 +47,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold text-stone-900">Отчёт по валютам</h1>
+      <h1 className="text-xl font-bold text-stone-900">Анализ по валюте</h1>
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-4 py-4">
