@@ -99,7 +99,11 @@ export async function fetchDealEvents(dealIds: string[]): Promise<Map<string, De
   return out;
 }
 
-/** Курсы за период. Таблица маленькая (≈2 строки в день), грузим целиком. */
+/**
+ * Курсы за период. Таблица маленькая (≈2 строки в день), грузим целиком.
+ * Сортировка по полному PK (date, base_currency, quote_currency) для
+ * детерминизма пагинации.
+ */
 export async function fetchFxRatesRange(fromDate: string, toDate: string): Promise<FxRateRow[]> {
   const sb = createClient();
   // database.ts (генерённые типы) ещё не знает fx_rates (миграция 00122) —
@@ -112,6 +116,7 @@ export async function fetchFxRatesRange(fromDate: string, toDate: string): Promi
       .gte("date", fromDate)
       .lte("date", toDate)
       .order("date", { ascending: true })
+      .order("base_currency", { ascending: true })
       .order("quote_currency", { ascending: true })
       .range(from, to) as unknown as PostgrestPage<FxRateRow>,
   );
