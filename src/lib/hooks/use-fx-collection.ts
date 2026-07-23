@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Deal } from "@/lib/hooks/use-deals";
 import { FxRates, type FxRateRow } from "@/lib/fx/rates";
-import { convertDeal, type DealEvents, type FxDealRow } from "@/lib/fx/convert-deal";
+import { convertDeal, type DealEvents } from "@/lib/fx/convert-deal";
 import { fetchDealEvents, fetchFxRatesRange } from "@/lib/data/deal-events";
 
 const EMPTY_EVENTS: DealEvents = { prices: [], payments: [], logistics: [] };
@@ -26,7 +26,13 @@ export function useFxCollection(deals: Deal[], target: string) {
   const lastKey = useRef<string>("");
 
   useEffect(() => {
-    if (!idsKey) { setEvents(new Map()); return; }
+    if (!idsKey) {
+      lastKey.current = "";
+      setEvents(new Map());
+      setLoading(false);
+      setError(null);
+      return;
+    }
     if (lastKey.current === idsKey) return;
     lastKey.current = idsKey;
     const ids = idsKey.split(",");
