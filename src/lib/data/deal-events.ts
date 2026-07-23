@@ -39,8 +39,10 @@ export async function fetchByDealIds<T>(opts: {
       // opts.table приходит рантайм-строкой (сигнатура из брифа), поэтому
       // строгая литеральная узкая типизация Database<Table> здесь не
       // работает — тот же генерик-кейс, что в use-references.ts.
+      // Важно вызывать .from как метод на sb, а не отрывать его в
+      // переменную — иначе теряется this-binding supabase-js.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let q = (sb.from as any)(opts.table).select(opts.select).in("deal_id", ids);
+      let q = (sb as any).from(opts.table).select(opts.select).in("deal_id", ids);
       for (const col of opts.orderBy) q = q.order(col, { ascending: true });
       return q.range(from, to) as unknown as PostgrestPage<T>;
     }),
@@ -108,10 +110,11 @@ export async function fetchFxRatesRange(fromDate: string, toDate: string): Promi
   const sb = createClient();
   // database.ts (генерённые типы) ещё не знает fx_rates (миграция 00122) —
   // тот же stale-types случай, что у user_prefs в use-user-pref.ts.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fxTable = sb.from as any;
+  // Вызываем .from как метод на sb, а не через оторванную переменную —
+  // иначе теряется this-binding supabase-js.
   const { data, error } = await fetchAllPaginated<FxRateRow>((from, to) =>
-    fxTable("fx_rates")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (sb as any).from("fx_rates")
       .select("date, base_currency, quote_currency, rate")
       .gte("date", fromDate)
       .lte("date", toDate)

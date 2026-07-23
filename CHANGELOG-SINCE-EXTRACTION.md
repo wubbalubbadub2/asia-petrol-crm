@@ -61,6 +61,7 @@ Entry template:
 - **Before → After:** новый модуль, поведения не менял. Знак платежа повторяет конвенцию rollup 00062 (`refund`/`offset` → минус).
 - **Client reason:** источник данных для отчёта «Сбор по валюте» (ТЗ «Обработка сбор по валюте (1).docx»).
 - **Rebuild impact:** DATA-MODEL — фиксирует, что «Приход сумма» живёт в `deal_shipment_prices` (у каждой строки своя `shipment_date`), а не считается как «цена × объём»
+- **Фикс по ревью (2026-07-23):** в `fetchByDealIds` и `fetchFxRatesRange` метод `.from` извлекался из supabase-клиента в переменную и вызывался несвязанным (`(sb.from as any)(...)`, `const fxTable = sb.from as any; fxTable(...)`) — внутри supabase-js это роняло `this.rest` в `undefined`, что валило прод-загрузку `/reports/collection` рантайм-ошибкой «Cannot read properties of undefined (reading 'rest')», не ловилось `tsc`. Оба места переписаны на вызов `.from` как метода объекта (`(sb as any).from(opts.table)`, `(sb as any).from("fx_rates")`), `this`-binding сохранён.
 
 ### 2026-07-22 — Task 2: ядро конвертации сделки convertDeal
 - **What changed:** `src/lib/fx/convert-deal.ts` — экспорты `monthNumRu`, `convertDeal`, типы `PriceRow`, `PaymentRow`, `LogisticsRow`, `DealEvents`, `FxDealRow`. `src/__tests__/fx-convert-deal.test.ts` — 10 unit-тестов (TDD RED→GREEN).
