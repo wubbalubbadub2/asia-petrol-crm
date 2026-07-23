@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Фильтр «Группа 3» в паспорте + закрепление шапки в реестре
+- **What changed:** `src/app/(dashboard)/deals/page.tsx` — добавлен фильтр «Группа 3» (position 3): состояние `companyGroupPos3` (URL `companyGroupPos3`), предикат, каскад сужения опций (`allButCg3` + `okCg3` во всех `allBut*`), `activeFilterCount`, `clearAllFilters`, `SearchableSelect`; грид фильтров `lg:grid-cols-10`→`11`. То же зеркально в копии `src/components/reports/passport-filters.tsx` (URL-префикс `r`, `lg:grid-cols-11`). `src/components/ui/double-scroll-x.tsx` — опциональный проп `maxHeight`: контент получает вертикальный scroll-контейнер, из-за чего sticky `<thead>` реально закрепляет шапку. `src/app/(dashboard)/registry/page.tsx` — раскрытая группа рендерится с `<DoubleScrollX maxHeight="70vh">`.
+- **Type:** [UI-FIELD] + [PRESENTATION]
+- **Before → After:** presentation/UI only. Фильтр групп: было 2 позиции (Группа 1/2), стало 3. Реестр: шапка названий колонок раньше уезжала при прокрутке длинной группы (у DoubleScrollX контент без max-height рос на весь контент и уходил вместе со страницей, sticky не срабатывал); теперь у группы свой вертикальный скролл ≤70vh и шапка закреплена.
+- **Client reason:** «нужно добавить в паспорт фильтр группа компаний 3, появились сделки где три группы компании» + «в реестрах нужно закрепить шапку названий».
+- **Rebuild impact:** presentation only (фильтрация клиентская, схема БД не менялась — `deal_company_groups.position` уже поддерживает 3+)
+
 ### 2026-07-23 — Фикс: пустые колонки имён в отчёте «Сбор по валюте»
 - **What changed:** `src/lib/hooks/use-fx-collection.ts` — перед вызовом `convertDeal` сделка обогащается именами (`supplier`, `buyer`, `factory`, `fuel_type`, `forwarder`, `logistics_company_group`, `deal_company_groups[].company_group`), резолвя их по `*_id` из глобального refs-кэша (`useGlobalRefs`), тем же способом, что уже делает `passport-detail-excel.ts`. Деньги/объёмы не тронуты.
 - **Type:** [PRESENTATION]

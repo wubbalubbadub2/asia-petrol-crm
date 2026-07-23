@@ -29,9 +29,19 @@ import {
 export function DoubleScrollX({
   children,
   className,
+  maxHeight,
 }: {
   children: ReactNode;
   className?: string;
+  // Когда задан — контент получает вертикальный скролл с этой макс.
+  // высотой. Это ПРЕВРАЩАЕТ контент-div в настоящий scroll-контейнер
+  // по вертикали, благодаря чему `position: sticky` у <thead> реально
+  // закрепляет шапку таблицы (клиент 2026-07-23: «в реестрах нужно
+  // закрепить шапку названий»). Без maxHeight `overflow-x: auto` тоже
+  // делает div scroll-контейнером, но т.к. по высоте он не ограничен,
+  // он растёт на весь контент и уезжает вместе со страницей — шапка не
+  // липнет. Верхняя кастомная полоса прокрутки остаётся НАД скроллом.
+  maxHeight?: number | string;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const dim = useScrollDim(contentRef);
@@ -44,8 +54,8 @@ export function DoubleScrollX({
       <CustomScrollbar dim={dim} onScrollLeft={setScrollLeft} />
       <div
         ref={contentRef}
-        className="dsx-hide-native-all"
-        style={{ overflowX: "auto" }}
+        className={maxHeight != null ? "dsx-hide-native-h" : "dsx-hide-native-all"}
+        style={maxHeight != null ? { overflowX: "auto", overflowY: "auto", maxHeight } : { overflowX: "auto" }}
       >
         {children}
       </div>

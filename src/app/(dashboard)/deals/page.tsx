@@ -128,6 +128,9 @@ export default function DealsPage() {
   // above. See useDeals → DealFilters.companyGroupPos1Id/Pos2Id.
   const [companyGroupPos1, setCompanyGroupPos1] = useQueryState("companyGroupPos1", multi);
   const [companyGroupPos2, setCompanyGroupPos2] = useQueryState("companyGroupPos2", multi);
+  // «Группа 3» — position 3. Появились сделки с тремя группами в цепочке
+  // (клиент 2026-07-23).
+  const [companyGroupPos3, setCompanyGroupPos3] = useQueryState("companyGroupPos3", multi);
   const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", multi);
 
   // Lag every filter value handed to useDeals so dropdown clicks feel
@@ -147,6 +150,7 @@ export default function DealsPage() {
   const deferredCompanyGroup = useDeferredValue(companyGroupFilter);
   const deferredCompanyGroupPos1 = useDeferredValue(companyGroupPos1);
   const deferredCompanyGroupPos2 = useDeferredValue(companyGroupPos2);
+  const deferredCompanyGroupPos3 = useDeferredValue(companyGroupPos3);
   const deferredApplication = useDeferredValue(applicationFilter);
   const deferredYear = useDeferredValue(yearFilter);
   // isFiltering is true while any filter input is ahead of its deferred
@@ -172,6 +176,7 @@ export default function DealsPage() {
     !arrEq(companyGroupFilter, deferredCompanyGroup) ||
     !arrEq(companyGroupPos1, deferredCompanyGroupPos1) ||
     !arrEq(companyGroupPos2, deferredCompanyGroupPos2) ||
+    !arrEq(companyGroupPos3, deferredCompanyGroupPos3) ||
     !arrEq(applicationFilter, deferredApplication) ||
     yearFilter !== deferredYear;
   // Filter dropdowns read from the shared refs cache so a navigation
@@ -291,6 +296,7 @@ export default function DealsPage() {
     const cg = deferredCompanyGroup;
     const cg1 = deferredCompanyGroupPos1;
     const cg2 = deferredCompanyGroupPos2;
+    const cg3 = deferredCompanyGroupPos3;
     const app = deferredApplication;
     const q = deferredSearch.trim().toLowerCase();
     return {
@@ -315,6 +321,11 @@ export default function DealsPage() {
         if (cg2.length === 0) return true;
         const rows = d.deal_company_groups ?? [];
         return rows.some((r) => r.position === 2 && r.company_group_id != null && cg2.includes(r.company_group_id));
+      },
+      companyGroupPos3: (d: Deal) => {
+        if (cg3.length === 0) return true;
+        const rows = d.deal_company_groups ?? [];
+        return rows.some((r) => r.position === 3 && r.company_group_id != null && cg3.includes(r.company_group_id));
       },
       application: (d: Deal) => {
         if (app.length === 0) return true;
@@ -343,7 +354,7 @@ export default function DealsPage() {
     dealTypeFilter,
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
-    deferredCompanyGroupPos1, deferredCompanyGroupPos2,
+    deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3,
     deferredApplication, deferredSearch, labelMaps,
   ]);
 
@@ -382,6 +393,7 @@ export default function DealsPage() {
     const allowedCompanyGroups = new Set<string>();
     const allowedCompanyGroupsPos1 = new Set<string>();
     const allowedCompanyGroupsPos2 = new Set<string>();
+    const allowedCompanyGroupsPos3 = new Set<string>();
     const allowedApplications = new Set<string>();
 
     // For perf: pre-extract the predicate values once.
@@ -395,6 +407,7 @@ export default function DealsPage() {
       companyGroup: pCg,
       companyGroupPos1: pCg1,
       companyGroupPos2: pCg2,
+      companyGroupPos3: pCg3,
       application: pApp,
       dealType: pDealType,
       search: pSearch,
@@ -414,20 +427,22 @@ export default function DealsPage() {
       const okCg = pCg(d);
       const okCg1 = pCg1(d);
       const okCg2 = pCg2(d);
+      const okCg3 = pCg3(d);
       const okApp = pApp(d);
 
       // For each dropdown F, the deal contributes to F's option set
       // iff every OTHER dropdown predicate passes.
-      const allButSupplier = okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
-      const allButBuyer = okSup && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
-      const allButFactory = okSup && okBuy && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
-      const allButFuel = okSup && okBuy && okFac && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
-      const allButMonth = okSup && okBuy && okFac && okFuel && okFwd && okCg && okCg1 && okCg2 && okApp;
-      const allButForwarder = okSup && okBuy && okFac && okFuel && okMon && okCg && okCg1 && okCg2 && okApp;
-      const allButCg = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg1 && okCg2 && okApp;
-      const allButCg1 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg2 && okApp;
-      const allButCg2 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okApp;
-      const allButApp = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2;
+      const allButSupplier = okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okCg3 && okApp;
+      const allButBuyer = okSup && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okCg3 && okApp;
+      const allButFactory = okSup && okBuy && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okCg3 && okApp;
+      const allButFuel = okSup && okBuy && okFac && okMon && okFwd && okCg && okCg1 && okCg2 && okCg3 && okApp;
+      const allButMonth = okSup && okBuy && okFac && okFuel && okFwd && okCg && okCg1 && okCg2 && okCg3 && okApp;
+      const allButForwarder = okSup && okBuy && okFac && okFuel && okMon && okCg && okCg1 && okCg2 && okCg3 && okApp;
+      const allButCg = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg1 && okCg2 && okCg3 && okApp;
+      const allButCg1 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg2 && okCg3 && okApp;
+      const allButCg2 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg3 && okApp;
+      const allButCg3 = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okApp;
+      const allButApp = okSup && okBuy && okFac && okFuel && okMon && okFwd && okCg && okCg1 && okCg2 && okCg3;
 
       if (allButSupplier && d.supplier_id) allowedSuppliers.add(d.supplier_id);
       if (allButBuyer && d.buyer_id) allowedBuyers.add(d.buyer_id);
@@ -451,6 +466,11 @@ export default function DealsPage() {
       if (allButCg2) {
         for (const r of d.deal_company_groups ?? []) {
           if (r.position === 2 && r.company_group_id) allowedCompanyGroupsPos2.add(r.company_group_id);
+        }
+      }
+      if (allButCg3) {
+        for (const r of d.deal_company_groups ?? []) {
+          if (r.position === 3 && r.company_group_id) allowedCompanyGroupsPos3.add(r.company_group_id);
         }
       }
       if (allButApp) {
@@ -480,6 +500,7 @@ export default function DealsPage() {
       companyGroups: allowedCompanyGroups,
       companyGroupsPos1: allowedCompanyGroupsPos1,
       companyGroupsPos2: allowedCompanyGroupsPos2,
+      companyGroupsPos3: allowedCompanyGroupsPos3,
       applications: allowedApplications,
     };
   }, [deals, predicates, deferredSupplier, deferredBuyer]);
@@ -515,6 +536,7 @@ export default function DealsPage() {
       companyGroup: fkOpts(refs.companyGroups, narrowed.companyGroups, deferredCompanyGroup),
       companyGroupPos1: fkOpts(refs.companyGroups, narrowed.companyGroupsPos1, deferredCompanyGroupPos1),
       companyGroupPos2: fkOpts(refs.companyGroups, narrowed.companyGroupsPos2, deferredCompanyGroupPos2),
+      companyGroupPos3: fkOpts(refs.companyGroups, narrowed.companyGroupsPos3, deferredCompanyGroupPos3),
       month: strOpts(narrowed.months, deferredMonth, [...MONTHS_RU]),
       application: strOpts(narrowed.applications, deferredApplication),
     };
@@ -522,7 +544,7 @@ export default function DealsPage() {
     refs, narrowed,
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
-    deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredApplication,
+    deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3, deferredApplication,
   ]);
 
   // Visible-count for the «N сделок» badge. With the architecture
@@ -545,13 +567,14 @@ export default function DealsPage() {
     (companyGroupFilter.length > 0 ? 1 : 0) +
     (companyGroupPos1.length > 0 ? 1 : 0) +
     (companyGroupPos2.length > 0 ? 1 : 0) +
+    (companyGroupPos3.length > 0 ? 1 : 0) +
     (applicationFilter.length > 0 ? 1 : 0);
 
   function clearAllFilters() {
     setSupplierFilter([]); setBuyerFilter([]); setFactoryFilter([]);
     setFuelTypeFilter([]); setMonthFilter([]); setForwarderFilter([]);
     setCompanyGroupFilter([]);
-    setCompanyGroupPos1([]); setCompanyGroupPos2([]);
+    setCompanyGroupPos1([]); setCompanyGroupPos2([]); setCompanyGroupPos3([]);
     setApplicationFilter([]);
     setSearch("");
   }
@@ -689,7 +712,7 @@ export default function DealsPage() {
             {totalCount} {totalCount === 1 ? "сделка" : totalCount % 10 >= 2 && totalCount % 10 <= 4 && (totalCount % 100 < 10 || totalCount % 100 >= 20) ? "сделки" : "сделок"}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-11 gap-2">
           {/* All dropdowns are MULTI-select + DEPENDENT (2026-06-22).
               Options come from filterOpts, which already narrowed each
               list to values present in the deals matching every OTHER
@@ -738,6 +761,11 @@ export default function DealsPage() {
             multi value={companyGroupPos2} onChange={setCompanyGroupPos2}
             options={filterOpts.companyGroupPos2}
             placeholder="Группа 2" searchPlaceholder="Поиск группы 2…"
+          />
+          <SearchableSelect
+            multi value={companyGroupPos3} onChange={setCompanyGroupPos3}
+            options={filterOpts.companyGroupPos3}
+            placeholder="Группа 3" searchPlaceholder="Поиск группы 3…"
           />
           <SearchableSelect
             multi value={applicationFilter} onChange={setApplicationFilter}

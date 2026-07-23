@@ -1937,12 +1937,13 @@ export default function RegistryPage() {
                     {/* DoubleScrollX добавляет верхнюю полосу прокрутки
                         над таблицей + нижнюю под ней. Клиент 2026-07-07:
                         не хочет мотать до низа таблицы за скроллбаром.
-                        Локальная прокрутка тут же означает: sticky
-                        column headers работают в рамках одной карточки
-                        группы (когда таблица уже своя scroll-контекст),
-                        а не относительно всего <main>. Для 6-строчных
-                        таблиц из скрина это визуально то же самое. */}
-                    <DoubleScrollX>
+                        maxHeight даёт группе собственный вертикальный
+                        scroll-контейнер → sticky <thead> реально
+                        закрепляет шапку названий колонок при прокрутке
+                        длинных групп (клиент 2026-07-23). Короткие группы
+                        остаются натуральной высоты (max-height не
+                        достигается). */}
+                    <DoubleScrollX maxHeight="70vh">
                       <table className="w-max border-collapse" style={{ fontSize: "11px" }}>
                         {/* Sticky header band — anchors to whichever
                             scroll ancestor exists. С DoubleScrollX
