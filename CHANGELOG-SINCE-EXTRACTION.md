@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Task 5: фильтры отчёта — осознанная копия фильтров паспорта
+- **What changed:** `src/components/reports/passport-filters.tsx` — НОВЫЙ. Хук `usePassportFilters(deals, dealType)` экспортирует `{ filtered, activeFilterCount, clearAll, bar }`. `src/app/(dashboard)/deals/page.tsx` не изменён ни строкой.
+- **Type:** [BEHAVIOR]
+- **Before → After:** нет → копия механики фильтров из `deals/page.tsx` (10 осей мультивыбора + поиск + сужение опций по Excel auto-filter cascade), адаптированная для страницы отчёта: `deals` приходят уже загруженными (без `useDeals`/года/вкладок), `dealType` — параметр хука вместо активной вкладки, JSX панели фильтров возвращается как `bar` без блока year/export/isFiltering-пульсации (эти части специфичны для /deals и не переносились). URL-параметры фильтров используют префикс `r` (`rSupplierFilter`, `rBuyerFilter`, `rFactoryFilter`, `rFuelTypeFilter`, `rMonthFilter`, `rForwarderFilter`, `rCompanyGroupFilter`, `rCompanyGroupPos1`, `rCompanyGroupPos2`, `rApplicationFilter`, `rSearch`), чтобы паспорт и отчёт, открытые в соседних вкладках, не перетирали фильтры друг друга через общий URL.
+- **Client reason:** фильтрация один в один как в паспорте.
+- **Rebuild impact:** presentation only (решение №3 спеки — сознательная копия, а не общий модуль; /deals/page.tsx не тронут).
+
 ### 2026-07-23 — Task 4: React-хук отчёта — события + курсы в строки таблицы
 - **What changed:** `src/lib/hooks/use-fx-collection.ts` — НОВЫЙ. Хук `useFxCollection(deals, target)` экспортирует `{ rows, loading, error }`.
 - **Type:** [BEHAVIOR]
