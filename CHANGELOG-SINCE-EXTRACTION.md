@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Task 4: React-хук отчёта — события + курсы в строки таблицы
+- **What changed:** `src/lib/hooks/use-fx-collection.ts` — НОВЫЙ. Хук `useFxCollection(deals, target)` экспортирует `{ rows, loading, error }`.
+- **Type:** [BEHAVIOR]
+- **Before → After:** нет → хук, склеивающий загрузку данных (`fetchDealEvents`, `fetchFxRatesRange`) и пересчёт (`FxRates`, `convertDeal`). События грузятся один раз на набор id; ключ загрузки — отсортированный список id (смена валюты ₸/$ не триггерит перезагрузку). useEffect использует флаг `alive` для защиты от гонки при быстрой смене набора сделок. useMemo для rows пересчитывает только когда меняются deals/events/rates/target. Курсы грузим с запасом (2025-01-01 до сегодня) потому что события могут выходить за пределы года.
+- **Client reason:** финальная склейка отчёта «Сбор по валюте» (Task 4, вторая фаза разработки).
+- **Rebuild impact:** presentation only (чистая логика, ни БД, ни типы Deal не менялись).
+
 ### 2026-07-22 — Отчёт «Сбор по валюте»: загрузчик событий сделок
 - **What changed:** `src/lib/data/deal-events.ts` — НОВЫЙ. `fetchByDealIds()` (чанки по 150 id + `fetchAllPaginated`, обязательный tie-breaker `id` в сортировке, иначе бросает), `fetchDealEvents()` (цены `deal_shipment_prices`, оплаты `deal_payments` со знаком по `payment_type`, логистика `shipment_registry` — сгруппировано по `deal_id`), `fetchFxRatesRange()`.
 - **Type:** [BEHAVIOR]
