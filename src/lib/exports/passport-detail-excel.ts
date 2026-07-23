@@ -71,7 +71,10 @@ type DetailShipment = {
 // перезачёт → минус) — та же конвенция, что в rollup 00062 и на
 // странице сделки (клиент 2026-07-17: «в системе минусом, а в
 // выгрузке плюсом»).
-type PaymentLite = { amount: number | null; payment_date: string | null };
+// currency — валюта САМОГО платежа (deal_payments.currency, 00034),
+// может отличаться от валюты сделки; в fx-режиме конвертируем по ней
+// с фолбэком на валюту сделки/стороны.
+type PaymentLite = { amount: number | null; payment_date: string | null; currency?: string | null };
 
 // Под-строка сделки (клиент 2026-07-17): i-я отгрузка + i-я оплата
 // поставщика + i-я оплата покупателя, «между собой не связаны» —
@@ -313,17 +316,17 @@ async function fetchPaymentsByDeals(dealIds: string[]): Promise<Map<string, Deal
   const chunks: string[][] = [];
   for (let i = 0; i < dealIds.length; i += CHUNK) chunks.push(dealIds.slice(i, i + CHUNK));
   const results = await Promise.all(chunks.map((ids) =>
-    fetchAllPaginated<{ deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null }>((from, to) =>
+    fetchAllPaginated<{ deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null; currency: string | null }>((from, to) =>
       sb
         .from("deal_payments")
-        .select("deal_id, side, amount, payment_date, payment_type")
+        .select("deal_id, side, amount, payment_date, payment_type, currency")
         .in("deal_id", ids)
         // Tie-breaker (id) makes the range() paging deterministic —
         // ties on payment_date alone can straddle a page boundary and
         // get skipped or duplicated across pages.
         .order("payment_date", { ascending: true })
         .order("id", { ascending: true })
-        .range(from, to) as unknown as PostgrestPage<{ deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null }>,
+        .range(from, to) as unknown as PostgrestPage<{ deal_id: string; side: "supplier" | "buyer"; amount: number | null; payment_date: string | null; payment_type: string | null; currency: string | null }>,
     ),
   ));
   const out = new Map<string, DealPayments>();
@@ -332,7 +335,7 @@ async function fetchPaymentsByDeals(dealIds: string[]): Promise<Map<string, Deal
     for (const row of res.data) {
       const entry = out.get(row.deal_id) ?? { supplier: [], buyer: [] };
       const sign = row.payment_type === "refund" || row.payment_type === "offset" ? -1 : 1;
-      entry[row.side].push({ amount: row.amount != null ? row.amount * sign : null, payment_date: row.payment_date });
+      entry[row.side].push({ amount: row.amount != null ? row.amount * sign : null, payment_date: row.payment_date, currency: row.currency });
       out.set(row.deal_id, entry);
     }
   }
@@ -381,7 +384,9 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
   return byDeal;
 }
 
-type DcgRow = { deal_id: string; id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; discount: number | null };
+// currency — своя валюта группы (00070); нужна только для fx-режима
+// (конвертация группового ценового блока), не читается обычной выгрузкой.
+type DcgRow = { deal_id: string; id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; discount: number | null; currency: string | null };
 
 // ── «Паспорт (долги)» — debt variant additions ──────────────────
 // 6 extra columns (deferral terms + planned payment date, per side)
@@ -466,7 +471,7 @@ export async function exportPassportDetailToExcel(
       fetchAllPaginated<DcgRow>((from, to) =>
         sb
           .from("deal_company_groups")
-          .select("deal_id, id, position, company_group_id, price, price_kind, quotation, discount")
+          .select("deal_id, id, position, company_group_id, price, price_kind, quotation, discount, currency")
           .in("deal_id", ids)
           // Tie-breaker (id) — same determinism reasoning as the
           // payments/shipments fetchers above.
@@ -547,11 +552,14 @@ export async function exportPassportDetailToExcel(
       const pays = paymentsByDeal.get(d.id);
       if (pays) {
         paymentsByDeal.set(d.id, {
+          // Валюта платежа (deal_payments.currency, 00034) может
+          // отличаться от валюты сделки — конвертируем по ней, с
+          // фолбэком на валюту сделки для старых платежей без валюты.
           supplier: pays.supplier.map((p) => ({
-            ...p, amount: fx.convert(p.amount, d.supplier_currency, target, p.payment_date, fb),
+            ...p, amount: fx.convert(p.amount, p.currency ?? d.supplier_currency, target, p.payment_date, fb),
           })),
           buyer: pays.buyer.map((p) => ({
-            ...p, amount: fx.convert(p.amount, d.buyer_currency, target, p.payment_date, fb),
+            ...p, amount: fx.convert(p.amount, p.currency ?? d.buyer_currency, target, p.payment_date, fb),
           })),
         });
       }
@@ -573,6 +581,32 @@ export async function exportPassportDetailToExcel(
         buyer_contracted_amount: fx.convert(d.buyer_contracted_amount, d.buyer_currency, target, null, fb),
         preliminary_amount: fx.convert(d.preliminary_amount, d.logistics_currency, target, null, fb),
         planned_tariff: fx.convert(d.planned_tariff, d.logistics_currency, target, null, fb),
+        // Денежные-за-тонну колонки рядом с «Ценой финальной» — те же
+        // курс/фолбэк, что и остальные суммы сделки (без даты события).
+        supplier_quotation: fx.convert(d.supplier_quotation, d.supplier_currency, target, null, fb),
+        supplier_discount: fx.convert(d.supplier_discount, d.supplier_currency, target, null, fb),
+        buyer_quotation: fx.convert(d.buyer_quotation, d.buyer_currency, target, null, fb),
+        buyer_discount: fx.convert(d.buyer_discount, d.buyer_currency, target, null, fb),
+        // «Цена предв.» читается из снапшотов supplier_lines/buyer_lines
+        // (defaultLine → preliminaryPrice) — конвертируем оба поля снапшота.
+        supplier_lines: (d.supplier_lines ?? []).map((l) => ({
+          ...l,
+          preliminary_price: fx.convert(l.preliminary_price ?? null, d.supplier_currency, target, null, fb),
+          price: fx.convert(l.price ?? null, d.supplier_currency, target, null, fb),
+        })),
+        buyer_lines: (d.buyer_lines ?? []).map((l) => ({
+          ...l,
+          preliminary_price: fx.convert(l.preliminary_price ?? null, d.buyer_currency, target, null, fb),
+          price: fx.convert(l.price ?? null, d.buyer_currency, target, null, fb),
+        })),
+        // Групповой ценовой блок: у deal_company_groups своя валюта
+        // (00070); фолбэк — валюта поставщика (уточняется у клиента).
+        deal_company_groups: (d.deal_company_groups ?? []).map((g) => ({
+          ...g,
+          quotation: fx.convert(g.quotation ?? null, g.currency ?? d.supplier_currency, target, null, fb),
+          discount: fx.convert(g.discount ?? null, g.currency ?? d.supplier_currency, target, null, fb),
+          price: fx.convert(g.price ?? null, g.currency ?? d.supplier_currency, target, null, fb),
+        })),
       };
     });
   }
