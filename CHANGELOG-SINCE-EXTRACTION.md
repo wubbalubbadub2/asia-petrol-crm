@@ -26,6 +26,15 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-23 — Task 9: кламп курса на вчерашний день в SQL-функциях
+- **What changed:** миграция `00127_fx_rate_yesterday.sql` — функции `fx_rate(p_base TEXT, p_quote TEXT, p_date DATE)` и `fx_rate_month(p_base TEXT, p_quote TEXT, p_year INT, p_month INT)` переписаны с клампом на вчерашний день.
+- **Type:** [FORMULA]
+- **Before → After:**
+  - `fx_rate()`: `date <= p_date` → `date <= LEAST(p_date, CURRENT_DATE - 1)` (если запрос идёт на сегодня, берём вчерашний курс, так как сегодняшний ещё не зафиксирован).
+  - `fx_rate_month()`: без ограничения по дате (кроме года/месяца) → добавлено `AND date <= CURRENT_DATE - 1` (среднемесячный курс не включает сегодняшний день, чтобы «не дрожал» в течение дня).
+- **Client reason:** сегодняшний курс не зафиксирован и может меняться в течение дня; клиентский отчёт «Сбор по валюте» (TS) и помесячный отчёт «Анализ по валюте» (SQL) должны считать одинаково.
+- **Rebuild impact:** DATA-MODEL — закрепляет правило эффективной даты курса: отчёты, использующие `fx_rate()` или `fx_rate_month()` (паспорт, все отчёты на SQL), будут применять одно правило.
+
 ### 2026-07-23 — Task 8: выгрузка «Сбор по валюте» в Excel (формат «Паспорт Детальный»)
 - **What changed:** `src/lib/exports/passport-detail-excel.ts` — тип `DetailShipment` получил опциональные поля `additional_expenses`, `currency`, `fx_supplier_price`, `fx_buyer_price` (заполняются только в fx-режиме); select в `fetchShipmentsByDeals` дополнен `additional_expenses, currency`; четыре ридера колонок (`supplier_price`, `supplier_shipped_amount`, `buyer_price`, `buyer_shipped_amount`) сначала читают `s.ship?.fx_*_price`, с фолбэком на обычную `d.*_price`; сигнатура `exportPassportDetailToExcel` расширена `opts.fx?: { target: string; rates: FxRateRow[] }`; после сборки `deals`/`shipmentsByDeal`/`paymentsByDeal` добавлен блок конвертации (работает только при `opts.fx`): итоги сделки пересчитаны через `convertDeal` (Task 2), под-строки (цены/жд-суммы) и оплаты — через `FxRates.convert` по дате СВОЕЙ строки/платежа; имя листа в fx-режиме — `Сбор по валюте {target}`. `src/app/(dashboard)/reports/collection/page.tsx` — добавлена кнопка «Excel» в шапку, состояние `exporting`, обработчик `handleExport` (грузит курсы `fetchFxRatesRange("2025-01-01", сегодня)`, вызывает `exportPassportDetailToExcel(filtered, { dealType: dealType ?? "ALL", year }, { variant: "detail", fx: { target: currency, rates } })`).
 - **Type:** [EXPORT]
