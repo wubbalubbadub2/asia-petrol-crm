@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { updateDeal, type Deal } from "@/lib/hooks/use-deals";
+import { formatDMY } from "@/lib/format";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { createClient } from "@/lib/supabase/client";
@@ -135,7 +136,8 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
   const formatted = shown != null && shown !== ""
     ? (typeof shown === "number"
       ? Number(shown).toLocaleString("ru-RU", numOpts)
-      : String(shown))
+      // Даты в режиме чтения — ДД.ММ.ГГ (клиент 2026-07-24), а не сырой ISO.
+      : isDate ? formatDMY(String(shown)) : String(shown))
     : "—";
 
   const monoClass = isNumeric ? "font-mono tabular-nums" : "";
