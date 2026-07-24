@@ -26,6 +26,10 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-24 — Иконка «скрыть сделку» ярче (amber-акцент)
+- **What changed:** `src/components/deals/passport-table.tsx` — цвет глаз-кнопки скрытия с `text-stone-300` (почти невидимый) на `text-amber-600` (бренд-акцент, DESIGN.md), hover `amber-800`/`bg-amber-100`, размер иконки `h-3 w-3`→`h-3.5 w-3.5`.
+- **Type:** [PRESENTATION] — **Client reason:** «иконку скрыть особо не видно, сделать поярче». **Rebuild impact:** presentation only.
+
 ### 2026-07-24 — «Показать скрытые» → явный on/off тумблер
 - **What changed:** `src/app/(dashboard)/deals/page.tsx` — контрол «Показать скрытые» заменён с ghost-кнопки на `Switch` (base-ui) с подписью и счётчиком скрытых сделок `(N)`. Off по умолчанию (`showHidden=null`), состояние вкл/выкл видно по положению тумблера; подпись при вкл — амбер. Убраны неиспользуемые импорты `Eye`/`EyeOff` из страницы.
 - **Type:** [PRESENTATION] — **Client reason:** «по умолчанию показать скрытые выключено, и сейчас не ясно вкл/выкл — сделать тумблер on/off». **Rebuild impact:** presentation only.

@@ -942,9 +942,9 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
             updateDeal(deal.id, { is_hidden: !deal.is_hidden }).catch(() => {});
           }}
           title={deal.is_hidden ? "Показать сделку" : "Скрыть сделку"}
-          className="mr-1 inline-flex align-middle rounded p-0.5 text-stone-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+          className="mr-1 inline-flex align-middle rounded p-0.5 text-amber-600 hover:text-amber-800 hover:bg-amber-100 transition-colors"
         >
-          {deal.is_hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          {deal.is_hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
         </button>
         <DealCodeLink dealId={deal.id} dealCode={deal.deal_code} />
         <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
