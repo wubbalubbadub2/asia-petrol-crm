@@ -26,6 +26,10 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-24 — Скрытие сделок стало ПЕР-ЮЗЕР
+- **What changed:** `src/app/(dashboard)/deals/page.tsx` — скрытые сделки теперь хранятся в личных настройках `user_prefs` (ключ `passport_hidden_deals`, массив id) через `useUserPref` (RLS: только владелец), а не в общей колонке `deals.is_hidden`. Добавлены `hiddenSet`/`toggleHidden`/`resetHidden`/`hiddenCount` (стабильные колбэки через ref, чтобы не рвать memo строк), предикат `hidden` фильтрует по `hiddenSet.has(d.id)`. `src/components/deals/passport-table.tsx` — `PassportTable`/`VirtualizedRows`/`PassportRow` получают `hiddenSet`+`onToggleHidden`+`isHidden`; глаз-кнопка и подсветка строки читают `isHidden`, а не `deal.is_hidden`; кнопка сброса — та же. Колонка `deals.is_hidden` (00129) больше НЕ используется (оставлена как no-op; таблица `user_prefs` уже есть с 00121 — новой миграции не нужно).
+- **Type:** [BEHAVIOR] — **Before → After:** было — `is_hidden` общий флаг на сделке: один скрыл → пропало у ВСЕХ; сброс глобальный. Стало — у каждого пользователя свой список скрытых (в его `user_prefs`), скрытие/сброс не влияют на других. Ранее глобально-скрытые (через `deals.is_hidden`) теперь видны всем, т.к. колонка больше не читается. **Client reason:** «скрыть/показать должно быть у каждого пользователя своё». **Rebuild impact:** FIELD-OWNERSHIP (скрытие — личная настройка, не бизнес-данные сделки).
+
 ### 2026-07-24 — «№» и кнопка сброса поменяны местами (№ над номерами сделок)
 - **What changed:** `src/components/deals/passport-table.tsx` — в шапке колонки «№» кнопка сброса скрытых перенесена ВЛЕВО (над колонкой глаз-иконок строк), «№» теперь справа от неё — ровно над номерами сделок. Кнопка сброса стала icon-only (`RotateCcw` без числа; счётчик — в тултипе и в тумблере «Показать скрытые (N)»), футпринт совпадает с глаз-кнопкой строки. Когда скрытых нет — плейсхолдер той же ширины сохраняет выравнивание «№».
 - **Type:** [PRESENTATION] — **Client reason:** «поменять местами номер и значок; номер должен быть прям над номерами сделок». **Rebuild impact:** presentation only.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useDeferredValue } from "react";
+import { useState, useMemo, useDeferredValue, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useQueryState, parseAsInteger, parseAsStringEnum, parseAsArrayOf, parseAsString, parseAsBoolean } from "nuqs";
 import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
@@ -16,7 +16,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDeals, updateDeal, type Deal, invalidateDeal, invalidateAllDealsLists } from "@/lib/hooks/use-deals";
+import { useDeals, type Deal, invalidateDeal, invalidateAllDealsLists } from "@/lib/hooks/use-deals";
+import { useUserPref } from "@/lib/hooks/use-user-pref";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
@@ -133,9 +134,10 @@ export default function DealsPage() {
   // (клиент 2026-07-23).
   const [companyGroupPos3, setCompanyGroupPos3] = useQueryState("companyGroupPos3", multi);
   const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", multi);
-  // Manual per-deal hide (deals.is_hidden). Off by default; hidden deals
-  // are filtered out CLIENT-SIDE (see predicates memo) so toggling is
-  // instant. When on, hidden rows reappear dimmed with an un-hide icon.
+  // Тумблер «Показать скрытые» — ПЕР-ЮЗЕР вид (URL, у каждого свой). Сами
+  // скрытые сделки хранятся в user_prefs («passport_hidden_deals», см. ниже)
+  // и фильтруются CLIENT-SIDE (predicates memo) — переключение мгновенное.
+  // Off по умолчанию; при вкл. скрытые строки показываются приглушёнными.
   const [showHidden, setShowHidden] = useQueryState(
     "showHidden",
     { ...parseAsBoolean.withDefault(false), ...NUQS_INSTANT },
@@ -268,17 +270,27 @@ export default function DealsPage() {
     isArchived: false,
   });
 
-  // Скрытые вручную сделки (is_hidden). Счётчик и «сброс» (снять скрытие
-  // со всех) — клиент 2026-07-24: «где-то тут сделать сброс». Работаем по
-  // полному списку `deals` (в `filtered` скрытые уже вырезаны при выкл.
-  // тумблере). Optimistic: updateDeal обновляет кэш → строки возвращаются
-  // сразу, без перезагрузки.
-  const hiddenCount = useMemo(() => (deals ?? []).filter((d) => d.is_hidden).length, [deals]);
-  async function resetHidden() {
-    const hidden = (deals ?? []).filter((d) => d.is_hidden);
-    if (!hidden.length) return;
-    await Promise.all(hidden.map((d) => updateDeal(d.id, { is_hidden: false }).catch(() => {})));
-  }
+  // Скрытые вручную сделки — ПЕР-ЮЗЕР (клиент 2026-07-24: «у каждого своё»).
+  // Храним список id скрытых сделок в личных настройках `user_prefs`
+  // (RLS: только владелец), тем же механизмом, что скрытие/закрепление
+  // колонок. Фильтрация клиентская → скрытие мгновенное. Колонка
+  // `deals.is_hidden` (00129) больше не используется — оставлена как no-op.
+  const [hiddenIds, setHiddenIds] = useUserPref<string[]>("passport_hidden_deals", []);
+  const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
+  // refs, чтобы колбэки скрытия/сброса были стабильны (не рвали memo строк)
+  const hiddenIdsRef = useRef(hiddenIds);
+  hiddenIdsRef.current = hiddenIds;
+  const setHiddenRef = useRef(setHiddenIds);
+  setHiddenRef.current = setHiddenIds;
+  const toggleHidden = useCallback((dealId: string) => {
+    const cur = hiddenIdsRef.current;
+    setHiddenRef.current(cur.includes(dealId) ? cur.filter((id) => id !== dealId) : [...cur, dealId]);
+  }, []);
+  const resetHidden = useCallback(() => setHiddenRef.current([]), []);
+  const hiddenCount = useMemo(
+    () => (deals ?? []).filter((d) => hiddenSet.has(d.id)).length,
+    [deals, hiddenSet],
+  );
 
   // Label maps — same lookup tables PassportTable builds, mirrored here
   // so the search box can match against the joined name (supplier /
@@ -320,7 +332,7 @@ export default function DealsPage() {
     const app = deferredApplication;
     const q = deferredSearch.trim().toLowerCase();
     return {
-      hidden: (d: Deal) => showHidden || !d.is_hidden,
+      hidden: (d: Deal) => showHidden || !hiddenSet.has(d.id),
       dealType: (d: Deal) => !dealTypeFilter || d.deal_type === dealTypeFilter,
       supplier: (d: Deal) => sup.length === 0 || (d.supplier_id != null && sup.includes(d.supplier_id)),
       buyer: (d: Deal) => buy.length === 0 || (d.buyer_id != null && buy.includes(d.buyer_id)),
@@ -376,7 +388,7 @@ export default function DealsPage() {
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
     deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3,
-    deferredApplication, deferredSearch, labelMaps, showHidden,
+    deferredApplication, deferredSearch, labelMaps, showHidden, hiddenSet,
   ]);
 
   // Client-side filter pass. All predicates AND-combined.
@@ -835,6 +847,8 @@ export default function DealsPage() {
             loading={loading || isTabSwitching}
             onDataChanged={reload}
             dealType={activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL"}
+            hiddenSet={hiddenSet}
+            onToggleHidden={toggleHidden}
             hiddenCount={hiddenCount}
             onResetHidden={resetHidden}
           />

@@ -888,9 +888,12 @@ type PassportRowProps = {
   deal: Deal;
   onDataChanged: () => void;
   rowIndex: number;
+  // Пер-юзер скрытие: состояние и переключатель приходят сверху (user_prefs).
+  isHidden: boolean;
+  onToggleHidden?: (dealId: string) => void;
 };
 
-const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }: PassportRowProps) {
+const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, isHidden, onToggleHidden }: PassportRowProps) {
   const {
     refs,
     supplierLabels,
@@ -918,7 +921,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
   return (
     <tr
       style={rowStyle}
-      className={`pt-row border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]${deal.is_hidden ? " opacity-60" : ""}`}
+      className={`pt-row border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]${isHidden ? " opacity-60" : ""}`}
     >
       {/* Identity. Clicking the deal code opens the deal as a new
           workspace tab so the operator never loses the list view
@@ -933,18 +936,18 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
           aforementioned 8%/16% alpha on top, just like every other
           cell. */}
       <td className="sticky left-0 z-10 bg-white before:absolute before:inset-0 before:bg-[var(--row-bg)] before:-z-10 border-r px-2 py-1 font-mono text-stone-700 relative">
-        {/* Скрыть/показать сделку — слева, в закреплённой identity-ячейке,
-            чтобы кнопка была всегда под рукой и видна при горизонтальном
-            скролле. Optimistic: строка скрывается/возвращается сразу. */}
+        {/* Скрыть/показать сделку — ПЕР-ЮЗЕР (user_prefs), слева в
+            закреплённой identity-ячейке, всегда под рукой и видна при
+            горизонтальном скролле. Скрытие мгновенное (клиентский фильтр). */}
         <button
           onClick={(e) => {
             e.stopPropagation();
-            updateDeal(deal.id, { is_hidden: !deal.is_hidden }).catch(() => {});
+            onToggleHidden?.(deal.id);
           }}
-          title={deal.is_hidden ? "Показать сделку" : "Скрыть сделку"}
+          title={isHidden ? "Показать сделку" : "Скрыть сделку"}
           className="mr-1 inline-flex align-middle rounded p-0.5 text-amber-600 hover:text-amber-800 hover:bg-amber-100 transition-colors"
         >
-          {deal.is_hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+          {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
         </button>
         <DealCodeLink dealId={deal.id} dealCode={deal.deal_code} />
         <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
@@ -1291,14 +1294,16 @@ type PassportTableProps = {
   loading: boolean;
   dealType: "KG" | "KZ" | "ALL";
   onDataChanged: () => void;
-  // Кол-во вручную скрытых сделок (is_hidden) во всём наборе + сброс
-  // (снять скрытие со всех). Считается на уровне страницы, т.к. в `deals`
-  // здесь скрытые уже вырезаны при выключенном тумблере «Показать скрытые».
+  // Скрытие сделок — ПЕР-ЮЗЕР (клиент 2026-07-24): множество id скрытых
+  // сделок этого пользователя + переключатель одной сделки + счётчик +
+  // сброс всех. Считаются на уровне страницы (user_prefs).
+  hiddenSet?: Set<string>;
+  onToggleHidden?: (dealId: string) => void;
   hiddenCount?: number;
   onResetHidden?: () => void;
 };
 
-export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenCount = 0, onResetHidden }: PassportTableProps) {
+export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenSet, onToggleHidden, hiddenCount = 0, onResetHidden }: PassportTableProps) {
   const refs = useRefs();
   const { refs: g } = useGlobalRefs();
 
@@ -1740,6 +1745,8 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenC
                 deals={deals}
                 virtualizer={rowVirtualizer}
                 onDataChanged={onDataChanged}
+                hiddenSet={hiddenSet}
+                onToggleHidden={onToggleHidden}
               />
             )}
             {/* Totals: sum numeric columns across visible (filtered) rows.
@@ -1867,10 +1874,14 @@ function VirtualizedRows({
   deals,
   virtualizer,
   onDataChanged,
+  hiddenSet,
+  onToggleHidden,
 }: {
   deals: Deal[];
   virtualizer: VirtualizerInstance;
   onDataChanged: () => void;
+  hiddenSet?: Set<string>;
+  onToggleHidden?: (dealId: string) => void;
 }) {
   const virtualItems = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
@@ -1896,6 +1907,8 @@ function VirtualizedRows({
             deal={deal}
             onDataChanged={onDataChanged}
             rowIndex={vi.index}
+            isHidden={hiddenSet?.has(deal.id) ?? false}
+            onToggleHidden={onToggleHidden}
           />
         );
       })}
