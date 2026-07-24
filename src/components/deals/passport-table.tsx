@@ -1666,21 +1666,24 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenC
             </tr>
             <tr className="pt-cols border-b">
               <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">
-                <span className="inline-flex items-center gap-1">
-                  №
-                  {/* Сброс: снять скрытие со всех сделок. Виден только когда
-                      есть скрытые (клиент 2026-07-24: «где-то тут сделать
-                      сброс»). Амбер-чип «↺ N» — заметно и по-бренду. */}
-                  {hiddenCount > 0 && onResetHidden && (
+                <span className="inline-flex items-center">
+                  {/* Слева — «сброс» скрытых (ровно над колонкой глаз-иконок
+                      строк), справа — «№» прямо над номерами сделок (клиент
+                      2026-07-24: «поменять местами, № над номерами сделок»).
+                      Плейсхолдер той же ширины держит выравнивание «№», когда
+                      скрытых сделок нет и кнопки сброса нет. */}
+                  {hiddenCount > 0 && onResetHidden ? (
                     <button
                       onClick={onResetHidden}
                       title={`Показать все скрытые сделки (${hiddenCount})`}
-                      className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 transition-colors"
+                      className="mr-1 inline-flex align-middle rounded p-0.5 text-amber-800 bg-amber-100 hover:bg-amber-200 transition-colors"
                     >
-                      <RotateCcw className="h-3 w-3" />
-                      {hiddenCount}
+                      <RotateCcw className="h-3.5 w-3.5" />
                     </button>
+                  ) : (
+                    <span className="mr-1 inline-block w-[18px]" aria-hidden />
                   )}
+                  №
                 </span>
               </th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[75px] bg-[#b4c6e7]">Месяц</th>

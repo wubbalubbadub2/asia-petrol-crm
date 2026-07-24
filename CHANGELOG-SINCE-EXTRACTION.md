@@ -26,6 +26,10 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-24 — «№» и кнопка сброса поменяны местами (№ над номерами сделок)
+- **What changed:** `src/components/deals/passport-table.tsx` — в шапке колонки «№» кнопка сброса скрытых перенесена ВЛЕВО (над колонкой глаз-иконок строк), «№» теперь справа от неё — ровно над номерами сделок. Кнопка сброса стала icon-only (`RotateCcw` без числа; счётчик — в тултипе и в тумблере «Показать скрытые (N)»), футпринт совпадает с глаз-кнопкой строки. Когда скрытых нет — плейсхолдер той же ширины сохраняет выравнивание «№».
+- **Type:** [PRESENTATION] — **Client reason:** «поменять местами номер и значок; номер должен быть прям над номерами сделок». **Rebuild impact:** presentation only.
+
 ### 2026-07-24 — «Сброс» скрытых сделок в шапке паспорта
 - **What changed:** `src/app/(dashboard)/deals/page.tsx` — `hiddenCount` + `resetHidden()` (снимает `is_hidden` со ВСЕХ скрытых сделок, optimistic через `updateDeal`), проброшены в `PassportTable` как `hiddenCount`/`onResetHidden`. `src/components/deals/passport-table.tsx` — в шапке колонки «№» появляется амбер-чип «↺ N» (иконка `RotateCcw` + число), видимый только когда есть скрытые; клик возвращает все скрытые строки.
 - **Type:** [PRESENTATION] + [BEHAVIOR] — **Client reason:** «коммент по скрытым строкам: где-то тут (в шапке рядом с №) сделать сброс». **Rebuild impact:** presentation only (флаг `is_hidden` уже есть, миграция 00129).
