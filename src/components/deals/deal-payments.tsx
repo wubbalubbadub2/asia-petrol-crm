@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { invalidateDealBundle } from "@/lib/hooks/use-deal-bundle";
 import { invalidateDeal, invalidateDealPayments } from "@/lib/hooks/use-deals";
+import { formatDMY } from "@/lib/format";
 
 type PaymentType = "payment" | "refund" | "offset";
 
@@ -81,7 +82,7 @@ function PaymentRow({
           onClick={() => { setDateLv(p.payment_date.split("T")[0]); setEditDate(true); }}
           className="text-stone-500 w-20 text-left hover:bg-amber-50 rounded px-1 cursor-text"
         >
-          {new Date(p.payment_date).toLocaleDateString("ru-RU")}
+          {formatDMY(p.payment_date)}
         </button>
       ) : (
         <input

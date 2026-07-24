@@ -14,6 +14,7 @@ import {
   type TriggerBasis,
   type ShipmentPrice,
 } from "@/lib/hooks/use-deal-trigger-prices";
+import { formatDMY } from "@/lib/format";
 
 // Money canon 2026-07-07: 2 decimals for money (котировка, скидка,
 // цена $/т, сумма). formatVol — 3 decimals for tonnage.
@@ -28,7 +29,7 @@ function formatVol(val: number | null | undefined): string {
 
 function formatDate(d: string | null): string {
   if (!d) return "—";
-  return new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
+  return formatDMY(d);
 }
 
 type ProductType = { id: string; name: string };

@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useDeferredValue } from "react";
 import Link from "next/link";
-import { useQueryState, parseAsInteger, parseAsStringEnum, parseAsArrayOf, parseAsString } from "nuqs";
-import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
+import { useQueryState, parseAsInteger, parseAsStringEnum, parseAsArrayOf, parseAsString, parseAsBoolean } from "nuqs";
+import { Plus, Filter, X, Download, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,9 +27,9 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
 const tabs = [
-  { key: "list", label: "Все сделки" },
   { key: "kg", label: "Паспорт KG" },
   { key: "kz", label: "Паспорт KZ" },
+  { key: "list", label: "Все сделки" },
 ] as const;
 
 function DealTypeBadge({ type }: { type: string }) {
@@ -81,7 +81,7 @@ export default function DealsPage() {
   const NUQS_INSTANT = { throttleMs: 0 } as const;
   const [activeTab, setActiveTabState] = useQueryState(
     "activeTab",
-    { ...parseAsStringEnum<"list" | "kg" | "kz">(["list", "kg", "kz"]).withDefault("list"), ...NUQS_INSTANT },
+    { ...parseAsStringEnum<"list" | "kg" | "kz">(["list", "kg", "kz"]).withDefault("kg"), ...NUQS_INSTANT },
   );
   // Tab clicks must feel URGENT. Previously this was wrapped in
   // React.startTransition, which (combined with the heavy initial
@@ -132,6 +132,13 @@ export default function DealsPage() {
   // (клиент 2026-07-23).
   const [companyGroupPos3, setCompanyGroupPos3] = useQueryState("companyGroupPos3", multi);
   const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", multi);
+  // Manual per-deal hide (deals.is_hidden). Off by default; hidden deals
+  // are filtered out CLIENT-SIDE (see predicates memo) so toggling is
+  // instant. When on, hidden rows reappear dimmed with an un-hide icon.
+  const [showHidden, setShowHidden] = useQueryState(
+    "showHidden",
+    { ...parseAsBoolean.withDefault(false), ...NUQS_INSTANT },
+  );
 
   // Lag every filter value handed to useDeals so dropdown clicks feel
   // instant — the visible <SearchableSelect> updates synchronously, but
@@ -300,6 +307,7 @@ export default function DealsPage() {
     const app = deferredApplication;
     const q = deferredSearch.trim().toLowerCase();
     return {
+      hidden: (d: Deal) => showHidden || !d.is_hidden,
       dealType: (d: Deal) => !dealTypeFilter || d.deal_type === dealTypeFilter,
       supplier: (d: Deal) => sup.length === 0 || (d.supplier_id != null && sup.includes(d.supplier_id)),
       buyer: (d: Deal) => buy.length === 0 || (d.buyer_id != null && buy.includes(d.buyer_id)),
@@ -355,7 +363,7 @@ export default function DealsPage() {
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
     deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3,
-    deferredApplication, deferredSearch, labelMaps,
+    deferredApplication, deferredSearch, labelMaps, showHidden,
   ]);
 
   // Client-side filter pass. All predicates AND-combined.
@@ -411,10 +419,12 @@ export default function DealsPage() {
       application: pApp,
       dealType: pDealType,
       search: pSearch,
+      hidden: pHidden,
     } = predicates;
 
     for (const d of deals) {
-      // dealType + search always apply (they aren't dropdowns).
+      // dealType + search + hidden always apply (they aren't dropdowns).
+      if (!pHidden(d)) continue;
       if (!pDealType(d)) continue;
       if (!pSearch(d)) continue;
 
@@ -707,6 +717,23 @@ export default function DealsPage() {
               Сбросить фильтры ({activeFilterCount})
             </Button>
           )}
+          {/* Показать скрытые — surfaces manually-hidden deals (dimmed,
+              with an un-hide icon in each row). Client-side toggle, no
+              refetch. Amber = active, matching the filter-control accent. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowHidden(showHidden ? null : true)}
+            className={`h-7 text-[11px] transition-colors ${
+              showHidden
+                ? "text-amber-700 bg-amber-50 hover:text-amber-800"
+                : "text-stone-500 hover:text-stone-700"
+            }`}
+            title="Показать сделки, скрытые вручную"
+          >
+            {showHidden ? <Eye className="h-3 w-3 mr-0.5" /> : <EyeOff className="h-3 w-3 mr-0.5" />}
+            Показать скрытые
+          </Button>
           <span className="text-[11px] text-stone-400 ml-auto inline-flex items-center gap-1.5">
             {isFiltering && <Loader2 className="h-3 w-3 animate-spin text-amber-600" />}
             {totalCount} {totalCount === 1 ? "сделка" : totalCount % 10 >= 2 && totalCount % 10 <= 4 && (totalCount % 100 < 10 || totalCount % 100 >= 20) ? "сделки" : "сделок"}

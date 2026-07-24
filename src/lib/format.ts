@@ -52,3 +52,25 @@ export function formatPercent(v: number | null | undefined): string {
   if (v == null) return "";
   return `${v.toLocaleString(RU, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} %`;
 }
+
+/**
+ * Дата в формате ДД.ММ.ГГ (2-значный год) — единый формат дат по всей
+ * платформе (утверждено клиентом 2026-07-24: «везде где есть даты нужно
+ * сделать формат ДД.ММ.ГГ»). Пример: "2026-06-17" → "17.06.26".
+ *
+ * Принимает ISO-строку `YYYY-MM-DD` или ISO-таймстамп `YYYY-MM-DDT…`.
+ * Для ISO берём подстроку (без `new Date`), чтобы не ловить UTC-сдвиг
+ * на голой дате. Прочие форматы — через `new Date` как фолбэк.
+ * null/undefined/пусто/невалид → "".
+ */
+export function formatDMY(v: string | null | undefined): string {
+  if (!v) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (m) return `${m[3]}.${m[2]}.${m[1].slice(2)}`;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dd}.${mm}.${yy}`;
+}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, createContext, useContext, memo } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Trash2, ChevronDown } from "lucide-react";
+import { Trash2, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
@@ -238,7 +238,7 @@ function VolumeBreakdownCell({
         <div
           ref={popRef}
           style={{ top: pos.top, right: pos.right }}
-          className="fixed z-50 min-w-[200px] max-w-[300px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl whitespace-pre-line font-mono tabular-nums"
+          className="fixed z-50 min-w-[200px] max-w-[300px] max-h-[60vh] overflow-y-auto ap-scroll-y rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl whitespace-pre-line font-mono tabular-nums"
         >
           {loading || shipments === null ? "Загрузка…" : shipmentLines(shipments, field)}
         </div>,
@@ -918,7 +918,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
   return (
     <tr
       style={rowStyle}
-      className="pt-row border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]"
+      className={`pt-row border-b bg-[var(--row-bg)] hover:bg-[var(--row-bg-hover)]${deal.is_hidden ? " opacity-60" : ""}`}
     >
       {/* Identity. Clicking the deal code opens the deal as a new
           workspace tab so the operator never loses the list view
@@ -1118,10 +1118,10 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
           preliminary_amount = тариф × объем план; editing it here
           recomputes the next column via the existing trigger. */}
       <td
-        className="border-r px-1 py-0.5 text-stone-700"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
         data-col="planned_tariff" data-deal-id={deal.id}
         data-value={deal.planned_tariff ?? undefined}
-      ><EditableNumCell value={deal.planned_tariff} dealId={deal.id} field="planned_tariff" /></td>
+      >{formatComputedNum(deal.planned_tariff)}</td>
       <td
         className="border-r px-1 py-0.5 text-stone-700"
         data-col="preliminary_tonnage" data-deal-id={deal.id}
@@ -1183,14 +1183,30 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
       <td className="px-1 py-1">
-        <button onClick={async () => {
-          if (!confirm("Удалить сделку?")) return;
-          const sb = createClient();
-          const { error } = await sb.from("deals").delete().eq("id", deal.id);
-          if (error) toast.error(error.message); else { toast.success("Удалено"); onDataChanged(); }
-        }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-          <Trash2 className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          {/* Manual hide toggle — optimistic; row hides/reappears
+              immediately via updateDeal (deals.is_hidden). In «показать
+              скрытые» mode the row stays dimmed with an Eye to un-hide. */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              updateDeal(deal.id, { is_hidden: !deal.is_hidden }).catch(() => {});
+            }}
+            title={deal.is_hidden ? "Показать сделку" : "Скрыть сделку"}
+            className="rounded p-0.5 text-stone-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+          >
+            {deal.is_hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          </button>
+          <button onClick={async (e) => {
+            e.stopPropagation();
+            if (!confirm("Удалить сделку?")) return;
+            const sb = createClient();
+            const { error } = await sb.from("deals").delete().eq("id", deal.id);
+            if (error) toast.error(error.message); else { toast.success("Удалено"); onDataChanged(); }
+          }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -1254,12 +1270,12 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
   planned_tariff:             { label: "Тариф",                       decimals: 2 },
   actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 2 },
-  shipper_actual_tariff:      { label: "Тариф факт грузоотпр.",       decimals: 2 },
+  shipper_actual_tariff:      { label: "Тариф менеджер",              decimals: 2 },
   preliminary_tonnage:        { label: "Объем план (Логистика)",      decimals: 3 },
   preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 2 },
   actual_shipped_volume:      { label: "Факт объем (Логистика)",      decimals: 3 },
   invoice_amount:             { label: "Сумма (Логистика)",           decimals: 2 },
-  additional_expenses_amount: { label: "Сумма грузоотправителя (Логистика)", decimals: 2 },
+  additional_expenses_amount: { label: "ЭСФ грузоотправление",        decimals: 2 },
 };
 
 function formatWithDecimals(v: number, decimals: 2 | 3): string {
@@ -1685,8 +1701,8 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#d9d9d9]" title="Тариф факт (логисты) = Сумма ÷ объем СНТ (KZ — входящее, KG — исходящее). Авто; ручной ввод закрепляет.">Тариф факт</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Факт объем</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Сумма</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#d9d9d9]" title="Тариф факт (грузоотпр.) = Сумма грузоотправителя ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф факт (грузоотпр.)</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="Сумма грузоотправителя = SUM(additional_expenses) из реестра. Если галочка «Грузоотправитель в цене» — плюсует к балансу поставщика.">Сумма грузоотпр.</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#d9d9d9]" title="Тариф менеджер = Сумма грузоотправителя ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф менеджер</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="ЭСФ грузоотправление = SUM(additional_expenses) из реестра. Если галочка «Грузоотправитель в цене» — плюсует к балансу поставщика.">ЭСФ грузоотправление</th>
               <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
               <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-[#d9d9d9]"></th>
             </tr>
@@ -1809,8 +1825,8 @@ const PT_UNITS: PtUnit[] = [
   { key: "actual_tariff", label: "Тариф факт", band: "logistics", h: [35], body: 34 },
   { key: "actual_volume", label: "Факт объем", band: "logistics", h: [36], body: 35 },
   { key: "invoice_amount", label: "Сумма", band: "logistics", h: [37], body: 36 },
-  { key: "shipper_tariff", label: "Тариф факт (грузоотпр.)", band: "logistics", h: [38], body: 37 },
-  { key: "additional_expenses", label: "Сумма грузоотпр.", band: "logistics", h: [39], body: 38 },
+  { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics", h: [38], body: 37 },
+  { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics", h: [39], body: 38 },
   { key: "manager", label: "Коммерция", band: "logistics", h: [40], body: 39 },
 ];
 const PT_BAND_LABELS: Record<PtBand, string> = {

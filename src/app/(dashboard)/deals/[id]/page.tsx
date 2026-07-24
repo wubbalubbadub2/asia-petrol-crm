@@ -595,8 +595,10 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         // Supplier scalars (pricing config copied, derived totals reset).
         supplier_id: deal.supplier_id,
         supplier_contract: deal.supplier_contract,
-        supplier_contracted_volume: deal.supplier_contracted_volume,
-        supplier_contracted_amount: deal.supplier_contracted_amount,
+        // Manually-entered contract sums & volumes are intentionally NOT
+        // copied — client wants them blank on the duplicated deal (2026-07-24).
+        supplier_contracted_volume: null,
+        supplier_contracted_amount: null,
         supplier_delivery_basis: deal.supplier_delivery_basis,
         supplier_quotation: deal.supplier_quotation,
         supplier_quotation_comment: deal.supplier_quotation_comment,
@@ -609,8 +611,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         // Buyer scalars.
         buyer_id: deal.buyer_id,
         buyer_contract: deal.buyer_contract,
-        buyer_contracted_volume: deal.buyer_contracted_volume,
-        buyer_contracted_amount: deal.buyer_contracted_amount,
+        // Not copied — see supplier note above (2026-07-24).
+        buyer_contracted_volume: null,
+        buyer_contracted_amount: null,
         buyer_delivery_basis: deal.buyer_delivery_basis,
         buyer_destination_station_id: deal.buyer_destination_station_id,
         buyer_quotation: deal.buyer_quotation,
@@ -618,7 +621,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         buyer_discount: deal.buyer_discount,
         buyer_price: deal.buyer_price,
         buyer_price_condition: deal.buyer_price_condition,
-        buyer_ordered_volume: deal.buyer_ordered_volume,
+        // "Заявлено, т" — not copied (2026-07-24).
+        buyer_ordered_volume: null,
         buyer_currency: deal.buyer_currency,
         buyer_manager_id: deal.buyer_manager_id,
         buyer_ship_date: deal.buyer_ship_date,
@@ -1104,12 +1108,12 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             />
             <Field label="Тариф план" value={deal.planned_tariff} suffix={logisticsCurrencySymbol} editing={editing} field="planned_tariff" dealId={deal.id} />
             <Field label="Тариф факт" value={deal.actual_tariff} suffix={`${logisticsCurrencySymbol} (авто: Сумма ÷ СНТ)`} editing={editing} field="actual_tariff" dealId={deal.id} inputType="number" extraPatch={{ actual_tariff_override: true }} />
-            <Field label="Тариф факт (грузоотпр.)" value={deal.shipper_actual_tariff} suffix={`${logisticsCurrencySymbol} (авто: Сумма грузоотпр. ÷ вход. СНТ)`} editing={editing} field="shipper_actual_tariff" dealId={deal.id} inputType="number" extraPatch={{ shipper_actual_tariff_override: true }} />
+            <Field label="Тариф менеджер" value={deal.shipper_actual_tariff} suffix={`${logisticsCurrencySymbol} (авто: Сумма грузоотпр. ÷ вход. СНТ)`} editing={editing} field="shipper_actual_tariff" dealId={deal.id} inputType="number" extraPatch={{ shipper_actual_tariff_override: true }} />
             <Field label="Объем плановый" value={deal.preliminary_tonnage} suffix="тонн" editing={editing} field="preliminary_tonnage" dealId={deal.id} />
             <Field label="Предв. сумма" value={deal.preliminary_amount} suffix={`${logisticsCurrencySymbol} (авто)`} />
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
-            <Field label="Сумма грузоотправителя" value={deal.additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
+            <Field label="ЭСФ грузоотправление" value={deal.additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
             <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
             <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!deal.additional_expenses_in_price} editing={editing} onSaved={reload} />
             <EditableSelect label="Коммерция" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />

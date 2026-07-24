@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { formatDMY } from "@/lib/format";
 
 // --- Helpers ---
 function getDaysInMonth(year: number, month: number): string[] {
@@ -40,8 +41,7 @@ function getDaysInMonth(year: number, month: number): string[] {
 // files (`01.06.2026`, not `1`). Keeps the column narrow because the
 // number remains tabular and same-width across rows.
 function formatDateDMY(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-");
-  return `${d}.${m}.${y}`;
+  return formatDMY(dateStr);
 }
 function isWeekend(dateStr: string): boolean { const d = new Date(dateStr + "T00:00:00").getDay(); return d === 0 || d === 6; }
 // Клиент 2026-07-09: у котировок оставить 3 знака после запятой

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { formatDMY } from "@/lib/format";
 
 // One row as stored in the audit_log table (loose typing — JSONB columns
 // don't round-trip through our generated Database types cleanly).
@@ -55,7 +56,7 @@ function fmtCellValue(v: unknown): string {
   if (typeof v === "boolean") return v ? "да" : "нет";
   if (typeof v === "string") {
     // ISO timestamps — shorten. Otherwise pass through, truncated.
-    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return new Date(v).toLocaleDateString("ru-RU");
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return formatDMY(v);
     return v.length > 50 ? v.slice(0, 50) + "…" : v;
   }
   return JSON.stringify(v);

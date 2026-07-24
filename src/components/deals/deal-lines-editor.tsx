@@ -40,6 +40,7 @@ import { invalidateShipmentPrices } from "@/lib/hooks/use-deal-trigger-prices";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { toast } from "sonner";
+import { formatDMY } from "@/lib/format";
 
 type PriceStage = "preliminary" | "final";
 
@@ -707,7 +708,7 @@ function LinesEditorView({
                   />
                 ) : (
                   <span className="text-[13px] text-stone-800 font-mono">
-                    {l.selected_date ? new Date(l.selected_date).toLocaleDateString("ru-RU") : "—"}
+                    {l.selected_date ? formatDMY(l.selected_date) : "—"}
                   </span>
                 )}
               </div>
@@ -857,7 +858,7 @@ function LinesEditorView({
                   )}
                   {l.preliminary_set_at && (
                     <span className="text-[10px] text-amber-700/80">
-                      · зафикс. {new Date(l.preliminary_set_at).toLocaleDateString("ru-RU")}
+                      · зафикс. {formatDMY(l.preliminary_set_at)}
                     </span>
                   )}
                 </div>

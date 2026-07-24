@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeRegistry } from "@/lib/hooks/use-registry";
+import { formatDMY } from "@/lib/format";
 
 type ShipmentRow = {
   id: string;
@@ -37,7 +38,7 @@ function fmtVol(v: number | null | undefined) {
 }
 
 function fmtDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
+  return formatDMY(d);
 }
 
 function calcAmount(vol: number | null, tariff: number | null): number | null {

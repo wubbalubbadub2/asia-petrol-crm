@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDelayed } from "@/lib/hooks/use-delayed";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
+import { formatDMY } from "@/lib/format";
 
 type DtKtRecord = {
   id: string;
@@ -62,7 +63,7 @@ function InlineDtDate({ value, onSave }: { value: string | null; onSave: (v: str
   if (!ed) return (
     <button onClick={() => { setLv(value ? value.split("T")[0] : ""); setEd(true); }}
       className="text-[11px] hover:bg-amber-50 rounded px-1 py-0.5 cursor-text">
-      {value ? new Date(value).toLocaleDateString("ru-RU") : "—"}
+      {value ? formatDMY(value) : "—"}
     </button>
   );
   return (

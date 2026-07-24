@@ -286,6 +286,9 @@ export default function NewDealPage() {
       supplier_quotation_comment: sv0.quotationComment || null,
       supplier_discount: sv0.discount ? parseFloat(sv0.discount) : null,
       railway_in_price: railwayInPrice,
+      // Грузоотправитель в цене defaults ON (client 2026-07-24) — matches the
+      // DB column default; new deals always add грузоотправитель to balance.
+      additional_expenses_in_price: true,
       buyer_id: buyerId || null,
       buyer_contract: buyerContract || null,
       buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,

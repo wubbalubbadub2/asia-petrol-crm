@@ -28,6 +28,7 @@ import {
   type Application,
 } from "@/lib/hooks/use-applications";
 import { createClient } from "@/lib/supabase/client";
+import { formatDMY } from "@/lib/format";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useApplicationActivity } from "@/lib/hooks/use-deal-activity";
@@ -506,7 +507,7 @@ export default function ApplicationsPage() {
                     {app.application_number ?? "—"}
                   </TableCell>
                   <TableCell className="text-[12px] text-stone-600">
-                    {new Date(app.date).toLocaleDateString("ru-RU")}
+                    {formatDMY(app.date)}
                   </TableCell>
                   <TableCell className="text-[12px]">
                     {app.fuel_type ? (

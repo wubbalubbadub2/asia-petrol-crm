@@ -25,6 +25,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useGlobalRefs } from "@/lib/refs";
 import { useDelayed } from "@/lib/hooks/use-delayed";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
+import { formatDMY } from "@/lib/format";
 import Link from "next/link";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { DoubleScrollX } from "@/components/ui/double-scroll-x";
@@ -63,7 +64,7 @@ function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLo
 // Tonnage display: always 3 decimals, even for whole / 2-decimal values.
 // Per client request — "после запятой 3 ноля должно быть".
 function fmtVol(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
-function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("ru-RU") : ""; }
+function fmtDate(d: string | null) { return formatDMY(d); }
 function ceil(v: number | null) { return v == null ? null : Math.ceil(v); }
 function calcAmt(v: number | null, t: number | null) { const r = ceil(v); return r == null || t == null ? null : r * t; }
 function currencyFor(r: ShipmentRecord, tab: "kg" | "kz"): string {
@@ -1417,6 +1418,8 @@ export default function RegistryPage() {
   const [forwarderFilter, setForwarderFilter] = useQueryState("forwarderFilter", { defaultValue: "", ...NUQS_INSTANT });
   const [dealFilter, setDealFilter] = useQueryState("dealFilter", { defaultValue: "", ...NUQS_INSTANT });
   const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [supplierFilter, setSupplierFilter] = useQueryState("supplierFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [buyerFilter, setBuyerFilter] = useQueryState("buyerFilter", { defaultValue: "", ...NUQS_INSTANT });
   // Substring filters on wagon / waybill numbers — operator needs to
   // jump straight to a specific shipment without scrolling groups.
   const [wagonFilter, setWagonFilter] = useQueryState("wagonFilter", { defaultValue: "", ...NUQS_INSTANT });
@@ -1572,6 +1575,8 @@ export default function RegistryPage() {
       if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
       if (dealFilter && r.deal_id !== dealFilter) return false;
       if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
+      if (supplierFilter && r.supplier_id !== supplierFilter) return false;
+      if (buyerFilter && r.buyer_id !== buyerFilter) return false;
       if (shipmentMonthFilter && r.shipment_month !== shipmentMonthFilter) return false;
       if (wq && !(r.wagon_number ?? "").toLowerCase().includes(wq)) return false;
       if (bq && !(r.waybill_number ?? "").toLowerCase().includes(bq)) return false;
@@ -1589,6 +1594,8 @@ export default function RegistryPage() {
     forwarderFilter,
     dealFilter,
     companyGroupFilter,
+    supplierFilter,
+    buyerFilter,
     shipmentMonthFilter,
     wagonFilter,
     waybillFilter,
@@ -1614,6 +1621,7 @@ export default function RegistryPage() {
 
   const activeFilterCount =
     (forwarderFilter ? 1 : 0) + (dealFilter ? 1 : 0) + (companyGroupFilter ? 1 : 0) +
+    (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) +
     (shipmentMonthFilter ? 1 : 0) +
     (wagonFilter.trim() ? 1 : 0) + (waybillFilter.trim() ? 1 : 0) +
     Object.keys(columnFilters).length;
@@ -1621,6 +1629,7 @@ export default function RegistryPage() {
     // Empty string matches each filter's default, so nuqs drops the
     // param from the URL. Same idiom the /deals page uses.
     setForwarderFilter(""); setDealFilter(""); setCompanyGroupFilter("");
+    setSupplierFilter(""); setBuyerFilter("");
     setWagonFilter(""); setWaybillFilter("");
     setShipmentMonthFilter("");
     setColumnFilters(null);
@@ -1750,7 +1759,7 @@ export default function RegistryPage() {
           The «месяц отгрузки» (shipment_month) filter is the primary
           axis the operator narrows by — added 2026-06-18 per client
           request. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-8 gap-2">
         <SearchableSelect
           value={forwarderFilter} onChange={setForwarderFilter}
           options={fwOpts}
@@ -1767,6 +1776,18 @@ export default function RegistryPage() {
           value={companyGroupFilter} onChange={setCompanyGroupFilter}
           options={cgOpts}
           placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
+        />
+        <SearchableSelect
+          value={supplierFilter} onChange={setSupplierFilter}
+          options={supplierOpts}
+          placeholder="Все поставщики" searchPlaceholder="Поиск поставщика…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
+        />
+        <SearchableSelect
+          value={buyerFilter} onChange={setBuyerFilter}
+          options={buyerOpts}
+          placeholder="Все покупатели" searchPlaceholder="Поиск покупателя…"
           triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect

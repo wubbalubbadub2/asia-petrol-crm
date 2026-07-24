@@ -94,6 +94,10 @@ export type Deal = {
   buyer_currency: string;
   logistics_currency: string;
   is_archived: boolean;
+  // Per-deal manual hide toggle (migration adds deals.is_hidden). Rows
+  // with is_hidden stay in the network payload but are filtered out
+  // client-side unless the operator flips «Показать скрытые».
+  is_hidden: boolean;
   created_at: string;
   // Variant counts — denormalized onto the `deals` row by migration
   // 00092 (trigger-maintained). Always present from list/detail
@@ -346,7 +350,7 @@ const LIST_SELECT = `
   actual_tariff_override, shipper_actual_tariff, shipper_actual_tariff_override,
   actual_shipped_volume, invoice_amount, invoice_volume,
   additional_expenses_amount, additional_expenses_in_price,
-  logistics_currency, currency, is_archived, is_draft, created_at,
+  logistics_currency, currency, is_archived, is_hidden, is_draft, created_at,
   supplier_lines_count, buyer_lines_count,
   supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date,
   buyer_deferral_days, buyer_deferral_mode, buyer_deferral_note, buyer_planned_pay_date,
