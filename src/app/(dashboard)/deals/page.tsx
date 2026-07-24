@@ -3,7 +3,7 @@
 import { useState, useMemo, useDeferredValue } from "react";
 import Link from "next/link";
 import { useQueryState, parseAsInteger, parseAsStringEnum, parseAsArrayOf, parseAsString, parseAsBoolean } from "nuqs";
-import { Plus, Filter, X, Download, Loader2, Eye, EyeOff } from "lucide-react";
+import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Switch } from "@/components/ui/switch";
 import { useRole } from "@/lib/hooks/use-role";
 import { useGlobalRefs } from "@/lib/refs";
 import { createClient } from "@/lib/supabase/client";
@@ -717,23 +718,25 @@ export default function DealsPage() {
               Сбросить фильтры ({activeFilterCount})
             </Button>
           )}
-          {/* Показать скрытые — surfaces manually-hidden deals (dimmed,
-              with an un-hide icon in each row). Client-side toggle, no
-              refetch. Amber = active, matching the filter-control accent. */}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setShowHidden(showHidden ? null : true)}
-            className={`h-7 text-[11px] transition-colors ${
-              showHidden
-                ? "text-amber-700 bg-amber-50 hover:text-amber-800"
-                : "text-stone-500 hover:text-stone-700"
-            }`}
+          {/* Показать скрытые — явный on/off тумблер (клиент 2026-07-24:
+              «по умолчанию выключено, должно быть видно вкл/выкл»). Off по
+              умолчанию (showHidden=null). Клиентский toggle, без refetch:
+              показывает вручную скрытые сделки (приглушённые, с глазом для
+              возврата). Рядом — счётчик скрытых, если они есть. */}
+          <label
+            className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
             title="Показать сделки, скрытые вручную"
           >
-            {showHidden ? <Eye className="h-3 w-3 mr-0.5" /> : <EyeOff className="h-3 w-3 mr-0.5" />}
-            Показать скрытые
-          </Button>
+            <Switch
+              size="sm"
+              checked={!!showHidden}
+              onCheckedChange={(v) => setShowHidden(v ? true : null)}
+            />
+            <span className={showHidden ? "text-amber-700 font-medium" : "text-stone-500"}>
+              Показать скрытые
+              {(() => { const n = (deals ?? []).filter((d) => d.is_hidden).length; return n > 0 ? ` (${n})` : ""; })()}
+            </span>
+          </label>
           <span className="text-[11px] text-stone-400 ml-auto inline-flex items-center gap-1.5">
             {isFiltering && <Loader2 className="h-3 w-3 animate-spin text-amber-600" />}
             {totalCount} {totalCount === 1 ? "сделка" : totalCount % 10 >= 2 && totalCount % 10 <= 4 && (totalCount % 100 < 10 || totalCount % 100 >= 20) ? "сделки" : "сделок"}

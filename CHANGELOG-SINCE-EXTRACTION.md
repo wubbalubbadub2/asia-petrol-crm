@@ -26,6 +26,10 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-24 — «Показать скрытые» → явный on/off тумблер
+- **What changed:** `src/app/(dashboard)/deals/page.tsx` — контрол «Показать скрытые» заменён с ghost-кнопки на `Switch` (base-ui) с подписью и счётчиком скрытых сделок `(N)`. Off по умолчанию (`showHidden=null`), состояние вкл/выкл видно по положению тумблера; подпись при вкл — амбер. Убраны неиспользуемые импорты `Eye`/`EyeOff` из страницы.
+- **Type:** [PRESENTATION] — **Client reason:** «по умолчанию показать скрытые выключено, и сейчас не ясно вкл/выкл — сделать тумблер on/off». **Rebuild impact:** presentation only.
+
 ### 2026-07-24 — Кнопка «скрыть сделку» перенесена влево
 - **What changed:** `src/components/deals/passport-table.tsx` — кнопка-глаз (`is_hidden` toggle) перенесена из правой ячейки действий в левую закреплённую identity-ячейку (рядом с № сделки, `sticky left-0`), поэтому всегда под рукой и видна при горизонтальном скролле. В правой ячейке осталось только удаление.
 - **Type:** [PRESENTATION] — **Client reason:** «иконку скрыть строку поставим слева». **Rebuild impact:** presentation only.
