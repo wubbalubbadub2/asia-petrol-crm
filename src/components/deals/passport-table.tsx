@@ -933,6 +933,19 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
           aforementioned 8%/16% alpha on top, just like every other
           cell. */}
       <td className="sticky left-0 z-10 bg-white before:absolute before:inset-0 before:bg-[var(--row-bg)] before:-z-10 border-r px-2 py-1 font-mono text-stone-700 relative">
+        {/* Скрыть/показать сделку — слева, в закреплённой identity-ячейке,
+            чтобы кнопка была всегда под рукой и видна при горизонтальном
+            скролле. Optimistic: строка скрывается/возвращается сразу. */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            updateDeal(deal.id, { is_hidden: !deal.is_hidden }).catch(() => {});
+          }}
+          title={deal.is_hidden ? "Показать сделку" : "Скрыть сделку"}
+          className="mr-1 inline-flex align-middle rounded p-0.5 text-stone-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+        >
+          {deal.is_hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+        </button>
         <DealCodeLink dealId={deal.id} dealCode={deal.deal_code} />
         <VariantsBadge supplierCount={deal.supplier_lines_count ?? 1} buyerCount={deal.buyer_lines_count ?? 1} />
       </td>
@@ -1183,30 +1196,17 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex }:
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
       <td className="px-1 py-1">
-        <div className="flex items-center gap-0.5">
-          {/* Manual hide toggle — optimistic; row hides/reappears
-              immediately via updateDeal (deals.is_hidden). In «показать
-              скрытые» mode the row stays dimmed with an Eye to un-hide. */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              updateDeal(deal.id, { is_hidden: !deal.is_hidden }).catch(() => {});
-            }}
-            title={deal.is_hidden ? "Показать сделку" : "Скрыть сделку"}
-            className="rounded p-0.5 text-stone-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-          >
-            {deal.is_hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-          </button>
-          <button onClick={async (e) => {
-            e.stopPropagation();
-            if (!confirm("Удалить сделку?")) return;
-            const sb = createClient();
-            const { error } = await sb.from("deals").delete().eq("id", deal.id);
-            if (error) toast.error(error.message); else { toast.success("Удалено"); onDataChanged(); }
-          }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
+        {/* Скрытие сделки перенесено в левую identity-ячейку (2026-07-24);
+            здесь остаётся только удаление. */}
+        <button onClick={async (e) => {
+          e.stopPropagation();
+          if (!confirm("Удалить сделку?")) return;
+          const sb = createClient();
+          const { error } = await sb.from("deals").delete().eq("id", deal.id);
+          if (error) toast.error(error.message); else { toast.success("Удалено"); onDataChanged(); }
+        }} className="rounded p-0.5 text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+          <Trash2 className="h-3 w-3" />
+        </button>
       </td>
     </tr>
   );
