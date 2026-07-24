@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, createContext, useContext, memo } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Trash2, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Trash2, ChevronDown, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
@@ -1291,9 +1291,14 @@ type PassportTableProps = {
   loading: boolean;
   dealType: "KG" | "KZ" | "ALL";
   onDataChanged: () => void;
+  // Кол-во вручную скрытых сделок (is_hidden) во всём наборе + сброс
+  // (снять скрытие со всех). Считается на уровне страницы, т.к. в `deals`
+  // здесь скрытые уже вырезаны при выключенном тумблере «Показать скрытые».
+  hiddenCount?: number;
+  onResetHidden?: () => void;
 };
 
-export function PassportTable({ deals, loading, dealType, onDataChanged }: PassportTableProps) {
+export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenCount = 0, onResetHidden }: PassportTableProps) {
   const refs = useRefs();
   const { refs: g } = useGlobalRefs();
 
@@ -1660,7 +1665,24 @@ export function PassportTable({ deals, loading, dealType, onDataChanged }: Passp
               <th colSpan={ptBandSpan.logistics} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
             </tr>
             <tr className="pt-cols border-b">
-              <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">№</th>
+              <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">
+                <span className="inline-flex items-center gap-1">
+                  №
+                  {/* Сброс: снять скрытие со всех сделок. Виден только когда
+                      есть скрытые (клиент 2026-07-24: «где-то тут сделать
+                      сброс»). Амбер-чип «↺ N» — заметно и по-бренду. */}
+                  {hiddenCount > 0 && onResetHidden && (
+                    <button
+                      onClick={onResetHidden}
+                      title={`Показать все скрытые сделки (${hiddenCount})`}
+                      className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 transition-colors"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      {hiddenCount}
+                    </button>
+                  )}
+                </span>
+              </th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[75px] bg-[#b4c6e7]">Месяц</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#b4c6e7]">Завод</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#b4c6e7]">ГСМ</th>

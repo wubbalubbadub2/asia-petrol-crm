@@ -26,6 +26,10 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-24 — «Сброс» скрытых сделок в шапке паспорта
+- **What changed:** `src/app/(dashboard)/deals/page.tsx` — `hiddenCount` + `resetHidden()` (снимает `is_hidden` со ВСЕХ скрытых сделок, optimistic через `updateDeal`), проброшены в `PassportTable` как `hiddenCount`/`onResetHidden`. `src/components/deals/passport-table.tsx` — в шапке колонки «№» появляется амбер-чип «↺ N» (иконка `RotateCcw` + число), видимый только когда есть скрытые; клик возвращает все скрытые строки.
+- **Type:** [PRESENTATION] + [BEHAVIOR] — **Client reason:** «коммент по скрытым строкам: где-то тут (в шапке рядом с №) сделать сброс». **Rebuild impact:** presentation only (флаг `is_hidden` уже есть, миграция 00129).
+
 ### 2026-07-24 — Иконка «скрыть сделку» ярче (amber-акцент)
 - **What changed:** `src/components/deals/passport-table.tsx` — цвет глаз-кнопки скрытия с `text-stone-300` (почти невидимый) на `text-amber-600` (бренд-акцент, DESIGN.md), hover `amber-800`/`bg-amber-100`, размер иконки `h-3 w-3`→`h-3.5 w-3.5`.
 - **Type:** [PRESENTATION] — **Client reason:** «иконку скрыть особо не видно, сделать поярче». **Rebuild impact:** presentation only.

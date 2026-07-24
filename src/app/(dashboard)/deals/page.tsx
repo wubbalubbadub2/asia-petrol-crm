@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDeals, type Deal, invalidateDeal, invalidateAllDealsLists } from "@/lib/hooks/use-deals";
+import { useDeals, updateDeal, type Deal, invalidateDeal, invalidateAllDealsLists } from "@/lib/hooks/use-deals";
 import { DEAL_TYPE_CURRENCY } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { PassportTable } from "@/components/deals/passport-table";
@@ -267,6 +267,18 @@ export default function DealsPage() {
     year: deferredYear,
     isArchived: false,
   });
+
+  // Скрытые вручную сделки (is_hidden). Счётчик и «сброс» (снять скрытие
+  // со всех) — клиент 2026-07-24: «где-то тут сделать сброс». Работаем по
+  // полному списку `deals` (в `filtered` скрытые уже вырезаны при выкл.
+  // тумблере). Optimistic: updateDeal обновляет кэш → строки возвращаются
+  // сразу, без перезагрузки.
+  const hiddenCount = useMemo(() => (deals ?? []).filter((d) => d.is_hidden).length, [deals]);
+  async function resetHidden() {
+    const hidden = (deals ?? []).filter((d) => d.is_hidden);
+    if (!hidden.length) return;
+    await Promise.all(hidden.map((d) => updateDeal(d.id, { is_hidden: false }).catch(() => {})));
+  }
 
   // Label maps — same lookup tables PassportTable builds, mirrored here
   // so the search box can match against the joined name (supplier /
@@ -733,8 +745,7 @@ export default function DealsPage() {
               onCheckedChange={(v) => setShowHidden(v ? true : null)}
             />
             <span className={showHidden ? "text-amber-700 font-medium" : "text-stone-500"}>
-              Показать скрытые
-              {(() => { const n = (deals ?? []).filter((d) => d.is_hidden).length; return n > 0 ? ` (${n})` : ""; })()}
+              Показать скрытые{hiddenCount > 0 ? ` (${hiddenCount})` : ""}
             </span>
           </label>
           <span className="text-[11px] text-stone-400 ml-auto inline-flex items-center gap-1.5">
@@ -824,6 +835,8 @@ export default function DealsPage() {
             loading={loading || isTabSwitching}
             onDataChanged={reload}
             dealType={activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL"}
+            hiddenCount={hiddenCount}
+            onResetHidden={resetHidden}
           />
         )}
       </div>
