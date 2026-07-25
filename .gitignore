@@ -50,5 +50,7 @@ supabase/.branches/
 /test-results
 /playwright/.cache
 
-# Claude Code agent worktrees (transient, local only)
-.claude/
+# Claude Code — ignore transient/local state, keep shared project config
+.claude/tmp/
+.claude/worktrees/
+.claude/settings.local.json

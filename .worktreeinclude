@@ -1,0 +1,3 @@
+# Patterns use .gitignore syntax and only copy files that are already gitignored.
+# Copied into each isolated worktree session so the app can run there.
+.env.local
