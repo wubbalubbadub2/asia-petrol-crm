@@ -1420,6 +1420,11 @@ export default function RegistryPage() {
   const [companyGroupFilter, setCompanyGroupFilter] = useQueryState("companyGroupFilter", { defaultValue: "", ...NUQS_INSTANT });
   const [supplierFilter, setSupplierFilter] = useQueryState("supplierFilter", { defaultValue: "", ...NUQS_INSTANT });
   const [buyerFilter, setBuyerFilter] = useQueryState("buyerFilter", { defaultValue: "", ...NUQS_INSTANT });
+  // Доп. приложения по сторонам (free-text supplier_appendix/buyer_appendix,
+  // 00072) + ГСМ (fuel_type_id) — клиент 2026-07-27.
+  const [supplierAppendixFilter, setSupplierAppendixFilter] = useQueryState("supplierAppendixFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [buyerAppendixFilter, setBuyerAppendixFilter] = useQueryState("buyerAppendixFilter", { defaultValue: "", ...NUQS_INSTANT });
+  const [fuelTypeFilter, setFuelTypeFilter] = useQueryState("fuelTypeFilter", { defaultValue: "", ...NUQS_INSTANT });
   // Substring filters on wagon / waybill numbers — operator needs to
   // jump straight to a specific shipment without scrolling groups.
   const [wagonFilter, setWagonFilter] = useQueryState("wagonFilter", { defaultValue: "", ...NUQS_INSTANT });
@@ -1577,6 +1582,9 @@ export default function RegistryPage() {
       if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
       if (supplierFilter && r.supplier_id !== supplierFilter) return false;
       if (buyerFilter && r.buyer_id !== buyerFilter) return false;
+      if (fuelTypeFilter && r.fuel_type_id !== fuelTypeFilter) return false;
+      if (supplierAppendixFilter && (r.supplier_appendix ?? "").trim() !== supplierAppendixFilter) return false;
+      if (buyerAppendixFilter && (r.buyer_appendix ?? "").trim() !== buyerAppendixFilter) return false;
       if (shipmentMonthFilter && r.shipment_month !== shipmentMonthFilter) return false;
       if (wq && !(r.wagon_number ?? "").toLowerCase().includes(wq)) return false;
       if (bq && !(r.waybill_number ?? "").toLowerCase().includes(bq)) return false;
@@ -1596,6 +1604,9 @@ export default function RegistryPage() {
     companyGroupFilter,
     supplierFilter,
     buyerFilter,
+    fuelTypeFilter,
+    supplierAppendixFilter,
+    buyerAppendixFilter,
     shipmentMonthFilter,
     wagonFilter,
     waybillFilter,
@@ -1622,6 +1633,7 @@ export default function RegistryPage() {
   const activeFilterCount =
     (forwarderFilter ? 1 : 0) + (dealFilter ? 1 : 0) + (companyGroupFilter ? 1 : 0) +
     (supplierFilter ? 1 : 0) + (buyerFilter ? 1 : 0) +
+    (fuelTypeFilter ? 1 : 0) + (supplierAppendixFilter ? 1 : 0) + (buyerAppendixFilter ? 1 : 0) +
     (shipmentMonthFilter ? 1 : 0) +
     (wagonFilter.trim() ? 1 : 0) + (waybillFilter.trim() ? 1 : 0) +
     Object.keys(columnFilters).length;
@@ -1630,6 +1642,7 @@ export default function RegistryPage() {
     // param from the URL. Same idiom the /deals page uses.
     setForwarderFilter(""); setDealFilter(""); setCompanyGroupFilter("");
     setSupplierFilter(""); setBuyerFilter("");
+    setFuelTypeFilter(""); setSupplierAppendixFilter(""); setBuyerAppendixFilter("");
     setWagonFilter(""); setWaybillFilter("");
     setShipmentMonthFilter("");
     setColumnFilters(null);
@@ -1641,6 +1654,18 @@ export default function RegistryPage() {
   const cgOpts = useMemo(() => refs.companyGroups.map((c) => ({ value: c.id, label: c.name })), [refs.companyGroups]);
   const fwOpts = useMemo(() => refs.forwarders.map((c) => ({ value: c.id, label: c.name })), [refs.forwarders]);
   const ftOpts = useMemo(() => refs.fuelTypes.map((c) => ({ value: c.id, label: c.name })), [refs.fuelTypes]);
+  // Доп. приложения — свободный текст, поэтому опции строим из уникальных
+  // значений в загруженных записях (не из справочника).
+  const supplierAppendixOpts = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of records) { const v = (r.supplier_appendix ?? "").trim(); if (v) set.add(v); }
+    return [...set].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+  }, [records]);
+  const buyerAppendixOpts = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of records) { const v = (r.buyer_appendix ?? "").trim(); if (v) set.add(v); }
+    return [...set].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+  }, [records]);
   const stOpts = useMemo(() => refs.stations.map((c) => ({ value: c.id, label: c.name })), [refs.stations]);
   const monthOpts = useMemo(() => MONTHS_RU.map((m) => ({ value: m, label: m })), []);
 
@@ -1773,21 +1798,40 @@ export default function RegistryPage() {
           triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect
-          value={companyGroupFilter} onChange={setCompanyGroupFilter}
-          options={cgOpts}
-          placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
-          triggerClassName="h-9 rounded-lg text-[12px]"
-        />
-        <SearchableSelect
           value={supplierFilter} onChange={setSupplierFilter}
           options={supplierOpts}
           placeholder="Все поставщики" searchPlaceholder="Поиск поставщика…"
           triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect
+          value={supplierAppendixFilter} onChange={setSupplierAppendixFilter}
+          options={supplierAppendixOpts}
+          placeholder="Все доп. пост." searchPlaceholder="Поиск доп. приложения…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
+        />
+        {/* Группа компаний — между поставщиком и покупателем (клиент 2026-07-27). */}
+        <SearchableSelect
+          value={companyGroupFilter} onChange={setCompanyGroupFilter}
+          options={cgOpts}
+          placeholder="Все группы компаний" searchPlaceholder="Поиск группы…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
+        />
+        <SearchableSelect
           value={buyerFilter} onChange={setBuyerFilter}
           options={buyerOpts}
           placeholder="Все покупатели" searchPlaceholder="Поиск покупателя…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
+        />
+        <SearchableSelect
+          value={buyerAppendixFilter} onChange={setBuyerAppendixFilter}
+          options={buyerAppendixOpts}
+          placeholder="Все доп. покуп." searchPlaceholder="Поиск доп. приложения…"
+          triggerClassName="h-9 rounded-lg text-[12px]"
+        />
+        <SearchableSelect
+          value={fuelTypeFilter} onChange={setFuelTypeFilter}
+          options={ftOpts}
+          placeholder="Все ГСМ" searchPlaceholder="Поиск ГСМ…"
           triggerClassName="h-9 rounded-lg text-[12px]"
         />
         <SearchableSelect
