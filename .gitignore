@@ -54,3 +54,6 @@ supabase/.branches/
 .claude/tmp/
 .claude/worktrees/
 .claude/settings.local.json
+
+# keep migration env template committable (overrides .env* above)
+!scripts/migration/.env.example
