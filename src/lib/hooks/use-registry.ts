@@ -76,7 +76,12 @@ export type ShipmentRecord = {
   // Станции сделки — fallback для контекста «Массово» (клиент
   // 2026-07-18, KG/26/275: первый batch группы был без станции, и все
   // следующие наследовали пустоту).
-  deal?: { deal_code: string; currency: string | null; logistics_currency: string | null; year: number | null; month: string | null; supplier_departure_station_id: string | null; buyer_destination_station_id: string | null } | null;
+  // supplier_contract / buyer_contract — deal-level «допик» (доп.
+  // приложение) для single-appendix сделок. Реестровый фильтр по допикам
+  // использует их как fallback, когда per-row supplier_appendix /
+  // buyer_appendix не заполнены (клиент 2026-07-28: у покупателя аэропорт
+  // Алматы допики живут в buyer_contract, а не в line appendix).
+  deal?: { deal_code: string; currency: string | null; logistics_currency: string | null; year: number | null; month: string | null; supplier_departure_station_id: string | null; buyer_destination_station_id: string | null; supplier_contract: string | null; buyer_contract: string | null } | null;
 };
 
 // Explicit projection — was `*` pulling every shipment_registry
@@ -99,7 +104,7 @@ const REG_SELECT = `
   invoice_number, comment, currency,
   additional_expenses, additional_expenses_override, manager_tariff,
   created_at,
-  deal:deals(deal_code, currency, logistics_currency, year, month, supplier_departure_station_id, buyer_destination_station_id)
+  deal:deals(deal_code, currency, logistics_currency, year, month, supplier_departure_station_id, buyer_destination_station_id, supplier_contract, buyer_contract)
 `;
 
 // Stale-while-revalidate cache keyed by tab (KG / KZ). Navigating back

@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-28 — Реестр: фильтр по допикам берёт допик со сделки (fallback)
+- **What changed:** `src/lib/hooks/use-registry.ts` — `ShipmentRecord.deal` и `REG_SELECT` теперь включают `supplier_contract`, `buyer_contract`. `src/app/(dashboard)/registry/page.tsx` — новые хелперы `effSupplierAppendix`/`effBuyerAppendix` (row appendix → deal contract fallback); фильтр допиков (`supplierAppendixFilter`/`buyerAppendixFilter`) и построение опций (`supplierAppendixOpts`/`buyerAppendixOpts`) переведены на эффективный допик; опции скоупятся под первичные фильтры (`facetRecords`).
+- **Type:** [BEHAVIOR]
+- **Before → After:** допик строки резолвился только из `shipment_registry.supplier_appendix`/`buyer_appendix` (per-row, migration 00072, заполнено лишь когда оператор явно выбрал приложение). → Эффективный допик = `row appendix` при наличии, иначе `deal.supplier_contract`/`deal.buyer_contract`. Опции фильтра теперь строятся из эффективных допиков записей, прошедших первичные фильтры (поставщик/покупатель/группа/ГСМ/экспедитор/сделка/месяц), а не из всех записей.
+- **Client reason:** у покупателя «аэропорт Алматы» в фильтре выходил один допик вместо всех (все его сделки — single-appendix, допик хранится в `buyer_contract`, а per-row `buyer_appendix` пуст).
+- **Rebuild impact:** presentation only (фильтрация/отображение; формулы и данные не тронуты).
+
 ### 2026-07-27 — Миграция: read-only профайлер (MIGRATION-PLAN §1)
 - **What changed:** новые `scripts/migration/profile.sql`, `scripts/migration/profile.ts`, `scripts/migration/README.md`, `scripts/migration/.env.example`; `package.json` — devDeps `pg`/`@types/pg`/`dotenv`/`tsx` + скрипт `profile:migration`; `.gitignore` — негейт `!scripts/migration/.env.example`. Строго READ-ONLY профилирование копии прод-БД: 43 тегированных SELECT-блока, реализующих все 10 вопросов §1 (counts + до 20 sample-строк), отчёт в `docs/reports/profiling-<date>.md`.
 - **Type:** [BEHAVIOR] (миграционный инструментарий; данные CRM не меняются) — **Before → After:** инструмента профилирования не было → есть. Гарантии: (1) copy-only gate `PROFILE_TARGET_IS_COPY=true`; (2) статическая проверка «каждый блок начинается с SELECT/WITH, нет data-modifying CTE»; (3) единая транзакция `READ ONLY` + per-block SAVEPOINT (ошибка схемы репортится, не гасит прогон); (4) counts точные, имена контрагентов в сэмплах маскируются `C-NNN`; (5) расхождения со схемой AS-BUILT (нет auth/storage, нет stored-converted колонок) репортятся, а не угадываются. Строка подключения — только через env, не коммитится.

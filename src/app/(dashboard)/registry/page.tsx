@@ -31,6 +31,16 @@ import { useTabs } from "@/lib/contexts/tabs-context";
 import { DoubleScrollX } from "@/components/ui/double-scroll-x";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
+// Эффективный «допик» (доп. приложение) строки реестра по стороне.
+// Per-row appendix (supplier_appendix / buyer_appendix, migration 00072)
+// заполняется только когда оператор выбрал приложение в форме; для
+// single-appendix сделок допик хранится на сделке в supplier_contract /
+// buyer_contract. Fallback: row appendix → deal contract.
+const effSupplierAppendix = (r: ShipmentRecord) =>
+  (r.supplier_appendix ?? "").trim() || (r.deal?.supplier_contract ?? "").trim();
+const effBuyerAppendix = (r: ShipmentRecord) =>
+  (r.buyer_appendix ?? "").trim() || (r.deal?.buyer_contract ?? "").trim();
+
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 const CURRENCIES: { value: string; label: string }[] = [
   { value: "USD", label: "USD $" },
@@ -1583,8 +1593,8 @@ export default function RegistryPage() {
       if (supplierFilter && r.supplier_id !== supplierFilter) return false;
       if (buyerFilter && r.buyer_id !== buyerFilter) return false;
       if (fuelTypeFilter && r.fuel_type_id !== fuelTypeFilter) return false;
-      if (supplierAppendixFilter && (r.supplier_appendix ?? "").trim() !== supplierAppendixFilter) return false;
-      if (buyerAppendixFilter && (r.buyer_appendix ?? "").trim() !== buyerAppendixFilter) return false;
+      if (supplierAppendixFilter && effSupplierAppendix(r) !== supplierAppendixFilter) return false;
+      if (buyerAppendixFilter && effBuyerAppendix(r) !== buyerAppendixFilter) return false;
       if (shipmentMonthFilter && r.shipment_month !== shipmentMonthFilter) return false;
       if (wq && !(r.wagon_number ?? "").toLowerCase().includes(wq)) return false;
       if (bq && !(r.waybill_number ?? "").toLowerCase().includes(bq)) return false;
@@ -1655,17 +1665,33 @@ export default function RegistryPage() {
   const fwOpts = useMemo(() => refs.forwarders.map((c) => ({ value: c.id, label: c.name })), [refs.forwarders]);
   const ftOpts = useMemo(() => refs.fuelTypes.map((c) => ({ value: c.id, label: c.name })), [refs.fuelTypes]);
   // Доп. приложения — свободный текст, поэтому опции строим из уникальных
-  // значений в загруженных записях (не из справочника).
+  // значений в загруженных записях (не из справочника). Эффективный допик =
+  // per-row appendix → deal contract fallback (см. effSupplier/BuyerAppendix).
+  //
+  // Опции скоупятся под первичные фильтры (кроме самих appendix-фильтров),
+  // чтобы выбор покупателя сузил список допиков до его сделок, а выбор допика
+  // не схлопнул список сам на себя (клиент 2026-07-28: у покупателя аэропорт
+  // Алматы выходил один допик вместо всех его).
+  const facetRecords = useMemo(() => records.filter((r) => {
+    if (forwarderFilter && r.forwarder_id !== forwarderFilter) return false;
+    if (dealFilter && r.deal_id !== dealFilter) return false;
+    if (companyGroupFilter && r.company_group_id !== companyGroupFilter) return false;
+    if (supplierFilter && r.supplier_id !== supplierFilter) return false;
+    if (buyerFilter && r.buyer_id !== buyerFilter) return false;
+    if (fuelTypeFilter && r.fuel_type_id !== fuelTypeFilter) return false;
+    if (shipmentMonthFilter && r.shipment_month !== shipmentMonthFilter) return false;
+    return true;
+  }), [records, forwarderFilter, dealFilter, companyGroupFilter, supplierFilter, buyerFilter, fuelTypeFilter, shipmentMonthFilter]);
   const supplierAppendixOpts = useMemo(() => {
     const set = new Set<string>();
-    for (const r of records) { const v = (r.supplier_appendix ?? "").trim(); if (v) set.add(v); }
+    for (const r of facetRecords) { const v = effSupplierAppendix(r); if (v) set.add(v); }
     return [...set].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
-  }, [records]);
+  }, [facetRecords]);
   const buyerAppendixOpts = useMemo(() => {
     const set = new Set<string>();
-    for (const r of records) { const v = (r.buyer_appendix ?? "").trim(); if (v) set.add(v); }
+    for (const r of facetRecords) { const v = effBuyerAppendix(r); if (v) set.add(v); }
     return [...set].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
-  }, [records]);
+  }, [facetRecords]);
   const stOpts = useMemo(() => refs.stations.map((c) => ({ value: c.id, label: c.name })), [refs.stations]);
   const monthOpts = useMemo(() => MONTHS_RU.map((m) => ({ value: m, label: m })), []);
 
