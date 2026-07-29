@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-29 — Сделка → Реестр: авто-пропагация идентификационных полей
+- **What changed:** новая миграция `00130_propagate_deal_identity_to_registry.sql` — триггер `trg_propagate_deal_identity` на `deals` (AFTER UPDATE) + функция `propagate_deal_identity_to_registry()` + разовый catch-up backfill. Пропагируемые поля (6): `factory_id`, `fuel_type_id`, `supplier_id`, `buyer_id`, `forwarder_id`, и `company_group_id ← deals.logistics_company_group_id`.
+- **Type:** [BEHAVIOR] [SCHEMA]
+- **Before → After:** строки `shipment_registry` хранили копии этих полей, проставленные при создании; изменение сделки вниз НЕ распространялось (в отличие от станций/тарифа 00117/00118). → При изменении любого из 6 полей на сделке все её строки реестра перезаписываются значением сделки (`WHERE field IS DISTINCT FROM NEW.field`, включая NULL-строки). NULL-семантика: перезапись только когда значение сделки НЕ NULL (пустое поле сделки строки не трогает — как в 00118). Catch-up выровнял существующие расхождения: завод=34, ГСМ=139, поставщик=2, покупатель=29, экспедитор=472, группа=355.
+- **Client reason:** «поменял поле Завод в сделке, а в Отгрузках в реестре по этой сделке завод не поменялся».
+- **Rebuild impact:** DATA-MODEL / FIELD-OWNERSHIP — сделка становится источником истины для этих 6 полей в реестре. Пересчётов не вызывает: ни один триггер `shipment_registry` не реагирует на эти колонки (autoprice — volume/date, compute_amount — tariff×volume идемпотентно, reassign_line — station/deal_id, reprice — line_id); рекурсии нет (обратный роллап меняет объёмы/суммы, не identity → WHEN не срабатывает). Проверено 4 behavioral-теста на локальном Postgres (пропагация, no-op на нерелевантных правках, защита NULL, catch-up).
+
 ### 2026-07-28 — Реестр: фильтр по допикам берёт допик со сделки (fallback)
 - **What changed:** `src/lib/hooks/use-registry.ts` — `ShipmentRecord.deal` и `REG_SELECT` теперь включают `supplier_contract`, `buyer_contract`. `src/app/(dashboard)/registry/page.tsx` — новые хелперы `effSupplierAppendix`/`effBuyerAppendix` (row appendix → deal contract fallback); фильтр допиков (`supplierAppendixFilter`/`buyerAppendixFilter`) и построение опций (`supplierAppendixOpts`/`buyerAppendixOpts`) переведены на эффективный допик; опции скоупятся под первичные фильтры (`facetRecords`).
 - **Type:** [BEHAVIOR]
