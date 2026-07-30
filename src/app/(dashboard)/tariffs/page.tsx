@@ -10,6 +10,7 @@ import {
   memo,
 } from "react";
 import { Plus, Filter, Trash2, X, FileSpreadsheet } from "lucide-react";
+import { useQueryState, parseAsInteger } from "nuqs";
 import { toast } from "sonner";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,16 @@ type Tariff = {
   factory_id: string | null;
   norm_days: number | null;
 };
+
+// Stale-while-revalidate cache keyed by year. Workspace tabs remount the
+// page on every switch (each tab is a route); without this the table
+// blanked to a spinner and refetched all tariffs every time
+// (клиент 2026-07-30: «при переключении вкладок всё грузится заново»).
+// Same idiom as useRegistry: paint the last snapshot instantly, revalidate
+// in the background. Filters live in the URL (nuqs) so they ride the tab
+// path and survive the remount too.
+const tariffsCache = new Map<number, { data: Tariff[]; ts: number }>();
+const TARIFFS_TTL_MS = 60_000;
 
 const MONTHS_RU_FULL = [
   "январь", "февраль", "март", "апрель", "май", "июнь",
@@ -532,18 +543,28 @@ function VirtualizedRows({
 }
 
 export default function TariffsPage() {
-  const [tariffs, setTariffs] = useState<Tariff[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
+  // Filters live in the URL (nuqs) so they persist across workspace-tab
+  // switches — each tab stores its path incl. query, and remounting the
+  // page rehydrates the filters from it. throttleMs:0 → the URL updates
+  // synchronously with the keystroke (same as registry/deals).
+  const NUQS_INSTANT = { throttleMs: 0 } as const;
+  const [yearFilter, setYearFilter] = useQueryState(
+    "year",
+    { ...parseAsInteger.withDefault(new Date().getFullYear()), ...NUQS_INSTANT },
+  );
+  const [destFilter, setDestFilter] = useQueryState("dest", { defaultValue: "", ...NUQS_INSTANT });
+  const [depFilter, setDepFilter] = useQueryState("dep", { defaultValue: "", ...NUQS_INSTANT });
+  const [forwarderFilter, setForwarderFilter] = useQueryState("fwd", { defaultValue: "", ...NUQS_INSTANT });
+  const [fuelFilter, setFuelFilter] = useQueryState("fuel", { defaultValue: "", ...NUQS_INSTANT });
+  const [monthFilter, setMonthFilter] = useQueryState("month", { defaultValue: "", ...NUQS_INSTANT });
+  const [factoryFilter, setFactoryFilter] = useQueryState("factory", { defaultValue: "", ...NUQS_INSTANT });
+
+  // Init from the SWR cache so a tab switch repaints instantly instead of
+  // flashing the cold-load skeleton.
+  const [tariffs, setTariffs] = useState<Tariff[]>(() => tariffsCache.get(yearFilter)?.data ?? []);
+  const [loading, setLoading] = useState(() => !tariffsCache.has(yearFilter));
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  // Per-column filters. Each holds the selected id (or month name for month).
-  const [destFilter, setDestFilter] = useState("");
-  const [depFilter, setDepFilter] = useState("");
-  const [forwarderFilter, setForwarderFilter] = useState("");
-  const [fuelFilter, setFuelFilter] = useState("");
-  const [monthFilter, setMonthFilter] = useState("");
-  const [factoryFilter, setFactoryFilter] = useState("");
 
   // Refs come from the global cache — same data, zero per-mount round
   // trips. Stations / forwarders / fuel types / factories are exactly
@@ -558,7 +579,8 @@ export default function TariffsPage() {
   }
 
   async function loadTariffs() {
-    setLoading(true);
+    // Cold years show the skeleton; a cached year revalidates silently.
+    if (!tariffsCache.has(yearFilter)) setLoading(true);
     const sb = createClient();
     // Paginate — a single year can easily exceed PostgREST's
     // Max-Rows=1000 across all (forwarder × route × fuel × month)
@@ -595,11 +617,21 @@ export default function TariffsPage() {
       toast.error("Ошибка загрузки тарифов");
       return;
     }
-    setTariffs(data as unknown as Tariff[]);
+    const rows = data as unknown as Tariff[];
+    tariffsCache.set(yearFilter, { data: rows, ts: Date.now() });
+    setTariffs(rows);
   }
 
   useEffect(() => {
-    loadTariffs();
+    const cached = tariffsCache.get(yearFilter);
+    if (cached) {
+      // Instant repaint from cache; revalidate only if the snapshot is stale.
+      setTariffs(cached.data);
+      setLoading(false);
+      if (Date.now() - cached.ts > TARIFFS_TTL_MS) loadTariffs();
+    } else {
+      loadTariffs();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearFilter]);
 

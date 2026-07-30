@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-30 — Тарифы: фильтры и данные переживают переключение вкладок
+- **What changed:** `src/app/(dashboard)/tariffs/page.tsx` — 7 фильтров (`year` + ст. назначения/отправления, экспедитор, груз, месяц, завод) переведены с локального `useState` на `useQueryState` (nuqs, URL); добавлен module-level SWR-кэш `tariffsCache` по году (60с TTL, паттерн `useRegistry`).
+- **Type:** [PRESENTATION]
+- **Before → After:** воркспейс-вкладки — это роуты; переключение ремонтит страницу. Фильтры Тарифов жили в локальном стейте и терялись, а данные грузились заново со спиннером при каждом возврате на вкладку. → Фильтры лежат в URL (едут в пути вкладки, восстанавливаются при ремонте), данные рисуются из кэша мгновенно + фоновая ревалидация. То же поведение, что уже было у реестра/сделок.
+- **Client reason:** «при переключении вкладок фильтры слетают и всё начинает заново грузиться» (скрин — Тарифы).
+- **Rebuild impact:** presentation only. NB: те же симптомы у `dt-kt`, `spravochnik/stations`, дашборда (`(dashboard)/page.tsx`) — фильтры в локальном стейте; не трогали в этой правке.
+
 ### 2026-07-30 — Дата-формат ДД.ММ.ГГ: добить оставшиеся места (UI + Excel)
 - **What changed:** `src/lib/format.ts` — новый хелпер `formatDMYTime` (ДД.ММ.ГГ, ЧЧ:ММ). Переведены на единый формат: `audit-history.tsx` (fmtTs — таймстамп истории), `deal-activity-feed.tsx` + `activity-feed.tsx` (formatTime — абсолютная дата >7 дней, с временем), `passport-table.tsx` (даты в поповере отгрузок, было ДД.ММ.ГГГГ), `registry/page.tsx` + `bulk-add-dialog.tsx` (сырые ISO-даты в детализации/превью), `price-report.tsx` (`snt_date`/`loading_date`). Excel-выгрузки: `registry-excel.ts` (numFmt `dd.mm.yyyy`→`dd.mm.yy`, + `loading_date` теперь тоже реальная дата с этим форматом), `quotations-excel.ts` (`DD.MM.YYYY`→`DD.MM.YY`), `passport-detail-excel.ts` (`fmtDate` 4→2-значный год, + ячейки СНТ вход./исход. форматируются, а не сырой ISO).
 - **Type:** [PRESENTATION]
