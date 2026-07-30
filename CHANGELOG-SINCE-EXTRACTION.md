@@ -26,6 +26,16 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-30 — ДТ-КТ Логистика: разворот знака сальдо (− = нам должны)
+- **What changed:** `src/app/(dashboard)/dt-kt/page.tsx` — `computeSaldo` перевёрнут на противоположный знак. Новая миграция `00133_dtkt_flip_saldo_sign_convention.sql` — разовый флип знака хранимого `dt_kt_logistics.opening_balance` (14 строк).
+- **Type:** [FORMULA] [PRESENTATION]
+- **Before → After:**
+  - Формула сальдо (UI): `opening + payment − shipped − fines − surcharge − ogem − refund` («+ = нам должны») → `opening − payment + shipped + fines + surcharge + ogem + refund` («− = нам должны, + = мы должны»). Это ровно минус прежней формулы.
+  - `opening_balance`: разово × (−1), чтобы колонка «Сальдо на 1 янв.» была в той же конвенции. Смысл записей сохранён (нам должны 257 617,55: было +257617.55 → стало −257617.55).
+  - Цвет уже был `saldo<0 → красный`, теперь красным подсвечивается «нам должны».
+- **Client reason:** «сальдо должно быть минусовым и красным, если должны нам; плюсовым, если мы должны». Разворот решения 2026-07-22 «не трогаем».
+- **Rebuild impact:** DATA-MODEL / FIELD-OWNERSHIP — знак `opening_balance` теперь в конвенции «− = нам должны». Сальдо в БД не хранится (UI-only); `compute_dt_kt_balance` (00011) не используется; других потребителей `opening_balance` нет. Флип разовый — НЕ применять миграцию повторно.
+
 ### 2026-07-30 — Реестр: тариф пересматривается при смене «Месяц отгрузки»
 - **What changed:** новая миграция `00132_reresolve_tariff_on_shipment_month_change.sql` — триггер `trg_month_reresolve_tariff` (BEFORE UPDATE на `shipment_registry`, `WHEN shipment_month изменился`) + функция `reresolve_registry_tariff_on_month_change()`.
 - **Type:** [FORMULA] [BEHAVIOR]

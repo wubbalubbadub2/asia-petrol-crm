@@ -96,8 +96,14 @@ function InlineDtText({ value, onSave, placeholder = "" }: { value: string | nul
 // payment передаётся отдельно: это сумма строк dt_kt_payments (см.
 // paymentOf), а не хранимая row.payment — иначе сальдо считалось бы от
 // устаревшего итога оплат.
+//
+// Конвенция знака (клиент 2026-07-30, разворот решения 2026-07-22):
+//   «− = нам должны (красным) / + = мы должны».
+// Раньше было «+ = нам должны». Формула = минус прежней; opening_balance
+// разово перевёрнут миграцией 00133, поэтому здесь берётся как есть (уже
+// в новой конвенции: нам должны → отрицательный).
 function computeSaldo(row: DtKtRecord, shipped: number, payment: number) {
-  return n(row.opening_balance) + payment - shipped - n(row.fines) - n(row.surcharge_preliminary) - n(row.ogem) - n(row.refund);
+  return n(row.opening_balance) - payment + shipped + n(row.fines) + n(row.surcharge_preliminary) + n(row.ogem) + n(row.refund);
 }
 
 // --- Add Dialog with multiple payments ---
