@@ -15,10 +15,13 @@
 -- но месяц стоял «май» → тянулся майский 68.62 вместо июньского 66.18.
 --
 -- Правило (утв. клиентом): при изменении shipment_month заново подобрать
--- railway_tariff по тому же 6-ключу с НОВЫМ месяцем. Найдено → проставить
--- и снять флаг ручного ввода (railway_tariff_override=FALSE): тариф снова
--- управляется справочником. Не найдено (для нового месяца тарифа нет) →
--- строку не трогаем (не обнуляем существующее значение).
+-- railway_tariff по тому же 6-ключу с НОВЫМ месяцем. Найдено → проставить.
+-- Не найдено (для нового месяца тарифа нет) → строку не трогаем.
+--
+-- Ручные строки не трогаем: если railway_tariff_override = TRUE (тариф
+-- введён вручную в реестре), пересмотр НЕ выполняется — та же семантика,
+-- что у propagation 00117 («справочник главный, но ручной ввод главнее»).
+-- Клиент 2026-07-30: «то, что изменено вручную, вообще не трогаем».
 --
 -- Порядок BEFORE-триггеров: имя trg_month_reresolve_tariff намеренно
 -- сортируется РАНЬШЕ trg_registry_compute_amount (Postgres выполняет
@@ -33,6 +36,11 @@ DECLARE
   v_tariff NUMERIC;
   v_dep UUID; v_dest UUID; v_fuel UUID; v_fwd UUID; v_month TEXT; v_year INT;
 BEGIN
+  -- Ручной тариф не трогаем (как в 00117).
+  IF COALESCE(NEW.railway_tariff_override, FALSE) THEN
+    RETURN NEW;
+  END IF;
+
   SELECT
     COALESCE(NEW.departure_station_id,   d.supplier_departure_station_id),
     COALESCE(NEW.destination_station_id, d.buyer_destination_station_id),
@@ -59,7 +67,6 @@ BEGIN
 
   IF v_tariff IS NOT NULL THEN
     NEW.railway_tariff := v_tariff;
-    NEW.railway_tariff_override := FALSE;
   END IF;
 
   RETURN NEW;
