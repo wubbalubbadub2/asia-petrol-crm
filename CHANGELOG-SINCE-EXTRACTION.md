@@ -26,6 +26,15 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-30 — Реестр: тариф пересматривается при смене ЛЮБОГО поля ключа + catch-up
+- **What changed:** миграция `00134_reresolve_tariff_on_any_key_change.sql` — обобщает триггер пересмотра тарифа (заменяет `trg_month_reresolve_tariff` из 00132 на `trg_key_reresolve_tariff`) + разовый catch-up.
+- **Type:** [FORMULA] [BEHAVIOR] (data heal)
+- **Before → After:**
+  - Триггер: пересмотр `railway_tariff` срабатывал только при смене `shipment_month` (00132). → Срабатывает при смене ЛЮБОГО поля ключа тарифа: `shipment_month`, `forwarder_id`, `departure_station_id`, `destination_station_id`, `fuel_type_id`, `deal_id`. Ручные строки (`override=TRUE`) по-прежнему не трогаются. Имя сортируется раньше `trg_registry_compute_amount` → сумма пересчитывается.
+  - Catch-up: 99 не-ручных строк держали тариф, отличный от справочника (KG/26/348: 8 строк с 76.64 при справочном 75.43). Причина — 00130 залила `forwarder_id` сделки, а тариф при смене forwarder не пересматривался. Выровнено по справочнику (233 ключа уникальны, дублей нет).
+- **Client reason:** «в KG/26/348 за июнь стоят разные тарифы, хотя месяц и дата отгрузки — июнь».
+- **Rebuild impact:** PRICING — для не-ручных строк тариф = справочник по полному ключу, пересматривается при любом изменении ключа (не только месяца). Проверено 3 behavioral-теста на локальном Postgres (смена forwarder→тариф+сумма; ручная строка не тронута; catch-up выровнял стухшую строку).
+
 ### 2026-07-30 — ДТ-КТ Логистика: разворот знака сальдо (− = нам должны)
 - **What changed:** `src/app/(dashboard)/dt-kt/page.tsx` — `computeSaldo` перевёрнут на противоположный знак. Новая миграция `00133_dtkt_flip_saldo_sign_convention.sql` — разовый флип знака хранимого `dt_kt_logistics.opening_balance` (14 строк).
 - **Type:** [FORMULA] [PRESENTATION]
