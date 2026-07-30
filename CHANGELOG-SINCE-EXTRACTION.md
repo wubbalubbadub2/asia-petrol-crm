@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-30 — Реестр: тариф пересматривается при смене «Месяц отгрузки»
+- **What changed:** новая миграция `00132_reresolve_tariff_on_shipment_month_change.sql` — триггер `trg_month_reresolve_tariff` (BEFORE UPDATE на `shipment_registry`, `WHEN shipment_month изменился`) + функция `reresolve_registry_tariff_on_month_change()`.
+- **Type:** [FORMULA] [BEHAVIOR]
+- **Before → After:** `railway_tariff` подбирался из справочника `tariffs` только при вставке строки и при изменении справочника (00117); ручная смена «Месяц отгрузки» на существующей строке тариф НЕ пересматривала → отгрузка 07.06 с месяцем «май» держала майский 68.62 вместо июньского 66.18. **After:** при изменении `shipment_month` тариф заново подбирается по 6-ключу `departure + destination + fuel + forwarder + month(новый) + year(сделки)` (тот же ключ, что 00047/00117). Найдено → `railway_tariff` = найденный, `railway_tariff_override` = FALSE (снова управляется справочником). Не найдено → строка не трогается (не обнуляем). Имя триггера сортируется раньше `trg_registry_compute_amount`, поэтому `shipped_tonnage_amount` пересчитывается уже по новому тарифу.
+- **Client reason:** «нужно брать тариф смотря на месяц отгрузки; если месяц отгрузки меняется — должен меняться тариф» (KG/26/338).
+- **Rebuild impact:** PRICING / ACCEPTANCE-SCENARIOS — тариф в реестре теперь функция от `shipment_month` не только на вставке, но и на правке. Месяц по-прежнему берётся из поля «Месяц отгрузки», а не из даты `date` (сознательно — логистический месяц может отличаться от календарной даты). Проверено 4 behavioral-теста на локальном Postgres (смена месяца→тариф+override+пересчёт суммы; нет тарифа→не трогаем; не-месячная правка→не трогаем; возврат месяца→возврат тарифа).
+
 ### 2026-07-30 — Тарифы: фильтры и данные переживают переключение вкладок
 - **What changed:** `src/app/(dashboard)/tariffs/page.tsx` — 7 фильтров (`year` + ст. назначения/отправления, экспедитор, груз, месяц, завод) переведены с локального `useState` на `useQueryState` (nuqs, URL); добавлен module-level SWR-кэш `tariffsCache` по году (60с TTL, паттерн `useRegistry`).
 - **Type:** [PRESENTATION]
