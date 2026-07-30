@@ -184,7 +184,7 @@ const COLUMNS: Column[] = [
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
   // С 00119 дата входящего СНТ — собственная колонка loading_date
   // (правило «дата только при своём тоннаже» теперь живёт в данных).
-  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => s.ship?.loading_date ?? "" },
+  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.ship?.loading_date ? fmtDate(s.ship.loading_date) : "") },
   // Per-wagon shipped amount mirrors the client's template formula
   // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount,
@@ -219,7 +219,7 @@ const COLUMNS: Column[] = [
   // NB: regular passport export keeps the old shipped−ordered sign.
   { key: "buyer_remainder", header: "Остаток, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => (d.buyer_ordered_volume ?? 0) - (d.buyer_shipped_volume ?? 0) },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume, readShip: (_, s) => s.ship?.shipment_volume ?? null },
-  { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.ship?.shipment_volume != null ? s.ship.date ?? "" : "") },
+  { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.ship?.shipment_volume != null && s.ship?.date ? fmtDate(s.ship.date) : "") },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount,
     readShip: (d, s) => {
       const price = s.ship?.fx_buyer_price ?? d.buyer_price;
@@ -284,7 +284,7 @@ function blendArgbWithFuel(baseArgb: string, fuelHex: string | null | undefined,
 // почти пустой ручной TEXT, 7 заполненных на 792 сделки). Несколько
 // платежей на сторону → список дат dd.mm.yyyy через запятую.
 function fmtDate(iso: string): string {
-  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}`;
 }
 
 type DealPayments = { supplier: PaymentLite[]; buyer: PaymentLite[] };

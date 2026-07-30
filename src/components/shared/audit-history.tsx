@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { formatDMY } from "@/lib/format";
+import { formatDMY, formatDMYTime } from "@/lib/format";
 
 // One row as stored in the audit_log table (loose typing — JSONB columns
 // don't round-trip through our generated Database types cleanly).
@@ -44,10 +44,7 @@ const OP_COLOR: Record<AuditRow["op"], string> = {
 };
 
 function fmtTs(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-  });
+  return formatDMYTime(iso);
 }
 
 function fmtCellValue(v: unknown): string {

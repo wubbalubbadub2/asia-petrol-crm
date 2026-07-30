@@ -219,11 +219,11 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
       // Date columns are stored as ISO strings (yyyy-mm-dd). Convert
       // to a real Date so Excel formats and sorts by chronology rather
       // than lexicographic string order.
-      if (col.key === "date" && typeof v === "string" && v) {
+      if ((col.key === "date" || col.key === "loading_date") && typeof v === "string" && v) {
         const d = new Date(v);
         if (!Number.isNaN(d.getTime())) {
           cell.value = d;
-          cell.numFmt = "dd.mm.yyyy";
+          cell.numFmt = "dd.mm.yy";
         } else {
           cell.value = v;
         }

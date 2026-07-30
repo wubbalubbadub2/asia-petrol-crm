@@ -1,4 +1,5 @@
 import type { PriceRow } from "@/lib/hooks/use-fx-reports";
+import { formatDMY } from "@/lib/format";
 
 const fmt = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
@@ -43,8 +44,8 @@ export function PriceReport({ rows }: { rows: PriceRow[] }) {
               <tr key={`${r.deal_code}-${i}`} className="border-b border-stone-100 hover:bg-stone-50">
                 <td className="border-r border-stone-100 px-2 py-1 font-mono text-stone-700">{r.deal_code}</td>
                 <td className="border-r border-stone-100 px-2 py-1 text-stone-700">{r.deal_type}</td>
-                <td className="border-r border-stone-100 px-2 py-1 text-stone-500">{r.snt_date ?? "—"}</td>
-                <td className="border-r border-stone-100 px-2 py-1 text-stone-500">{r.loading_date ?? "—"}</td>
+                <td className="border-r border-stone-100 px-2 py-1 text-stone-500">{r.snt_date ? formatDMY(r.snt_date) : "—"}</td>
+                <td className="border-r border-stone-100 px-2 py-1 text-stone-500">{r.loading_date ? formatDMY(r.loading_date) : "—"}</td>
                 <td className="border-r border-stone-100 px-2 py-1 text-right font-mono tabular-nums text-stone-700">{fmt(r.supplier_price_usd)}</td>
                 <td className="border-r border-stone-100 px-2 py-1 text-right font-mono tabular-nums text-stone-700">{fmt(r.supplier_price_kzt)}</td>
                 <td className="border-r border-stone-100 px-2 py-1 text-right font-mono tabular-nums text-stone-700">{fmt(r.buyer_price_usd)}</td>

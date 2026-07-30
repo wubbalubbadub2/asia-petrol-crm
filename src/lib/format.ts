@@ -74,3 +74,21 @@ export function formatDMY(v: string | null | undefined): string {
   const yy = String(d.getFullYear()).slice(2);
   return `${dd}.${mm}.${yy}`;
 }
+
+/**
+ * Дата + время: «ДД.ММ.ГГ, ЧЧ:ММ» (24ч, локальная зона браузера) — для
+ * таймстампов в лентах активности и истории изменений, где нужна и дата в
+ * едином формате ДД.ММ.ГГ, и время события. Всегда через `new Date`, т.к.
+ * нужен локальный час/минута. null/undefined/невалид → "".
+ */
+export function formatDMYTime(v: string | null | undefined): string {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(2);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}.${mm}.${yy}, ${hh}:${mi}`;
+}

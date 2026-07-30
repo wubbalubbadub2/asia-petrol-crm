@@ -26,6 +26,20 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-07-30 — Дата-формат ДД.ММ.ГГ: добить оставшиеся места (UI + Excel)
+- **What changed:** `src/lib/format.ts` — новый хелпер `formatDMYTime` (ДД.ММ.ГГ, ЧЧ:ММ). Переведены на единый формат: `audit-history.tsx` (fmtTs — таймстамп истории), `deal-activity-feed.tsx` + `activity-feed.tsx` (formatTime — абсолютная дата >7 дней, с временем), `passport-table.tsx` (даты в поповере отгрузок, было ДД.ММ.ГГГГ), `registry/page.tsx` + `bulk-add-dialog.tsx` (сырые ISO-даты в детализации/превью), `price-report.tsx` (`snt_date`/`loading_date`). Excel-выгрузки: `registry-excel.ts` (numFmt `dd.mm.yyyy`→`dd.mm.yy`, + `loading_date` теперь тоже реальная дата с этим форматом), `quotations-excel.ts` (`DD.MM.YYYY`→`DD.MM.YY`), `passport-detail-excel.ts` (`fmtDate` 4→2-значный год, + ячейки СНТ вход./исход. форматируются, а не сырой ISO).
+- **Type:** [PRESENTATION]
+- **Before → After:** остаточные места показывали дату как «17 июн, 14:30», ДД.ММ.ГГГГ или сырой `YYYY-MM-DD` → везде ДД.ММ.ГГ (таймстампы лент/аудита — ДД.ММ.ГГ, ЧЧ:ММ, время сохранено).
+- **Client reason:** «all dates should be in the format dd.mm.yy» (добор к правилу от 2026-07-24).
+- **Rebuild impact:** presentation only (форматирование отображения; значения дат в БД не трогали, input[type=date] остаются ISO).
+
+### 2026-07-30 — Fix: KG/26/191 застрявшая «Сумма отгрузки» (роллап)
+- **What changed:** новая миграция `00131_reheal_shipment_price_totals.sql` — пере-прогон существующего роллапа `refresh_deal_price_totals` (00030) по всем сделкам с ценами.
+- **Type:** [BEHAVIOR] (data heal)
+- **Before → After:** `deals.buyer_shipped_amount` для KG/26/191 = 404 010,50 (застряло на одну отгрузку меньше: не хватало строки 62,880 т = 31 440,00). → 435 450,50 = 870,901 × 500 (совпадает с вариант-строкой и SUM всех 14 `deal_shipment_prices`). `buyer_debt` пере-считается BEFORE-триггером: 31 440 переплата → 0. Масштаб: 1 сделка из 871 (supplier-сторона консистентна) — единичный застрявший роллап, не дефект логики (функция 00030 суммирует amount без WHEN-гардов). Идемпотентно: no-op для остальных 870 сделок.
+- **Client reason:** «сумма отгрузки 404 010,50 — откуда? 870,901 × 500 ≠ 404 010,50».
+- **Rebuild impact:** presentation/data-heal — источник истины (`deal_shipment_prices`) уже верный; чинится только застрявший роллап на `deals`.
+
 ### 2026-07-29 — Сделка → Реестр: авто-пропагация идентификационных полей
 - **What changed:** новая миграция `00130_propagate_deal_identity_to_registry.sql` — триггер `trg_propagate_deal_identity` на `deals` (AFTER UPDATE) + функция `propagate_deal_identity_to_registry()` + разовый catch-up backfill. Пропагируемые поля (6): `factory_id`, `fuel_type_id`, `supplier_id`, `buyer_id`, `forwarder_id`, и `company_group_id ← deals.logistics_company_group_id`.
 - **Type:** [BEHAVIOR] [SCHEMA]

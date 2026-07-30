@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, MessageSquare, DollarSign, Truck, FileText, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDealActivity, type ActivityMessage } from "@/lib/hooks/use-deal-activity";
+import { formatDMYTime } from "@/lib/format";
 
 const TYPE_CONFIG: Record<string, { icon: typeof MessageSquare; color: string; bg: string }> = {
   comment: { icon: MessageSquare, color: "text-amber-600", bg: "bg-amber-100" },
@@ -29,7 +30,7 @@ function formatTime(dateStr: string): string {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays} дн назад`;
 
-  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return formatDMYTime(dateStr);
 }
 
 function ActivityItem({ msg }: { msg: ActivityMessage }) {

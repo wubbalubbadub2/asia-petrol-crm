@@ -40,7 +40,7 @@ type QuotationRow = {
 
 // Клиент 2026-07-09: у котировок 3 знака после запятой в экспорте.
 const NUM_FMT_PRICE = "#,##0.000";
-const NUM_FMT_DATE = "DD.MM.YYYY";
+const NUM_FMT_DATE = "DD.MM.YY";
 const HEADER_BG = "FF1C1917";
 const HEADER_TEXT = "FFFAFAF9";
 

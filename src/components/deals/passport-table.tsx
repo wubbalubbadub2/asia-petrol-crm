@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
+import { formatDMY } from "@/lib/format";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -33,7 +34,7 @@ function shipmentLines(
       const v = (s[field] as number).toLocaleString("ru-RU", {
         minimumFractionDigits: 3, maximumFractionDigits: 3,
       });
-      const d = s.date ? s.date.slice(0, 10).split("-").reverse().join(".") : "—";
+      const d = s.date ? formatDMY(s.date) : "—";
       return `${d}: ${v}`;
     });
   if (rows.length === 0) return "Нет отгрузок";

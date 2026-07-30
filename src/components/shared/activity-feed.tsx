@@ -5,6 +5,7 @@ import { Send, MessageSquare, DollarSign, Truck, FileText, Settings } from "luci
 import { Button } from "@/components/ui/button";
 import { type ActivityMessage } from "@/lib/hooks/use-deal-activity";
 import { currencySymbol } from "@/lib/constants/currencies";
+import { formatDMYTime } from "@/lib/format";
 
 function formatAmount(n: number): string {
   // Money canon 2026-07-07: always 2 decimals.
@@ -155,7 +156,7 @@ function formatTime(dateStr: string): string {
   if (mins < 60) return `${mins} мин назад`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs} ч назад`;
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return formatDMYTime(dateStr);
 }
 
 export function ActivityFeed({ messages, loading, sendMessage }: {

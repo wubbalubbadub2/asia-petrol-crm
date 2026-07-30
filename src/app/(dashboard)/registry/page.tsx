@@ -1189,7 +1189,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                         <td className="px-2 py-0.5 text-stone-400">{i + 1}</td>
                         <td className="px-2 py-0.5 font-mono">{p.wagon || <span className="text-red-500">(пусто)</span>}</td>
                         <td className="px-2 py-0.5 font-mono text-right">{p.volume != null ? p.volume.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : "—"}</td>
-                        <td className="px-2 py-0.5 text-stone-500">{p.date ?? "—"}</td>
+                        <td className="px-2 py-0.5 text-stone-500">{p.date ? formatDMY(p.date) : "—"}</td>
                         <td className="px-2 py-0.5 font-mono text-stone-500">{p.waybill ?? "—"}</td>
                         <td className="px-2 py-0.5 text-red-600 text-[10px]">{p.error ?? ""}</td>
                       </tr>
