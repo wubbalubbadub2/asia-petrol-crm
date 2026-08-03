@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-08-03 — Excel-экспорты: даты детального паспорта — настоящие Date-ячейки
+- **What changed:** `src/lib/exports/passport-detail-excel.ts` — 6 колонок-дат («Дата вход. СНТ», «Дата оплаты» ×2, «Дата исход. СНТ», «Плановая дата оплаты Прод./Покуп.» в варианте «долги») перестали писаться текстом `fmtDate` (dd.mm.yy-строка) и пишутся Date (UTC-полночь) с `numFmt: "dd.mm.yy"`; хелпер `excelDate` экспортирован. Регресс-тест `src/__tests__/export-date-cells.test.ts`.
+- **Type:** [EXPORT] [PRESENTATION]
+- **Before → After:** текстовая ячейка «08.07.26» → date-typed ячейка 2026-07-08 с форматом отображения dd.mm.yy. Отображаемое значение не меняется; сортировка становится хронологической, автофильтр Excel группирует по году/месяцу.
+- **Client reason:** «даты не сохраняются в формате даты — не можем фильтровать дату по месяцу». Аудит всех 4 экспорт-модулей: registry-excel и quotations-excel уже писали Date (свип 2026-07-30, `9e4e433`), passport-excel дат не содержит — оставался только детальный паспорт.
+- **Rebuild impact:** presentation only (формат ячеек выгрузки; данные и формулы не меняются).
+
 ### 2026-08-01 — Создание сделки: дефолт «Тип цены» обратно на формульный
 - **What changed:** `src/components/deals/deal-create-variants.tsx` — дефолт `priceMode` в `DEFAULT_VARIANT` (строка ~82).
 - **Type:** [UI-FIELD] [BEHAVIOR]

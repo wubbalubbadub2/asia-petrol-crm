@@ -93,9 +93,9 @@ type Column = {
   width: number;
   band: "deal" | "supplier" | "groups" | "buyer" | "logistics" | "debt";
   numFmt?: string;
-  read: (deal: Deal) => string | number | null | undefined;
+  read: (deal: Deal) => string | number | Date | null | undefined;
   // Sub-row value. Omitted → cell stays empty on sub-rows.
-  readShip?: (deal: Deal, s: SubRow) => string | number | null | undefined;
+  readShip?: (deal: Deal, s: SubRow) => string | number | Date | null | undefined;
   // debt-variant only: red/bold highlight on the sub-row cell when true.
   redIf?: (deal: Deal, s: SubRow) => boolean;
 };
@@ -103,6 +103,7 @@ type Column = {
 const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_PRICE = "#,##0.00";
+const NUM_FMT_DATE = "dd.mm.yy";
 
 const MONTHS_RU = [
   "январь", "февраль", "март", "апрель", "май", "июнь",
@@ -184,7 +185,7 @@ const COLUMNS: Column[] = [
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
   // С 00119 дата входящего СНТ — собственная колонка loading_date
   // (правило «дата только при своём тоннаже» теперь живёт в данных).
-  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.ship?.loading_date ? fmtDate(s.ship.loading_date) : "") },
+  { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.ship?.loading_date ? excelDate(s.ship.loading_date) : "") },
   // Per-wagon shipped amount mirrors the client's template formula
   // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount,
@@ -193,7 +194,7 @@ const COLUMNS: Column[] = [
       return price != null && s.ship?.loading_volume != null ? price * s.ship.loading_volume : null;
     } },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment, readShip: (_, s) => s.supPay?.amount ?? null },
-  { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? fmtDate(s.supPay.payment_date) : "") },
+  { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? excelDate(s.supPay.payment_date) : "") },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
   // ── Группы компании ────────────────────────────────────
@@ -219,14 +220,14 @@ const COLUMNS: Column[] = [
   // NB: regular passport export keeps the old shipped−ordered sign.
   { key: "buyer_remainder", header: "Остаток, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => (d.buyer_ordered_volume ?? 0) - (d.buyer_shipped_volume ?? 0) },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume, readShip: (_, s) => s.ship?.shipment_volume ?? null },
-  { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.ship?.shipment_volume != null && s.ship?.date ? fmtDate(s.ship.date) : "") },
+  { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.ship?.shipment_volume != null && s.ship?.date ? excelDate(s.ship.date) : "") },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount,
     readShip: (d, s) => {
       const price = s.ship?.fx_buyer_price ?? d.buyer_price;
       return price != null && s.ship?.shipment_volume != null ? price * s.ship.shipment_volume : null;
     } },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment, readShip: (_, s) => s.buyPay?.amount ?? null },
-  { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", read: () => "", readShip: (_, s) => (s.buyPay?.payment_date ? fmtDate(s.buyPay.payment_date) : "") },
+  { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.buyPay?.payment_date ? excelDate(s.buyPay.payment_date) : "") },
   { key: "buyer_debt", header: "Долг / переплата", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_debt },
 
   // ── Логистика ──────────────────────────────────────────
@@ -279,12 +280,12 @@ function blendArgbWithFuel(baseArgb: string, fuelHex: string | null | undefined,
   return `FF${hex(mix(br, fr))}${hex(mix(bg, fg))}${hex(mix(bb, fb))}`;
 }
 
-// «Дата оплаты» — реальные даты платежей из deal_payments (клиент
-// 2026-07-14: «даты оплат не прогрузились» — deals.*_payment_date это
-// почти пустой ручной TEXT, 7 заполненных на 792 сделки). Несколько
-// платежей на сторону → список дат dd.mm.yyyy через запятую.
-function fmtDate(iso: string): string {
-  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}`;
+// Дата-ячейки пишутся настоящим Date (UTC-полночь), не текстом —
+// клиент 2026-08-03: «не можем фильтровать дату по месяцу». Excel
+// группирует автофильтр по году/месяцу только у date-typed ячеек;
+// отображение dd.mm.yy задаёт NUM_FMT_DATE на колонке.
+export function excelDate(iso: string): Date {
+  return new Date(iso.slice(0, 10) + "T00:00:00Z");
 }
 
 type DealPayments = { supplier: PaymentLite[]; buyer: PaymentLite[] };
@@ -419,13 +420,13 @@ const DEBT_COLUMNS: Column[] = [
   { key: "sup_defer_days", header: "Отсрочка платежа Прод., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.supplier_deferral_days ?? "" },
   { key: "sup_defer_basis", header: "Дата начала отсрочки (Прод.)", width: 16, band: "debt", read: () => "",
     readShip: (d) => d.supplier_deferral_mode === "shipment" ? "с даты отгрузки" : d.supplier_deferral_mode === "other" ? (d.supplier_deferral_note ?? "прочее") : "" },
-  { key: "sup_planned", header: "Плановая дата оплаты Прод.", width: 14, band: "debt", read: () => "",
-    readShip: (d, s) => { const p = supplierPlanned(d, s); return p ? fmtDate(p) : ""; }, redIf: (d, s) => supplierOverdue(d, s) },
+  { key: "sup_planned", header: "Плановая дата оплаты Прод.", width: 14, band: "debt", numFmt: NUM_FMT_DATE, read: () => "",
+    readShip: (d, s) => { const p = supplierPlanned(d, s); return p ? excelDate(p) : ""; }, redIf: (d, s) => supplierOverdue(d, s) },
   { key: "buy_defer_days", header: "Отсрочка платежа Покуп., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.buyer_deferral_days ?? "" },
   { key: "buy_defer_basis", header: "Дата начала отсрочки (Покуп.)", width: 16, band: "debt", read: () => "",
     readShip: (d) => d.buyer_deferral_mode === "shipment" ? "с даты отгрузки" : d.buyer_deferral_mode === "other" ? (d.buyer_deferral_note ?? "прочее") : "" },
-  { key: "buy_planned", header: "Плановая дата оплаты Покуп.", width: 14, band: "debt", read: () => "",
-    readShip: (d, s) => { const p = buyerPlanned(d, s); return p ? fmtDate(p) : ""; }, redIf: (d, s) => buyerOverdue(d, s) },
+  { key: "buy_planned", header: "Плановая дата оплаты Покуп.", width: 14, band: "debt", numFmt: NUM_FMT_DATE, read: () => "",
+    readShip: (d, s) => { const p = buyerPlanned(d, s); return p ? excelDate(p) : ""; }, redIf: (d, s) => buyerOverdue(d, s) },
 ];
 
 export async function exportPassportDetailToExcel(
@@ -786,3 +787,7 @@ export async function exportPassportDetailToExcel(
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// Для регрессионных тестов (src/__tests__/export-date-cells.test.ts):
+// колонки-даты обязаны отдавать Date-ячейки, не текст.
+export { COLUMNS as DETAIL_COLUMNS, DEBT_COLUMNS };
