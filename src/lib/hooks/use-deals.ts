@@ -19,7 +19,11 @@ export type Deal = {
   avg_month_date: string | null;
   sulfur_percent: string | null;
   supplier_id: string | null;
+  // supplier_contract — это НОМЕР ПРИЛОЖЕНИЯ (в UI так и подписан);
+  // supplier_contract_number — номер самого договора (00135), живёт
+  // только в карточке сделки и в паспорта не выгружается.
   supplier_contract: string | null;
+  supplier_contract_number: string | null;
   supplier_contracted_volume: number | null;
   supplier_contracted_amount: number | null;
   supplier_delivery_basis: string | null;
@@ -31,11 +35,17 @@ export type Deal = {
   supplier_shipped_amount: number | null;
   supplier_shipped_volume: number | null;
   supplier_payment: number | null;
+  // 00137: «Оплата» в паспорте — это брутто, возвраты и перезачёты
+  // живут отдельной колонкой. supplier_payment остаётся НЕТТО
+  // (= gross − refund) и кормит формулу баланса.
+  supplier_payment_gross: number | null;
+  supplier_refund_total: number | null;
   supplier_payment_date: string | null;
   supplier_balance: number | null;
   supplier_departure_station_id: string | null;
   buyer_id: string | null;
   buyer_contract: string | null;
+  buyer_contract_number: string | null;
   buyer_delivery_basis: string | null;
   buyer_destination_station_id: string | null;
   buyer_contracted_volume: number | null;
@@ -51,6 +61,8 @@ export type Deal = {
   buyer_ship_date: string | null;
   buyer_shipped_amount: number | null;
   buyer_payment: number | null;
+  buyer_payment_gross: number | null;
+  buyer_refund_total: number | null;
   buyer_payment_date: string | null;
   buyer_debt: number | null;
   supplier_deferral_days: number | null;
@@ -336,13 +348,15 @@ const LIST_SELECT = `
   supplier_contracted_volume, supplier_contracted_amount, supplier_price,
   supplier_quotation, supplier_discount,
   supplier_shipped_amount, supplier_shipped_volume,
-  supplier_payment, supplier_payment_date, supplier_balance,
+  supplier_payment, supplier_payment_gross, supplier_refund_total,
+  supplier_payment_date, supplier_balance,
   supplier_currency, supplier_manager_id,
   buyer_id, buyer_contract, buyer_delivery_basis,
   buyer_contracted_volume, buyer_contracted_amount, buyer_price,
   buyer_quotation, buyer_discount,
   buyer_ordered_volume, buyer_shipped_volume, buyer_shipped_amount,
-  buyer_payment, buyer_payment_date, buyer_debt,
+  buyer_payment, buyer_payment_gross, buyer_refund_total,
+  buyer_payment_date, buyer_debt,
   buyer_currency, buyer_manager_id, trader_id,
   buyer_destination_station_id, supplier_departure_station_id,
   forwarder_id, logistics_company_group_id, logistics_shipment_month,

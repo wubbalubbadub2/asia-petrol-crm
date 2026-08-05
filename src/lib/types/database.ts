@@ -638,6 +638,8 @@ export type Database = {
           created_at: string | null
           deal_id: string
           delivery_basis: string | null
+          delivery_basis_id: string | null
+          delivery_basis_note: string | null
           destination_station_id: string | null
           discount: number | null
           fx_rate: number | null
@@ -666,6 +668,8 @@ export type Database = {
           created_at?: string | null
           deal_id: string
           delivery_basis?: string | null
+          delivery_basis_id?: string | null
+          delivery_basis_note?: string | null
           destination_station_id?: string | null
           discount?: number | null
           fx_rate?: number | null
@@ -696,6 +700,8 @@ export type Database = {
           created_at?: string | null
           deal_id?: string
           delivery_basis?: string | null
+          delivery_basis_id?: string | null
+          delivery_basis_note?: string | null
           destination_station_id?: string | null
           discount?: number | null
           fx_rate?: number | null
@@ -969,6 +975,8 @@ export type Database = {
           created_at: string | null
           deal_id: string
           delivery_basis: string | null
+          delivery_basis_id: string | null
+          delivery_basis_note: string | null
           departure_station_id: string | null
           discount: number | null
           fx_rate: number | null
@@ -997,6 +1005,8 @@ export type Database = {
           created_at?: string | null
           deal_id: string
           delivery_basis?: string | null
+          delivery_basis_id?: string | null
+          delivery_basis_note?: string | null
           departure_station_id?: string | null
           discount?: number | null
           fx_rate?: number | null
@@ -1027,6 +1037,8 @@ export type Database = {
           created_at?: string | null
           deal_id?: string
           delivery_basis?: string | null
+          delivery_basis_id?: string | null
+          delivery_basis_note?: string | null
           departure_station_id?: string | null
           discount?: number | null
           fx_rate?: number | null
@@ -1082,6 +1094,7 @@ export type Database = {
           archived_at: string | null
           avg_month_date: string | null
           buyer_contract: string | null
+          buyer_contract_number: string | null
           buyer_contracted_amount: number | null
           buyer_contracted_volume: number | null
           buyer_currency: string
@@ -1095,12 +1108,14 @@ export type Database = {
           buyer_ordered_volume: number | null
           buyer_payment: number | null
           buyer_payment_date: string | null
+          buyer_payment_gross: number | null
           buyer_price: number | null
           buyer_price_condition:
             | Database["public"]["Enums"]["price_condition"]
             | null
           buyer_quotation: number | null
           buyer_quotation_comment: string | null
+          buyer_refund_total: number | null
           buyer_remaining: number | null
           buyer_ship_date: string | null
           buyer_shipped_amount: number | null
@@ -1133,6 +1148,7 @@ export type Database = {
           sulfur_percent: string | null
           supplier_balance: number | null
           supplier_contract: string | null
+          supplier_contract_number: string | null
           supplier_contracted_amount: number | null
           supplier_contracted_volume: number | null
           supplier_currency: string
@@ -1143,12 +1159,14 @@ export type Database = {
           supplier_manager_id: string | null
           supplier_payment: number | null
           supplier_payment_date: string | null
+          supplier_payment_gross: number | null
           supplier_price: number | null
           supplier_price_condition:
             | Database["public"]["Enums"]["price_condition"]
             | null
           supplier_quotation: number | null
           supplier_quotation_comment: string | null
+          supplier_refund_total: number | null
           supplier_shipped_amount: number | null
           supplier_shipped_volume: number | null
           surcharge_amount: number | null
@@ -1164,6 +1182,7 @@ export type Database = {
           archived_at?: string | null
           avg_month_date?: string | null
           buyer_contract?: string | null
+          buyer_contract_number?: string | null
           buyer_contracted_amount?: number | null
           buyer_contracted_volume?: number | null
           buyer_currency?: string
@@ -1177,12 +1196,14 @@ export type Database = {
           buyer_ordered_volume?: number | null
           buyer_payment?: number | null
           buyer_payment_date?: string | null
+          buyer_payment_gross?: number | null
           buyer_price?: number | null
           buyer_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
           buyer_quotation?: number | null
           buyer_quotation_comment?: string | null
+          buyer_refund_total?: number | null
           buyer_remaining?: number | null
           buyer_ship_date?: string | null
           buyer_shipped_amount?: number | null
@@ -1215,6 +1236,7 @@ export type Database = {
           sulfur_percent?: string | null
           supplier_balance?: number | null
           supplier_contract?: string | null
+          supplier_contract_number?: string | null
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_currency?: string
@@ -1225,12 +1247,14 @@ export type Database = {
           supplier_manager_id?: string | null
           supplier_payment?: number | null
           supplier_payment_date?: string | null
+          supplier_payment_gross?: number | null
           supplier_price?: number | null
           supplier_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
           supplier_quotation?: number | null
           supplier_quotation_comment?: string | null
+          supplier_refund_total?: number | null
           supplier_shipped_amount?: number | null
           supplier_shipped_volume?: number | null
           surcharge_amount?: number | null
@@ -1246,6 +1270,7 @@ export type Database = {
           archived_at?: string | null
           avg_month_date?: string | null
           buyer_contract?: string | null
+          buyer_contract_number?: string | null
           buyer_contracted_amount?: number | null
           buyer_contracted_volume?: number | null
           buyer_currency?: string
@@ -1259,12 +1284,14 @@ export type Database = {
           buyer_ordered_volume?: number | null
           buyer_payment?: number | null
           buyer_payment_date?: string | null
+          buyer_payment_gross?: number | null
           buyer_price?: number | null
           buyer_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
           buyer_quotation?: number | null
           buyer_quotation_comment?: string | null
+          buyer_refund_total?: number | null
           buyer_remaining?: number | null
           buyer_ship_date?: string | null
           buyer_shipped_amount?: number | null
@@ -1297,6 +1324,7 @@ export type Database = {
           sulfur_percent?: string | null
           supplier_balance?: number | null
           supplier_contract?: string | null
+          supplier_contract_number?: string | null
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_currency?: string
@@ -1307,12 +1335,14 @@ export type Database = {
           supplier_manager_id?: string | null
           supplier_payment?: number | null
           supplier_payment_date?: string | null
+          supplier_payment_gross?: number | null
           supplier_price?: number | null
           supplier_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
             | null
           supplier_quotation?: number | null
           supplier_quotation_comment?: string | null
+          supplier_refund_total?: number | null
           supplier_shipped_amount?: number | null
           supplier_shipped_volume?: number | null
           surcharge_amount?: number | null
@@ -1408,6 +1438,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      delivery_bases: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       dt_kt_logistics: {
         Row: {
