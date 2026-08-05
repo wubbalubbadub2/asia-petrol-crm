@@ -521,6 +521,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     factories: globalRefs.factories.map((r) => ({ value: r.id, label: r.name })),
     fuelTypes: globalRefs.fuelTypes.map((r) => ({ value: r.id, label: r.name })),
     quotationTypes: globalRefs.quotationTypes.map((r) => ({ value: r.id, label: r.name })),
+    deliveryBases: globalRefs.deliveryBases.map((r) => ({ value: r.id, label: r.name })),
   }), [globalRefs]);
 
   // Pricing variants per side (multi-line, 00053+00054) — теперь приходят
@@ -597,6 +598,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         // Supplier scalars (pricing config copied, derived totals reset).
         supplier_id: deal.supplier_id,
         supplier_contract: deal.supplier_contract,
+        // Договор (не приложение) копируется: он у стороны один и тот же
+        // от сделки к сделке, перенабирать его вручную незачем.
+        supplier_contract_number: deal.supplier_contract_number,
         // Manually-entered contract sums & volumes are intentionally NOT
         // copied — client wants them blank on the duplicated deal (2026-07-24).
         supplier_contracted_volume: null,
@@ -613,6 +617,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         // Buyer scalars.
         buyer_id: deal.buyer_id,
         buyer_contract: deal.buyer_contract,
+        buyer_contract_number: deal.buyer_contract_number,
         // Not copied — see supplier note above (2026-07-24).
         buyer_contracted_volume: null,
         buyer_contracted_amount: null,
@@ -909,7 +914,11 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         {/* Header / scalar fields (one per side) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Поставщик" value={deal.supplier_id} displayValue={deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"} editing={editing} field="supplier_id" dealId={deal.id} options={refs.suppliers} />
-          <Field label="№ договора" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
+          <Field label="Номер приложения" value={deal.supplier_contract} editing={editing} field="supplier_contract" dealId={deal.id} />
+          {/* Договор — отдельно от приложения, «для формальности»
+              (клиент 2026-08-04). Намеренно НЕ выводится ни в табличный
+              паспорт, ни в Excel-паспорта. */}
+          <Field label="Договор" value={deal.supplier_contract_number} editing={editing} field="supplier_contract_number" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.supplier_contracted_volume} suffix="тонн" editing={editing} field="supplier_contracted_volume" dealId={deal.id} />
           <Field label="Сумма по контракту" value={deal.supplier_contracted_amount} suffix={`${supplierCurrencySymbol} (авто)`} />
           <Field label="% S" value={deal.sulfur_percent} editing={editing} field="sulfur_percent" dealId={deal.id} />
@@ -924,6 +933,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             currencySymbol={supplierCurrencySymbol}
             stations={refs.stations}
             quotationTypes={refs.quotationTypes}
+            deliveryBases={refs.deliveryBases}
             lines={supplierLines}
             rollups={lineRollups.supplier}
             onChanged={() => { reloadSupplierLines(); reloadLineRollups(); reload(); }}
@@ -935,7 +945,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         {/* Rollups — derived from registry / payments */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <Field label="Приход, сумма" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
-          <Field label="Оплата" value={deal.supplier_payment} suffix={`${supplierCurrencySymbol} (оплаты)`} />
+          <Field label="Оплата" value={deal.supplier_payment_gross} suffix={`${supplierCurrencySymbol} (оплаты)`} />
+          <Field label="Возврат/Перезачет" value={deal.supplier_refund_total} suffix={`${supplierCurrencySymbol} (минусует)`} />
           <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
           <Field label="Баланс" value={deal.supplier_balance} suffix={`${supplierCurrencySymbol} (авто)`} />
           {/* Anchor date for «Средний месяц» pickup — migration 00085. */}
@@ -978,7 +989,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         {/* Header / scalar fields (one per side) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <EditableSelect label="Покупатель" value={deal.buyer_id} displayValue={deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"} editing={editing} field="buyer_id" dealId={deal.id} options={refs.buyers} />
-          <Field label="№ договора" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
+          <Field label="Номер приложения" value={deal.buyer_contract} editing={editing} field="buyer_contract" dealId={deal.id} />
+          <Field label="Договор" value={deal.buyer_contract_number} editing={editing} field="buyer_contract_number" dealId={deal.id} />
           <Field label="Объем контракт" value={deal.buyer_contracted_volume} suffix="тонн" editing={editing} field="buyer_contracted_volume" dealId={deal.id} />
           <Field label="Сумма по контракту" value={deal.buyer_contracted_amount} suffix={`${buyerCurrencySymbol} (авто)`} />
           <Field label="Заявлено" value={deal.buyer_ordered_volume} suffix="тонн" editing={editing} field="buyer_ordered_volume" dealId={deal.id} />
@@ -994,6 +1006,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             currencySymbol={buyerCurrencySymbol}
             stations={refs.stations}
             quotationTypes={refs.quotationTypes}
+            deliveryBases={refs.deliveryBases}
             lines={buyerLines}
             rollups={lineRollups.buyer}
             onChanged={() => { reloadBuyerLines(); reloadLineRollups(); reload(); }}
@@ -1007,7 +1020,8 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Отгружено" value={deal.buyer_shipped_volume} suffix="тонн (реестр)" />
           <Field label="Дата отгрузки" value={deal.buyer_ship_date} inputType="date" editing={editing} field="buyer_ship_date" dealId={deal.id} />
           <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={buyerCurrencySymbol} />
-          <Field label="Оплата" value={deal.buyer_payment} suffix={`${buyerCurrencySymbol} (оплаты)`} />
+          <Field label="Оплата" value={deal.buyer_payment_gross} suffix={`${buyerCurrencySymbol} (оплаты)`} />
+          <Field label="Возврат/Перезачет" value={deal.buyer_refund_total} suffix={`${buyerCurrencySymbol} (минусует)`} />
           <Field label="Дата оплаты" value={deal.buyer_payment_date} inputType="date" editing={editing} field="buyer_payment_date" dealId={deal.id} />
           <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${buyerCurrencySymbol} (авто)`} />
         </div>
