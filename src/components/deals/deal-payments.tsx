@@ -172,8 +172,6 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   const [newCurrency, setNewCurrency] = useState("");  // empty = inherit deal currency
   const [newType, setNewType] = useState<PaymentType>("payment");
 
-  useEffect(() => { loadPayments(); }, [dealId]);
-
   async function loadPayments() {
     setLoading(true);
     const { data } = await supabaseRef.current
@@ -186,6 +184,8 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     setPayments(((data ?? []) as Array<Omit<Payment, "payment_type"> & { payment_type?: PaymentType }>).map((r) => ({ ...r, payment_type: r.payment_type ?? "payment" })));
     setLoading(false);
   }
+
+  useEffect(() => { loadPayments(); }, [dealId]);
 
   // After any payment write, the AFTER INSERT/UPDATE/DELETE trigger on
   // deal_payments recomputes the deal's supplier_payment / buyer_payment

@@ -41,6 +41,11 @@ export type DealSupplierLine = {
   discount: number | null;
   price: number | null;
   delivery_basis: string | null;
+  // 00136 — базис разделён: тип из справочника delivery_bases + станция
+  // варианта + свободное уточнение. delivery_basis остаётся собранным
+  // текстом («FCA Текесу»), его пересобирает триггер.
+  delivery_basis_id?: string | null;
+  delivery_basis_note?: string | null;
   departure_station_id: string | null;
   // Migration 00072 — free-text appendix label. Used by the registry
   // add form to auto-resolve which variant a shipment ties to.
@@ -72,6 +77,9 @@ export type DealBuyerLine = {
   discount: number | null;
   price: number | null;
   delivery_basis: string | null;
+  // 00136 — см. DealSupplierLine.
+  delivery_basis_id?: string | null;
+  delivery_basis_note?: string | null;
   destination_station_id: string | null;
   // Migration 00072 — see DealSupplierLine.
   appendix?: string | null;
@@ -149,7 +157,6 @@ function invalidateLines(dealId: string) {
 
 export function useDealSupplierLines(dealId: string | null) {
   const cached = dealId ? supplierLinesCache.get(dealId) : null;
-  const fresh = !!cached && Date.now() - cached.ts < LINES_TTL_MS;
   const [data, setData] = useState<DealSupplierLine[]>(cached?.data ?? []);
   const [loading, setLoading] = useState(!cached);
   const sb = useRef(createClient());
@@ -175,7 +182,13 @@ export function useDealSupplierLines(dealId: string | null) {
     setLoading(false);
   }, [dealId]);
 
-  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  // Свежесть кэша считаем ЗДЕСЬ, а не в рендере: Date.now() —
+  // нечистый вызов. Кэш перечитываем внутри эффекта.
+  useEffect(() => {
+    const hit = dealId ? supplierLinesCache.get(dealId) : null;
+    const fresh = !!hit && Date.now() - hit.ts < LINES_TTL_MS;
+    if (!fresh) load();
+  }, [load, dealId]);
   // Refetch on any mutation against this deal's lines (or rollups).
   useEffect(() => {
     if (!dealId) return;
@@ -186,7 +199,6 @@ export function useDealSupplierLines(dealId: string | null) {
 
 export function useDealBuyerLines(dealId: string | null) {
   const cached = dealId ? buyerLinesCache.get(dealId) : null;
-  const fresh = !!cached && Date.now() - cached.ts < LINES_TTL_MS;
   const [data, setData] = useState<DealBuyerLine[]>(cached?.data ?? []);
   const [loading, setLoading] = useState(!cached);
   const sb = useRef(createClient());
@@ -208,7 +220,13 @@ export function useDealBuyerLines(dealId: string | null) {
     setLoading(false);
   }, [dealId]);
 
-  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  // Свежесть кэша считаем ЗДЕСЬ, а не в рендере: Date.now() —
+  // нечистый вызов. Кэш перечитываем внутри эффекта.
+  useEffect(() => {
+    const hit = dealId ? buyerLinesCache.get(dealId) : null;
+    const fresh = !!hit && Date.now() - hit.ts < LINES_TTL_MS;
+    if (!fresh) load();
+  }, [load, dealId]);
   useEffect(() => {
     if (!dealId) return;
     return subscribeLines(dealId, () => { load(); });
@@ -333,7 +351,6 @@ export async function deleteBuyerLine(id: string) {
 
 export function useDealLineRollups(dealId: string | null) {
   const cached = dealId ? lineRollupsCache.get(dealId) : null;
-  const fresh = !!cached && Date.now() - cached.ts < LINES_TTL_MS;
   const [data, setData] = useState<LineRollups>(cached?.data ?? { supplier: {}, buyer: {} });
   const [loading, setLoading] = useState(!cached);
   const sb = useRef(createClient());
@@ -406,7 +423,13 @@ export function useDealLineRollups(dealId: string | null) {
     setLoading(false);
   }, [dealId]);
 
-  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  // Свежесть кэша считаем ЗДЕСЬ, а не в рендере: Date.now() —
+  // нечистый вызов. Кэш перечитываем внутри эффекта.
+  useEffect(() => {
+    const hit = dealId ? lineRollupsCache.get(dealId) : null;
+    const fresh = !!hit && Date.now() - hit.ts < LINES_TTL_MS;
+    if (!fresh) load();
+  }, [load, dealId]);
   useEffect(() => {
     if (!dealId) return;
     return subscribeLines(dealId, () => { load(); });

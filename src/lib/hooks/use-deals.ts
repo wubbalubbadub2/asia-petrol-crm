@@ -755,7 +755,6 @@ export function useDeals(filters?: DealFilters) {
 // surface instantly when a row is clicked.
 export function useDeal(id: string | null) {
   const cached = id ? dealByIdCache.get(id) : null;
-  const isFresh = !!cached && Date.now() - cached.ts < DEAL_TTL_MS;
   const [data, setData] = useState<Deal | null>(cached?.data ?? null);
   // Only block render when we have absolutely nothing to show.
   const [loading, setLoading] = useState(!cached);
@@ -787,7 +786,15 @@ export function useDeal(id: string | null) {
     setLoading(false);
   }, [id]);
 
-  useEffect(() => { if (!isFresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  // Свежесть кэша считаем ЗДЕСЬ, а не в рендере: Date.now() —
+  // нечистый вызов, и рендер от него должен быть свободен. Кэш
+  // перечитываем внутри эффекта, чтобы не ловить устаревшее значение
+  // из замыкания рендера.
+  useEffect(() => {
+    const hit = id ? dealByIdCache.get(id) : null;
+    const fresh = !!hit && Date.now() - hit.ts < DEAL_TTL_MS;
+    if (!fresh) load();
+  }, [load, id]);
 
   // Subscribe to global patches/invalidations for this specific id.
   useEffect(() => {

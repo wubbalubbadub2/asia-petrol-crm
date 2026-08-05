@@ -41,10 +41,6 @@ export default function ArchivePage() {
   const [archiveYear, setArchiveYear] = useState(new Date().getFullYear() - 1);
   const [archiving, setArchiving] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   async function loadData() {
     setLoading(true);
     // deals has no filter here — full history is scanned to count by
@@ -75,6 +71,10 @@ export default function ArchivePage() {
     setYearStats(stats);
     setLoading(false);
   }
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   async function handleArchive() {
     if (!isAdmin) { toast.error("Только администратор может архивировать"); return; }

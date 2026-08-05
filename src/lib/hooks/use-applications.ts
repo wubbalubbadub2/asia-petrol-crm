@@ -72,7 +72,6 @@ function invalidateAppsCache() {
 }
 
 export function useApplications() {
-  const fresh = !!appsCache && Date.now() - appsCache.ts < APPS_TTL_MS;
   const [data, setData] = useState<Application[]>(appsCache?.data ?? []);
   const [loading, setLoading] = useState(!appsCache);
   const supabase = createClient();
@@ -100,7 +99,12 @@ export function useApplications() {
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => { if (!fresh) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [load]);
+  // Свежесть кэша считаем ЗДЕСЬ, а не в рендере: Date.now() —
+  // нечистый вызов. Кэш перечитываем внутри эффекта.
+  useEffect(() => {
+    const fresh = !!appsCache && Date.now() - appsCache.ts < APPS_TTL_MS;
+    if (!fresh) load();
+  }, [load]);
 
   // Subscribe to cache patches/invalidations. Optimistic patches paint
   // the new snapshot from memory; invalidations (ts=0) force a refetch.
