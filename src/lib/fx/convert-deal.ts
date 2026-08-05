@@ -22,6 +22,7 @@
  */
 import type { Deal } from "@/lib/hooks/use-deals";
 import type { FxRates } from "@/lib/fx/rates";
+import { isRefundKind } from "@/lib/payments/totals";
 
 export type PriceRow = {
   deal_id: string;
@@ -33,9 +34,10 @@ export type PriceRow = {
 export type PaymentRow = {
   deal_id: string;
   side: "supplier" | "buyer";
-  amount: number | null;      // знак уже применён (возврат/перезачёт → минус)
+  amount: number | null;      // как в БД — всегда плюсом
   payment_date: string | null;
   currency: string | null;
+  payment_type: string | null; // знак и колонку задаёт тип (00062, 00137)
 };
 
 export type LogisticsRow = {
@@ -64,7 +66,12 @@ export type FxDealRow = {
   supplierPrice: number | null;
   supplierAmount: number | null;
   supplierVolume: number | null;
+  /** НЕТТО (= брутто − возвраты). Кормит Баланс, как в паспорте. */
   supplierPayment: number | null;
+  /** Только payment_type='payment'. Колонка «Оплата». */
+  supplierPaymentGross: number | null;
+  /** refund + offset, положительное. Колонка «Возврат/Перезачет». */
+  supplierRefund: number | null;
   supplierBalance: number | null;
   chain: string;
   buyer: string;
@@ -73,6 +80,8 @@ export type FxDealRow = {
   buyerVolume: number | null;
   buyerAmount: number | null;
   buyerPayment: number | null;
+  buyerPaymentGross: number | null;
+  buyerRefund: number | null;
   buyerDebt: number | null;
   forwarder: string;
   logisticsGroup: string;
@@ -145,14 +154,30 @@ export function convertDeal(
     buyerPrices, (p) => p.amount, (p) => p.shipment_date,
     () => deal.buyer_currency, fx, target, fallback,
   );
-  const supplierPayment = sumConverted(
-    supplierPays, (p) => p.amount, (p) => p.payment_date,
+  // Оплата и возвраты — разные колонки отчёта; нетто (= брутто −
+  // возвраты) собирается ниже и кормит Баланс/Долг, как в паспорте.
+  const supplierPaymentGross = sumConverted(
+    supplierPays.filter((p) => !isRefundKind(p.payment_type)), (p) => p.amount, (p) => p.payment_date,
     (p) => p.currency ?? deal.supplier_currency, fx, target, fallback,
   );
-  const buyerPayment = sumConverted(
-    buyerPays, (p) => p.amount, (p) => p.payment_date,
+  const supplierRefund = sumConverted(
+    supplierPays.filter((p) => isRefundKind(p.payment_type)), (p) => p.amount, (p) => p.payment_date,
+    (p) => p.currency ?? deal.supplier_currency, fx, target, fallback,
+  );
+  const supplierPayment = supplierPaymentGross == null || supplierRefund == null
+    ? null
+    : supplierPaymentGross - supplierRefund;
+  const buyerPaymentGross = sumConverted(
+    buyerPays.filter((p) => !isRefundKind(p.payment_type)), (p) => p.amount, (p) => p.payment_date,
     (p) => p.currency ?? deal.buyer_currency, fx, target, fallback,
   );
+  const buyerRefund = sumConverted(
+    buyerPays.filter((p) => isRefundKind(p.payment_type)), (p) => p.amount, (p) => p.payment_date,
+    (p) => p.currency ?? deal.buyer_currency, fx, target, fallback,
+  );
+  const buyerPayment = buyerPaymentGross == null || buyerRefund == null
+    ? null
+    : buyerPaymentGross - buyerRefund;
 
   // Логистика — по дате ВХОДЯЩЕГО СНТ (ТЗ: «оплата экспедитору так же
   // берётся по дате входящего СНТ»); если её нет — по исходящему.
@@ -194,7 +219,7 @@ export function convertDeal(
     .filter((n): n is string => !!n)
     .join(" → ");
 
-  const money = [supplierAmount, buyerAmount, supplierPayment, buyerPayment, railAmount, shipperAmount];
+  const money = [supplierAmount, buyerAmount, supplierPayment, buyerPayment, supplierRefund, buyerRefund, railAmount, shipperAmount];
   const incomplete = money.some((x) => x == null) || supplierBalance == null || buyerDebt == null;
 
   return {
@@ -209,6 +234,8 @@ export function convertDeal(
     supplierAmount,
     supplierVolume,
     supplierPayment,
+    supplierPaymentGross,
+    supplierRefund,
     supplierBalance,
     chain,
     buyer: deal.buyer?.short_name ?? deal.buyer?.full_name ?? "",
@@ -217,6 +244,8 @@ export function convertDeal(
     buyerVolume,
     buyerAmount,
     buyerPayment,
+    buyerPaymentGross,
+    buyerRefund,
     buyerDebt,
     forwarder: deal.forwarder?.name ?? "",
     logisticsGroup: deal.logistics_company_group?.name ?? "",

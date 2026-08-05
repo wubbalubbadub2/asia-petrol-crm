@@ -50,8 +50,8 @@ describe("convertDeal — паритет с паспортом", () => {
         { deal_id: "d1", side: "buyer", amount: 2000, shipment_date: "2026-06-20" },
       ],
       payments: [
-        { deal_id: "d1", side: "supplier", amount: 600, payment_date: "2026-06-10", currency: null },
-        { deal_id: "d1", side: "buyer", amount: 2500, payment_date: "2026-06-20", currency: null },
+        { deal_id: "d1", side: "supplier", amount: 600, payment_date: "2026-06-10", currency: null, payment_type: "payment" },
+        { deal_id: "d1", side: "buyer", amount: 2500, payment_date: "2026-06-20", currency: null, payment_type: "payment" },
       ],
       logistics: [],
     };
@@ -63,6 +63,42 @@ describe("convertDeal — паритет с паспортом", () => {
     expect(row.buyerPayment).toBe(2500);
     expect(row.buyerDebt).toBe(500);         // 2500 − 2000
     expect(row.incomplete).toBe(false);
+  });
+});
+
+describe("convertDeal — брутто и возвраты раздельно", () => {
+  it("оплата 600 и возврат 100: брутто 600, возврат 100, нетто 500", () => {
+    const deal = makeDeal();
+    const events: DealEvents = {
+      prices: [{ deal_id: "d1", side: "supplier", amount: 1000, shipment_date: "2026-06-10" }],
+      payments: [
+        { deal_id: "d1", side: "supplier", amount: 600, payment_date: "2026-06-10", currency: null, payment_type: "payment" },
+        { deal_id: "d1", side: "supplier", amount: 100, payment_date: "2026-06-10", currency: null, payment_type: "refund" },
+      ],
+      logistics: [],
+    };
+    const row = convertDeal(deal, events, fx, "USD");
+    expect(row.supplierPaymentGross).toBe(600);
+    expect(row.supplierRefund).toBe(100);
+    expect(row.supplierPayment).toBe(500);
+    // Баланс читает нетто — паритет с паспортом.
+    expect(row.supplierBalance).toBe(1000 - 500);
+  });
+
+  it("перезачёт считается вместе с возвратом", () => {
+    const deal = makeDeal();
+    const events: DealEvents = {
+      prices: [],
+      payments: [
+        { deal_id: "d1", side: "buyer", amount: 30, payment_date: "2026-06-10", currency: null, payment_type: "refund" },
+        { deal_id: "d1", side: "buyer", amount: 20, payment_date: "2026-06-10", currency: null, payment_type: "offset" },
+      ],
+      logistics: [],
+    };
+    const row = convertDeal(deal, events, fx, "USD");
+    expect(row.buyerRefund).toBe(50);
+    expect(row.buyerPaymentGross).toBe(0);
+    expect(row.buyerPayment).toBe(-50);
   });
 });
 

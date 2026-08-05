@@ -55,8 +55,6 @@ export async function fetchByDealIds<T>(opts: {
   return out;
 }
 
-type RawPayment = PaymentRow & { payment_type: string | null };
-
 /** Все события выбранных сделок, сгруппированные по deal_id. */
 export async function fetchDealEvents(dealIds: string[]): Promise<Map<string, DealEvents>> {
   const [prices, payments, logistics] = await Promise.all([
@@ -66,7 +64,7 @@ export async function fetchDealEvents(dealIds: string[]): Promise<Map<string, De
       dealIds,
       orderBy: ["deal_id", "id"],
     }),
-    fetchByDealIds<RawPayment>({
+    fetchByDealIds<PaymentRow>({
       table: "deal_payments",
       select: "deal_id, side, amount, payment_date, currency, payment_type, id",
       dealIds,
@@ -87,16 +85,9 @@ export async function fetchDealEvents(dealIds: string[]): Promise<Map<string, De
     return b;
   };
   for (const p of prices) bucket(p.deal_id).prices.push(p);
-  for (const p of payments) {
-    // Знак задаётся типом платежа — та же конвенция, что в rollup 00062
-    // и в выгрузке паспорта.
-    const sign = p.payment_type === "refund" || p.payment_type === "offset" ? -1 : 1;
-    bucket(p.deal_id).payments.push({
-      deal_id: p.deal_id, side: p.side,
-      amount: p.amount != null ? p.amount * sign : null,
-      payment_date: p.payment_date, currency: p.currency,
-    });
-  }
+  // Знак НЕ применяем: отчёт показывает оплату и возвраты разными
+  // колонками, а нетто собирает convertDeal (00137).
+  for (const p of payments) bucket(p.deal_id).payments.push(p);
   for (const r of logistics) bucket(r.deal_id).logistics.push(r);
   return out;
 }
