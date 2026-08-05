@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment , useCallback } from "react";
 import { Plus, Filter, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
@@ -351,16 +351,19 @@ export default function DtKtPage() {
   // колонку в БД, но считаем ещё и здесь — от уже загруженных строк,
   // чтобы цифра менялась мгновенно, без ожидания ответа сервера.
   // Fallback на хранимую — для записей вообще без детальных оплат.
-  function paymentOf(rec: DtKtRecord) {
+  // useCallback, а не голая функция: обе величины ниже мемоизируются, и
+  // компилятор React требует, чтобы их зависимости были стабильны —
+  // иначе мемоизация молча отключается.
+  const paymentOf = useCallback((rec: DtKtRecord) => {
     const pays = dtktPayments[rec.id];
     return pays && pays.length > 0 ? pays.reduce((s, p) => s + n(p.amount), 0) : n(rec.payment);
-  }
+  }, [dtktPayments]);
 
-  function getRegistrySum(fwId: string | null, cgId: string | null) {
+  const getRegistrySum = useCallback((fwId: string | null, cgId: string | null) => {
     if (!fwId) return { vol: 0, amt: 0 };
     const s = registrySums.find((r) => r.forwarder_id === fwId && r.company_group_id === cgId);
     return { vol: s?.total_volume ?? 0, amt: s?.total_amount ?? 0 };
-  }
+  }, [registrySums]);
 
   // Build filter option lists from the loaded set so dropdowns only contain
   // values that actually appear for the current year — avoids dead options.
@@ -398,7 +401,7 @@ export default function DtKtPage() {
       }
       return true;
     });
-  }, [records, forwarderFilter, companyGroupFilter, onlyNegativeSaldo, search, registrySums, dtktPayments]);
+  }, [records, forwarderFilter, companyGroupFilter, onlyNegativeSaldo, search, getRegistrySum, paymentOf]);
 
   const activeFilterCount =
     (forwarderFilter ? 1 : 0) +
@@ -425,7 +428,7 @@ export default function DtKtPage() {
       saldo += computeSaldo(r, reg.amt, pay);
     }
     return { opening, payment, regVol, regAmt, refund, fines, surcharge, ogem, saldo };
-  }, [filtered, registrySums, dtktPayments]);
+  }, [filtered, getRegistrySum, paymentOf]);
 
   function clearAllFilters() {
     setForwarderFilter("");
@@ -536,8 +539,8 @@ export default function DtKtPage() {
                 return (
                   <Fragment key={rec.id}>
                     <TableRow className="hover:bg-amber-50/30">
-                      <TableCell className="text-[12px] text-stone-700">{(rec.forwarder as any)?.name ?? "—"}</TableCell>
-                      <TableCell className="text-[12px] text-stone-600">{(rec.company_group as any)?.name ?? "—"}</TableCell>
+                      <TableCell className="text-[12px] text-stone-700">{rec.forwarder?.name ?? "—"}</TableCell>
+                      <TableCell className="text-[12px] text-stone-600">{rec.company_group?.name ?? "—"}</TableCell>
                       <TableCell className="font-mono text-[12px]">{rec.year ?? "—"}</TableCell>
                       <TableCell className="text-right">
                         <InlineDtNum value={rec.opening_balance} onSave={(v) => updateDtKt(rec.id, { opening_balance: v })} />

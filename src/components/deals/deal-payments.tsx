@@ -158,6 +158,55 @@ function PaymentRow({
   );
 }
 
+// Объявлен на уровне модуля, а не внутри DealPayments: компонент,
+// созданный во время рендера, пересоздаётся на каждой перерисовке и
+// теряет состояние. Замыкания на родителя заменены пропсами.
+function PaymentList({ items, side, label, dealCurrency, onAdd, onUpdate, onDelete }: {
+  items: Payment[];
+  side: "supplier" | "buyer";
+  label: string;
+  dealCurrency: string;
+  onAdd: (side: "supplier" | "buyer") => void;
+  onUpdate: (id: string, patch: Partial<Payment>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  // Sum per-currency so mixed-currency lists make sense. Refunds
+  // subtract — so the displayed total reflects what the rollup writes
+  // to deals.supplier_payment / buyer_payment.
+  const totals = new Map<string, number>();
+  for (const p of items) {
+    const code = p.currency ?? dealCurrency;
+    totals.set(code, (totals.get(code) ?? 0) + signedAmount(p));
+  }
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-[12px] font-medium text-stone-600">{label}</h4>
+        <Button size="sm" variant="outline" onClick={() => onAdd(side)} className="h-6 text-[10px] px-2">
+          <Plus className="h-3 w-3 mr-1" /> Оплата
+        </Button>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-[11px] text-stone-400">Нет оплат</p>
+      ) : (
+        <div className="space-y-1">
+          {items.map((p) => (
+            <PaymentRow key={p.id} p={p} dealCurrency={dealCurrency} onUpdate={onUpdate} onDelete={onDelete} />
+          ))}
+          <div className="flex items-center gap-2 px-2 py-1 text-[11px] border-t border-stone-200">
+            <span className="text-stone-500 w-20 font-medium">Итого:</span>
+            <span className="flex flex-wrap gap-x-3 font-mono tabular-nums font-bold text-stone-900">
+              {[...totals.entries()].map(([code, v]) => (
+                <span key={code}>{formatMoney(v)} {currencySymbol(code)}</span>
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side }: { dealId: string; currencySymbol: string; side?: "supplier" | "buyer" }) {
   // The deal-level currency code (USD / KZT / ...) is derived from the symbol we were given.
   // Find the code whose symbol matches; fall back to USD.
@@ -238,43 +287,6 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   const supplierPayments = payments.filter((p) => p.side === "supplier");
   const buyerPayments = payments.filter((p) => p.side === "buyer");
 
-  function PaymentList({ items, side, label }: { items: Payment[]; side: "supplier" | "buyer"; label: string }) {
-    // Sum per-currency so mixed-currency lists make sense. Refunds
-    // subtract — so the displayed total reflects what the rollup writes
-    // to deals.supplier_payment / buyer_payment.
-    const totals = new Map<string, number>();
-    for (const p of items) {
-      const code = p.currency ?? dealCurrency;
-      totals.set(code, (totals.get(code) ?? 0) + signedAmount(p));
-    }
-    return (
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-[12px] font-medium text-stone-600">{label}</h4>
-          <Button size="sm" variant="outline" onClick={() => setAddingSide(side)} className="h-6 text-[10px] px-2">
-            <Plus className="h-3 w-3 mr-1" /> Оплата
-          </Button>
-        </div>
-        {items.length === 0 ? (
-          <p className="text-[11px] text-stone-400">Нет оплат</p>
-        ) : (
-          <div className="space-y-1">
-            {items.map((p) => (
-              <PaymentRow key={p.id} p={p} dealCurrency={dealCurrency} onUpdate={updatePayment} onDelete={deletePayment} />
-            ))}
-            <div className="flex items-center gap-2 px-2 py-1 text-[11px] border-t border-stone-200">
-              <span className="text-stone-500 w-20 font-medium">Итого:</span>
-              <span className="flex flex-wrap gap-x-3 font-mono tabular-nums font-bold text-stone-900">
-                {[...totals.entries()].map(([code, v]) => (
-                  <span key={code}>{formatMoney(v)} {currencySymbol(code)}</span>
-                ))}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   const sideLabel = side === "supplier" ? "Оплаты поставщику" : side === "buyer" ? "Оплаты от покупателя" : "Оплаты";
 
@@ -287,11 +299,11 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
         {loading ? (
           <p className="text-[11px] text-stone-400">Загрузка...</p>
         ) : side ? (
-          <PaymentList items={filteredPayments} side={side} label={sideLabel} />
+          <PaymentList items={filteredPayments} side={side} label={sideLabel} dealCurrency={dealCurrency} onAdd={setAddingSide} onUpdate={updatePayment} onDelete={deletePayment} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" />
-            <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" />
+            <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" dealCurrency={dealCurrency} onAdd={setAddingSide} onUpdate={updatePayment} onDelete={deletePayment} />
+            <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" dealCurrency={dealCurrency} onAdd={setAddingSide} onUpdate={updatePayment} onDelete={deletePayment} />
           </div>
         )}
 

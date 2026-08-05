@@ -93,6 +93,22 @@ export type BulkAddGroupContext = {
 
 type Ref = { id: string; name: string };
 
+// Объявлен на уровне модуля, а не внутри BulkAddDialog: компонент,
+// созданный во время рендера, пересоздаётся на каждой перерисовке и
+// теряет состояние вместе с фокусом. Всё нужное приходит пропсами,
+// замыканий на родителя нет.
+function Sel({ l, v, fn, opts }: { l: string; v: string; fn: (v: string) => void; opts: { value: string; label: string }[] }) {
+  return (
+    <div>
+      <Label className="text-[10px] text-stone-500">{l}</Label>
+      <select value={v} onChange={(e) => fn(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
+        <option value="">—</option>
+        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export function BulkAddDialog({
   open,
   onClose,
@@ -308,16 +324,6 @@ export function BulkAddDialog({
 
   const supplierOpts = suppliers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name }));
   const buyerOpts = buyers.map((c) => ({ value: c.id, label: c.short_name ?? c.full_name }));
-
-  const Sel = ({ l, v, fn, opts }: { l: string; v: string; fn: (v: string) => void; opts: { value: string; label: string }[] }) => (
-    <div>
-      <Label className="text-[10px] text-stone-500">{l}</Label>
-      <select value={v} onChange={(e) => fn(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
-        <option value="">—</option>
-        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>

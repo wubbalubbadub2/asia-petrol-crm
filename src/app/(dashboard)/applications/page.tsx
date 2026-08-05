@@ -117,28 +117,6 @@ function CreateApplicationDialog({
     }
   }
 
-  function SelectField({
-    label, value, onChange, options,
-  }: {
-    label: string; value: string; onChange: (v: string) => void;
-    options: { value: string; label: string }[];
-  }) {
-    return (
-      <div>
-        <Label className="text-[12px] text-stone-500">{label}</Label>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-        >
-          <option value="">Выберите...</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
@@ -310,17 +288,6 @@ function EditApplicationDialog({
     if (ok) { onSaved(); onClose(); }
   }
 
-  function Sel({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-    return (
-      <div>
-        <Label className="text-[12px] text-stone-500">{label}</Label>
-        <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
-          <option value="">—</option>
-          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
@@ -425,6 +392,44 @@ function LinkDealDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Объявлены на уровне модуля, а не внутри диалогов: компонент,
+// созданный во время рендера, пересоздаётся на каждой перерисовке и
+// теряет состояние вместе с фокусом. Оба берут всё из пропсов.
+function SelectField({
+  label, value, onChange, options,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <Label className="text-[12px] text-stone-500">{label}</Label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+      >
+        <option value="">Выберите...</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function Sel({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div>
+      <Label className="text-[12px] text-stone-500">{label}</Label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
+        <option value="">—</option>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
   );
 }
 

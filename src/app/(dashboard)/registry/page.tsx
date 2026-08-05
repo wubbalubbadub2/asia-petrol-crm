@@ -75,6 +75,25 @@ function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLo
 // Per client request — "после запятой 3 ноля должно быть".
 function fmtVol(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 function fmtDate(d: string | null) { return formatDMY(d); }
+// Объявлен на уровне модуля, а не внутри страницы: компонент, созданный
+// во время рендера, пересоздаётся на каждой перерисовке и теряет
+// состояние вместе с фокусом (здесь — открытый список SearchableSelect).
+// Всё нужное приходит пропсами, замыканий на родителя нет.
+function Sel({ l, v, fn, opts }: { l: string; v: string; fn: (v: string) => void; opts: { value: string; label: string }[] }) {
+  return (
+    <div>
+      <Label className="text-[10px] text-stone-500">{l}</Label>
+      <SearchableSelect
+        value={v}
+        onChange={fn}
+        options={opts}
+        placeholder="—"
+        searchPlaceholder={`Поиск ${l.toLowerCase()}…`}
+        triggerClassName="h-8 text-[12px]"
+      />
+    </div>
+  );
+}
 function ceil(v: number | null) { return v == null ? null : Math.ceil(v); }
 function calcAmt(v: number | null, t: number | null) { const r = ceil(v); return r == null || t == null ? null : r * t; }
 function currencyFor(r: ShipmentRecord, tab: "kg" | "kz"): string {
@@ -925,20 +944,6 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
   // Sel — раньше нативный <select>, теперь cmdk-backed picker с
   // встроенным поиском. Списки экспедиторов / станций / групп компаний
   // длинные, без поиска оператору приходилось скроллить пальцами.
-  const Sel = ({ l, v, fn, opts }: { l: string; v: string; fn: (v: string) => void; opts: { value: string; label: string }[] }) => (
-    <div>
-      <Label className="text-[10px] text-stone-500">{l}</Label>
-      <SearchableSelect
-        value={v}
-        onChange={fn}
-        options={opts}
-        placeholder="—"
-        searchPlaceholder={`Поиск ${l.toLowerCase()}…`}
-        triggerClassName="h-8 text-[12px]"
-      />
-    </div>
-  );
-
   return (
     /* keepMounted preserves form state when the operator minimises:
        closing the dialog (open=false) would normally unmount the

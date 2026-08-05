@@ -23,6 +23,35 @@ type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
 type ProfileOption = { id: string; full_name: string };
 
+// Объявлен на уровне модуля, а не внутри страницы: компонент,
+// созданный во время рендера, пересоздаётся на каждой перерисовке и
+// теряет состояние вместе с фокусом. Всё приходит пропсами.
+function SelectField({
+  label, value, onChange, options, placeholder = "Выберите...",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <Label className="text-[12px] text-stone-500">{label}</Label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export default function NewDealPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -91,6 +120,7 @@ export default function NewDealPage() {
 
   // Quotation types for price linking
   const [quotationTypes, setQuotationTypes] = useState<RefOption[]>([]);
+  const [deliveryBases, setDeliveryBases] = useState<RefOption[]>([]);
 
   // Supplier scalars (one per side)
   const [supplierId, setSupplierId] = useState("");
@@ -234,7 +264,8 @@ export default function NewDealPage() {
       supabase.from("stations").select("id, name").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
       supabase.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
-    ]).then(([f, ft, s, b, fw, cg, st, m, qt]) => {
+      supabase.from("delivery_bases").select("id, name").eq("is_active", true).order("sort_order"),
+    ]).then(([f, ft, s, b, fw, cg, st, m, qt, db]) => {
       setFactories((f.data ?? []) as RefOption[]);
       setFuelTypes((ft.data ?? []) as RefOption[]);
       setSuppliers((s.data ?? []) as CounterpartyOption[]);
@@ -244,6 +275,7 @@ export default function NewDealPage() {
       setStations((st.data ?? []) as RefOption[]);
       setManagers((m.data ?? []) as ProfileOption[]);
       setQuotationTypes((qt.data ?? []) as RefOption[]);
+      setDeliveryBases((db.data ?? []) as RefOption[]);
     });
   }, [supabase]);
 
@@ -280,7 +312,6 @@ export default function NewDealPage() {
       // sync trigger. Additional variants are written below.
       supplier_price: sv0.price ? parseFloat(sv0.price) : null,
       supplier_price_condition: variantDraftToLinePatch(sv0).price_condition,
-      supplier_delivery_basis: sv0.deliveryBasis || null,
       supplier_departure_station_id: sv0.stationId || null,
       supplier_quotation: sv0.quotation ? parseFloat(sv0.quotation) : null,
       supplier_quotation_comment: sv0.quotationComment || null,
@@ -294,7 +325,6 @@ export default function NewDealPage() {
       buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,
       buyer_price: bv0.price ? parseFloat(bv0.price) : null,
       buyer_price_condition: variantDraftToLinePatch(bv0).price_condition,
-      buyer_delivery_basis: bv0.deliveryBasis || null,
       buyer_destination_station_id: bv0.stationId || null,
       buyer_quotation: bv0.quotation ? parseFloat(bv0.quotation) : null,
       buyer_quotation_comment: bv0.quotationComment || null,
@@ -348,7 +378,8 @@ export default function NewDealPage() {
           price: v.price ? parseFloat(v.price) : null,
           fx_rate: v.priceMode === "manual_formula" && v.fxRate ? parseFloat(v.fxRate) : null,
           appendix: v.appendix || null,
-          delivery_basis: v.deliveryBasis || null,
+          delivery_basis_id: v.deliveryBasisId || null,
+          delivery_basis_note: v.deliveryBasisNote || null,
           departure_station_id: v.stationId || null,
         }))
       );
@@ -367,7 +398,8 @@ export default function NewDealPage() {
           price: v.price ? parseFloat(v.price) : null,
           fx_rate: v.priceMode === "manual_formula" && v.fxRate ? parseFloat(v.fxRate) : null,
           appendix: v.appendix || null,
-          delivery_basis: v.deliveryBasis || null,
+          delivery_basis_id: v.deliveryBasisId || null,
+          delivery_basis_note: v.deliveryBasisNote || null,
           destination_station_id: v.stationId || null,
         }))
       );
@@ -421,31 +453,6 @@ export default function NewDealPage() {
     if (deal) router.push("/deals");
   }
 
-  function SelectField({
-    label, value, onChange, options, placeholder = "Выберите...",
-  }: {
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    options: { value: string; label: string }[];
-    placeholder?: string;
-  }) {
-    return (
-      <div>
-        <Label className="text-[12px] text-stone-500">{label}</Label>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-        >
-          <option value="">{placeholder}</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -545,7 +552,7 @@ export default function NewDealPage() {
                 options={suppliers.map((s) => ({ value: s.id, label: s.short_name || s.full_name }))}
               />
               <div>
-                <Label className="text-[12px] text-stone-500">№ договора</Label>
+                <Label className="text-[12px] text-stone-500">Номер приложения</Label>
                 <Input value={supplierContract} onChange={(e) => setSupplierContract(e.target.value)} placeholder="1 от 30.12.24" className="h-8 text-[13px]" />
               </div>
               <div>
@@ -575,6 +582,7 @@ export default function NewDealPage() {
                 year={year}
                 quotationTypes={quotationTypes}
                 stations={stations}
+                deliveryBases={deliveryBases}
               />
             </div>
         </CollapsibleSection>
@@ -589,7 +597,7 @@ export default function NewDealPage() {
                 options={buyers.map((b) => ({ value: b.id, label: b.short_name || b.full_name }))}
               />
               <div>
-                <Label className="text-[12px] text-stone-500">№ договора</Label>
+                <Label className="text-[12px] text-stone-500">Номер приложения</Label>
                 <Input value={buyerContract} onChange={(e) => setBuyerContract(e.target.value)} placeholder="20 от 12.12.2024" className="h-8 text-[13px]" />
               </div>
               <div>
@@ -609,6 +617,7 @@ export default function NewDealPage() {
                 year={year}
                 quotationTypes={quotationTypes}
                 stations={stations}
+                deliveryBases={deliveryBases}
               />
             </div>
         </CollapsibleSection>
@@ -626,7 +635,7 @@ export default function NewDealPage() {
           }
         >
             {dealCompanyGroups.length === 0 ? (
-              <p className="text-[12px] text-stone-400">Нет групп компании. Нажмите "Добавить группу" (до 6).</p>
+              <p className="text-[12px] text-stone-400">Нет групп компании. Нажмите «Добавить группу» (до 6).</p>
             ) : (
               <div className="space-y-3">
                 {dealCompanyGroups.map((cg, idx) => (
