@@ -13,6 +13,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
+import { splitPaymentTotals, isRefundKind } from "@/lib/payments/totals";
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
 import { formatDMY } from "@/lib/format";
@@ -261,16 +262,24 @@ function pluralizePayments(n: number): string {
   return `${n} оплат`;
 }
 
+// «возврат / возврата / возвратов» — те же три формы, что у «оплаты».
+// Заголовок попапа ячейки «Возврат/Перезачет».
+function pluralizeRefunds(n: number): string {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return `${n} возвратов`;
+  if (mod10 === 1) return `${n} возврат`;
+  if (mod10 >= 2 && mod10 <= 4) return `${n} возврата`;
+  return `${n} возвратов`;
+}
+
 // Editable payment row inside the popover — клиент 2026-07-19: «оплаты
 // и даты можно сразу в модалке менять, не проваливаясь в сделку».
 // Дата + сумма редактируются inline, × удаляет запись. Каждая запись
 // коммитится на blur; rollup deals.supplier_payment/buyer_payment
 // пересчитывает DB-триггер, invalidateDeal() будит список.
-// Знак вклада оплаты в rollup: возврат/перезачёт минусуют (00062).
-function signedAmount(p: PaymentSnap): number {
-  const sign = p.payment_type === "refund" || p.payment_type === "offset" ? -1 : 1;
-  return (p.amount ?? 0) * sign;
-}
+// Знак вклада оплаты в НЕТТО-итог живёт в @/lib/payments/totals
+// (00062, 00137).
 
 function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
   p: PaymentSnap;
@@ -332,14 +341,20 @@ function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
 // keeps the inline-edit affordance discoverable (visible whenever the
 // popover is open).
 function PaymentBreakdownCell({
-  dealId, value, balance, side, currency, className, dataCol, dataValue,
+  dealId, gross, refund, balance, side, kind, currency, className, dataCol, dataValue,
 }: {
   dealId: string;
-  value: number | null | undefined;
+  // Обе величины стороны нужны КАЖДОЙ ячейке: нетто (= gross − refund)
+  // кормит баланс, поэтому правка возвратов двигает баланс ровно так
+  // же, как правка оплат.
+  gross: number | null | undefined;
+  refund: number | null | undefined;
   // Текущий Баланс (supplier) / Долг (buyer) — для мгновенного локального
-  // пересчёта при оптимистичной правке оплаты: Δбаланса = ∓Δоплаты.
+  // пересчёта: Δбаланса = ∓Δнетто.
   balance: number | null | undefined;
   side: "supplier" | "buyer";
+  // Какую половину показывает ячейка: «Оплата» или «Возврат/Перезачет».
+  kind: "payment" | "refund";
   currency: string;
   className?: string;
   dataCol?: string;
@@ -348,11 +363,19 @@ function PaymentBreakdownCell({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
+  const isRefundCell = kind === "refund";
   // Оптимистичность через applyDealPatch: кэш сделок мутируется сразу,
-  // проп value/balance приходит новым в этот же рендер — локальный
-  // pending-механизм не нужен.
-  const shown = value;
+  // пропы gross/refund/balance приходят новыми в этот же рендер —
+  // локальный pending-механизм не нужен.
+  const shown = isRefundCell ? refund : gross;
+  // В состоянии держим ПОЛНЫЙ список стороны (кэш общий на сторону) и
+  // фильтруем на рендере — так пересчёт обеих колонок делается одним
+  // splitPaymentTotals.
   const [payments, setPayments] = useState<PaymentSnap[] | null>(null);
+  const visible = useMemo(
+    () => (payments ?? []).filter((p) => isRefundKind(p.payment_type) === isRefundCell),
+    [payments, isRefundCell],
+  );
   const [loading, setLoading] = useState(false);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const cellRef = useRef<HTMLTableCellElement>(null);
@@ -399,30 +422,58 @@ function PaymentBreakdownCell({
   // (payments-Promise + deals-список) инвалидируются в фоне — визуально
   // ничего не перерисовывается, серверные значения совпадают с
   // оптимистичными.
-  function applyOptimistic(next: PaymentSnap[]) {
-    setPayments(next);
-    const newTotal = next.reduce((s, p) => s + signedAmount(p), 0);
-    const delta = newTotal - (value ?? 0);
-    // Оплата + Баланс/Долг патчатся в кэш сделок синхронно — обе ячейки
-    // строки обновляются в этот же рендер (клиент 2026-07-16: «баланс
-    // после 1-2 секунд» — ждал серверный rollup). Формулы триггера:
-    // supplier_balance = отгружено − оплата + … → Δбаланса = −Δоплаты;
-    // buyer_debt = оплата − отгружено → Δдолга = +Δоплаты.
+  // Обе колонки оплат + Баланс/Долг патчатся в кэш сделок синхронно —
+  // все три ячейки строки обновляются в этот же рендер (клиент
+  // 2026-07-16: «баланс после 1-2 секунд» — ждал серверный rollup).
+  // Формулы триггера: supplier_balance = приход − нетто + …
+  // → Δбаланса = −Δнетто; buyer_debt = нетто − отгружено
+  // → Δдолга = +Δнетто.
+  function applyOptimistic(nextAll: PaymentSnap[]) {
+    setPayments(nextAll);
+    const t = splitPaymentTotals(nextAll);
+    const deltaNet = t.net - ((gross ?? 0) - (refund ?? 0));
     if (side === "supplier") {
-      applyDealPatch(dealId, { supplier_payment: newTotal, supplier_balance: (balance ?? 0) - delta });
+      applyDealPatch(dealId, {
+        supplier_payment_gross: t.gross,
+        supplier_refund_total: t.refund,
+        supplier_payment: t.net,
+        supplier_balance: (balance ?? 0) - deltaNet,
+      });
     } else {
-      applyDealPatch(dealId, { buyer_payment: newTotal, buyer_debt: (balance ?? 0) + delta });
+      applyDealPatch(dealId, {
+        buyer_payment_gross: t.gross,
+        buyer_refund_total: t.refund,
+        buyer_payment: t.net,
+        buyer_debt: (balance ?? 0) + deltaNet,
+      });
     }
   }
 
-  function revertOptimistic(prev: PaymentSnap[] | null, prevValue: number | null | undefined, prevBalance: number | null | undefined, message: string) {
+  function revertOptimistic(
+    prev: PaymentSnap[] | null,
+    prevGross: number | null | undefined,
+    prevRefund: number | null | undefined,
+    prevBalance: number | null | undefined,
+    message: string,
+  ) {
     setPayments(prev);
+    const net = (prevGross ?? 0) - (prevRefund ?? 0);
     if (side === "supplier") {
-      applyDealPatch(dealId, { supplier_payment: prevValue ?? 0, supplier_balance: prevBalance ?? 0 });
+      applyDealPatch(dealId, {
+        supplier_payment_gross: prevGross ?? 0,
+        supplier_refund_total: prevRefund ?? 0,
+        supplier_payment: net,
+        supplier_balance: prevBalance ?? 0,
+      });
     } else {
-      applyDealPatch(dealId, { buyer_payment: prevValue ?? 0, buyer_debt: prevBalance ?? 0 });
+      applyDealPatch(dealId, {
+        buyer_payment_gross: prevGross ?? 0,
+        buyer_refund_total: prevRefund ?? 0,
+        buyer_payment: net,
+        buyer_debt: prevBalance ?? 0,
+      });
     }
-    toast.error(`Оплата: ${message}`);
+    toast.error(`${isRefundCell ? "Возврат" : "Оплата"}: ${message}`);
   }
 
   function syncCachesInBackground() {
@@ -431,33 +482,36 @@ function PaymentBreakdownCell({
   }
 
   async function patchPayment(id: string, patch: { amount?: number; payment_date?: string }) {
-    const prev = payments; const prevValue = value; const prevBalance = balance;
+    const prev = payments; const prevGross = gross; const prevRefund = refund; const prevBalance = balance;
     applyOptimistic((prev ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").update(patch).eq("id", id);
-    if (error) { revertOptimistic(prev, prevValue, prevBalance, error.message); return; }
+    if (error) { revertOptimistic(prev, prevGross, prevRefund, prevBalance, error.message); return; }
     syncCachesInBackground();
   }
 
   async function deletePayment(id: string) {
-    if (!confirm("Удалить оплату?")) return;
-    const prev = payments; const prevValue = value; const prevBalance = balance;
+    if (!confirm(isRefundCell ? "Удалить возврат/перезачёт?" : "Удалить оплату?")) return;
+    const prev = payments; const prevGross = gross; const prevRefund = refund; const prevBalance = balance;
     applyOptimistic((prev ?? []).filter((p) => p.id !== id));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").delete().eq("id", id);
-    if (error) { revertOptimistic(prev, prevValue, prevBalance, error.message); return; }
+    if (error) { revertOptimistic(prev, prevGross, prevRefund, prevBalance, error.message); return; }
     syncCachesInBackground();
   }
 
-  async function addPayment() {
+  // Тип строки задаёт ячейка: «Оплата» создаёт payment, «Возврат/
+  // Перезачет» — refund или offset (до 00137 создать их из паспорта
+  // было нельзя вообще).
+  async function addPayment(paymentType: "payment" | "refund" | "offset") {
     // id генерируем на клиенте — строка появляется мгновенно и сразу
     // редактируема, без ожидания серверного id.
     const id = crypto.randomUUID();
     const today = new Date().toISOString().slice(0, 10);
-    const prev = payments; const prevValue = value; const prevBalance = balance;
+    const prev = payments; const prevGross = gross; const prevRefund = refund; const prevBalance = balance;
     applyOptimistic([
       ...(prev ?? []),
-      { id, payment_date: today, amount: 0, currency: null, description: null, payment_type: "payment" },
+      { id, payment_date: today, amount: 0, currency: null, description: null, payment_type: paymentType },
     ]);
     const sb = createClient();
     const { error } = await sb.from("deal_payments").insert({
@@ -466,9 +520,9 @@ function PaymentBreakdownCell({
       side,
       amount: 0,
       payment_date: today,
-      payment_type: "payment",
+      payment_type: paymentType,
     });
-    if (error) { revertOptimistic(prev, prevValue, prevBalance, error.message); return; }
+    if (error) { revertOptimistic(prev, prevGross, prevRefund, prevBalance, error.message); return; }
     syncCachesInBackground();
   }
 
@@ -480,25 +534,50 @@ function PaymentBreakdownCell({
     setOpen(false);
   }
 
+  // «Изменить итог» есть только у ячейки «Оплата» и задаёт БРУТТО.
+  // Нетто пересобирается как X − возвраты, баланс едет за нетто.
+  // Как и до 00137, переопределение живёт до первого изменения любой
+  // строки оплат: тогда триггер пересчитает итоги из строк.
   function commitEdit() {
     setEditing(false);
     const num = parseNum(localVal);
-    if (num !== value) {
-      // Оптимистично: оплата + баланс патчатся сразу, запрос в фоне,
-      // откат при ошибке (updateDeal сам покажет toast).
-      const prevValue = value; const prevBalance = balance;
-      const delta = (num ?? 0) - (value ?? 0);
-      if (side === "supplier") {
-        applyDealPatch(dealId, { supplier_payment: num, supplier_balance: (balance ?? 0) - delta });
-      } else {
-        applyDealPatch(dealId, { buyer_payment: num, buyer_debt: (balance ?? 0) + delta });
-      }
-      const field = side === "supplier" ? "supplier_payment" : "buyer_payment";
-      updateDeal(dealId, { [field]: num }).catch(() => {
-        if (side === "supplier") applyDealPatch(dealId, { supplier_payment: prevValue ?? 0, supplier_balance: prevBalance ?? 0 });
-        else applyDealPatch(dealId, { buyer_payment: prevValue ?? 0, buyer_debt: prevBalance ?? 0 });
+    if (num === gross) return;
+    // Оптимистично: обе колонки + баланс патчатся сразу, запрос в
+    // фоне, откат при ошибке (updateDeal сам покажет toast).
+    const prevGross = gross; const prevBalance = balance;
+    const newGross = num ?? 0;
+    const newNet = newGross - (refund ?? 0);
+    const deltaNet = newNet - ((gross ?? 0) - (refund ?? 0));
+    if (side === "supplier") {
+      applyDealPatch(dealId, {
+        supplier_payment_gross: newGross,
+        supplier_payment: newNet,
+        supplier_balance: (balance ?? 0) - deltaNet,
+      });
+    } else {
+      applyDealPatch(dealId, {
+        buyer_payment_gross: newGross,
+        buyer_payment: newNet,
+        buyer_debt: (balance ?? 0) + deltaNet,
       });
     }
+    const grossField = side === "supplier" ? "supplier_payment_gross" : "buyer_payment_gross";
+    const netField = side === "supplier" ? "supplier_payment" : "buyer_payment";
+    updateDeal(dealId, { [grossField]: newGross, [netField]: newNet }).catch(() => {
+      if (side === "supplier") {
+        applyDealPatch(dealId, {
+          supplier_payment_gross: prevGross ?? 0,
+          supplier_payment: (prevGross ?? 0) - (refund ?? 0),
+          supplier_balance: prevBalance ?? 0,
+        });
+      } else {
+        applyDealPatch(dealId, {
+          buyer_payment_gross: prevGross ?? 0,
+          buyer_payment: (prevGross ?? 0) - (refund ?? 0),
+          buyer_debt: prevBalance ?? 0,
+        });
+      }
+    });
   }
 
   return (
@@ -540,8 +619,12 @@ function PaymentBreakdownCell({
             <div className="font-mono">Загрузка…</div>
           ) : (
             <div>
-              <div className="mb-1 font-medium">{payments.length === 0 ? "Нет оплат" : pluralizePayments(payments.length)}</div>
-              {payments
+              <div className="mb-1 font-medium">
+                {visible.length === 0
+                  ? (isRefundCell ? "Нет возвратов" : "Нет оплат")
+                  : (isRefundCell ? pluralizeRefunds : pluralizePayments)(visible.length)}
+              </div>
+              {visible
                 .slice()
                 .sort((a, b) => (a.payment_date ?? "").localeCompare(b.payment_date ?? ""))
                 .map((p) => (
@@ -550,22 +633,43 @@ function PaymentBreakdownCell({
                     {p.description ? <div className="pl-1 text-[10px] text-stone-400">{p.description}</div> : null}
                   </div>
                 ))}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); addPayment(); }}
-                className="mt-1 w-full rounded border border-stone-600 px-2 py-0.5 text-[10px] text-stone-300 hover:bg-stone-700 focus:outline-none"
-              >
-                + Оплата
-              </button>
+              {isRefundCell ? (
+                <div className="mt-1 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); addPayment("refund"); }}
+                    className="flex-1 rounded border border-stone-600 px-2 py-0.5 text-[10px] text-stone-300 hover:bg-stone-700 focus:outline-none"
+                  >
+                    + Возврат
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); addPayment("offset"); }}
+                    className="flex-1 rounded border border-stone-600 px-2 py-0.5 text-[10px] text-stone-300 hover:bg-stone-700 focus:outline-none"
+                  >
+                    + Перезачёт
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); addPayment("payment"); }}
+                  className="mt-1 w-full rounded border border-stone-600 px-2 py-0.5 text-[10px] text-stone-300 hover:bg-stone-700 focus:outline-none"
+                >
+                  + Оплата
+                </button>
+              )}
             </div>
           )}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); startEdit(); }}
-            className="mt-2 w-full rounded bg-amber-500/90 px-2 py-1 text-[10px] font-medium text-stone-900 hover:bg-amber-400 focus:outline-none"
-          >
-            Изменить итог
-          </button>
+          {!isRefundCell && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); startEdit(); }}
+              className="mt-2 w-full rounded bg-amber-500/90 px-2 py-1 text-[10px] font-medium text-stone-900 hover:bg-amber-400 focus:outline-none"
+            >
+              Изменить итог
+            </button>
+          )}
         </div>,
         document.body,
       )}
@@ -1006,13 +1110,27 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
       />
       <PaymentBreakdownCell
         dealId={deal.id}
-        value={deal.supplier_payment}
+        gross={deal.supplier_payment_gross}
+        refund={deal.supplier_refund_total}
         balance={deal.supplier_balance}
         side="supplier"
+        kind="payment"
         currency={deal.supplier_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
-        dataCol="supplier_payment"
-        dataValue={deal.supplier_payment}
+        dataCol="supplier_payment_gross"
+        dataValue={deal.supplier_payment_gross}
+      />
+      <PaymentBreakdownCell
+        dealId={deal.id}
+        gross={deal.supplier_payment_gross}
+        refund={deal.supplier_refund_total}
+        balance={deal.supplier_balance}
+        side="supplier"
+        kind="refund"
+        currency={deal.supplier_currency ?? ""}
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
+        dataCol="supplier_refund_total"
+        dataValue={deal.supplier_refund_total}
       />
       <td
         className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: отгружено − оплата"
@@ -1106,13 +1224,27 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
       >{formatComputedNum(deal.buyer_shipped_amount)}</td>
       <PaymentBreakdownCell
         dealId={deal.id}
-        value={deal.buyer_payment}
+        gross={deal.buyer_payment_gross}
+        refund={deal.buyer_refund_total}
         balance={deal.buyer_debt}
         side="buyer"
+        kind="payment"
         currency={deal.buyer_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
-        dataCol="buyer_payment"
-        dataValue={deal.buyer_payment}
+        dataCol="buyer_payment_gross"
+        dataValue={deal.buyer_payment_gross}
+      />
+      <PaymentBreakdownCell
+        dealId={deal.id}
+        gross={deal.buyer_payment_gross}
+        refund={deal.buyer_refund_total}
+        balance={deal.buyer_debt}
+        side="buyer"
+        kind="refund"
+        currency={deal.buyer_currency ?? ""}
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
+        dataCol="buyer_refund_total"
+        dataValue={deal.buyer_refund_total}
       />
       <td
         className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: оплата − отгружено"
@@ -1227,14 +1359,14 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
 // ─────────────────────────────────────────────────────────────────────
 
 function PassportSkeletonRow() {
-  // 38 visible columns: 5 identity + 10 supplier + 2 company-groups
-  // (merged via colSpan=2 in real rows) + 12 buyer (Остаток column
-  // added 2026-06-23) + 9 logistics (Тариф column added 2026-06-23).
+  // 40 visible columns: 5 identity + 11 supplier (+ Возврат/Перезачет,
+  // 00137) + 2 company-groups (merged via colSpan=2 in real rows) +
+  // 13 buyer (+ Возврат/Перезачет) + 9 logistics.
   // We render them as plain cells (no colSpan merging) so the column
   // widths line up exactly with the header.
   return (
     <tr className="border-b animate-pulse">
-      {Array.from({ length: 38 }).map((_, i) => (
+      {Array.from({ length: 40 }).map((_, i) => (
         <td key={i} className="border-r px-2 py-1.5 bg-stone-50/50">
           <div className="h-3 rounded-sm bg-stone-100" />
         </td>
@@ -1261,7 +1393,8 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_price:             { label: "Цена (Поставщик)",           decimals: 2 },
   supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 2 },
   supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
-  supplier_payment:           { label: "Оплата (Поставщик)",         decimals: 2 },
+  supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 2 },
+  supplier_refund_total:      { label: "Возврат/Перезачет (Поставщик)", decimals: 2 },
   supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
   buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
@@ -1270,7 +1403,8 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   buyer_remaining:            { label: "Остаток (Покупатель)",        decimals: 3 },
   buyer_shipped_volume:       { label: "Отгр. тонн (Покупатель)",     decimals: 3 },
   buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 2 },
-  buyer_payment:              { label: "Оплата (Покупатель)",         decimals: 2 },
+  buyer_payment_gross:        { label: "Оплата (Покупатель)",         decimals: 2 },
+  buyer_refund_total:         { label: "Возврат/Перезачет (Покупатель)", decimals: 2 },
   buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
   planned_tariff:             { label: "Тариф",                       decimals: 2 },
   actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 2 },
@@ -1698,7 +1832,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[40px] bg-[#b4c6e7]">%S</th>
               {/* Supplier: 10 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#fce3d6]">Поставщик</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Договор</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Номер приложения</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]">Базис</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Объем</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Сумма дог.</th>
@@ -1706,13 +1840,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Приход, сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Приход, тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Оплата</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[85px] bg-[#fce3d6]" title="Возвраты и перезачёты (refund + offset). Вычитаются из оплаты при расчёте баланса.">Возврат/Перезачет</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]">Баланс</th>
               {/* Company groups: 2 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#bcd7ee]">Компания</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#bcd7ee]">Цена гр.</th>
               {/* Buyer: 11 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#fff2cc]">Покупатель</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Договор</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Номер приложения</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fff2cc]">Базис</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Объем</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Сумма дог.</th>
@@ -1722,6 +1857,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Отгр. тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Отгр. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Оплата</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[85px] bg-[#fff2cc]" title="Возвраты и перезачёты (refund + offset). Вычитаются из оплаты при расчёте долга.">Возврат/Перезачет</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fff2cc]">Долг</th>
               {/* Logistics: 8 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Экспедитор</th>
@@ -1805,9 +1941,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 //  table preserves its column widths and the totals row below sits
 //  at the correct natural bottom.
 //
-//  The total visible column count is 36 (5 Сделка + 10 Поставщик
-//  + 2 Группы компании + 11 Покупатель + 8 Логистика); the spacer
-//  rows use colSpan=36 to span the full table without disturbing
+//  The total visible column count is 38 (5 Сделка + 11 Поставщик
+//  + 2 Группы компании + 12 Покупатель + 8 Логистика); the spacer
+//  rows use colSpan=38 to span the full table without disturbing
 //  any column.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -1818,7 +1954,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 //  (tr.pt-cols); body — nth-child в строке данных (tr.pt-row); в
 //  итоговой строке (tr.pt-totals) ячейка колонки h — это child (h−4),
 //  т.к. первая ячейка «Итого» спанит колонки 1..5.
-//  «№» (h1) и колонка удаления (h41) не скрываются и не закрепляются
+//  «№» (h1) и колонка удаления (h43) не скрываются и не закрепляются
 //  отдельно («№» закреплена всегда).
 type PtBand = "deal" | "supplier" | "groups" | "buyer" | "logistics";
 type PtUnit = { key: string; label: string; band: PtBand; h: number[]; body: number };
@@ -1828,7 +1964,7 @@ const PT_UNITS: PtUnit[] = [
   { key: "fuel", label: "ГСМ", band: "deal", h: [4], body: 4 },
   { key: "sulfur", label: "%S", band: "deal", h: [5], body: 5 },
   { key: "supplier", label: "Поставщик", band: "supplier", h: [6], body: 6 },
-  { key: "supplier_contract", label: "Договор", band: "supplier", h: [7], body: 7 },
+  { key: "supplier_contract", label: "Номер приложения", band: "supplier", h: [7], body: 7 },
   { key: "supplier_basis", label: "Базис", band: "supplier", h: [8], body: 8 },
   { key: "supplier_volume", label: "Объем", band: "supplier", h: [9], body: 9 },
   { key: "supplier_amount", label: "Сумма дог.", band: "supplier", h: [10], body: 10 },
@@ -1836,38 +1972,40 @@ const PT_UNITS: PtUnit[] = [
   { key: "supplier_shipped_amount", label: "Приход, сумма", band: "supplier", h: [12], body: 12 },
   { key: "supplier_shipped_volume", label: "Приход, тонн", band: "supplier", h: [13], body: 13 },
   { key: "supplier_payment", label: "Оплата", band: "supplier", h: [14], body: 14 },
-  { key: "supplier_balance", label: "Баланс", band: "supplier", h: [15], body: 15 },
-  { key: "groups", label: "Группы компании", band: "groups", h: [16, 17], body: 16 },
-  { key: "buyer", label: "Покупатель", band: "buyer", h: [18], body: 17 },
-  { key: "buyer_contract", label: "Договор", band: "buyer", h: [19], body: 18 },
-  { key: "buyer_basis", label: "Базис", band: "buyer", h: [20], body: 19 },
-  { key: "buyer_volume", label: "Объем", band: "buyer", h: [21], body: 20 },
-  { key: "buyer_amount", label: "Сумма дог.", band: "buyer", h: [22], body: 21 },
-  { key: "buyer_price", label: "Цена", band: "buyer", h: [23], body: 22 },
-  { key: "buyer_ordered", label: "Заявлено", band: "buyer", h: [24], body: 23 },
-  { key: "buyer_remainder", label: "Остаток", band: "buyer", h: [25], body: 24 },
-  { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer", h: [26], body: 25 },
-  { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer", h: [27], body: 26 },
-  { key: "buyer_payment", label: "Оплата", band: "buyer", h: [28], body: 27 },
-  { key: "buyer_debt", label: "Долг", band: "buyer", h: [29], body: 28 },
-  { key: "forwarder", label: "Экспедитор", band: "logistics", h: [30], body: 29 },
-  { key: "logistics_group", label: "Группа комп.", band: "logistics", h: [31], body: 30 },
-  { key: "planned_tariff", label: "Тариф", band: "logistics", h: [32], body: 31 },
-  { key: "preliminary_tonnage", label: "Объем план", band: "logistics", h: [33], body: 32 },
-  { key: "preliminary_amount", label: "Предв. сумма", band: "logistics", h: [34], body: 33 },
-  { key: "actual_tariff", label: "Тариф факт", band: "logistics", h: [35], body: 34 },
-  { key: "actual_volume", label: "Факт объем", band: "logistics", h: [36], body: 35 },
-  { key: "invoice_amount", label: "Сумма", band: "logistics", h: [37], body: 36 },
-  { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics", h: [38], body: 37 },
-  { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics", h: [39], body: 38 },
-  { key: "manager", label: "Коммерция", band: "logistics", h: [40], body: 39 },
+  { key: "supplier_refund", label: "Возврат/Перезачет", band: "supplier", h: [15], body: 15 },
+  { key: "supplier_balance", label: "Баланс", band: "supplier", h: [16], body: 16 },
+  { key: "groups", label: "Группы компании", band: "groups", h: [17, 18], body: 17 },
+  { key: "buyer", label: "Покупатель", band: "buyer", h: [19], body: 18 },
+  { key: "buyer_contract", label: "Номер приложения", band: "buyer", h: [20], body: 19 },
+  { key: "buyer_basis", label: "Базис", band: "buyer", h: [21], body: 20 },
+  { key: "buyer_volume", label: "Объем", band: "buyer", h: [22], body: 21 },
+  { key: "buyer_amount", label: "Сумма дог.", band: "buyer", h: [23], body: 22 },
+  { key: "buyer_price", label: "Цена", band: "buyer", h: [24], body: 23 },
+  { key: "buyer_ordered", label: "Заявлено", band: "buyer", h: [25], body: 24 },
+  { key: "buyer_remainder", label: "Остаток", band: "buyer", h: [26], body: 25 },
+  { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer", h: [27], body: 26 },
+  { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer", h: [28], body: 27 },
+  { key: "buyer_payment", label: "Оплата", band: "buyer", h: [29], body: 28 },
+  { key: "buyer_refund", label: "Возврат/Перезачет", band: "buyer", h: [30], body: 29 },
+  { key: "buyer_debt", label: "Долг", band: "buyer", h: [31], body: 30 },
+  { key: "forwarder", label: "Экспедитор", band: "logistics", h: [32], body: 31 },
+  { key: "logistics_group", label: "Группа комп.", band: "logistics", h: [33], body: 32 },
+  { key: "planned_tariff", label: "Тариф", band: "logistics", h: [34], body: 33 },
+  { key: "preliminary_tonnage", label: "Объем план", band: "logistics", h: [35], body: 34 },
+  { key: "preliminary_amount", label: "Предв. сумма", band: "logistics", h: [36], body: 35 },
+  { key: "actual_tariff", label: "Тариф факт", band: "logistics", h: [37], body: 36 },
+  { key: "actual_volume", label: "Факт объем", band: "logistics", h: [38], body: 37 },
+  { key: "invoice_amount", label: "Сумма", band: "logistics", h: [39], body: 38 },
+  { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics", h: [40], body: 39 },
+  { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics", h: [41], body: 40 },
+  { key: "manager", label: "Коммерция", band: "logistics", h: [42], body: 41 },
 ];
 const PT_BAND_LABELS: Record<PtBand, string> = {
   deal: "Сделка", supplier: "Поставщик", groups: "Группы компании", buyer: "Покупатель", logistics: "Логистика",
 };
 type PassportColumnsPref = { hidden: string[]; pinUntil: string | null };
 
-const TOTAL_COLS = 36;
+const TOTAL_COLS = 38;
 
 type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
 
@@ -2046,7 +2184,7 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       <td colSpan={5 - hiddenDealCount} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
       </td>
-      {/* Поставщик (10 cols): name/contract/basis blank + numeric sums.
+      {/* Поставщик (11 cols): name/contract/basis blank + numeric sums.
           Клиент 2026-07-08: Объем / Сумма дог. / Цена — это данные
           контракта (одинаковые для всех строк одной сделки, а если
           сделки разные — их сумма всё равно не имеет бизнес-смысла).
@@ -2058,11 +2196,12 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {blank("amber")}
       {num("amber", sum((d) => d.supplier_shipped_amount))}
       {num("amber", sum((d) => d.supplier_shipped_volume), 3)}
-      {num("amber", sum((d) => d.supplier_payment))}
+      {num("amber", sum((d) => d.supplier_payment_gross))}
+      {num("amber", sum((d) => d.supplier_refund_total))}
       {num("amber", sum((d) => d.supplier_balance))}
       {/* Группы компании (2 cols) */}
       {blank("purple")}{blank("purple")}
-      {/* Покупатель (12 cols): + Остаток inserted between Заявлено
+      {/* Покупатель (13 cols): + Остаток inserted between Заявлено
           and Отгр. тонн (2026-06-23). Sum is shipped − ordered. */}
       {blank("blue")}{blank("blue")}{blank("blue")}
       {blank("blue")}
@@ -2072,7 +2211,8 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("blue", sum((d) => (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0)), 3)}
       {num("blue", sum((d) => d.buyer_shipped_volume), 3)}
       {num("blue", sum((d) => d.buyer_shipped_amount))}
-      {num("blue", sum((d) => d.buyer_payment))}
+      {num("blue", sum((d) => d.buyer_payment_gross))}
+      {num("blue", sum((d) => d.buyer_refund_total))}
       {num("blue", sum((d) => d.buyer_debt))}
       {/* Логистика (12 cols): expeditor / group / tariff blank-cells,
           затем суммируемые числа. Оба «Тариф факт» (00120) — ставки,
