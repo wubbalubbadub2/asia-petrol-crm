@@ -106,7 +106,7 @@ const COLUMNS: Column[] = [
 
   // ── Поставщик ──────────────────────────────────────────
   { key: "supplier", header: "Поставщик", width: 22, band: "supplier", read: (d) => d.supplier?.short_name ?? d.supplier?.full_name ?? "" },
-  { key: "supplier_contract", header: "Договор", width: 14, band: "supplier", read: (d) => d.supplier_contract ?? "" },
+  { key: "supplier_contract", header: "Номер приложения", width: 18, band: "supplier", read: (d) => d.supplier_contract ?? "" },
   { key: "supplier_basis", header: "Базис", width: 14, band: "supplier", read: (d) => d.supplier_delivery_basis ?? "" },
   { key: "supplier_volume", header: "Объем, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_contracted_volume },
   { key: "supplier_amount", header: "Сумма дог.", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_contracted_amount },
@@ -121,7 +121,8 @@ const COLUMNS: Column[] = [
   { key: "supplier_price", header: "Цена оконч.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price },
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
-  { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment },
+  { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross },
+  { key: "supplier_refund", header: "Возврат/Перезачет", width: 16, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_refund_total },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
   // ── Группы компании ────────────────────────────────────
@@ -137,7 +138,7 @@ const COLUMNS: Column[] = [
 
   // ── Покупатель ─────────────────────────────────────────
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
-  { key: "buyer_contract", header: "Договор", width: 14, band: "buyer", read: (d) => d.buyer_contract ?? "" },
+  { key: "buyer_contract", header: "Номер приложения", width: 18, band: "buyer", read: (d) => d.buyer_contract ?? "" },
   { key: "buyer_basis", header: "Базис", width: 14, band: "buyer", read: (d) => d.buyer_delivery_basis ?? "" },
   { key: "buyer_volume", header: "Объем, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_contracted_volume },
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
@@ -152,7 +153,8 @@ const COLUMNS: Column[] = [
   { key: "buyer_remainder", header: "Остаток, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0) },
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount },
-  { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment },
+  { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment_gross },
+  { key: "buyer_refund", header: "Возврат/Перезачет", width: 16, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_refund_total },
   { key: "buyer_debt", header: "Долг / переплата", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_debt },
 
   // ── Логистика ──────────────────────────────────────────
@@ -351,9 +353,9 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
     totalRow.height = 22;
     const TOTAL_KEYS = new Set([
       "supplier_volume", "supplier_amount", "supplier_shipped_amount",
-      "supplier_shipped_volume", "supplier_payment", "supplier_balance",
+      "supplier_shipped_volume", "supplier_payment", "supplier_refund", "supplier_balance",
       "buyer_volume", "buyer_amount", "buyer_ordered_volume",
-      "buyer_shipped_volume", "buyer_shipped_amount", "buyer_payment", "buyer_debt",
+      "buyer_shipped_volume", "buyer_shipped_amount", "buyer_payment", "buyer_refund", "buyer_debt",
       "preliminary_tonnage", "preliminary_amount", "actual_shipped_volume", "invoice_amount",
       "additional_expenses_amount",
     ]);
@@ -403,3 +405,5 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
 // Re-exports kept for tree-shake clarity at call sites.
 export { type Column };
 export type { Side };
+// Экспортируется ради регресс-теста на состав и подписи колонок.
+export { COLUMNS as PASSPORT_COLUMNS };
