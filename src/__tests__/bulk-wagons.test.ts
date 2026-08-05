@@ -169,6 +169,19 @@ describe("parseBulkWagons", () => {
       expect(rows[0].error).toMatch(/даты/i);
     });
 
+    it("объём, протёкший в колонку вагона, по-прежнему ловится", () => {
+      // Исходное назначение проверки на запятую/точку: съехавшая
+      // раскладка вставки кладёт «167,801» в колонку вагона. Группы
+      // цифр короткие — на мультивагонный список не похоже.
+      const rows = parseBulkWagons("167,801\t54.719");
+      expect(rows[0].error).toMatch(/не похоже на номер вагона/);
+    });
+
+    it("одиночный номер с точкой тоже ловится", () => {
+      const rows = parseBulkWagons("51742534.5\t54.719");
+      expect(rows[0].error).toMatch(/не похоже на номер вагона/);
+    });
+
     it("valid rows among invalid still parse correctly", () => {
       const input = [
         "51742534\t54.719",

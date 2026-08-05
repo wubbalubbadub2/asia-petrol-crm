@@ -98,6 +98,13 @@ function mergeMultiWagonCells(cells: string[]): string[] {
   return out;
 }
 
+// Законная мультивагонная ячейка — «12345678,12345679,12345680», её
+// собирает mergeMultiWagonCells (2026-06-28). Отличаем от протёкшего в
+// колонку вагона ОБЪЁМА («167,801») по длине групп: номер вагона —
+// 7-8 цифр, дробная часть объёма — 1-3. Без этого различения проверка
+// ниже отвергала собственный результат склейки.
+const MULTI_WAGON_RE = /^\d{7,8}(,\d{7,8})*$/;
+
 function parseVolume(raw: string | undefined): number | null {
   if (!raw) return null;
   const cleaned = raw.replace(/\s/g, "").replace(",", ".");
@@ -226,11 +233,12 @@ export function parseBulkWagons(raw: string): ParsedWagon[] {
 
     if (!wagon) {
       row.error = "Пустой № вагона";
-    } else if (/[,.]/.test(wagon)) {
-      // Wagon numbers are always plain digits (7-8 chars). A comma or
-      // dot inside means the volume value leaked into the wagon column
-      // — happens when the paste layout is misaligned (e.g. extra
-      // trailing tab). Flag it so the row can't be silently saved.
+    } else if (/[,.]/.test(wagon) && !MULTI_WAGON_RE.test(wagon)) {
+      // Одиночный номер вагона — это всегда голые цифры (7-8 знаков).
+      // Запятая или точка внутри означает, что в колонку вагона протёк
+      // объём — так бывает при съехавшей раскладке вставки (лишний
+      // хвостовой таб). Помечаем, чтобы строка не сохранилась молча.
+      // Исключение — мультивагонный список через запятую (MULTI_WAGON_RE).
       row.error = `«${wagon}» не похоже на номер вагона (запятая/точка). Проверьте порядок колонок.`;
     } else if (volumeRaw && row.volume == null) {
       row.error = `Не удалось прочитать объём: "${volumeRaw}"`;
