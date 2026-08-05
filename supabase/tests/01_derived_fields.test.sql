@@ -1,11 +1,18 @@
--- Test: compute_deal_derived_fields (migration 00021)
+-- Test: compute_deal_derived_fields (миграция 00021, актуальная
+-- редакция — 00060 → 00052 → 00112)
 -- The BEFORE INSERT OR UPDATE trigger should materialize:
 --   supplier_contracted_amount = volume * price
 --   buyer_contracted_amount    = volume * price
 --   supplier_balance           = shipped - payment
---   buyer_debt                 = shipped - payment
+--   buyer_debt                 = payment - shipped   ← знак перевёрнут в 00060
 --   buyer_remaining            = contracted - ordered
 --   preliminary_amount         = planned_tariff * preliminary_tonnage
+--
+-- 00060 по требованию клиента развернула «Долг / переплата» покупателя:
+--   оплата > отгружено → положительная переплата
+--   оплата < отгружено → отрицательный остаточный долг
+-- Тест с 00060 не обновляли, и он падал на верной формуле; ожидание
+-- приведено к коду 2026-08-05.
 
 BEGIN;
 
@@ -48,8 +55,9 @@ BEGIN
   IF v_row.supplier_balance <> 1000 - 500 THEN
     RAISE EXCEPTION 'supplier_balance expected 500, got %', v_row.supplier_balance;
   END IF;
-  IF v_row.buyer_debt <> 2000 - 800 THEN
-    RAISE EXCEPTION 'buyer_debt expected 1200, got %', v_row.buyer_debt;
+  -- 00060: оплата − отгружено. 800 − 2000 = −1200 (остаточный долг).
+  IF v_row.buyer_debt <> 800 - 2000 THEN
+    RAISE EXCEPTION 'buyer_debt expected -1200, got %', v_row.buyer_debt;
   END IF;
 
   -- buyer_remaining = contracted - ordered
