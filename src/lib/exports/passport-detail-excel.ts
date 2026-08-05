@@ -30,6 +30,7 @@
 import type { Deal } from "@/lib/hooks/use-deals";
 import type { ExportContext } from "@/lib/exports/passport-excel";
 import { roundedTonnage } from "@/lib/exports/registry-excel";
+import { isRefundKind } from "@/lib/payments/totals";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { FxRateRow } from "@/lib/fx/rates";
 
@@ -66,15 +67,19 @@ type DetailShipment = {
   fx_buyer_price?: number | null;
 };
 
-// Одна оплата (deal_payments) для под-строки. amount — ПОДПИСАННАЯ
-// сумма: в БД хранится плюсом, знак даёт payment_type (возврат/
-// перезачёт → минус) — та же конвенция, что в rollup 00062 и на
-// странице сделки (клиент 2026-07-17: «в системе минусом, а в
-// выгрузке плюсом»).
+// Одна оплата (deal_payments) для под-строки. amount — сумма КАК В БД,
+// то есть всегда плюсом; куда она попадёт, решает payment_type:
+// 'payment' → колонка «Оплата», 'refund'/'offset' → «Возврат/
+// Перезачет» (00137). До этого возврат шёл минусом в «Оплата».
 // currency — валюта САМОГО платежа (deal_payments.currency, 00034),
 // может отличаться от валюты сделки; в fx-режиме конвертируем по ней
 // с фолбэком на валюту сделки/стороны.
-type PaymentLite = { amount: number | null; payment_date: string | null; currency?: string | null };
+type PaymentLite = {
+  amount: number | null;
+  payment_date: string | null;
+  currency?: string | null;
+  payment_type: string | null;
+};
 
 // Под-строка сделки (клиент 2026-07-17): i-я отгрузка + i-я оплата
 // поставщика + i-я оплата покупателя, «между собой не связаны» —
@@ -172,7 +177,7 @@ const COLUMNS: Column[] = [
 
   // ── Поставщик ──────────────────────────────────────────
   { key: "supplier", header: "Поставщик", width: 22, band: "supplier", read: (d) => d.supplier?.short_name ?? d.supplier?.full_name ?? "", readShip: (d) => d.supplier?.short_name ?? d.supplier?.full_name ?? "" },
-  { key: "supplier_contract", header: "Договор", width: 14, band: "supplier", read: (d) => d.supplier_contract ?? "", readShip: (d, s) => (s.ship ? (s.ship.supplier_appendix || (d.supplier_contract ?? "")) : (d.supplier_contract ?? "")) },
+  { key: "supplier_contract", header: "Номер приложения", width: 18, band: "supplier", read: (d) => d.supplier_contract ?? "", readShip: (d, s) => (s.ship ? (s.ship.supplier_appendix || (d.supplier_contract ?? "")) : (d.supplier_contract ?? "")) },
   { key: "supplier_basis", header: "Базис", width: 14, band: "supplier", read: (d) => d.supplier_delivery_basis ?? "", readShip: (d) => d.supplier_delivery_basis ?? "" },
   { key: "supplier_volume", header: "Объем, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_contracted_volume },
   { key: "supplier_amount", header: "Сумма дог.", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_contracted_amount },
@@ -193,7 +198,8 @@ const COLUMNS: Column[] = [
       const price = s.ship?.fx_supplier_price ?? d.supplier_price;
       return price != null && s.ship?.loading_volume != null ? price * s.ship.loading_volume : null;
     } },
-  { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment, readShip: (_, s) => s.supPay?.amount ?? null },
+  { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross, readShip: (_, s) => (s.supPay && !isRefundKind(s.supPay.payment_type) ? s.supPay.amount : null) },
+  { key: "supplier_refund", header: "Возврат/Перезачет", width: 16, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_refund_total, readShip: (_, s) => (s.supPay && isRefundKind(s.supPay.payment_type) ? s.supPay.amount : null) },
   { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? excelDate(s.supPay.payment_date) : "") },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
@@ -204,7 +210,7 @@ const COLUMNS: Column[] = [
 
   // ── Покупатель ─────────────────────────────────────────
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "", readShip: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
-  { key: "buyer_contract", header: "Договор", width: 14, band: "buyer", read: (d) => d.buyer_contract ?? "", readShip: (d, s) => (s.ship ? (s.ship.buyer_appendix || (d.buyer_contract ?? "")) : (d.buyer_contract ?? "")) },
+  { key: "buyer_contract", header: "Номер приложения", width: 18, band: "buyer", read: (d) => d.buyer_contract ?? "", readShip: (d, s) => (s.ship ? (s.ship.buyer_appendix || (d.buyer_contract ?? "")) : (d.buyer_contract ?? "")) },
   { key: "buyer_basis", header: "Базис", width: 14, band: "buyer", read: (d) => d.buyer_delivery_basis ?? "" },
   { key: "buyer_volume", header: "Объем, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_contracted_volume },
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
@@ -226,7 +232,8 @@ const COLUMNS: Column[] = [
       const price = s.ship?.fx_buyer_price ?? d.buyer_price;
       return price != null && s.ship?.shipment_volume != null ? price * s.ship.shipment_volume : null;
     } },
-  { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment, readShip: (_, s) => s.buyPay?.amount ?? null },
+  { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment_gross, readShip: (_, s) => (s.buyPay && !isRefundKind(s.buyPay.payment_type) ? s.buyPay.amount : null) },
+  { key: "buyer_refund", header: "Возврат/Перезачет", width: 16, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_refund_total, readShip: (_, s) => (s.buyPay && isRefundKind(s.buyPay.payment_type) ? s.buyPay.amount : null) },
   { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.buyPay?.payment_date ? excelDate(s.buyPay.payment_date) : "") },
   { key: "buyer_debt", header: "Долг / переплата", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_debt },
 
@@ -335,8 +342,14 @@ async function fetchPaymentsByDeals(dealIds: string[]): Promise<Map<string, Deal
     if (res.error) throw new Error(`Оплаты: ${res.error.message}`);
     for (const row of res.data) {
       const entry = out.get(row.deal_id) ?? { supplier: [], buyer: [] };
-      const sign = row.payment_type === "refund" || row.payment_type === "offset" ? -1 : 1;
-      entry[row.side].push({ amount: row.amount != null ? row.amount * sign : null, payment_date: row.payment_date, currency: row.currency });
+      // Знак больше не применяем: маршрутизацию по колонкам делает
+      // payment_type на рендере под-строки.
+      entry[row.side].push({
+        amount: row.amount,
+        payment_date: row.payment_date,
+        currency: row.currency,
+        payment_type: row.payment_type,
+      });
       out.set(row.deal_id, entry);
     }
   }
@@ -571,10 +584,14 @@ export async function exportPassportDetailToExcel(
         supplier_price: agg.supplierPrice,
         supplier_shipped_amount: agg.supplierAmount,
         supplier_payment: agg.supplierPayment,
+        supplier_payment_gross: agg.supplierPaymentGross,
+        supplier_refund_total: agg.supplierRefund,
         supplier_balance: agg.supplierBalance,
         buyer_price: agg.buyerPrice,
         buyer_shipped_amount: agg.buyerAmount,
         buyer_payment: agg.buyerPayment,
+        buyer_payment_gross: agg.buyerPaymentGross,
+        buyer_refund_total: agg.buyerRefund,
         buyer_debt: agg.buyerDebt,
         invoice_amount: agg.railAmount,
         actual_tariff: agg.actualTariff,
@@ -743,9 +760,9 @@ export async function exportPassportDetailToExcel(
     totalRow.height = 22;
     const TOTAL_KEYS = new Set([
       "supplier_volume", "supplier_amount", "supplier_shipped_amount",
-      "supplier_shipped_volume", "supplier_payment", "supplier_balance",
+      "supplier_shipped_volume", "supplier_payment", "supplier_refund", "supplier_balance",
       "buyer_volume", "buyer_amount", "buyer_ordered_volume", "buyer_remainder",
-      "buyer_shipped_volume", "buyer_shipped_amount", "buyer_payment", "buyer_debt",
+      "buyer_shipped_volume", "buyer_shipped_amount", "buyer_payment", "buyer_refund", "buyer_debt",
       "preliminary_tonnage", "preliminary_amount", "actual_shipped_volume",
       "invoice_volume", "invoice_amount",
     ]);
