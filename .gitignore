@@ -57,3 +57,6 @@ supabase/.branches/
 
 # keep migration env template committable (overrides .env* above)
 !scripts/migration/.env.example
+
+# Визуальный компаньон brainstorming (локальные макеты)
+.superpowers/
