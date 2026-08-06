@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Carlito } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "@/components/ui/sonner";
@@ -37,6 +37,16 @@ const carlitoMono = Carlito({
 export const metadata: Metadata = {
   title: "Singularity Trading CRM",
   description: "CRM и управление сделками Singularity Trading",
+};
+
+// viewport-fit=cover обязателен: без него на телефонах с вырезом
+// интерфейс уезжает под чёлку, а нижняя панель вкладок — под полосу
+// жестов. Отступы берём через env(safe-area-inset-*).
+export const viewport: Viewport = {
+  themeColor: "#f59e0b",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

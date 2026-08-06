@@ -48,6 +48,9 @@ function isRscRequest(request: NextRequest): boolean {
 export const config = {
   matcher: [
     // Skip static assets, image optimisation, and RSC data paths.
-    "/((?!_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // sw.js / manifest.webmanifest / иконки PWA обязаны отдаваться без
+    // редиректа на /login — иначе браузер не зарегистрирует воркер и
+    // не предложит установку.
+    "/((?!_next/static|_next/image|_next/data|favicon.ico|sw\\.js|manifest\\.webmanifest|icon-|apple-touch-icon|pwa-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
