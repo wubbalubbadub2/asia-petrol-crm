@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Carlito } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerRegistrar } from "@/components/pwa/service-worker-registrar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 // nextjs-toploader removed (client feedback 2026-06-17): the orange
@@ -67,6 +68,7 @@ export default function RootLayout({
             {children}
           </TooltipProvider>
           <Toaster position="top-right" richColors />
+          <ServiceWorkerRegistrar />
         </NuqsAdapter>
       </body>
     </html>
