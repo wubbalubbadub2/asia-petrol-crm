@@ -59,8 +59,16 @@ const TTL_MS = 5 * 60_000;
 
 type CacheState = { promise: Promise<GlobalRefs>; data: GlobalRefs | null; ts: number };
 let cached: CacheState | null = null;
+// Подписчики на обновление кэша: без них принудительный перезапрос
+// чинит только тот список, из которого его вызвали, а соседние
+// остаются пустыми.
+const listeners = new Set<(refs: GlobalRefs) => void>();
 
-function fetchAll(): Promise<GlobalRefs> {
+// usable=false — ответ, который НЕЛЬЗЯ класть в кэш: часть запросов
+// упала, либо все справочники пришли пустыми (см. fetchAll).
+type FetchResult = { refs: GlobalRefs; usable: boolean };
+
+function fetchAll(): Promise<FetchResult> {
   const sb = createClient();
   // Warm path = only the refs every /deals + /registry page touches.
   // consignees + quotationTypes lazy-loaded by getLazyRefs() — they
@@ -78,11 +86,16 @@ function fetchAll(): Promise<GlobalRefs> {
   ];
   return Promise.allSettled(queries).then((rs) => {
     type Row = Record<string, unknown>;
+    let failed = false;
     const pull = (i: number): Row[] => {
       const r = rs[i];
-      if (r.status !== "fulfilled") return [];
-      const v = (r.value as unknown as { data: Row[] | null }).data;
-      return v ?? [];
+      if (r.status !== "fulfilled") { failed = true; return []; }
+      const v = r.value as unknown as { data: Row[] | null; error: unknown };
+      // PostgREST отдаёт ошибку в поле error, а промис при этом
+      // резолвится — без этой проверки сломанный запрос выглядел бы
+      // как «справочник пуст».
+      if (v.error) { failed = true; return []; }
+      return v.data ?? [];
     };
     const refs: GlobalRefs = {
       suppliers: pull(0) as unknown as CounterpartyRef[],
@@ -97,12 +110,25 @@ function fetchAll(): Promise<GlobalRefs> {
       consignees: [],
       deliveryBases: [],
     };
+    // Пустой ответ по ВСЕМ справочникам — это не «пустая база», а
+    // сломанный запрос: RLS у нас `auth.uid() IS NOT NULL`, поэтому
+    // запрос, ушедший до восстановления сессии, получает 200 [] БЕЗ
+    // ошибки. Раньше такой ответ оседал в кэше и обрубал каждый
+    // выпадающий список до перезагрузки страницы (баг 2026-08-04:
+    // «Нет групп. Создайте в справочнике.» при 19 активных группах).
+    const anyRows =
+      refs.suppliers.length > 0 || refs.buyers.length > 0 ||
+      refs.forwarders.length > 0 || refs.managers.length > 0 ||
+      refs.stations.length > 0 || refs.companyGroups.length > 0 ||
+      refs.factories.length > 0 || refs.fuelTypes.length > 0;
+    const usable = !failed && anyRows;
     // Lazy-fire the rarely-needed lookups in the background — they
     // populate the cache so the few pages that consume them (e.g.
     // /deals/[id] quotation variant picker, /spravochnik/consignees)
     // already have them by the time the operator navigates there.
-    queueMicrotask(() => { void getLazyRefs(refs); });
-    return refs;
+    // Непригодный ответ догружать нечем — сессии всё равно нет.
+    if (usable) queueMicrotask(() => { void getLazyRefs(refs); });
+    return { refs, usable };
   });
 }
 
@@ -130,16 +156,37 @@ async function getLazyRefs(target: GlobalRefs): Promise<void> {
 
 export function getGlobalRefs(): Promise<GlobalRefs> {
   if (cached && Date.now() - cached.ts < TTL_MS) return cached.promise;
-  const promise = fetchAll();
-  const state: CacheState = { promise, data: null, ts: Date.now() };
+  const fetched = fetchAll();
+  const state: CacheState = {
+    promise: fetched.then((r) => r.refs),
+    data: null,
+    ts: Date.now(),
+  };
   cached = state;
-  promise.then((d) => { state.data = d; }).catch(() => { cached = null; });
-  return promise;
+  fetched
+    .then((r) => {
+      // Непригодный ответ не сохраняем — следующий вызов сходит заново,
+      // иначе одна неудачная попытка глушит справочники на всю сессию.
+      // Сравнение cached === state нужно, чтобы не обнулить более
+      // свежую запись, если за это время успел уйти новый запрос.
+      if (!r.usable) { if (cached === state) cached = null; return; }
+      state.data = r.refs;
+      // Разбудить уже смонтированные useGlobalRefs: иначе принудительный
+      // перезапрос (invalidateGlobalRefs + getGlobalRefs) чинит только
+      // того, кто его вызвал, а соседние списки остаются пустыми.
+      listeners.forEach((l) => l(r.refs));
+    })
+    .catch(() => { if (cached === state) cached = null; });
+  return state.promise;
 }
 
 export function getCachedRefsSync(): GlobalRefs | null {
   if (!cached) return null;
   return cached.data;
+}
+
+function isCacheStale(): boolean {
+  return !cached || Date.now() - cached.ts >= TTL_MS;
 }
 
 export function invalidateGlobalRefs() {
@@ -161,12 +208,19 @@ export function useGlobalRefs(): { refs: GlobalRefs; ready: boolean } {
   const [refs, setRefs] = useState<GlobalRefs>(initial ?? EMPTY);
   const [ready, setReady] = useState<boolean>(initial != null);
   useEffect(() => {
-    if (initial) return;
     let cancelled = false;
-    getGlobalRefs()
-      .then((d) => { if (!cancelled) { setRefs(d); setReady(true); } })
-      .catch(() => { if (!cancelled) setReady(true); });
-    return () => { cancelled = true; };
+    const apply = (d: GlobalRefs) => { if (!cancelled) { setRefs(d); setReady(true); } };
+    // Подписка на обновления кэша — чтобы принудительный перезапрос из
+    // любого места сессии дотянулся до всех открытых списков.
+    listeners.add(apply);
+    // Кэш свежий — берём как есть. Просроченный отдаём мгновенно, но
+    // тихо перезапрашиваем: приложение — SPA со своими вкладками, живёт
+    // часами без reload, и без этого правки в справочнике не доезжают
+    // до открытой сессии вообще.
+    if (!initial || isCacheStale()) {
+      getGlobalRefs().then(apply).catch(() => { if (!cancelled) setReady(true); });
+    }
+    return () => { cancelled = true; listeners.delete(apply); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return { refs, ready };
