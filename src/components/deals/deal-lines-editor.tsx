@@ -462,7 +462,7 @@ type LineVM = {
   // «просрочки могут быть у покупателя, он работает по приложению».
   // NULL means «взять со сделки» (поля 00125), не «нет отсрочки».
   deferral_days: number | null;
-  deferral_date_basis: "loading" | "shipment" | "manual" | null;
+  deferral_date_basis: "auto" | "manual" | null;
   deferral_planned_date: string | null;
   // Migration 00077 — «Подкотировка», concrete wide-column of
   // quotations (price_cif_nwe / price_fob_med / …). Missing on
@@ -477,14 +477,15 @@ type LineVM = {
 // Условия оплаты (00141): от какой даты СНТ отсчитывается срок.
 // Умолчание намеренно повторяет поведение выгрузки до 00141 —
 // поставщик считает от входящего СНТ, покупатель от исходящего.
+// Клиент 2026-08-10: вариантов ровно два — «от даты отгрузки» и
+// «дата вручную». Какая именно дата берётся автоматом, решает сторона
+// (у поставщика приход, у покупателя отгрузка), выбирать тут нечего.
 const DEFERRAL_BASIS_LABEL: Record<string, string> = {
-  loading: "От даты вход. СНТ",
-  shipment: "От даты исход. СНТ",
+  auto: "От даты отгрузки",
   manual: "Дата вручную",
 };
 const DEFERRAL_BASIS_OPTS: Option[] = [
-  { value: "loading", label: DEFERRAL_BASIS_LABEL.loading },
-  { value: "shipment", label: DEFERRAL_BASIS_LABEL.shipment },
+  { value: "auto", label: DEFERRAL_BASIS_LABEL.auto },
   { value: "manual", label: DEFERRAL_BASIS_LABEL.manual },
 ];
 
@@ -590,10 +591,9 @@ function LinesEditorView({
   dealMonth: string | null;
   dealYear: number | null;
 }) {
-  // Умолчание отсчёта срока оплаты (00141) зависит от стороны:
-  // поставщик считает от входящего СНТ, покупатель от исходящего —
-  // ровно так, как это делала выгрузка до появления явного выбора.
-  const defaultBasis = side === "supplier" ? "loading" : "shipment";
+  // Сторона больше не влияет на ВЫБОР — только на то, какая дата
+  // отгрузки подставится автоматом. Умолчание одно.
+  void side;
   const modeLabel = (mode: PriceMode) =>
     PRICE_MODES.find((m) => m.value === mode)?.label ?? "—";
 
@@ -1055,18 +1055,17 @@ function LinesEditorView({
               />
             )}
 
-            {/* Клиент 2026-08-10: выбор «дата тянется автоматом» или
-                «менеджер вводит сам». Автоматических варианта два —
-                от входящего или исходящего СНТ (так просило ТЗ). */}
+            {/* Клиент 2026-08-10: «от даты отгрузки (тут дата тянется
+                автоматом) или ввести дату самому». */}
             <SelectCell
               label="Отсчёт срока"
               value={l.deferral_date_basis}
               displayValue={
                 l.deferral_date_basis
                   ? DEFERRAL_BASIS_LABEL[l.deferral_date_basis]
-                  : `${DEFERRAL_BASIS_LABEL[defaultBasis]} (по умолчанию)`
+                  : `${DEFERRAL_BASIS_LABEL.auto} (по умолчанию)`
               }
-              hint="Пусто — умолчание стороны"
+              hint="Пусто — от даты отгрузки"
               editing={editing}
               options={DEFERRAL_BASIS_OPTS}
               onChange={(v) => onUpdate(l.id, { deferral_date_basis: (v || null) as LineVM["deferral_date_basis"] })}

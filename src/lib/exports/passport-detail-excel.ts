@@ -420,7 +420,7 @@ type TermRow = {
   shipment_id: string;
   side: "supplier" | "buyer";
   deferral_days: number | null;
-  date_basis: "loading" | "shipment";
+  date_basis: "auto" | "manual";
   deferral_mode: string | null;
   planned_pay_date: string | null;
   days_to_pay: number | null;
@@ -437,7 +437,7 @@ export function buildDebtColumns(terms: TermsMap): Column[] {
   const basisText = (t: TermRow | null, note: string | null): string => {
     if (!t) return "";
     if (t.deferral_mode === "other") return note ?? "прочее";
-    return t.date_basis === "loading" ? "от даты вход. СНТ" : "от даты исход. СНТ";
+    return t.date_basis === "manual" ? "дата вручную" : "от даты отгрузки";
   };
 
   // Красным — только настоящая просрочка и только пока сторона должна.

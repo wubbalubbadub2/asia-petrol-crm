@@ -96,21 +96,21 @@ BEGIN
   END IF;
   UPDATE deal_buyer_lines SET deferral_days = 14 WHERE id = v_buy_ln;
 
-  -- ── 4. Базис отсчёта по умолчанию сохраняет поведение экспортёра ────
-  -- Поставщик — от входящего СНТ, покупатель — от исходящего.
+  -- ── 4. Умолчание отсчёта — «от даты отгрузки» на обеих сторонах ─────
   SELECT date_basis INTO v_basis FROM deal_payment_terms
    WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0001';
-  IF v_basis <> 'loading' THEN
-    RAISE EXCEPTION 'умолчание поставщика: ожидали loading, получили %', v_basis;
+  IF v_basis <> 'auto' THEN
+    RAISE EXCEPTION 'умолчание поставщика: ожидали auto, получили %', v_basis;
   END IF;
   SELECT date_basis INTO v_basis FROM deal_payment_terms
    WHERE deal_id = v_deal AND side = 'buyer' AND wagon_number = 'PT-0002';
-  IF v_basis <> 'shipment' THEN
-    RAISE EXCEPTION 'умолчание покупателя: ожидали shipment, получили %', v_basis;
+  IF v_basis <> 'auto' THEN
+    RAISE EXCEPTION 'умолчание покупателя: ожидали auto, получили %', v_basis;
   END IF;
 
-  -- ── 5. Явный выбор базиса переключает дату ─────────────────────────
-  -- У PT-0003 входящее и исходящее СНТ в разные дни.
+  -- ── 5. Дата отгрузки берётся по стороне автоматически ──────────────
+  -- У PT-0003 приход и отгрузка в разные дни: поставщик считает от
+  -- прихода, покупатель — от отгрузки. Выбора у пользователя нет.
   INSERT INTO shipment_registry (deal_id, registry_type, wagon_number,
                                  loading_volume, loading_date,
                                  shipment_volume, date)
@@ -121,16 +121,14 @@ BEGIN
   SELECT basis_date INTO v_planned FROM deal_payment_terms
    WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0003';
   IF v_planned <> DATE '2026-02-01' THEN
-    RAISE EXCEPTION 'базис loading: ожидали 01.02.2026, получили %', v_planned;
+    RAISE EXCEPTION 'поставщик считает от прихода: ожидали 01.02.2026, получили %', v_planned;
   END IF;
 
-  UPDATE deal_supplier_lines SET deferral_date_basis = 'shipment' WHERE id = v_sup_ln;
   SELECT basis_date INTO v_planned FROM deal_payment_terms
-   WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0003';
+   WHERE deal_id = v_deal AND side = 'buyer' AND wagon_number = 'PT-0003';
   IF v_planned <> DATE '2026-02-20' THEN
-    RAISE EXCEPTION 'базис shipment: ожидали 20.02.2026, получили %', v_planned;
+    RAISE EXCEPTION 'покупатель считает от отгрузки: ожидали 20.02.2026, получили %', v_planned;
   END IF;
-  UPDATE deal_supplier_lines SET deferral_date_basis = NULL WHERE id = v_sup_ln;
 
   -- ── 6. Знак и граница «дней до оплаты» ─────────────────────────────
   -- Срок ровно сегодня → 0. Просрочка на 32 дня → −32 (пример клиента).

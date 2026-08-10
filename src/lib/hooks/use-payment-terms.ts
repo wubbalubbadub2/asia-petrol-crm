@@ -30,7 +30,7 @@ export type PaymentTermsRow = {
   company_chain: string | null;
   appendix: string | null;
   basis_date: string;
-  date_basis: "loading" | "shipment" | "manual";
+  date_basis: "auto" | "manual";
   deferral_days: number | null;
   planned_pay_date: string | null;
   /** Плюс — есть время на оплату, минус — просрочка, NULL — срок не задан. */

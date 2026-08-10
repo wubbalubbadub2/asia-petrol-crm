@@ -45,12 +45,12 @@ const deal = {
 const DEBT_COLUMNS = buildDebtColumns(new Map([
   ["ship-1|supplier", {
     shipment_id: "ship-1", side: "supplier" as const, deferral_days: 5,
-    date_basis: "loading" as const, deferral_mode: "shipment",
+    date_basis: "auto" as const, deferral_mode: "shipment",
     planned_pay_date: "2026-07-13", days_to_pay: -10,
   }],
   ["ship-1|buyer", {
     shipment_id: "ship-1", side: "buyer" as const, deferral_days: null,
-    date_basis: "shipment" as const, deferral_mode: "other",
+    date_basis: "manual" as const, deferral_mode: "other",
     planned_pay_date: "2026-09-01", days_to_pay: 40,
   }],
 ]));
@@ -100,8 +100,8 @@ describe("passport-detail export date columns", () => {
     expect(col(empty, "buy_planned").readShip!(deal, sub)).toBe("");
   });
 
-  it("«Дата начала отсрочки» показывает реальный базис, а не фиксированный текст", () => {
-    expect(col(DEBT_COLUMNS, "sup_defer_basis").readShip!(deal, sub)).toBe("от даты вход. СНТ");
+  it("«Дата начала отсрочки» показывает, откуда взялась дата", () => {
+    expect(col(DEBT_COLUMNS, "sup_defer_basis").readShip!(deal, sub)).toBe("от даты отгрузки");
   });
 
   it("режим «прочее» показывает заметку сделки", () => {
