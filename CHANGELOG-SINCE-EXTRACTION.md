@@ -84,6 +84,13 @@ Entry template:
 - **Регрессионный тест:** на версии без починки падает 3 из 4.
 - **Про базис поставки.** Миграция `00136` и страницы сделок были на `main`, а `GlobalRefs.deliveryBases` и свойства компонентов — нет, из-за чего `main` не компилировался (10 ошибок в `deals/[id]` и `deals/new`). Здесь добавлено ровно недостающее: поле в `GlobalRefs` с ленивой загрузкой и два компонента. Страница `/spravochnik/delivery-bases` в эту правку НЕ входит — для компиляции не нужна, значения FCA/CPT/DAP/EXW засеяны миграцией.
 - **Rebuild impact:** нет. Поведение кэша справочников, схема и формулы не менялись.
+### 2026-08-10 — CI: db-джоба снова может применить миграции и прогнать SQL-тесты
+- **What changed:** `.github/workflows/test.yml` — шаги «Stub Supabase auth schema» и «Apply all migrations in order». Миграции и тесты не менялись.
+- **Type:** [BEHAVIOR] — только CI. Прод, схема и расчёты не затронуты.
+- **Проблема.** Джоба `db` падала на применении миграций и никогда не была зелёной, поэтому SQL-тесты в CI фактически не гонялись. Четыре причины: (1) `00016` добавляет `deal_activity` в публикацию `supabase_realtime`, которой на голом Postgres нет; (2) `00067` и далее раздают гранты ролям `authenticated` / `anon` / `service_role`, которых стаб не создавал; (3) `09_fiscal_views` требует `ALTER DEFAULT PRIVILEGES ... TO service_role` — в Supabase Cloud они настроены платформой, на голом Postgres их надо объявить; (4) `00103` — разовая правка продовых данных, проверяющая себя ассертами по конкретной сделке, на пустой базе падает по определению.
+- **Решение.** Первые три причины закрыты дополнением стаба (роли, `GRANT USAGE`, три `ALTER DEFAULT PRIVILEGES`, `CREATE PUBLICATION supabase_realtime`). Четвёртая — списком `DATA_ONLY_MIGRATIONS` в шаге применения: миграция исключается по имени, сам файл не трогается (миграции append-only и уже применены в проде). Проверено, что `00103` состоит только из DML.
+- **Страховка.** Перед прогоном шаг проверяет каждый файл из списка: если имя не найдено или в файле появился DDL (`CREATE|ALTER|DROP` над `TABLE|TYPE|INDEX|VIEW|FUNCTION|TRIGGER|POLICY|SCHEMA|PUBLICATION|SEQUENCE|MATERIALIZED`) — джоба падает с `::error::`, а не молча пропускает схему. Оба сценария проверены вручную.
+- **Rebuild impact:** presentation only (инфраструктура тестов).
 
 ### 2026-08-05 — Разбор lint: чистота рендера и вложенные компоненты
 - **What changed:** `src/lib/hooks/use-deals.ts`, `use-deal-lines.ts`, `use-applications.ts`, `src/components/deals/deal-payments.tsx`, `src/app/(dashboard)/archive/page.tsx`, `registry/page.tsx`, `applications/page.tsx`, `deals/new/page.tsx`, `dt-kt/page.tsx`, `src/components/registry/bulk-add-dialog.tsx`.

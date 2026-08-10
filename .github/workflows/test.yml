@@ -65,11 +65,56 @@ jobs:
             LANGUAGE sql STABLE AS $$ SELECT true $$;
           CREATE OR REPLACE FUNCTION public.is_admin() RETURNS BOOLEAN
             LANGUAGE sql STABLE AS $$ SELECT true $$;
+          -- Роли Supabase. 00067 и далее раздают им GRANT'ы; без ролей
+          -- миграция падает на «role "authenticated" does not exist».
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE service_role NOLOGIN;
+          -- Supabase Cloud раздаёт эти привилегии на новые таблицы сам;
+          -- на голом Postgres их надо объявить, иначе service_role не
+          -- получает прав на таблицы 1С-загрузчика (09_fiscal_views).
+          GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT ALL ON TABLES TO anon, authenticated, service_role;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+          -- deal_activity (00016) добавляется в публикацию Realtime.
+          CREATE PUBLICATION supabase_realtime;
           SQL
 
       - name: Apply all migrations in order
         run: |
+          # Разовые правки ПРОДОВЫХ ДАННЫХ: они не несут схемы, зато
+          # проверяют себя ассертами по конкретным строкам и на пустой
+          # базе падают по определению. Править их нельзя — миграции
+          # append-only и уже применены, — поэтому исключаем по имени.
+          DATA_ONLY_MIGRATIONS="
+          00103_renumber_kg_26_454_to_445.sql
+          "
+
+          # Страховка от тихой потери схемы: если в исключённый файл
+          # когда-нибудь добавят DDL, джоба падает, а не проходит мимо.
+          for name in $DATA_ONLY_MIGRATIONS; do
+            f="supabase/migrations/$name"
+            if [ ! -f "$f" ]; then
+              echo "::error::В списке DATA_ONLY_MIGRATIONS нет файла $name"
+              exit 1
+            fi
+            if grep -inE '^[[:space:]]*(CREATE|ALTER|DROP)[[:space:]]+(TABLE|TYPE|INDEX|VIEW|FUNCTION|TRIGGER|POLICY|SCHEMA|PUBLICATION|SEQUENCE|MATERIALIZED)' "$f"; then
+              echo "::error::$name содержит DDL и не может быть пропущен"
+              exit 1
+            fi
+          done
+
           for f in supabase/migrations/*.sql; do
+            # Сравнение построчно и целиком: подстрока одного имени
+            # внутри другого не должна случайно исключить миграцию.
+            if printf '%s\n' $DATA_ONLY_MIGRATIONS | grep -qxF "$(basename "$f")"; then
+              echo "⏭ $f (правка данных, схемы не несёт)"
+              continue
+            fi
             echo "▶ $f"
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f" > /dev/null
           done
