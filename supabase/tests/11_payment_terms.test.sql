@@ -294,6 +294,52 @@ BEGIN
   IF NOT (30 = ANY (v_days_list) AND 90 = ANY (v_days_list)) THEN
     RAISE EXCEPTION 'сводка: ожидали сроки 30 и 90, получили %', v_days_list;
   END IF;
+  -- ── 13. Ручная дата по приложению (00142) ──────────────────────────
+  -- Клиент 2026-08-10: «или ввести дату самому, и дальше менеджер сам
+  -- вводит дату». Дата приложения важнее и срока, и режима сделки.
+  UPDATE deal_supplier_lines
+     SET deferral_date_basis = 'manual',
+         deferral_planned_date = DATE '2026-10-15',
+         deferral_days = 90
+   WHERE id = v_sup_ln;
+
+  SELECT planned_pay_date, deferral_days INTO v_planned, v_days
+  FROM deal_payment_terms
+  WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0001';
+
+  IF v_planned <> DATE '2026-10-15' THEN
+    RAISE EXCEPTION 'ручная дата: ожидали 15.10.2026, получили %', v_planned;
+  END IF;
+  -- Срок в днях при ручной дате не показывается: он ни на что не влияет.
+  IF v_days IS NOT NULL THEN
+    RAISE EXCEPTION 'ручная дата: срок в днях должен быть пуст, получили %', v_days;
+  END IF;
+
+  -- Дата отгрузки сохраняется — иначе строка выпала бы из отчёта.
+  SELECT basis_date INTO v_planned FROM deal_payment_terms
+   WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0001';
+  IF v_planned <> DATE '2026-02-12' THEN
+    RAISE EXCEPTION 'ручная дата: дата СНТ должна остаться 12.02.2026, получили %', v_planned;
+  END IF;
+
+  -- Приложение с ручной датой перебивает режим 'other' на сделке.
+  UPDATE deals SET supplier_deferral_mode = 'other',
+                   supplier_planned_pay_date = DATE '2026-12-31'
+   WHERE id = v_deal;
+  SELECT planned_pay_date INTO v_planned FROM deal_payment_terms
+   WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0001';
+  IF v_planned <> DATE '2026-10-15' THEN
+    RAISE EXCEPTION 'приоритет приложения над режимом сделки: ожидали 15.10.2026, получили %', v_planned;
+  END IF;
+
+  -- Признак ручной даты виден в сводке для паспорта.
+  IF NOT (SELECT has_manual_date FROM deal_payment_terms_summary
+           WHERE deal_id = v_deal AND side = 'supplier') THEN
+    RAISE EXCEPTION 'сводка: признак ручной даты не выставлен';
+  END IF;
+
+  UPDATE deals SET supplier_deferral_mode = NULL, supplier_planned_pay_date = NULL WHERE id = v_deal;
+  UPDATE deal_supplier_lines SET deferral_date_basis = NULL, deferral_planned_date = NULL WHERE id = v_sup_ln;
 END $$;
 
 ROLLBACK;

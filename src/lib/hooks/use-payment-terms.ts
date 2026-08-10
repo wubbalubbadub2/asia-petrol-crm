@@ -11,26 +11,9 @@
 // приём, что уже применён в use-registry.ts для колонок 00072/00086.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PostgrestError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import { toast } from "sonner";
-
-// Узкий интерфейс поверх клиента: сгенерированный `database.ts` не
-// содержит представлений 00141, поэтому типизированный `.from()` не
-// принимает их имена. Описываем ровно те методы, что используем, —
-// это честнее, чем `any`, и падает на опечатке в цепочке.
-// Убрать вместе с приведением ниже после `npm run types:db`
-// (запускать, когда 00141 применена к проду).
-type PtQuery = {
-  eq: (col: string, val: unknown) => PtQuery;
-  order: (col: string, opts: { ascending: boolean }) => PtQuery;
-  range: (from: number, to: number) => PromiseLike<{
-    data: PaymentTermsRow[] | null;
-    error: PostgrestError | null;
-  }>;
-};
-type PtClient = { from: (relation: string) => { select: (cols: string) => PtQuery } };
 
 export type PaymentTermsSide = "supplier" | "buyer";
 
@@ -47,7 +30,7 @@ export type PaymentTermsRow = {
   company_chain: string | null;
   appendix: string | null;
   basis_date: string;
-  date_basis: "loading" | "shipment";
+  date_basis: "loading" | "shipment" | "manual";
   deferral_days: number | null;
   planned_pay_date: string | null;
   /** Плюс — есть время на оплату, минус — просрочка, NULL — срок не задан. */
@@ -73,7 +56,7 @@ export function usePaymentTerms({ side, year, dealType }: PaymentTermsFilters) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const sb = supabaseRef.current as unknown as PtClient;
+    const sb = supabaseRef.current;
     const { data: rows, error } = await fetchAllPaginated<PaymentTermsRow>((from, to) => {
       let q = sb
         .from("deal_payment_terms_report")
@@ -86,7 +69,7 @@ export function usePaymentTerms({ side, year, dealType }: PaymentTermsFilters) {
         .order("counterparty_name", { ascending: true })
         .order("appendix", { ascending: true })
         .order("basis_date", { ascending: true })
-        .range(from, to);
+        .range(from, to) as unknown as PromiseLike<{ data: PaymentTermsRow[] | null; error: null }>;
     });
 
     if (error) toast.error(`Ошибка загрузки отчёта: ${error.message}`);

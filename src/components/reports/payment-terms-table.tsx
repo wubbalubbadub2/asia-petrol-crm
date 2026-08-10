@@ -165,7 +165,9 @@ function FragmentGroup({
               {r.days_to_pay ?? "—"}
             </td>
             <td className={td}>
-              {r.date_basis === "loading" ? "вход. СНТ" : "исход. СНТ"}
+              {r.date_basis === "manual"
+                ? "вручную"
+                : r.date_basis === "loading" ? "вход. СНТ" : "исход. СНТ"}
             </td>
             <td className={td}>{r.company_chain || "—"}</td>
             <td className={td}>{r.buyer_name || "—"}</td>

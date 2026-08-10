@@ -664,6 +664,8 @@ export type Database = {
           calc_mode: string
           created_at: string | null
           deal_id: string
+          deferral_date_basis: string | null
+          deferral_days: number | null
           delivery_basis: string | null
           delivery_basis_id: string | null
           delivery_basis_note: string | null
@@ -695,6 +697,8 @@ export type Database = {
           calc_mode?: string
           created_at?: string | null
           deal_id: string
+          deferral_date_basis?: string | null
+          deferral_days?: number | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -728,6 +732,8 @@ export type Database = {
           calc_mode?: string
           created_at?: string | null
           deal_id?: string
+          deferral_date_basis?: string | null
+          deferral_days?: number | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -1009,6 +1015,13 @@ export type Database = {
             foreignKeyName: "deal_shipment_prices_shipment_registry_id_fkey"
             columns: ["shipment_registry_id"]
             isOneToOne: false
+            referencedRelation: "deal_payment_terms"
+            referencedColumns: ["shipment_id"]
+          },
+          {
+            foreignKeyName: "deal_shipment_prices_shipment_registry_id_fkey"
+            columns: ["shipment_registry_id"]
+            isOneToOne: false
             referencedRelation: "shipment_registry"
             referencedColumns: ["id"]
           },
@@ -1152,6 +1165,8 @@ export type Database = {
           calc_mode: string
           created_at: string | null
           deal_id: string
+          deferral_date_basis: string | null
+          deferral_days: number | null
           delivery_basis: string | null
           delivery_basis_id: string | null
           delivery_basis_note: string | null
@@ -1183,6 +1198,8 @@ export type Database = {
           calc_mode?: string
           created_at?: string | null
           deal_id: string
+          deferral_date_basis?: string | null
+          deferral_days?: number | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -1216,6 +1233,8 @@ export type Database = {
           calc_mode?: string
           created_at?: string | null
           deal_id?: string
+          deferral_date_basis?: string | null
+          deferral_days?: number | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -1290,6 +1309,7 @@ export type Database = {
           buyer_contracted_volume: number | null
           buyer_currency: string
           buyer_debt: number | null
+          buyer_deferral_date_basis: string | null
           buyer_deferral_days: number | null
           buyer_deferral_mode: string | null
           buyer_deferral_note: string | null
@@ -1351,6 +1371,7 @@ export type Database = {
           supplier_contracted_amount: number | null
           supplier_contracted_volume: number | null
           supplier_currency: string
+          supplier_deferral_date_basis: string | null
           supplier_deferral_days: number | null
           supplier_deferral_mode: string | null
           supplier_deferral_note: string | null
@@ -1394,6 +1415,7 @@ export type Database = {
           buyer_contracted_volume?: number | null
           buyer_currency?: string
           buyer_debt?: number | null
+          buyer_deferral_date_basis?: string | null
           buyer_deferral_days?: number | null
           buyer_deferral_mode?: string | null
           buyer_deferral_note?: string | null
@@ -1455,6 +1477,7 @@ export type Database = {
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_currency?: string
+          supplier_deferral_date_basis?: string | null
           supplier_deferral_days?: number | null
           supplier_deferral_mode?: string | null
           supplier_deferral_note?: string | null
@@ -1498,6 +1521,7 @@ export type Database = {
           buyer_contracted_volume?: number | null
           buyer_currency?: string
           buyer_debt?: number | null
+          buyer_deferral_date_basis?: string | null
           buyer_deferral_days?: number | null
           buyer_deferral_mode?: string | null
           buyer_deferral_note?: string | null
@@ -1559,6 +1583,7 @@ export type Database = {
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_currency?: string
+          supplier_deferral_date_basis?: string | null
           supplier_deferral_days?: number | null
           supplier_deferral_mode?: string | null
           supplier_deferral_note?: string | null
@@ -4314,6 +4339,81 @@ export type Database = {
       }
     }
     Views: {
+      deal_payment_terms: {
+        Row: {
+          amount: number | null
+          appendix: string | null
+          basis_date: string | null
+          date_basis: string | null
+          days_to_pay: number | null
+          deal_id: string | null
+          deferral_days: number | null
+          deferral_mode: string | null
+          line_id: string | null
+          planned_pay_date: string | null
+          shipment_id: string | null
+          side: string | null
+          volume: number | null
+          wagon_number: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_registry_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_payment_terms_report: {
+        Row: {
+          appendix: string | null
+          basis_date: string | null
+          buyer_name: string | null
+          company_chain: string | null
+          counterparty_id: string | null
+          counterparty_name: string | null
+          date_basis: string | null
+          days_to_pay: number | null
+          deal_code: string | null
+          deal_id: string | null
+          deal_payment: number | null
+          deal_saldo: number | null
+          deal_type: Database["public"]["Enums"]["deal_type"] | null
+          deferral_days: number | null
+          is_archived: boolean | null
+          month: string | null
+          planned_pay_date: string | null
+          price: number | null
+          shipped_amount: number | null
+          shipped_volume: number | null
+          side: string | null
+          year: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_registry_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_payment_terms_summary: {
+        Row: {
+          deal_id: string | null
+          deal_saldo: number | null
+          deferral_days_list: number[] | null
+          line_count: number | null
+          overdue_count: number | null
+          side: string | null
+          single_line_id: string | null
+          worst_days_to_pay: number | null
+        }
+        Relationships: []
+      }
       fiscal_counterparty: {
         Row: {
           canonical_name: string | null
@@ -4359,6 +4459,11 @@ export type Database = {
     Functions: {
       _activity_fmt_num: { Args: { p: number }; Returns: string }
       _activity_is_draft_deal: { Args: { p_deal_id: string }; Returns: boolean }
+      _registry_field_label: { Args: { p_col: string }; Returns: string }
+      _registry_fmt_value: {
+        Args: { p_col: string; p_val: Json }
+        Returns: string
+      }
       compose_delivery_basis: {
         Args: { p_basis_id: string; p_note: string; p_station_id: string }
         Returns: string

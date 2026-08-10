@@ -5,6 +5,14 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2, ChevronDown, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { updateSupplierLine, updateBuyerLine } from "@/lib/hooks/use-deal-lines";
+import {
+  usePaymentTermsSummary,
+  summaryKey,
+  termsText,
+  summaryOverdue,
+  type PaymentTermsSummary,
+} from "@/lib/hooks/use-payment-terms-summary";
 import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
@@ -974,6 +982,10 @@ type PassportRefsValue = {
 
 const PassportRefsContext = createContext<PassportRefsValue | null>(null);
 
+// Условия оплаты (00141/00142). Отдельный контекст, а не проп: строка
+// мемоизирована, и лишний проп ломал бы сравнение на каждой перерисовке.
+const PassportTermsContext = createContext<Map<string, PaymentTermsSummary>>(new Map());
+
 function usePassportRefs(): PassportRefsValue {
   const ctx = useContext(PassportRefsContext);
   if (!ctx) throw new Error("PassportRow must be rendered inside <PassportRefsContext>");
@@ -1331,6 +1343,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
       <td className="px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
+      <PaymentTermsCells dealId={deal.id} />
       <td className="px-1 py-1">
         {/* Скрытие сделки перенесено в левую identity-ячейку (2026-07-24);
             здесь остаётся только удаление. */}
@@ -1357,6 +1370,81 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
 //  the company-groups colSpan=2 merge) so column widths don't jump
 //  when the real rows arrive.
 // ─────────────────────────────────────────────────────────────────────
+
+// Четыре ячейки условий оплаты. Срок правится по месту только когда на
+// стороне ровно одно приложение — иначе непонятно, в какое писать, и мы
+// показываем значения без правки (менять в карточке сделки).
+function PaymentTermsCells({ dealId }: { dealId: string }) {
+  const terms = useContext(PassportTermsContext);
+  const sup = terms.get(summaryKey(dealId, "supplier"));
+  const buy = terms.get(summaryKey(dealId, "buyer"));
+  const cell = "border-r px-1 py-0.5 text-right font-mono tabular-nums text-[11px]";
+
+  const daysCell = (s: PaymentTermsSummary | undefined) => (
+    <td className={`${cell} ${summaryOverdue(s) ? "font-semibold text-red-600" : "text-stone-600"}`}>
+      {s?.worst_days_to_pay ?? "—"}
+    </td>
+  );
+
+  return (
+    <>
+      <td className={cell}>
+        <PaymentTermsEditable summary={sup} side="supplier" />
+      </td>
+      {daysCell(sup)}
+      <td className={cell}>
+        <PaymentTermsEditable summary={buy} side="buyer" />
+      </td>
+      {daysCell(buy)}
+    </>
+  );
+}
+
+function PaymentTermsEditable({ summary, side }: {
+  summary: PaymentTermsSummary | undefined;
+  side: "supplier" | "buyer";
+}) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState("");
+  const label = termsText(summary);
+  // Правка по месту возможна, только если приложение одно и срок не
+  // заменён ручной датой.
+  const editable = !!summary && summary.line_count === 1 && !!summary.single_line_id && !summary.has_manual_date;
+
+  if (!editable) {
+    return <span className="text-stone-500" title="Несколько приложений или ручная дата — правится в карточке сделки">{label}</span>;
+  }
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setLocal(String(summary.deferral_days_list?.[0] ?? "")); setEditing(true); }}
+        className="w-full cursor-text rounded px-1 text-right hover:bg-amber-50"
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      type="number"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        const raw = local.trim();
+        const next = raw === "" ? null : Number(raw);
+        if (next != null && !Number.isFinite(next)) return;
+        const current = summary.deferral_days_list?.[0] ?? null;
+        if (next === current) return;
+        const write = side === "supplier" ? updateSupplierLine : updateBuyerLine;
+        void write(summary.single_line_id!, { deferral_days: next }).catch(() => {});
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
+      className="w-14 rounded border border-amber-300 bg-amber-50/50 px-1 text-right text-[11px] focus:outline-none"
+    />
+  );
+}
 
 function PassportSkeletonRow() {
   // 40 visible columns: 5 identity + 11 supplier (+ Возврат/Перезачет,
@@ -1484,7 +1572,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // Видимые колонки на band — для динамических colSpan бэндовой шапки.
   // «№» входит в deal, колонка удаления — в logistics.
   const ptBandSpan = useMemo(() => {
-    const span: Record<PtBand, number> = { deal: 1, supplier: 0, groups: 0, buyer: 0, logistics: 1 };
+    const span: Record<PtBand, number> = { deal: 1, supplier: 0, groups: 0, buyer: 0, logistics: 0, payment: 1 };
     for (const u of PT_UNITS) if (!ptHidden.has(u.key)) span[u.band] += u.h.length;
     return span;
   }, [ptHidden]);
@@ -1589,6 +1677,10 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // changes only when one of the warmed ref arrays changes (rare —
   // happens once at first load + on explicit refs reloads), so per-
   // row useContext reads don't churn on every filter keystroke.
+  // Условия оплаты по видимым сделкам (00141/00142). Отдельный запрос:
+  // сводка меняется от правки условий, а не от правки самой сделки.
+  const { map: paymentTerms } = usePaymentTermsSummary(useMemo(() => deals.map((d) => d.id), [deals]));
+
   const refsContextValue = useMemo<PassportRefsValue>(() => ({
     refs,
     supplierLabels,
@@ -1734,6 +1826,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 
   return (
     <PassportRefsContext.Provider value={refsContextValue}>
+    <PassportTermsContext.Provider value={paymentTerms}>
       {/* Emit CSS for the currently selected cells. Cheap: at most
           selection.ids.size rules re-emitted on selection change, no
           row re-renders. Virtualized rows entering the viewport pick
@@ -1802,7 +1895,8 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               {ptBandSpan.supplier > 0 && <th colSpan={ptBandSpan.supplier} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>}
               {ptBandSpan.groups > 0 && <th colSpan={ptBandSpan.groups} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>}
               {ptBandSpan.buyer > 0 && <th colSpan={ptBandSpan.buyer} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>}
-              <th colSpan={ptBandSpan.logistics} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>
+              {ptBandSpan.logistics > 0 && <th colSpan={ptBandSpan.logistics} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#d9d9d9]">Логистика</th>}
+              <th colSpan={ptBandSpan.payment} className="sticky top-0 z-20 h-7 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#e8e0f5]">Условия оплаты</th>
             </tr>
             <tr className="pt-cols border-b">
               <th className="sticky top-7 left-0 z-30 bg-[#b4c6e7] border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px]">
@@ -1871,6 +1965,10 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#d9d9d9]" title="Тариф менеджер = Сумма грузоотправителя ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф менеджер</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="ЭСФ грузоотправление = SUM(additional_expenses) из реестра. Если галочка «Грузоотправитель в цене» — плюсует к балансу поставщика.">ЭСФ грузоотправление</th>
               <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#e8e0f5]" title="Срок оплаты по приложению. «вручную» — плановую дату ставит менеджер.">Условия (Пост.)</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#e8e0f5]" title="Худшая по сделке: плановая дата минус сегодня. Минус — просрочка.">Дней (Пост.)</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#e8e0f5]">Условия (Покуп.)</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#e8e0f5]">Дней (Покуп.)</th>
               <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-[#d9d9d9]"></th>
             </tr>
           </thead>
@@ -1928,6 +2026,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
         </div>
       )}
       </div>
+    </PassportTermsContext.Provider>
     </PassportRefsContext.Provider>
   );
 }
@@ -1956,7 +2055,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 //  т.к. первая ячейка «Итого» спанит колонки 1..5.
 //  «№» (h1) и колонка удаления (h43) не скрываются и не закрепляются
 //  отдельно («№» закреплена всегда).
-type PtBand = "deal" | "supplier" | "groups" | "buyer" | "logistics";
+type PtBand = "deal" | "supplier" | "groups" | "buyer" | "logistics" | "payment";
 type PtUnit = { key: string; label: string; band: PtBand; h: number[]; body: number };
 const PT_UNITS: PtUnit[] = [
   { key: "month", label: "Месяц", band: "deal", h: [2], body: 2 },
@@ -1999,13 +2098,21 @@ const PT_UNITS: PtUnit[] = [
   { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics", h: [40], body: 39 },
   { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics", h: [41], body: 40 },
   { key: "manager", label: "Коммерция", band: "logistics", h: [42], body: 41 },
+  // Условия оплаты (00141/00142). Стоят в конце строки намеренно:
+  // номера колонок здесь управляют CSS-правилами скрытия и закрепления,
+  // и вставка в середину сдвинула бы два десятка индексов.
+  { key: "pay_terms_sup", label: "Условия (Пост.)", band: "payment", h: [43], body: 42 },
+  { key: "pay_days_sup",  label: "Дней до оплаты (Пост.)", band: "payment", h: [44], body: 43 },
+  { key: "pay_terms_buy", label: "Условия (Покуп.)", band: "payment", h: [45], body: 44 },
+  { key: "pay_days_buy",  label: "Дней до оплаты (Покуп.)", band: "payment", h: [46], body: 45 },
 ];
 const PT_BAND_LABELS: Record<PtBand, string> = {
   deal: "Сделка", supplier: "Поставщик", groups: "Группы компании", buyer: "Покупатель", logistics: "Логистика",
+  payment: "Условия оплаты",
 };
 type PassportColumnsPref = { hidden: string[]; pinUntil: string | null };
 
-const TOTAL_COLS = 38;
+const TOTAL_COLS = 42;
 
 type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
 
@@ -2225,7 +2332,10 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("stone", sum((d) => d.invoice_amount))}
       {blank("stone")}
       {num("stone", sum((d) => d.additional_expenses_amount))}
-      {blank("stone")}{blank("stone")}
+      {blank("stone")}
+      {/* Условия оплаты — величины несуммируемые, ячейки пустые. */}
+      {blank("stone")}{blank("stone")}{blank("stone")}{blank("stone")}
+      {blank("stone")}
     </tr>
   );
 }

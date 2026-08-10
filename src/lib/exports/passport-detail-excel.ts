@@ -428,15 +428,6 @@ type TermRow = {
 type TermsMap = Map<string, TermRow>;
 const termKey = (shipmentId: string, side: "supplier" | "buyer") => `${shipmentId}|${side}`;
 
-// database.ts генерируется из прода и представления 00141 не знает —
-// описываем ровно используемые методы. Убрать после `npm run types:db`.
-type TermsQuery = {
-  in: (col: string, vals: string[]) => TermsQuery;
-  order: (col: string, opts: { ascending: boolean }) => TermsQuery;
-  range: (from: number, to: number) => PostgrestPage<TermRow>;
-};
-type TermsClient = { from: (relation: string) => { select: (cols: string) => TermsQuery } };
-
 export function buildDebtColumns(terms: TermsMap): Column[] {
   const at = (s: SubRow, side: "supplier" | "buyer"): TermRow | null =>
     s.ship ? terms.get(termKey(s.ship.id, side)) ?? null : null;
@@ -539,12 +530,12 @@ export async function exportPassportDetailToExcel(
     for (let i = 0; i < dealIds.length; i += 150) termChunks.push(dealIds.slice(i, i + 150));
     const termResults = await Promise.all(termChunks.map((ids) =>
       fetchAllPaginated<TermRow>((from, to) =>
-        (sb as unknown as TermsClient)
+        sb
           .from("deal_payment_terms")
           .select("shipment_id, side, deferral_days, date_basis, deferral_mode, planned_pay_date, days_to_pay")
           .in("deal_id", ids)
           .order("shipment_id", { ascending: true })
-          .range(from, to),
+          .range(from, to) as unknown as PostgrestPage<TermRow>,
       ),
     ));
     for (const res of termResults) {

@@ -25,6 +25,11 @@ type LineStageFields = {
 };
 
 export type DealSupplierLine = {
+  // Условия оплаты по приложению (00141/00142). NULL у days и basis
+  // означает «взять со сделки», а не «нет отсрочки».
+  deferral_days?: number | null;
+  deferral_date_basis?: "loading" | "shipment" | "manual" | null;
+  deferral_planned_date?: string | null;
   id: string;
   deal_id: string;
   position: number;
@@ -61,6 +66,11 @@ export type DealSupplierLine = {
 } & LineStageFields;
 
 export type DealBuyerLine = {
+  // Условия оплаты по приложению (00141/00142). NULL у days и basis
+  // означает «взять со сделки», а не «нет отсрочки».
+  deferral_days?: number | null;
+  deferral_date_basis?: "loading" | "shipment" | "manual" | null;
+  deferral_planned_date?: string | null;
   id: string;
   deal_id: string;
   position: number;
