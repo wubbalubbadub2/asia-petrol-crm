@@ -210,6 +210,8 @@ export function SupplierLinesEditor({
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
+        deferral_days: (l as { deferral_days?: number | null }).deferral_days ?? null,
+        deferral_date_basis: (l as { deferral_date_basis?: "loading" | "shipment" | null }).deferral_date_basis ?? null,
         price_source: l.price_source ?? null,
         quotation_type_name: l.quotation_type?.name ?? null,
       }))}
@@ -390,6 +392,8 @@ export function BuyerLinesEditor({
         fx_rate: l.fx_rate ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
+        deferral_days: (l as { deferral_days?: number | null }).deferral_days ?? null,
+        deferral_date_basis: (l as { deferral_date_basis?: "loading" | "shipment" | null }).deferral_date_basis ?? null,
         price_source: l.price_source ?? null,
         quotation_type_name: l.quotation_type?.name ?? null,
       }))}
@@ -452,6 +456,11 @@ type LineVM = {
   preliminary_fx_rate: number | null;
   // Migration 00072 — free-text appendix label.
   appendix: string | null;
+  // Миграция 00141 — условия оплаты ПО ПРИЛОЖЕНИЮ. Клиент 2026-08-10:
+  // «просрочки могут быть у покупателя, он работает по приложению».
+  // NULL means «взять со сделки» (поля 00125), не «нет отсрочки».
+  deferral_days: number | null;
+  deferral_date_basis: "loading" | "shipment" | null;
   // Migration 00077 — «Подкотировка», concrete wide-column of
   // quotations (price_cif_nwe / price_fob_med / …). Missing on
   // legacy lines; picker only shown when the parent quotation
@@ -461,6 +470,18 @@ type LineVM = {
   // the column configuration via getColumnsForProduct.
   quotation_type_name: string | null;
 };
+
+// Условия оплаты (00141): от какой даты СНТ отсчитывается срок.
+// Умолчание намеренно повторяет поведение выгрузки до 00141 —
+// поставщик считает от входящего СНТ, покупатель от исходящего.
+const DEFERRAL_BASIS_LABEL: Record<string, string> = {
+  loading: "От входящего СНТ",
+  shipment: "От исходящего СНТ",
+};
+const DEFERRAL_BASIS_OPTS: Option[] = [
+  { value: "loading", label: DEFERRAL_BASIS_LABEL.loading },
+  { value: "shipment", label: DEFERRAL_BASIS_LABEL.shipment },
+];
 
 // Resolve line.selected_month + deal month/year into a YYYY-MM string
 // consumable by compute_quotation_value(). Handles two shapes clients
@@ -564,8 +585,10 @@ function LinesEditorView({
   dealMonth: string | null;
   dealYear: number | null;
 }) {
-  // Keep `side` referenced (for the eventual per-side rendering hooks).
-  void side;
+  // Умолчание отсчёта срока оплаты (00141) зависит от стороны:
+  // поставщик считает от входящего СНТ, покупатель от исходящего —
+  // ровно так, как это делала выгрузка до появления явного выбора.
+  const defaultBasis = side === "supplier" ? "loading" : "shipment";
   const modeLabel = (mode: PriceMode) =>
     PRICE_MODES.find((m) => m.value === mode)?.label ?? "—";
 
@@ -1004,6 +1027,40 @@ function LinesEditorView({
               value={l.appendix}
               editing={editing}
               onChange={(v) => onUpdate(l.id, { appendix: v })}
+            />
+
+            {/* Условия оплаты (00141) — стоят рядом с «Приложением»,
+                потому что задаются именно по нему: клиент 2026-08-10,
+                «менеджеры выбирают условия оплаты вручную согласно
+                приложения», у одного контрагента бывает 90 дней по
+                одному приложению и 14 по другому.
+
+                Пусто НЕ значит «без отсрочки» — значит «взять со
+                сделки» (поля 00125). Поэтому подсказка про наследование,
+                иначе оператор прочитает пустую ячейку как ноль. */}
+            <NumberCell
+              label={<span title="Пусто — срок берётся со сделки, а не «без отсрочки»">Условия оплаты, дн.</span>}
+              value={l.deferral_days}
+              editing={editing}
+              decimals={0}
+              onChange={(v) => onUpdate(l.id, { deferral_days: v })}
+            />
+
+            {/* От какой даты СНТ считать срок. Пусто — умолчание стороны:
+                поставщик от входящего, покупатель от исходящего. Именно
+                так считала выгрузка до 00141, поэтому числа не поехали. */}
+            <SelectCell
+              label="Отсчёт срока"
+              value={l.deferral_date_basis}
+              displayValue={
+                l.deferral_date_basis
+                  ? DEFERRAL_BASIS_LABEL[l.deferral_date_basis]
+                  : `${DEFERRAL_BASIS_LABEL[defaultBasis]} (по умолчанию)`
+              }
+              hint="Пусто — умолчание стороны"
+              editing={editing}
+              options={DEFERRAL_BASIS_OPTS}
+              onChange={(v) => onUpdate(l.id, { deferral_date_basis: (v || null) as "loading" | "shipment" | null })}
             />
           </div>
             );
