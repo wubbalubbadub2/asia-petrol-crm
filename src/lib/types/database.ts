@@ -666,6 +666,7 @@ export type Database = {
           deal_id: string
           deferral_date_basis: string | null
           deferral_days: number | null
+          deferral_planned_date: string | null
           delivery_basis: string | null
           delivery_basis_id: string | null
           delivery_basis_note: string | null
@@ -699,6 +700,7 @@ export type Database = {
           deal_id: string
           deferral_date_basis?: string | null
           deferral_days?: number | null
+          deferral_planned_date?: string | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -734,6 +736,7 @@ export type Database = {
           deal_id?: string
           deferral_date_basis?: string | null
           deferral_days?: number | null
+          deferral_planned_date?: string | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -1167,6 +1170,7 @@ export type Database = {
           deal_id: string
           deferral_date_basis: string | null
           deferral_days: number | null
+          deferral_planned_date: string | null
           delivery_basis: string | null
           delivery_basis_id: string | null
           delivery_basis_note: string | null
@@ -1200,6 +1204,7 @@ export type Database = {
           deal_id: string
           deferral_date_basis?: string | null
           deferral_days?: number | null
+          deferral_planned_date?: string | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -1235,6 +1240,7 @@ export type Database = {
           deal_id?: string
           deferral_date_basis?: string | null
           deferral_days?: number | null
+          deferral_planned_date?: string | null
           delivery_basis?: string | null
           delivery_basis_id?: string | null
           delivery_basis_note?: string | null
@@ -1971,109 +1977,358 @@ export type Database = {
       }
       fiscal_document: {
         Row: {
+          accepted_at: string | null
+          accepted_by_identifier: string | null
+          accepted_by_name: string | null
+          author: string | null
+          carrier_identifier: string | null
+          carrier_name: string | null
+          consignee_country_code: string | null
+          consignee_identifier: string | null
+          consignee_is_nonresident: boolean | null
+          consignee_name: string | null
+          consignee_note: string | null
+          contract_date: string | null
+          contract_number: string | null
+          contract_registry_number: string | null
+          contract_text: string | null
           counterparty_identifier: string | null
           counterparty_name: string | null
           counterparty_role_code: string | null
           currency_code: string
+          delivery_terms: string | null
           direction_code: string
           doc_kind: string
           doc_number_display: string | null
           doc_type_code: string
           doc_type_label: string | null
+          driver_iin: string | null
+          driver_name: string | null
+          export_kind: string | null
+          extra_tables: Json | null
           first_seen_at: string
           fx_rate: number
+          has_alcohol: boolean | null
+          has_beer: boolean | null
+          has_biofuel: boolean | null
+          has_ethyl_alcohol: boolean | null
+          has_export_control: boolean | null
+          has_marked_goods: boolean | null
+          has_oil_products: boolean | null
+          has_tobacco: boolean | null
+          has_wine_material: boolean | null
           id: string
+          import_kind: string | null
           is_superseded: boolean
           is_void: boolean
           issue_date: string | null
+          issued_by_name: string | null
           last_seen_at: string
           line_count: number
+          matching_status: string | null
+          movement_kind: string | null
+          ogd_code_delivery: string | null
+          ogd_code_dispatch: string | null
           operation_kind_code: string | null
           operation_kind_label: string | null
           own_party_name: string | null
           own_party_role_code: string | null
           payload_id: string | null
+          payment_terms: string | null
+          proxy_receipt_date: string | null
+          proxy_receipt_number: string | null
+          proxy_release_date: string | null
+          proxy_release_number: string | null
+          recipient_address: string | null
+          recipient_branch_bin: string | null
+          recipient_country_code: string | null
+          recipient_delivery_country_code: string | null
+          recipient_identifier: string | null
+          recipient_is_nonresident: boolean | null
+          recipient_is_retailer: boolean | null
+          recipient_name: string | null
+          recipient_warehouse_id: string | null
+          recipient_warehouse_name: string | null
           registration_date: string
           registration_number: string
           related_registration_number: string | null
           related_snt_registration_number: string | null
+          revoked_at: string | null
+          seal_number: string | null
           shipment_date: string | null
+          shipper_country_code: string | null
+          shipper_identifier: string | null
+          shipper_is_nonresident: boolean | null
+          shipper_name: string | null
+          shipper_note: string | null
+          signature_type: string | null
+          source_doc_basis: string | null
+          source_doc_number: string | null
+          source_identifier: string | null
           source_org_code: string
+          source_organization: string | null
+          source_ref: string | null
           state_code: string
           state_label: string | null
           status_code: string
           status_label: string | null
+          status_note: string | null
+          supplier_address: string | null
+          supplier_branch_bin: string | null
+          supplier_country_code: string | null
+          supplier_identifier: string | null
+          supplier_is_nonresident: boolean | null
+          supplier_name: string | null
+          supplier_ship_country_code: string | null
+          supplier_warehouse_id: string | null
+          supplier_warehouse_name: string | null
           total_amount: number | null
+          trailer_number: string | null
+          transport_air: boolean | null
+          transport_other: boolean | null
+          transport_pipeline: boolean | null
+          transport_rail: boolean | null
+          transport_road: boolean | null
+          transport_sea: boolean | null
+          vehicle_number: string | null
+          wagon_number: string | null
+          without_contract: boolean | null
         }
         Insert: {
+          accepted_at?: string | null
+          accepted_by_identifier?: string | null
+          accepted_by_name?: string | null
+          author?: string | null
+          carrier_identifier?: string | null
+          carrier_name?: string | null
+          consignee_country_code?: string | null
+          consignee_identifier?: string | null
+          consignee_is_nonresident?: boolean | null
+          consignee_name?: string | null
+          consignee_note?: string | null
+          contract_date?: string | null
+          contract_number?: string | null
+          contract_registry_number?: string | null
+          contract_text?: string | null
           counterparty_identifier?: string | null
           counterparty_name?: string | null
           counterparty_role_code?: string | null
           currency_code: string
+          delivery_terms?: string | null
           direction_code: string
           doc_kind: string
           doc_number_display?: string | null
           doc_type_code: string
           doc_type_label?: string | null
+          driver_iin?: string | null
+          driver_name?: string | null
+          export_kind?: string | null
+          extra_tables?: Json | null
           first_seen_at?: string
           fx_rate: number
+          has_alcohol?: boolean | null
+          has_beer?: boolean | null
+          has_biofuel?: boolean | null
+          has_ethyl_alcohol?: boolean | null
+          has_export_control?: boolean | null
+          has_marked_goods?: boolean | null
+          has_oil_products?: boolean | null
+          has_tobacco?: boolean | null
+          has_wine_material?: boolean | null
           id?: string
+          import_kind?: string | null
           is_superseded?: boolean
           is_void?: boolean
           issue_date?: string | null
+          issued_by_name?: string | null
           last_seen_at?: string
           line_count?: number
+          matching_status?: string | null
+          movement_kind?: string | null
+          ogd_code_delivery?: string | null
+          ogd_code_dispatch?: string | null
           operation_kind_code?: string | null
           operation_kind_label?: string | null
           own_party_name?: string | null
           own_party_role_code?: string | null
           payload_id?: string | null
+          payment_terms?: string | null
+          proxy_receipt_date?: string | null
+          proxy_receipt_number?: string | null
+          proxy_release_date?: string | null
+          proxy_release_number?: string | null
+          recipient_address?: string | null
+          recipient_branch_bin?: string | null
+          recipient_country_code?: string | null
+          recipient_delivery_country_code?: string | null
+          recipient_identifier?: string | null
+          recipient_is_nonresident?: boolean | null
+          recipient_is_retailer?: boolean | null
+          recipient_name?: string | null
+          recipient_warehouse_id?: string | null
+          recipient_warehouse_name?: string | null
           registration_date: string
           registration_number: string
           related_registration_number?: string | null
           related_snt_registration_number?: string | null
+          revoked_at?: string | null
+          seal_number?: string | null
           shipment_date?: string | null
+          shipper_country_code?: string | null
+          shipper_identifier?: string | null
+          shipper_is_nonresident?: boolean | null
+          shipper_name?: string | null
+          shipper_note?: string | null
+          signature_type?: string | null
+          source_doc_basis?: string | null
+          source_doc_number?: string | null
+          source_identifier?: string | null
           source_org_code: string
+          source_organization?: string | null
+          source_ref?: string | null
           state_code: string
           state_label?: string | null
           status_code: string
           status_label?: string | null
+          status_note?: string | null
+          supplier_address?: string | null
+          supplier_branch_bin?: string | null
+          supplier_country_code?: string | null
+          supplier_identifier?: string | null
+          supplier_is_nonresident?: boolean | null
+          supplier_name?: string | null
+          supplier_ship_country_code?: string | null
+          supplier_warehouse_id?: string | null
+          supplier_warehouse_name?: string | null
           total_amount?: number | null
+          trailer_number?: string | null
+          transport_air?: boolean | null
+          transport_other?: boolean | null
+          transport_pipeline?: boolean | null
+          transport_rail?: boolean | null
+          transport_road?: boolean | null
+          transport_sea?: boolean | null
+          vehicle_number?: string | null
+          wagon_number?: string | null
+          without_contract?: boolean | null
         }
         Update: {
+          accepted_at?: string | null
+          accepted_by_identifier?: string | null
+          accepted_by_name?: string | null
+          author?: string | null
+          carrier_identifier?: string | null
+          carrier_name?: string | null
+          consignee_country_code?: string | null
+          consignee_identifier?: string | null
+          consignee_is_nonresident?: boolean | null
+          consignee_name?: string | null
+          consignee_note?: string | null
+          contract_date?: string | null
+          contract_number?: string | null
+          contract_registry_number?: string | null
+          contract_text?: string | null
           counterparty_identifier?: string | null
           counterparty_name?: string | null
           counterparty_role_code?: string | null
           currency_code?: string
+          delivery_terms?: string | null
           direction_code?: string
           doc_kind?: string
           doc_number_display?: string | null
           doc_type_code?: string
           doc_type_label?: string | null
+          driver_iin?: string | null
+          driver_name?: string | null
+          export_kind?: string | null
+          extra_tables?: Json | null
           first_seen_at?: string
           fx_rate?: number
+          has_alcohol?: boolean | null
+          has_beer?: boolean | null
+          has_biofuel?: boolean | null
+          has_ethyl_alcohol?: boolean | null
+          has_export_control?: boolean | null
+          has_marked_goods?: boolean | null
+          has_oil_products?: boolean | null
+          has_tobacco?: boolean | null
+          has_wine_material?: boolean | null
           id?: string
+          import_kind?: string | null
           is_superseded?: boolean
           is_void?: boolean
           issue_date?: string | null
+          issued_by_name?: string | null
           last_seen_at?: string
           line_count?: number
+          matching_status?: string | null
+          movement_kind?: string | null
+          ogd_code_delivery?: string | null
+          ogd_code_dispatch?: string | null
           operation_kind_code?: string | null
           operation_kind_label?: string | null
           own_party_name?: string | null
           own_party_role_code?: string | null
           payload_id?: string | null
+          payment_terms?: string | null
+          proxy_receipt_date?: string | null
+          proxy_receipt_number?: string | null
+          proxy_release_date?: string | null
+          proxy_release_number?: string | null
+          recipient_address?: string | null
+          recipient_branch_bin?: string | null
+          recipient_country_code?: string | null
+          recipient_delivery_country_code?: string | null
+          recipient_identifier?: string | null
+          recipient_is_nonresident?: boolean | null
+          recipient_is_retailer?: boolean | null
+          recipient_name?: string | null
+          recipient_warehouse_id?: string | null
+          recipient_warehouse_name?: string | null
           registration_date?: string
           registration_number?: string
           related_registration_number?: string | null
           related_snt_registration_number?: string | null
+          revoked_at?: string | null
+          seal_number?: string | null
           shipment_date?: string | null
+          shipper_country_code?: string | null
+          shipper_identifier?: string | null
+          shipper_is_nonresident?: boolean | null
+          shipper_name?: string | null
+          shipper_note?: string | null
+          signature_type?: string | null
+          source_doc_basis?: string | null
+          source_doc_number?: string | null
+          source_identifier?: string | null
           source_org_code?: string
+          source_organization?: string | null
+          source_ref?: string | null
           state_code?: string
           state_label?: string | null
           status_code?: string
           status_label?: string | null
+          status_note?: string | null
+          supplier_address?: string | null
+          supplier_branch_bin?: string | null
+          supplier_country_code?: string | null
+          supplier_identifier?: string | null
+          supplier_is_nonresident?: boolean | null
+          supplier_name?: string | null
+          supplier_ship_country_code?: string | null
+          supplier_warehouse_id?: string | null
+          supplier_warehouse_name?: string | null
           total_amount?: number | null
+          trailer_number?: string | null
+          transport_air?: boolean | null
+          transport_other?: boolean | null
+          transport_pipeline?: boolean | null
+          transport_rail?: boolean | null
+          transport_road?: boolean | null
+          transport_sea?: boolean | null
+          vehicle_number?: string | null
+          wagon_number?: string | null
+          without_contract?: boolean | null
         }
         Relationships: [
           {
@@ -2090,58 +2345,106 @@ export type Database = {
           amount: number | null
           amount_net: number | null
           conversion_rate: number | null
+          declaration_number: string | null
+          declaration_position: string | null
           document_id: string
+          excise_amount: number | null
+          excise_rate: string | null
+          excise_rate_amount: number | null
+          extra_info: string | null
           id: string
           line_no: number
           name: string | null
           net_weight: number | null
+          origin_sign: string | null
+          origin_source: string | null
           pin_code: string | null
           price: number | null
+          product_1c_name: string | null
+          product_identifier: string | null
+          product_name_eaeu: string | null
           quantity: number | null
           snt_line_no: number | null
           source_lot_id: string | null
           storage_unit: string | null
           table_name: string
+          tnved_code: string | null
           unit: string | null
+          unit_code: string | null
           vat_amount: number | null
+          vat_rate: string | null
+          vat_rate_percent: number | null
+          without_vat: boolean | null
         }
         Insert: {
           amount?: number | null
           amount_net?: number | null
           conversion_rate?: number | null
+          declaration_number?: string | null
+          declaration_position?: string | null
           document_id: string
+          excise_amount?: number | null
+          excise_rate?: string | null
+          excise_rate_amount?: number | null
+          extra_info?: string | null
           id?: string
           line_no: number
           name?: string | null
           net_weight?: number | null
+          origin_sign?: string | null
+          origin_source?: string | null
           pin_code?: string | null
           price?: number | null
+          product_1c_name?: string | null
+          product_identifier?: string | null
+          product_name_eaeu?: string | null
           quantity?: number | null
           snt_line_no?: number | null
           source_lot_id?: string | null
           storage_unit?: string | null
           table_name: string
+          tnved_code?: string | null
           unit?: string | null
+          unit_code?: string | null
           vat_amount?: number | null
+          vat_rate?: string | null
+          vat_rate_percent?: number | null
+          without_vat?: boolean | null
         }
         Update: {
           amount?: number | null
           amount_net?: number | null
           conversion_rate?: number | null
+          declaration_number?: string | null
+          declaration_position?: string | null
           document_id?: string
+          excise_amount?: number | null
+          excise_rate?: string | null
+          excise_rate_amount?: number | null
+          extra_info?: string | null
           id?: string
           line_no?: number
           name?: string | null
           net_weight?: number | null
+          origin_sign?: string | null
+          origin_source?: string | null
           pin_code?: string | null
           price?: number | null
+          product_1c_name?: string | null
+          product_identifier?: string | null
+          product_name_eaeu?: string | null
           quantity?: number | null
           snt_line_no?: number | null
           source_lot_id?: string | null
           storage_unit?: string | null
           table_name?: string
+          tnved_code?: string | null
           unit?: string | null
+          unit_code?: string | null
           vat_amount?: number | null
+          vat_rate?: string | null
+          vat_rate_percent?: number | null
+          without_vat?: boolean | null
         }
         Relationships: [
           {
@@ -4406,6 +4709,7 @@ export type Database = {
           deal_id: string | null
           deal_saldo: number | null
           deferral_days_list: number[] | null
+          has_manual_date: boolean | null
           line_count: number | null
           overdue_count: number | null
           side: string | null
