@@ -581,6 +581,64 @@ All trigger functions depend on:
 
 ---
 
+## 13. База общая со вторым продуктом (обнаружено 2026-08-10)
+
+**Факт:** проект Supabase `oteysqqohcgnwpsxmyjg` обслуживает НЕ ТОЛЬКО этот CRM.
+В той же схеме `public` живёт второй продукт — Kaspi-аналитика продавца.
+
+Его таблицы (26 штук), ни одна из которых не создаётся миграциями этого
+репозитория:
+
+```
+alerts · arbitrage_items · competitor_prices · competitors · niche_snapshots
+niches · order_entries · orders · pipeline_runs · pipeline_usage
+price_changes · price_history · price_list_items · price_lists
+product_catalog · product_image_index · product_repricing_rules
+product_sales · products · promotions · repricing_rules
+review_analytics_cache · reviews · stores · user_discovery_settings · users
+```
+
+Обнаружено при перегенерации `src/lib/types/database.ts` (боевая схема — 67
+таблиц, миграции репозитория объясняют 41). Состояние не новое: те же
+таблицы присутствовали и в предыдущей закоммиченной версии файла типов,
+просто нигде не было записано.
+
+**Что из этого следует практически:**
+
+- `public` — общая территория. Имена новых таблиц занимать короткими
+  словами нельзя: `counterparty`, `documents`, `orders`, `products` либо
+  уже заняты, либо будут. Новые объекты именуются с доменным префиксом —
+  так сделаны `fiscal_document`, `fiscal_document_line`,
+  `integration_1c_payload`, `fiscal_counterparty`,
+  `fiscal_rejected_document` (миграции 00138–00139).
+- Генерация типов затягивает в `database.ts` схему чужого продукта.
+  Это шум, но безвредный: TypeScript просто знает о таблицах, к которым
+  CRM не обращается.
+- При миграции на собственный PostgreSQL (цель этого документа) переносится
+  ТОЛЬКО подмножество, созданное миграциями репозитория. Чужие 26 таблиц —
+  зона ответственности другого продукта.
+- Любая работа с ролями, дефолтными грантами или расширениями на уровне
+  схемы затрагивает оба продукта.
+
+Разбор принадлежности и возможное разведение по разным схемам/проектам —
+отдельная задача, вне рамок реестра СНТ/ЭСФ.
+
+## 14. Литеральные типы из CHECK потеряны генератором (2026-08-10)
+
+При перегенерации типов `deal_company_groups.price_kind` изменился с
+`"preliminary" | "final"` на `string`. Схема при этом НЕ менялась: в
+миграции 00084 колонка объявлена как `TEXT ... CHECK (price_kind IN
+('preliminary','final'))` и енумом никогда не была. Литеральный union
+выводила старая версия генератора Supabase CLI, текущая (PostgREST 14.5)
+так не делает.
+
+Последствие: TypeScript больше не ловит опечатку в значении `price_kind`.
+Восстанавливается либо переводом колонки в настоящий Postgres enum, либо
+ручным сужением типа поверх генерации. Отдельная работа, на реестр
+СНТ/ЭСФ не влияет.
+
+---
+
 **Document Length:** ~4700 words  
 **Complexity Level:** High — distributed auth, RLS, complex triggers, multi-table RPC aggregation  
 **Estimated Effort:** 12–16 weeks for feature-complete replacement (auth 3w, REST 2w, RPCs 3w, triggers 4w, testing/hardening 3w)

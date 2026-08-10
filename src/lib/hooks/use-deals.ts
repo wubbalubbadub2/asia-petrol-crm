@@ -598,8 +598,17 @@ async function fetchDealsList(
 ): Promise<{ data: Deal[]; total: number }> {
   const sb = createClient();
   const PAGE = 1000;
-  const baseFilter = (qb: ReturnType<typeof sb.from>) => {
-    let q = qb.select(LIST_SELECT) as ReturnType<typeof qb.select>;
+  // Таблица подставляется прямо здесь, а не приходит параметром.
+  // Раньше было `(qb: ReturnType<typeof sb.from>)`: этот тип не
+  // называет отношение, а получается из того, как TypeScript
+  // инстанцирует дженерик `from()`. Пока в Database не было ни одного
+  // представления, оно инстанцировалось в объединение таблиц и
+  // случайно работало; с появлением первого вью (00139) объединение
+  // расширилось, и имена колонок схлопнулись в `never` —
+  // `eq("is_draft", …)` перестал компилироваться. Запрос тот же,
+  // сломать было нечего: менялась только типизация.
+  const baseFilter = () => {
+    let q = sb.from("deals").select(LIST_SELECT);
     // is_draft is now backfilled NOT NULL DEFAULT false (migration
     // 00091) so this is a sargable single-predicate filter instead
     // of a NULLS OR.
@@ -616,7 +625,7 @@ async function fetchDealsList(
   const all: unknown[] = [];
   let from = 0;
   for (;;) {
-    const { data, error } = await baseFilter(sb.from("deals")).range(from, from + PAGE - 1);
+    const { data, error } = await baseFilter().range(from, from + PAGE - 1);
     if (error) {
       // Drop the in-flight promise on failure so a retry can fire.
       const entry = dealsCache.get(cacheKey);

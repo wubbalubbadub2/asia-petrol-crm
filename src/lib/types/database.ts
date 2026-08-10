@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -486,6 +486,33 @@ export type Database = {
           },
         ]
       }
+      consignees: {
+        Row: {
+          bin_iin: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          bin_iin?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          bin_iin?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       counterparties: {
         Row: {
           bin_iin: string | null
@@ -657,6 +684,7 @@ export type Database = {
           quotation: number | null
           quotation_comment: string | null
           quotation_type_id: string | null
+          selected_date: string | null
           selected_month: string | null
           trigger_basis: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days: number | null
@@ -689,6 +717,7 @@ export type Database = {
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
+          selected_date?: string | null
           selected_month?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
@@ -721,6 +750,7 @@ export type Database = {
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
+          selected_date?: string | null
           selected_month?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
@@ -732,6 +762,13 @@ export type Database = {
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_buyer_lines_delivery_basis_id_fkey"
+            columns: ["delivery_basis_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_bases"
             referencedColumns: ["id"]
           },
           {
@@ -756,30 +793,39 @@ export type Database = {
           contract_ref: string | null
           currency: string | null
           deal_id: string
+          discount: number | null
           id: string
           position: number
           price: number | null
-          price_kind: "preliminary" | "final"
+          price_kind: string
+          quotation: number | null
+          quotation_comment: string | null
         }
         Insert: {
           company_group_id: string
           contract_ref?: string | null
           currency?: string | null
           deal_id: string
+          discount?: number | null
           id?: string
           position: number
           price?: number | null
-          price_kind?: "preliminary" | "final"
+          price_kind?: string
+          quotation?: number | null
+          quotation_comment?: string | null
         }
         Update: {
           company_group_id?: string
           contract_ref?: string | null
           currency?: string | null
           deal_id?: string
+          discount?: number | null
           id?: string
           position?: number
           price?: number | null
-          price_kind?: "preliminary" | "final"
+          price_kind?: string
+          quotation?: number | null
+          quotation_comment?: string | null
         }
         Relationships: [
           {
@@ -968,6 +1014,138 @@ export type Database = {
           },
         ]
       }
+      deal_shipment_prices_00098_backup: {
+        Row: {
+          amount: number | null
+          border_crossing_date: string | null
+          calculated_price: number | null
+          created_at: string | null
+          created_by: string | null
+          deal_id: string | null
+          discount: number | null
+          id: string | null
+          notes: string | null
+          quotation_avg: number | null
+          quotation_product_type_id: string | null
+          shipment_date: string | null
+          shipment_registry_id: string | null
+          side: string | null
+          trigger_basis: Database["public"]["Enums"]["trigger_basis"] | null
+          trigger_days: number | null
+          trigger_start_date: string | null
+          updated_at: string | null
+          volume: number | null
+        }
+        Insert: {
+          amount?: number | null
+          border_crossing_date?: string | null
+          calculated_price?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deal_id?: string | null
+          discount?: number | null
+          id?: string | null
+          notes?: string | null
+          quotation_avg?: number | null
+          quotation_product_type_id?: string | null
+          shipment_date?: string | null
+          shipment_registry_id?: string | null
+          side?: string | null
+          trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
+          trigger_days?: number | null
+          trigger_start_date?: string | null
+          updated_at?: string | null
+          volume?: number | null
+        }
+        Update: {
+          amount?: number | null
+          border_crossing_date?: string | null
+          calculated_price?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deal_id?: string | null
+          discount?: number | null
+          id?: string | null
+          notes?: string | null
+          quotation_avg?: number | null
+          quotation_product_type_id?: string | null
+          shipment_date?: string | null
+          shipment_registry_id?: string | null
+          side?: string | null
+          trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
+          trigger_days?: number | null
+          trigger_start_date?: string | null
+          updated_at?: string | null
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      deal_shipment_prices_00099_backup: {
+        Row: {
+          amount: number | null
+          border_crossing_date: string | null
+          calculated_price: number | null
+          created_at: string | null
+          created_by: string | null
+          deal_id: string | null
+          discount: number | null
+          id: string | null
+          notes: string | null
+          quotation_avg: number | null
+          quotation_product_type_id: string | null
+          shipment_date: string | null
+          shipment_registry_id: string | null
+          side: string | null
+          trigger_basis: Database["public"]["Enums"]["trigger_basis"] | null
+          trigger_days: number | null
+          trigger_start_date: string | null
+          updated_at: string | null
+          volume: number | null
+        }
+        Insert: {
+          amount?: number | null
+          border_crossing_date?: string | null
+          calculated_price?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deal_id?: string | null
+          discount?: number | null
+          id?: string | null
+          notes?: string | null
+          quotation_avg?: number | null
+          quotation_product_type_id?: string | null
+          shipment_date?: string | null
+          shipment_registry_id?: string | null
+          side?: string | null
+          trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
+          trigger_days?: number | null
+          trigger_start_date?: string | null
+          updated_at?: string | null
+          volume?: number | null
+        }
+        Update: {
+          amount?: number | null
+          border_crossing_date?: string | null
+          calculated_price?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deal_id?: string | null
+          discount?: number | null
+          id?: string | null
+          notes?: string | null
+          quotation_avg?: number | null
+          quotation_product_type_id?: string | null
+          shipment_date?: string | null
+          shipment_registry_id?: string | null
+          side?: string | null
+          trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
+          trigger_days?: number | null
+          trigger_start_date?: string | null
+          updated_at?: string | null
+          volume?: number | null
+        }
+        Relationships: []
+      }
       deal_supplier_lines: {
         Row: {
           appendix: string | null
@@ -994,6 +1172,7 @@ export type Database = {
           quotation: number | null
           quotation_comment: string | null
           quotation_type_id: string | null
+          selected_date: string | null
           selected_month: string | null
           trigger_basis: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days: number | null
@@ -1026,6 +1205,7 @@ export type Database = {
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
+          selected_date?: string | null
           selected_month?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
@@ -1058,6 +1238,7 @@ export type Database = {
           quotation?: number | null
           quotation_comment?: string | null
           quotation_type_id?: string | null
+          selected_date?: string | null
           selected_month?: string | null
           trigger_basis?: Database["public"]["Enums"]["trigger_basis"] | null
           trigger_days?: number | null
@@ -1069,6 +1250,13 @@ export type Database = {
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_supplier_lines_delivery_basis_id_fkey"
+            columns: ["delivery_basis_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_bases"
             referencedColumns: ["id"]
           },
           {
@@ -1091,6 +1279,9 @@ export type Database = {
         Row: {
           actual_shipped_volume: number | null
           actual_tariff: number | null
+          actual_tariff_override: boolean
+          additional_expenses_amount: number | null
+          additional_expenses_in_price: boolean | null
           archived_at: string | null
           avg_month_date: string | null
           buyer_contract: string | null
@@ -1099,16 +1290,21 @@ export type Database = {
           buyer_contracted_volume: number | null
           buyer_currency: string
           buyer_debt: number | null
+          buyer_deferral_days: number | null
+          buyer_deferral_mode: string | null
+          buyer_deferral_note: string | null
           buyer_delivery_basis: string | null
           buyer_destination_station_id: string | null
           buyer_discount: number | null
           buyer_id: string | null
+          buyer_lines_count: number
           buyer_manager_id: string | null
           buyer_multi_deal_payments: string | null
           buyer_ordered_volume: number | null
           buyer_payment: number | null
           buyer_payment_date: string | null
           buyer_payment_gross: number | null
+          buyer_planned_pay_date: string | null
           buyer_price: number | null
           buyer_price_condition:
             | Database["public"]["Enums"]["price_condition"]
@@ -1134,7 +1330,8 @@ export type Database = {
           invoice_amount: number | null
           invoice_volume: number | null
           is_archived: boolean | null
-          is_draft: boolean | null
+          is_draft: boolean
+          is_hidden: boolean
           logistics_company_group_id: string | null
           logistics_currency: string
           logistics_notes: string | null
@@ -1145,6 +1342,8 @@ export type Database = {
           preliminary_tonnage: number | null
           quarter: string | null
           railway_in_price: boolean | null
+          shipper_actual_tariff: number | null
+          shipper_actual_tariff_override: boolean
           sulfur_percent: string | null
           supplier_balance: number | null
           supplier_contract: string | null
@@ -1152,14 +1351,19 @@ export type Database = {
           supplier_contracted_amount: number | null
           supplier_contracted_volume: number | null
           supplier_currency: string
+          supplier_deferral_days: number | null
+          supplier_deferral_mode: string | null
+          supplier_deferral_note: string | null
           supplier_delivery_basis: string | null
           supplier_departure_station_id: string | null
           supplier_discount: number | null
           supplier_id: string | null
+          supplier_lines_count: number
           supplier_manager_id: string | null
           supplier_payment: number | null
           supplier_payment_date: string | null
           supplier_payment_gross: number | null
+          supplier_planned_pay_date: string | null
           supplier_price: number | null
           supplier_price_condition:
             | Database["public"]["Enums"]["price_condition"]
@@ -1179,6 +1383,9 @@ export type Database = {
         Insert: {
           actual_shipped_volume?: number | null
           actual_tariff?: number | null
+          actual_tariff_override?: boolean
+          additional_expenses_amount?: number | null
+          additional_expenses_in_price?: boolean | null
           archived_at?: string | null
           avg_month_date?: string | null
           buyer_contract?: string | null
@@ -1187,16 +1394,21 @@ export type Database = {
           buyer_contracted_volume?: number | null
           buyer_currency?: string
           buyer_debt?: number | null
+          buyer_deferral_days?: number | null
+          buyer_deferral_mode?: string | null
+          buyer_deferral_note?: string | null
           buyer_delivery_basis?: string | null
           buyer_destination_station_id?: string | null
           buyer_discount?: number | null
           buyer_id?: string | null
+          buyer_lines_count?: number
           buyer_manager_id?: string | null
           buyer_multi_deal_payments?: string | null
           buyer_ordered_volume?: number | null
           buyer_payment?: number | null
           buyer_payment_date?: string | null
           buyer_payment_gross?: number | null
+          buyer_planned_pay_date?: string | null
           buyer_price?: number | null
           buyer_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
@@ -1222,7 +1434,8 @@ export type Database = {
           invoice_amount?: number | null
           invoice_volume?: number | null
           is_archived?: boolean | null
-          is_draft?: boolean | null
+          is_draft?: boolean
+          is_hidden?: boolean
           logistics_company_group_id?: string | null
           logistics_currency?: string
           logistics_notes?: string | null
@@ -1233,6 +1446,8 @@ export type Database = {
           preliminary_tonnage?: number | null
           quarter?: string | null
           railway_in_price?: boolean | null
+          shipper_actual_tariff?: number | null
+          shipper_actual_tariff_override?: boolean
           sulfur_percent?: string | null
           supplier_balance?: number | null
           supplier_contract?: string | null
@@ -1240,14 +1455,19 @@ export type Database = {
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_currency?: string
+          supplier_deferral_days?: number | null
+          supplier_deferral_mode?: string | null
+          supplier_deferral_note?: string | null
           supplier_delivery_basis?: string | null
           supplier_departure_station_id?: string | null
           supplier_discount?: number | null
           supplier_id?: string | null
+          supplier_lines_count?: number
           supplier_manager_id?: string | null
           supplier_payment?: number | null
           supplier_payment_date?: string | null
           supplier_payment_gross?: number | null
+          supplier_planned_pay_date?: string | null
           supplier_price?: number | null
           supplier_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
@@ -1267,6 +1487,9 @@ export type Database = {
         Update: {
           actual_shipped_volume?: number | null
           actual_tariff?: number | null
+          actual_tariff_override?: boolean
+          additional_expenses_amount?: number | null
+          additional_expenses_in_price?: boolean | null
           archived_at?: string | null
           avg_month_date?: string | null
           buyer_contract?: string | null
@@ -1275,16 +1498,21 @@ export type Database = {
           buyer_contracted_volume?: number | null
           buyer_currency?: string
           buyer_debt?: number | null
+          buyer_deferral_days?: number | null
+          buyer_deferral_mode?: string | null
+          buyer_deferral_note?: string | null
           buyer_delivery_basis?: string | null
           buyer_destination_station_id?: string | null
           buyer_discount?: number | null
           buyer_id?: string | null
+          buyer_lines_count?: number
           buyer_manager_id?: string | null
           buyer_multi_deal_payments?: string | null
           buyer_ordered_volume?: number | null
           buyer_payment?: number | null
           buyer_payment_date?: string | null
           buyer_payment_gross?: number | null
+          buyer_planned_pay_date?: string | null
           buyer_price?: number | null
           buyer_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
@@ -1310,7 +1538,8 @@ export type Database = {
           invoice_amount?: number | null
           invoice_volume?: number | null
           is_archived?: boolean | null
-          is_draft?: boolean | null
+          is_draft?: boolean
+          is_hidden?: boolean
           logistics_company_group_id?: string | null
           logistics_currency?: string
           logistics_notes?: string | null
@@ -1321,6 +1550,8 @@ export type Database = {
           preliminary_tonnage?: number | null
           quarter?: string | null
           railway_in_price?: boolean | null
+          shipper_actual_tariff?: number | null
+          shipper_actual_tariff_override?: boolean
           sulfur_percent?: string | null
           supplier_balance?: number | null
           supplier_contract?: string | null
@@ -1328,14 +1559,19 @@ export type Database = {
           supplier_contracted_amount?: number | null
           supplier_contracted_volume?: number | null
           supplier_currency?: string
+          supplier_deferral_days?: number | null
+          supplier_deferral_mode?: string | null
+          supplier_deferral_note?: string | null
           supplier_delivery_basis?: string | null
           supplier_departure_station_id?: string | null
           supplier_discount?: number | null
           supplier_id?: string | null
+          supplier_lines_count?: number
           supplier_manager_id?: string | null
           supplier_payment?: number | null
           supplier_payment_date?: string | null
           supplier_payment_gross?: number | null
+          supplier_planned_pay_date?: string | null
           supplier_price?: number | null
           supplier_price_condition?:
             | Database["public"]["Enums"]["price_condition"]
@@ -1708,6 +1944,190 @@ export type Database = {
         }
         Relationships: []
       }
+      fiscal_document: {
+        Row: {
+          counterparty_identifier: string | null
+          counterparty_name: string | null
+          counterparty_role_code: string | null
+          currency_code: string
+          direction_code: string
+          doc_kind: string
+          doc_number_display: string | null
+          doc_type_code: string
+          doc_type_label: string | null
+          first_seen_at: string
+          fx_rate: number
+          id: string
+          is_superseded: boolean
+          is_void: boolean
+          issue_date: string | null
+          last_seen_at: string
+          line_count: number
+          operation_kind_code: string | null
+          operation_kind_label: string | null
+          own_party_name: string | null
+          own_party_role_code: string | null
+          payload_id: string | null
+          registration_date: string
+          registration_number: string
+          related_registration_number: string | null
+          related_snt_registration_number: string | null
+          shipment_date: string | null
+          source_org_code: string
+          state_code: string
+          state_label: string | null
+          status_code: string
+          status_label: string | null
+          total_amount: number | null
+        }
+        Insert: {
+          counterparty_identifier?: string | null
+          counterparty_name?: string | null
+          counterparty_role_code?: string | null
+          currency_code: string
+          direction_code: string
+          doc_kind: string
+          doc_number_display?: string | null
+          doc_type_code: string
+          doc_type_label?: string | null
+          first_seen_at?: string
+          fx_rate: number
+          id?: string
+          is_superseded?: boolean
+          is_void?: boolean
+          issue_date?: string | null
+          last_seen_at?: string
+          line_count?: number
+          operation_kind_code?: string | null
+          operation_kind_label?: string | null
+          own_party_name?: string | null
+          own_party_role_code?: string | null
+          payload_id?: string | null
+          registration_date: string
+          registration_number: string
+          related_registration_number?: string | null
+          related_snt_registration_number?: string | null
+          shipment_date?: string | null
+          source_org_code: string
+          state_code: string
+          state_label?: string | null
+          status_code: string
+          status_label?: string | null
+          total_amount?: number | null
+        }
+        Update: {
+          counterparty_identifier?: string | null
+          counterparty_name?: string | null
+          counterparty_role_code?: string | null
+          currency_code?: string
+          direction_code?: string
+          doc_kind?: string
+          doc_number_display?: string | null
+          doc_type_code?: string
+          doc_type_label?: string | null
+          first_seen_at?: string
+          fx_rate?: number
+          id?: string
+          is_superseded?: boolean
+          is_void?: boolean
+          issue_date?: string | null
+          last_seen_at?: string
+          line_count?: number
+          operation_kind_code?: string | null
+          operation_kind_label?: string | null
+          own_party_name?: string | null
+          own_party_role_code?: string | null
+          payload_id?: string | null
+          registration_date?: string
+          registration_number?: string
+          related_registration_number?: string | null
+          related_snt_registration_number?: string | null
+          shipment_date?: string | null
+          source_org_code?: string
+          state_code?: string
+          state_label?: string | null
+          status_code?: string
+          status_label?: string | null
+          total_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_document_payload_id_fkey"
+            columns: ["payload_id"]
+            isOneToOne: false
+            referencedRelation: "integration_1c_payload"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fiscal_document_line: {
+        Row: {
+          amount: number | null
+          amount_net: number | null
+          conversion_rate: number | null
+          document_id: string
+          id: string
+          line_no: number
+          name: string | null
+          net_weight: number | null
+          pin_code: string | null
+          price: number | null
+          quantity: number | null
+          snt_line_no: number | null
+          source_lot_id: string | null
+          storage_unit: string | null
+          table_name: string
+          unit: string | null
+          vat_amount: number | null
+        }
+        Insert: {
+          amount?: number | null
+          amount_net?: number | null
+          conversion_rate?: number | null
+          document_id: string
+          id?: string
+          line_no: number
+          name?: string | null
+          net_weight?: number | null
+          pin_code?: string | null
+          price?: number | null
+          quantity?: number | null
+          snt_line_no?: number | null
+          source_lot_id?: string | null
+          storage_unit?: string | null
+          table_name: string
+          unit?: string | null
+          vat_amount?: number | null
+        }
+        Update: {
+          amount?: number | null
+          amount_net?: number | null
+          conversion_rate?: number | null
+          document_id?: string
+          id?: string
+          line_no?: number
+          name?: string | null
+          net_weight?: number | null
+          pin_code?: string | null
+          price?: number | null
+          quantity?: number | null
+          snt_line_no?: number | null
+          source_lot_id?: string | null
+          storage_unit?: string | null
+          table_name?: string
+          unit?: string | null
+          vat_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_document_line_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "fiscal_document"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       forwarders: {
         Row: {
           bin_iin: string | null
@@ -1765,6 +2185,87 @@ export type Database = {
           sort_order?: number | null
           sulfur_percent?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      fx_rates: {
+        Row: {
+          base_currency: string
+          created_at: string
+          date: string
+          quote_currency: string
+          rate: number
+          source: string
+        }
+        Insert: {
+          base_currency: string
+          created_at?: string
+          date: string
+          quote_currency: string
+          rate: number
+          source: string
+        }
+        Update: {
+          base_currency?: string
+          created_at?: string
+          date?: string
+          quote_currency?: string
+          rate?: number
+          source?: string
+        }
+        Relationships: []
+      }
+      integration_1c_payload: {
+        Row: {
+          config_version: string | null
+          content_sha256: string
+          doc_kind: string | null
+          file_base_ref: string | null
+          file_org_code: string | null
+          first_seen_at: string
+          id: string
+          ingest_run_id: string | null
+          ingest_status: string
+          last_seen_at: string
+          payload: Json
+          processing_version: string | null
+          registration_number: string | null
+          reject_reason: string | null
+          source_org_code: string | null
+        }
+        Insert: {
+          config_version?: string | null
+          content_sha256: string
+          doc_kind?: string | null
+          file_base_ref?: string | null
+          file_org_code?: string | null
+          first_seen_at?: string
+          id?: string
+          ingest_run_id?: string | null
+          ingest_status: string
+          last_seen_at?: string
+          payload: Json
+          processing_version?: string | null
+          registration_number?: string | null
+          reject_reason?: string | null
+          source_org_code?: string | null
+        }
+        Update: {
+          config_version?: string | null
+          content_sha256?: string
+          doc_kind?: string | null
+          file_base_ref?: string | null
+          file_org_code?: string | null
+          first_seen_at?: string
+          id?: string
+          ingest_run_id?: string | null
+          ingest_status?: string
+          last_seen_at?: string
+          payload?: Json
+          processing_version?: string | null
+          registration_number?: string | null
+          reject_reason?: string | null
+          source_org_code?: string | null
         }
         Relationships: []
       }
@@ -2961,6 +3462,8 @@ export type Database = {
       }
       shipment_registry: {
         Row: {
+          additional_expenses: number | null
+          additional_expenses_override: boolean
           additional_month: string | null
           buyer_appendix: string | null
           buyer_id: string | null
@@ -2979,12 +3482,16 @@ export type Database = {
           fuel_type_id: string | null
           id: string
           invoice_number: string | null
+          loading_date: string | null
           loading_volume: number | null
+          manager_tariff: number | null
           month: string | null
           price_source: string | null
           quarter: string | null
           railway_tariff: number | null
+          railway_tariff_override: boolean
           registry_type: Database["public"]["Enums"]["deal_type"]
+          round_volume: boolean
           rounded_tonnage_from_forwarder: number | null
           rounded_volume_override: number | null
           row_number: number | null
@@ -3000,6 +3507,8 @@ export type Database = {
           waybill_number: string | null
         }
         Insert: {
+          additional_expenses?: number | null
+          additional_expenses_override?: boolean
           additional_month?: string | null
           buyer_appendix?: string | null
           buyer_id?: string | null
@@ -3018,12 +3527,16 @@ export type Database = {
           fuel_type_id?: string | null
           id?: string
           invoice_number?: string | null
+          loading_date?: string | null
           loading_volume?: number | null
+          manager_tariff?: number | null
           month?: string | null
           price_source?: string | null
           quarter?: string | null
           railway_tariff?: number | null
+          railway_tariff_override?: boolean
           registry_type: Database["public"]["Enums"]["deal_type"]
+          round_volume?: boolean
           rounded_tonnage_from_forwarder?: number | null
           rounded_volume_override?: number | null
           row_number?: number | null
@@ -3039,6 +3552,8 @@ export type Database = {
           waybill_number?: string | null
         }
         Update: {
+          additional_expenses?: number | null
+          additional_expenses_override?: boolean
           additional_month?: string | null
           buyer_appendix?: string | null
           buyer_id?: string | null
@@ -3057,12 +3572,16 @@ export type Database = {
           fuel_type_id?: string | null
           id?: string
           invoice_number?: string | null
+          loading_date?: string | null
           loading_volume?: number | null
+          manager_tariff?: number | null
           month?: string | null
           price_source?: string | null
           quarter?: string | null
           railway_tariff?: number | null
+          railway_tariff_override?: boolean
           registry_type?: Database["public"]["Enums"]["deal_type"]
+          round_volume?: boolean
           rounded_tonnage_from_forwarder?: number | null
           rounded_volume_override?: number | null
           row_number?: number | null
@@ -3163,6 +3682,129 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      shipment_registry_00099_backup: {
+        Row: {
+          additional_month: string | null
+          buyer_appendix: string | null
+          buyer_id: string | null
+          buyer_line_id: string | null
+          comment: string | null
+          company_group_id: string | null
+          created_at: string | null
+          created_by: string | null
+          currency: string | null
+          date: string | null
+          deal_id: string | null
+          departure_station_id: string | null
+          destination_station_id: string | null
+          factory_id: string | null
+          forwarder_id: string | null
+          fuel_type_id: string | null
+          id: string | null
+          invoice_number: string | null
+          loading_volume: number | null
+          month: string | null
+          price_source: string | null
+          quarter: string | null
+          railway_tariff: number | null
+          registry_type: Database["public"]["Enums"]["deal_type"] | null
+          round_volume: boolean | null
+          rounded_tonnage_from_forwarder: number | null
+          rounded_volume_override: number | null
+          row_number: number | null
+          shipment_month: string | null
+          shipment_volume: number | null
+          shipped_tonnage_amount: number | null
+          shipped_tonnage_amount_override: boolean | null
+          supplier_appendix: string | null
+          supplier_id: string | null
+          supplier_line_id: string | null
+          updated_at: string | null
+          wagon_number: string | null
+          waybill_number: string | null
+        }
+        Insert: {
+          additional_month?: string | null
+          buyer_appendix?: string | null
+          buyer_id?: string | null
+          buyer_line_id?: string | null
+          comment?: string | null
+          company_group_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          currency?: string | null
+          date?: string | null
+          deal_id?: string | null
+          departure_station_id?: string | null
+          destination_station_id?: string | null
+          factory_id?: string | null
+          forwarder_id?: string | null
+          fuel_type_id?: string | null
+          id?: string | null
+          invoice_number?: string | null
+          loading_volume?: number | null
+          month?: string | null
+          price_source?: string | null
+          quarter?: string | null
+          railway_tariff?: number | null
+          registry_type?: Database["public"]["Enums"]["deal_type"] | null
+          round_volume?: boolean | null
+          rounded_tonnage_from_forwarder?: number | null
+          rounded_volume_override?: number | null
+          row_number?: number | null
+          shipment_month?: string | null
+          shipment_volume?: number | null
+          shipped_tonnage_amount?: number | null
+          shipped_tonnage_amount_override?: boolean | null
+          supplier_appendix?: string | null
+          supplier_id?: string | null
+          supplier_line_id?: string | null
+          updated_at?: string | null
+          wagon_number?: string | null
+          waybill_number?: string | null
+        }
+        Update: {
+          additional_month?: string | null
+          buyer_appendix?: string | null
+          buyer_id?: string | null
+          buyer_line_id?: string | null
+          comment?: string | null
+          company_group_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          currency?: string | null
+          date?: string | null
+          deal_id?: string | null
+          departure_station_id?: string | null
+          destination_station_id?: string | null
+          factory_id?: string | null
+          forwarder_id?: string | null
+          fuel_type_id?: string | null
+          id?: string | null
+          invoice_number?: string | null
+          loading_volume?: number | null
+          month?: string | null
+          price_source?: string | null
+          quarter?: string | null
+          railway_tariff?: number | null
+          registry_type?: Database["public"]["Enums"]["deal_type"] | null
+          round_volume?: boolean | null
+          rounded_tonnage_from_forwarder?: number | null
+          rounded_volume_override?: number | null
+          row_number?: number | null
+          shipment_month?: string | null
+          shipment_volume?: number | null
+          shipped_tonnage_amount?: number | null
+          shipped_tonnage_amount_override?: boolean | null
+          supplier_appendix?: string | null
+          supplier_id?: string | null
+          supplier_line_id?: string | null
+          updated_at?: string | null
+          wagon_number?: string | null
+          waybill_number?: string | null
+        }
+        Relationships: []
       }
       snt_documents: {
         Row: {
@@ -3619,6 +4261,27 @@ export type Database = {
           },
         ]
       }
+      user_prefs: {
+        Row: {
+          key: string
+          updated_at: string
+          user_id: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          user_id: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          user_id?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string
@@ -3651,9 +4314,55 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      fiscal_counterparty: {
+        Row: {
+          canonical_name: string | null
+          counterparty_identifier: string | null
+          doc_count: number | null
+          first_document_at: string | null
+          last_document_at: string | null
+          name_variants: number | null
+        }
+        Relationships: []
+      }
+      fiscal_rejected_document: {
+        Row: {
+          currency_code: string | null
+          doc_kind: string | null
+          operation_kind_code: string | null
+          registration_date: string | null
+          registration_number: string | null
+          reject_reason: string | null
+          total_amount: number | null
+        }
+        Insert: {
+          currency_code?: never
+          doc_kind?: string | null
+          operation_kind_code?: never
+          registration_date?: never
+          registration_number?: string | null
+          reject_reason?: string | null
+          total_amount?: never
+        }
+        Update: {
+          currency_code?: never
+          doc_kind?: string | null
+          operation_kind_code?: never
+          registration_date?: never
+          registration_number?: string | null
+          reject_reason?: string | null
+          total_amount?: never
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      _activity_fmt_num: { Args: { p: number }; Returns: string }
+      _activity_is_draft_deal: { Args: { p_deal_id: string }; Returns: boolean }
+      compose_delivery_basis: {
+        Args: { p_basis_id: string; p_note: string; p_station_id: string }
+        Returns: string
+      }
       compute_dt_kt_balance: {
         Args: {
           p_company_group_id: string
@@ -3717,6 +4426,57 @@ export type Database = {
           review_count: number
         }[]
       }
+      fx_convert: {
+        Args: { p_amount: number; p_date: string; p_from: string; p_to: string }
+        Returns: number
+      }
+      fx_convert_month: {
+        Args: {
+          p_amount: number
+          p_from: string
+          p_month: number
+          p_to: string
+          p_year: number
+        }
+        Returns: number
+      }
+      fx_rate: {
+        Args: { p_base: string; p_date: string; p_quote: string }
+        Returns: number
+      }
+      fx_rate_month: {
+        Args: {
+          p_base: string
+          p_month: number
+          p_quote: string
+          p_year: number
+        }
+        Returns: number
+      }
+      fx_report_flows: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          deal_type: string
+          kzt: number
+          metric: string
+          month: number
+          usd: number
+          year: number
+        }[]
+      }
+      fx_report_price: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          buyer_price_kzt: number
+          buyer_price_usd: number
+          deal_code: string
+          deal_type: string
+          loading_date: string
+          snt_date: string
+          supplier_price_kzt: number
+          supplier_price_usd: number
+        }[]
+      }
       generate_deal_number: {
         Args: {
           p_type: Database["public"]["Enums"]["deal_type"]
@@ -3724,6 +4484,7 @@ export type Database = {
         }
         Returns: number
       }
+      get_deal_bundle: { Args: { p_deal_id: string }; Returns: Json }
       is_admin: { Args: never; Returns: boolean }
       is_writable_role: { Args: never; Returns: boolean }
       lookup_tariff: {
@@ -3737,6 +4498,7 @@ export type Database = {
         }
         Returns: number
       }
+      month_num: { Args: { p: string }; Returns: number }
       recompute_line_shipment_prices: {
         Args: { p_line_id: string; p_side: string }
         Returns: number
