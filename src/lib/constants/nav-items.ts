@@ -15,6 +15,7 @@ import {
   Table2,
   ReceiptText,
   type LucideIcon,
+  CalendarClock,
 } from "lucide-react";
 
 // Сайдбар группирует пункты по `section`: «Навигация» / «Операции» /
@@ -110,6 +111,12 @@ export const navItems: NavItem[] = [
     label: "Анализ по валюте",
     href: "/reports",
     icon: BarChart3,
+    section: "reports",
+  },
+  {
+    label: "Условия оплаты",
+    href: "/reports/payment-terms",
+    icon: CalendarClock,
     section: "reports",
   },
   // ── Админ (не показывается в сайдбаре — доступ по URL) ──
