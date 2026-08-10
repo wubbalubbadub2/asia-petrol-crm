@@ -43,12 +43,16 @@ export type GlobalRefs = {
   fuelTypes: FuelTypeRef[];
   quotationTypes: RefOpt[];
   consignees: RefOpt[];
+  // Типы базиса поставки (00136): FCA / CPT / DAP / EXW + всё, что
+  // менеджеры добавят сами. Ленивая загрузка — нужны только редактору
+  // вариантов цены и справочнику.
+  deliveryBases: RefOpt[];
 };
 
 const EMPTY: GlobalRefs = {
   suppliers: [], buyers: [], forwarders: [], managers: [],
   stations: [], companyGroups: [], factories: [], fuelTypes: [],
-  quotationTypes: [], consignees: [],
+  quotationTypes: [], consignees: [], deliveryBases: [],
 };
 
 const TTL_MS = 5 * 60_000;
@@ -91,6 +95,7 @@ function fetchAll(): Promise<GlobalRefs> {
       fuelTypes: pull(7) as unknown as FuelTypeRef[],
       quotationTypes: [],
       consignees: [],
+      deliveryBases: [],
     };
     // Lazy-fire the rarely-needed lookups in the background — they
     // populate the cache so the few pages that consume them (e.g.
@@ -103,10 +108,14 @@ function fetchAll(): Promise<GlobalRefs> {
 
 async function getLazyRefs(target: GlobalRefs): Promise<void> {
   const sb = createClient();
-  const [qt, co] = await Promise.allSettled([
+  const [qt, co, db] = await Promise.allSettled([
     sb.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (sb.from as any)("consignees").select("id, name").eq("is_active", true).order("name"),
+    // Базис поставки сортируется по sort_order, а не по имени: в
+    // справочнике порядок FCA / CPT / DAP / EXW задан осмысленно
+    // (00136), алфавит его бы перемешал.
+    sb.from("delivery_bases").select("id, name").eq("is_active", true).order("sort_order"),
   ]);
   type Row = Record<string, unknown>;
   const pull = (r: PromiseSettledResult<unknown>): Row[] => {
@@ -116,6 +125,7 @@ async function getLazyRefs(target: GlobalRefs): Promise<void> {
   };
   target.quotationTypes = pull(qt) as unknown as RefOpt[];
   target.consignees = pull(co) as unknown as RefOpt[];
+  target.deliveryBases = pull(db) as unknown as RefOpt[];
 }
 
 export function getGlobalRefs(): Promise<GlobalRefs> {

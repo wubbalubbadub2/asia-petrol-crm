@@ -46,12 +46,51 @@ type PriceStage = "preliminary" | "final";
 
 type Option = { value: string; label: string };
 
+/**
+ * Что останется от старого текста базиса, если убрать из него код
+ * базиса и название станции. Нужно ровно в один момент — когда
+ * оператор впервые выбирает тип у исторической строки: БД пересоберёт
+ * `delivery_basis` из структурных полей, и всё, что не код и не
+ * станция, потерялось бы молча.
+ *
+ *   «EXW франко-резервуар»  + EXW + без станции → «франко-резервуар»
+ *   «FCA Текесу»            + FCA + ст. Текесу  → «» (терять нечего)
+ *   «CPT Турксиб эксп.»     + CPT + без станции → «Турксиб эксп.»
+ */
+export function basisRemainder(
+  raw: string | null,
+  kind: string | null,
+  stationLabel: string | null,
+): string {
+  let rest = (raw ?? "").trim();
+  if (!rest) return "";
+
+  const strip = (needle: string | null) => {
+    const n = (needle ?? "").trim();
+    if (!n) return;
+    // Название станции в справочнике идёт со служебным «ст.» —
+    // в тексте базиса его может не быть.
+    const bare = n.replace(/^\s*(ст\.?|станция)\s*/i, "").trim();
+    for (const variant of [n, bare]) {
+      if (!variant) continue;
+      const esc = variant.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      rest = rest.replace(new RegExp(esc, "i"), " ");
+    }
+  };
+
+  strip(kind);
+  strip(stationLabel);
+
+  return rest.replace(/\s+/g, " ").replace(/^[\s,;/–—-]+|[\s,;/–—-]+$/g, "").trim();
+}
+
 type CommonProps = {
   dealId: string;
   editing: boolean;
   currencySymbol: string;
   stations: Option[];
   quotationTypes: Option[];
+  deliveryBases: Option[];
   rollups?: Record<string, LineRollup>;
   onChanged: () => void;
   // Client 2026-07-02 «Котировочное значение не выходит»: when the
@@ -65,7 +104,7 @@ type CommonProps = {
 };
 
 export function SupplierLinesEditor({
-  dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
+  dealId, editing, currencySymbol, stations, quotationTypes, deliveryBases, lines, rollups, onChanged,
   dealMonth, dealYear,
 }: CommonProps & { lines: DealSupplierLine[] }) {
   const [busy, setBusy] = useState(false);
@@ -154,6 +193,8 @@ export function SupplierLinesEditor({
         discount: l.discount,
         price: l.price,
         delivery_basis: l.delivery_basis,
+        delivery_basis_id: l.delivery_basis_id ?? null,
+        delivery_basis_note: l.delivery_basis_note ?? null,
         station_id: l.departure_station_id,
         station_label: l.departure_station?.name ?? null,
         stationField: "departure_station_id",
@@ -176,6 +217,7 @@ export function SupplierLinesEditor({
       busy={busy}
       currencySymbol={currencySymbol}
       stations={stations}
+      deliveryBases={deliveryBases}
       quotationTypes={quotationTypes}
       onAdd={handleAdd}
       onDelete={handleDelete}
@@ -251,7 +293,7 @@ function applyPriceFormulaPatch(
 }
 
 export function BuyerLinesEditor({
-  dealId, editing, currencySymbol, stations, quotationTypes, lines, rollups, onChanged,
+  dealId, editing, currencySymbol, stations, quotationTypes, deliveryBases, lines, rollups, onChanged,
   dealMonth, dealYear,
 }: CommonProps & { lines: DealBuyerLine[] }) {
   const [busy, setBusy] = useState(false);
@@ -331,6 +373,8 @@ export function BuyerLinesEditor({
         discount: l.discount,
         price: l.price,
         delivery_basis: l.delivery_basis,
+        delivery_basis_id: l.delivery_basis_id ?? null,
+        delivery_basis_note: l.delivery_basis_note ?? null,
         station_id: l.destination_station_id,
         station_label: l.destination_station?.name ?? null,
         stationField: "destination_station_id",
@@ -353,6 +397,7 @@ export function BuyerLinesEditor({
       busy={busy}
       currencySymbol={currencySymbol}
       stations={stations}
+      deliveryBases={deliveryBases}
       quotationTypes={quotationTypes}
       onAdd={handleAdd}
       onDelete={handleDelete}
@@ -380,6 +425,8 @@ type LineVM = {
   discount: number | null;
   price: number | null;
   delivery_basis: string | null;
+  delivery_basis_id: string | null;
+  delivery_basis_note: string | null;
   station_id: string | null;
   station_label: string | null;
   stationField: "departure_station_id" | "destination_station_id";
@@ -500,7 +547,7 @@ function LineAutoFetchQuotation({
 }
 
 function LinesEditorView({
-  side, lines, editing, busy, currencySymbol, stations, quotationTypes,
+  side, lines, editing, busy, currencySymbol, stations, quotationTypes, deliveryBases,
   onAdd, onDelete, onUpdate, dealMonth, dealYear,
 }: {
   side: "supplier" | "buyer";
@@ -510,6 +557,7 @@ function LinesEditorView({
   currencySymbol: string;
   stations: Option[];
   quotationTypes: Option[];
+  deliveryBases: Option[];
   onAdd: () => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, patch: Record<string, unknown>) => void;
@@ -896,12 +944,45 @@ function LinesEditorView({
               onChange={(v) => onUpdate(l.id, { quotation_comment: v })}
             />
 
-            {/* Базис поставки */}
-            <TextCell
+            {/* Базис поставки — тип из справочника (00136). Место берётся
+                из станции варианта (селект ниже), всё остальное — адрес
+                нефтебазы и прочие оговорки — в «Уточнение». Итоговый
+                текст («FCA Текесу») собирает триггер в БД, поэтому в
+                режиме просмотра показываем именно его, а подсказкой —
+                при редактировании. У исторических строк типа нет, и
+                старый текст остаётся нетронутым. */}
+            <SelectCell
               label="Базис поставки"
-              value={l.delivery_basis}
+              value={l.delivery_basis_id}
+              displayValue={l.delivery_basis ?? "—"}
+              hint={l.delivery_basis ?? undefined}
               editing={editing}
-              onChange={(v) => onUpdate(l.id, { delivery_basis: v })}
+              options={deliveryBases}
+              onChange={(v) => onUpdate(l.id, {
+                delivery_basis_id: v || null,
+                // При первом выборе типа у исторической строки триггер
+                // пересоберёт текст и хвост старого значения («EXW
+                // франко-резервуар» → «EXW») просто исчез бы. Поэтому
+                // остаток старого текста переносим в «Уточнение» — но
+                // только если оператор его ещё не заполнил сам.
+                ...(v && !l.delivery_basis_note
+                  ? (() => {
+                      const rest = basisRemainder(
+                        l.delivery_basis,
+                        deliveryBases.find((o) => o.value === v)?.label ?? null,
+                        l.station_label,
+                      );
+                      return rest ? { delivery_basis_note: rest } : {};
+                    })()
+                  : {}),
+              })}
+            />
+
+            <TextCell
+              label="Уточнение базиса"
+              value={l.delivery_basis_note}
+              editing={editing}
+              onChange={(v) => onUpdate(l.id, { delivery_basis_note: v })}
             />
 
             {/* Станция (отправления / назначения) */}
@@ -1170,13 +1251,18 @@ function TextCell({ label, value, editing, onChange }: {
   );
 }
 
-function SelectCell({ label, value, displayValue, editing, options, onChange }: {
+function SelectCell({ label, value, displayValue, editing, options, onChange, hint }: {
   label: string;
   value: string | null;
   displayValue: string;
   editing: boolean;
   options: Option[];
   onChange: (v: string) => void;
+  // Подпись под селектом в режиме редактирования. Нужна базису: сам
+  // текст («FCA Текесу») собирается в БД, и без подсказки менеджер не
+  // видит, что именно уйдёт в паспорт — особенно у исторических строк,
+  // где тип ещё не выбран, а старый текст уже есть.
+  hint?: string;
 }) {
   const pendingVal = useRef<string | undefined>(undefined);
   const [, force] = useState(0);
@@ -1217,6 +1303,9 @@ function SelectCell({ label, value, displayValue, editing, options, onChange }: 
         </select>
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
       </div>
+      {hint && (
+        <span className="mt-0.5 block truncate text-[10px] text-stone-400" title={hint}>{hint}</span>
+      )}
     </div>
   );
 }

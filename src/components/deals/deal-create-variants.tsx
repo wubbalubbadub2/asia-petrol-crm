@@ -42,7 +42,11 @@ export type VariantDraft = {
   quotationComment: string;
   discount: string;
   price: string;              // = quotation - discount, auto-computed unless manually edited
-  deliveryBasis: string;
+  // 00136 — базис собирается из типа (справочник) + станции варианта
+  // + уточнения. Свободный текст deliveryBasis больше не вводится
+  // руками: его пересобирает триггер в БД.
+  deliveryBasisId: string;
+  deliveryBasisNote: string;
   stationId: string;
   // Trigger config — persisted on the line when priceMode is a trigger.
   // For non-trigger modes these stay empty and are dropped on save.
@@ -90,7 +94,8 @@ export const EMPTY_VARIANT: VariantDraft = {
   quotationComment: "",
   discount: "",
   price: "",
-  deliveryBasis: "",
+  deliveryBasisId: "",
+  deliveryBasisNote: "",
   stationId: "",
   fixDate: "",
   triggerStart: "",
@@ -160,7 +165,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
 type RefOption = { id: string; name: string };
 
 export function VariantsCard({
-  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, stations,
+  side, variants, onUpdate, onAdd, onRemove, month, year, quotationTypes, stations, deliveryBases,
 }: {
   side: "supplier" | "buyer";
   variants: VariantDraft[];
@@ -171,6 +176,7 @@ export function VariantsCard({
   year: number;
   quotationTypes: RefOption[];
   stations: RefOption[];
+  deliveryBases: RefOption[];
 }) {
   const stationLabel = side === "supplier" ? "Ст. отправления" : "Ст. назначения";
 
@@ -188,6 +194,7 @@ export function VariantsCard({
           year={year}
           quotationTypes={quotationTypes}
           stations={stations}
+          deliveryBases={deliveryBases}
           stationLabel={stationLabel}
         />
       ))}
@@ -200,7 +207,7 @@ export function VariantsCard({
 
 function VariantRow({
   idx, variant: v, isDefault, onChange, onRemove,
-  month, year, quotationTypes, stations, stationLabel,
+  month, year, quotationTypes, stations, deliveryBases, stationLabel,
 }: {
   idx: number;
   variant: VariantDraft;
@@ -211,6 +218,7 @@ function VariantRow({
   year: number;
   quotationTypes: RefOption[];
   stations: RefOption[];
+  deliveryBases: RefOption[];
   stationLabel: string;
 }) {
   const supabase = useRef(createClient());
@@ -725,7 +733,24 @@ function VariantRow({
 
         <div>
           <Label className="text-[12px] text-stone-500">Базис поставки</Label>
-          <Input value={v.deliveryBasis} onChange={(e) => onChange({ deliveryBasis: e.target.value })} placeholder={isDefault ? "FCA Текесу" : ""} className="h-8 text-[13px]" />
+          <select
+            value={v.deliveryBasisId}
+            onChange={(e) => onChange({ deliveryBasisId: e.target.value })}
+            className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+          >
+            <option value="">—</option>
+            {deliveryBases.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <Label className="text-[12px] text-stone-500">Уточнение базиса</Label>
+          <Input
+            value={v.deliveryBasisNote}
+            onChange={(e) => onChange({ deliveryBasisNote: e.target.value })}
+            placeholder={isDefault ? "нефтебаза, адрес" : ""}
+            className="h-8 text-[13px]"
+          />
         </div>
 
         <div>
