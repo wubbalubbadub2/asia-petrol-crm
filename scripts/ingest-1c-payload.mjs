@@ -49,10 +49,15 @@ import {
 // ── Аргументы и окружение ─────────────────────────────────────────
 const args = process.argv.slice(2);
 const DRY = args.includes("--dry");
+// --refresh переписывает КАЖДЫЙ принятый документ, даже если его хеш не
+// изменился. Нужен после миграций, добавляющих колонки: обычный прогон
+// такие документы пропускает как неизменные, и новые поля остаются
+// пустыми. Перевыгрузка из 1С при этом не требуется — payload уже в landing.
+const REFRESH = args.includes("--refresh");
 const filePath = args.find((a) => !a.startsWith("--"));
 
 if (!filePath) {
-  console.error("Usage: node --max-old-space-size=6144 scripts/ingest-1c-payload.mjs <payload.json> [--dry]");
+  console.error("Usage: node --max-old-space-size=6144 scripts/ingest-1c-payload.mjs <payload.json> [--dry] [--refresh]");
   process.exit(2);
 }
 
@@ -112,7 +117,7 @@ async function fetchAll(table, columns, filter) {
 
 // ── 1. Чтение файла ───────────────────────────────────────────────
 const t0 = Date.now();
-console.log(`Читаю ${filePath}${DRY ? " (dry-run, записи не будет)" : ""}`);
+console.log(`Читаю ${filePath}${DRY ? " (dry-run, записи не будет)" : ""}${REFRESH ? " (--refresh: переписываю все документы)" : ""}`);
 
 let file;
 try {
@@ -222,10 +227,10 @@ const unchangedIds = [];
 for (const p of accepted) {
   const prev = existingByKey.get(keyOf(p));
   const landingId = landingIdByHash.get(p.hash);
-  if (prev && prev.payload_id === landingId) unchangedIds.push(prev.id);
+  if (!REFRESH && prev && prev.payload_id === landingId) unchangedIds.push(prev.id);
   else changed.push({ ...p, landingId });
 }
-console.log(`\nБез изменений: ${unchangedIds.length}, новых или изменившихся: ${changed.length}`);
+console.log(`\nБез изменений: ${unchangedIds.length}, ${REFRESH ? "к перезаписи" : "новых или изменившихся"}: ${changed.length}`);
 
 // ── 5. Неизменившиеся: только отметка, что документ снова видели ──
 for (const batch of chunk(unchangedIds, ID_BATCH)) {

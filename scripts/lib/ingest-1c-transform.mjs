@@ -110,6 +110,40 @@ export function lotIndex(doc) {
   return map;
 }
 
+/** Булево из 1С: отсутствующее поле — null, а не false. */
+export const bool = (v) => (v === true || v === false ? v : null);
+
+/** Товарная табличная часть документа: у СНТ одна, у ЭСФ другая. */
+export const PRODUCT_TABLE = { snt: "ДанныеПоНефтепродуктам", esf: "Товары" };
+
+/** Сырая строка табличной части по номеру строки — чтобы забрать колонки бланка. */
+export function rawLineIndex(doc) {
+  const map = new Map();
+  const table = doc.payload?.tables?.[PRODUCT_TABLE[doc.doc_kind]];
+  if (!Array.isArray(table)) return map;
+  for (const row of table) {
+    const n = num(row?.["НомерСтроки"]);
+    if (n !== null) map.set(n, row);
+  }
+  return map;
+}
+
+/**
+ * Табличные части, кроме товарной: ТоварыВС и ДанныеОГрузе1_2 (путевой
+ * лист, ТТН, водитель, маршрут). Их не разложить в колонки — состав
+ * плавает, а документов с ними единицы, — но и терять нельзя: в
+ * landing они под is_admin(), с карточки не видны.
+ */
+export function extraTables(doc) {
+  const main = PRODUCT_TABLE[doc.doc_kind];
+  const out = {};
+  for (const [name, rows] of Object.entries(doc.payload?.tables || {})) {
+    if (name === main) continue;
+    if (Array.isArray(rows) && rows.length) out[name] = rows;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 /**
  * Строка fiscal_document. Намеренно НЕ содержит:
  *   is_void       — вычисляемая колонка из state_code;
@@ -153,6 +187,121 @@ export function toDocumentRow(doc, payloadId, seenAt) {
     doc_number_display: displayNumber(doc),
     line_count: (doc.lines || []).length,
     last_seen_at: seenAt,
+    ...formFields(doc),
+  };
+}
+
+/**
+ * Поля печатного бланка СНТ, разложенные по разделам (миграция 00143).
+ *
+ * Имена колонок следуют разделам и номерам полей БЛАНКА, а не именам
+ * обработки 1С: клиент сверяет экран с печатной формой. Соответствие
+ * «поле бланка → поле выгрузки» записано в COMMENT ON COLUMN.
+ *
+ * Отсутствующее в шапке поле даёт null само: у ЭСФ схема шапки другая,
+ * и половина этих реквизитов там просто не встречается.
+ */
+export function formFields(doc) {
+  const h = doc.payload?.header || {};
+  return {
+    // Раздел A
+    import_kind: str(h["ВидВвоза"]),
+    export_kind: str(h["ВидВывоза"]),
+    movement_kind: str(h["ВидПеремещения"]),
+    has_ethyl_alcohol: bool(h["ЕстьЭтиловыйСпирт"]),
+    has_wine_material: bool(h["ЕстьВиноматериал"]),
+    has_beer: bool(h["ЕстьПивоПивныеНапитки"]),
+    has_alcohol: bool(h["ЕстьАлкоголь"]),
+    has_oil_products: bool(h["ЕстьНефтепродукты"]),
+    has_biofuel: bool(h["ЕстьБиотопливо"]),
+    has_tobacco: bool(h["ЕстьТабачныеИзделия"]),
+    has_marked_goods: bool(h["ЕстьДругиеТоварыЦифроваяМаркировка"]),
+    has_export_control: bool(h["ЕстьТоварыЭК"]),
+
+    // Раздел B — поставщик (поля 13–21)
+    supplier_identifier: str(h["ПоставщикИдентификатор"]),
+    supplier_name: str(h["ПоставщикНаименование"]),
+    supplier_is_nonresident: bool(h["ПоставщикНерезидент"]),
+    supplier_branch_bin: str(h["ПоставщикБИНСтруктурногоПодразделения"]),
+    supplier_country_code: str(h["ПоставщикКодСтраны"]),
+    supplier_ship_country_code: str(h["ПоставщикКодСтраныОтправки"]),
+    supplier_address: str(h["АдресОтправки"]),
+    supplier_warehouse_id: str(h["СкладОтправкиИдентификатор"]),
+    supplier_warehouse_name: str(h["СкладОтправитель"]),
+
+    // Раздел C — получатель (поля 22–30)
+    recipient_identifier: str(h["ПолучательИдентификатор"]),
+    recipient_name: str(h["ПолучательНаименование"]),
+    recipient_is_nonresident: bool(h["ПолучательНерезидент"]),
+    recipient_branch_bin: str(h["ПолучательБИНСтруктурногоПодразделения"]),
+    recipient_country_code: str(h["ПолучательКодСтраны"]),
+    recipient_delivery_country_code: str(h["ПолучательКодСтраныДоставки"]),
+    recipient_address: str(h["АдресДоставки"]),
+    recipient_warehouse_id: str(h["СкладДоставкиИдентификатор"]),
+    recipient_warehouse_name: str(h["СкладПолучатель"]),
+    recipient_is_retailer: bool(h["ПолучательРозничныйРеализатор"]),
+
+    // Раздел D — грузоотправитель и грузополучатель (поля 31–36, D1)
+    shipper_identifier: str(h["ГрузоотправительИдентификатор"]),
+    shipper_name: str(h["ГрузоотправительНаименование"]),
+    shipper_country_code: str(h["ГрузоотправительКодСтраныОтправки"]),
+    shipper_is_nonresident: bool(h["ГрузоотправительНерезидент"]),
+    shipper_note: str(h["ГрузоотправительДополнительныеСведения"]),
+    consignee_identifier: str(h["ГрузополучательИдентификатор"]),
+    consignee_name: str(h["ГрузополучательНаименование"]),
+    consignee_country_code: str(h["ГрузополучательКодСтраныОтправки"]),
+    consignee_is_nonresident: bool(h["ГрузополучательНерезидент"]),
+    consignee_note: str(h["ГрузополучательДополнительныеСведения"]),
+
+    // Раздел E — перевозка (поля 37–39)
+    carrier_name: str(h["ПеревозчикНаименование"]),
+    carrier_identifier: str(h["ПеревозчикИдентификатор"]),
+    transport_road: bool(h["АвтомобильныйТранспорт"]),
+    transport_rail: bool(h["ЖелезнодорожныйТранспорт"]),
+    transport_air: bool(h["ВоздушныйТранспорт"]),
+    transport_sea: bool(h["МорскойТранспорт"]),
+    transport_pipeline: bool(h["Трубопровод"]),
+    transport_other: bool(h["ПрочийТранспорт"]),
+    vehicle_number: str(h["НомерТС"]),
+    trailer_number: str(h["ГосномерПрицепа"]),
+    wagon_number: str(h["НомерВагона"]),
+    seal_number: str(h["НомерОттискаПломбы"]),
+
+    // Раздел F — договор (поля 40–44)
+    contract_number: str(h["ДоговорПоставкиНомер"]),
+    contract_date: dateOnly(h["ДоговорПоставкиДата"]),
+    contract_text: str(h["ДоговорПоставки"]),
+    contract_registry_number: str(h["УникальныйНомерВалютногоКонтроля"]),
+    payment_terms: str(h["ДоговорПоставкиУсловияОплаты"]),
+    delivery_terms: str(h["ДоговорПоставкиУсловияПоставки"]),
+    without_contract: bool(h["БезДоговора"]),
+
+    // Разделы L, M, N — отпуск, приёмка, отметки ОГД
+    issued_by_name: str(h["ФИОВыписывающегоСНТ"]),
+    signature_type: str(h["ТипПодписи"]),
+    author: str(h["Автор"]),
+    accepted_at: stamp(h["ДатаПриема"]),
+    accepted_by_identifier: str(h["ПриемПроизвел"]),
+    accepted_by_name: str(h["ФИОПодтвердившегоСНТ"]),
+    revoked_at: stamp(h["ДатаОтзыва"]),
+    proxy_release_number: str(h["НомерДоверенностиОтпуск"]),
+    proxy_release_date: dateOnly(h["ДатаДоверенностиОтпуск"]),
+    proxy_receipt_number: str(h["НомерДоверенностиПриемка"]),
+    proxy_receipt_date: dateOnly(h["ДатаДоверенностиПриемка"]),
+    driver_name: str(h["ФИОВодителя"]),
+    driver_iin: str(h["ИИНВодителя"]),
+    ogd_code_dispatch: str(h["КодОГДОтправкиG6"]),
+    ogd_code_delivery: str(h["КодОГДДоставкиG6"]),
+
+    // Служебное 1С — в бланке не печатается
+    source_doc_basis: str(h["ДокументОснование"]),
+    source_doc_number: str(h["Номер"]),
+    source_ref: str(h["Ссылка"]),
+    source_identifier: str(h["Идентификатор"]),
+    source_organization: str(h["Организация"]),
+    status_note: str(h["Причина"]),
+    matching_status: str(h["СтатусСопоставленияДляСНТ"]),
+    extra_tables: extraTables(doc),
   };
 }
 
@@ -163,24 +312,48 @@ export function toDocumentRow(doc, payloadId, seenAt) {
  */
 export function toLineRows(doc, documentId) {
   const lots = lotIndex(doc);
-  return (doc.lines || []).map((l) => ({
-    document_id: documentId,
-    table_name: str(l.table),
-    line_no: num(l.line_no),
-    snt_line_no: num(l.snt_line_no),
-    pin_code: str(l.pin_code),
-    name: str(l.name),
-    source_lot_id: lots.get(num(l.line_no)) ?? null,
-    quantity: num(l.quantity),
-    unit: str(l.unit),
-    net_weight: num(l.net_weight),
-    storage_unit: str(l.storage_unit),
-    conversion_rate: num(l.conversion_rate),
-    price: num(l.price),
-    amount_net: num(l.amount_net),
-    amount: num(l.amount),
-    vat_amount: num(l.vat_amount),
-  }));
+  const rawByLine = rawLineIndex(doc);
+  return (doc.lines || []).map((l) => {
+    // Колонки раздела G1, которых нет в нормализованных lines —
+    // достаём из сырой табличной части по номеру строки.
+    const raw = rawByLine.get(num(l.line_no)) || {};
+    return {
+      document_id: documentId,
+      table_name: str(l.table),
+      line_no: num(l.line_no),
+      snt_line_no: num(l.snt_line_no),
+      pin_code: str(l.pin_code),
+      name: str(l.name),
+      source_lot_id: lots.get(num(l.line_no)) ?? null,
+      quantity: num(l.quantity),
+      unit: str(l.unit),
+      net_weight: num(l.net_weight),
+      storage_unit: str(l.storage_unit),
+      conversion_rate: num(l.conversion_rate),
+      price: num(l.price),
+      amount_net: num(l.amount_net),
+      amount: num(l.amount),
+      vat_amount: num(l.vat_amount),
+
+      // Раздел G1 бланка
+      origin_sign: str(raw["ПризнакПроисхождения"]),           // колонка 2
+      tnved_code: str(raw["КодТНВЭД"]),                        // колонка 4
+      unit_code: str(raw["ЕдиницаИзмеренияКод"]),
+      excise_rate: str(raw["СтавкаАкциза"]),                   // колонка 10
+      excise_rate_amount: num(raw["СтавкаАкцизаЧисло"]),
+      excise_amount: num(raw["СуммаАкциза"]),                  // колонка 11
+      vat_rate: str(raw["СтавкаНДС"]),                         // колонка 12
+      vat_rate_percent: num(raw["СтавкаНДСЧисло"]),
+      without_vat: bool(raw["БезНДС"]),
+      product_identifier: str(raw["ИдентификаторТовара"]),     // колонка 15
+      declaration_number: str(raw["НомерЗаявленияВРамкахТС"]), // колонка 16
+      declaration_position: str(raw["НомерПозицииВДекларацииИлиЗаявлении"]), // колонка 17
+      extra_info: str(raw["ДополнительнаяИнформация"]),        // колонка 19
+      product_name_eaeu: str(raw["ТоварНаименованиеВРамкахТС"]),
+      product_1c_name: str(raw["Товар"]),
+      origin_source: str(raw["ИсточникПроисхождения"]),
+    };
+  });
 }
 
 /** Строка landing-таблицы. first_seen_at не включаем — см. toDocumentRow. */

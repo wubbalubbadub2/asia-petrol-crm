@@ -14,6 +14,7 @@ import {
   supersededKeys,
   toDocumentRow,
   toLineRows,
+  formFields,
 } from "../lib/ingest-1c-transform.mjs";
 
 /** Входящая СНТ: минимальный валидный документ. */
@@ -305,5 +306,103 @@ describe("свод позиции бланка", () => {
       { line_no: 2, snt_line_no: null, quantity: 2, amount: 20 },
     ];
     expect(groupByPosition(esf)).toHaveLength(2);
+  });
+});
+
+describe("поля печатного бланка (00143)", () => {
+  it("раздел B и C: поставщик и получатель хранятся явно, как в бланке", () => {
+    const doc = sntDoc();
+    doc.payload.header["ПоставщикИдентификатор"] = "230340005167";
+    doc.payload.header["ПоставщикНаименование"] = 'ТОО "Sky Oil Company"';
+    doc.payload.header["ПолучательИдентификатор"] = "200240037215";
+    doc.payload.header["АдресОтправки"] = "г. Алматы, ул. Майлина 2";
+    doc.payload.header["СкладОтправкиИдентификатор"] = "6509523";
+    const r = toDocumentRow(doc, null, "now");
+    // Поля 13, 14, 20, 21, 22 бланка — не выведенные «наша сторона»
+    // и «контрагент», а стороны так, как они там названы.
+    expect(r.supplier_identifier).toBe("230340005167");
+    expect(r.supplier_name).toBe('ТОО "Sky Oil Company"');
+    expect(r.recipient_identifier).toBe("200240037215");
+    expect(r.supplier_address).toBe("г. Алматы, ул. Майлина 2");
+    expect(r.supplier_warehouse_id).toBe("6509523");
+  });
+
+  it("раздел D: грузоотправитель и грузополучатель — отдельные стороны", () => {
+    const doc = sntDoc();
+    doc.payload.header["ГрузоотправительИдентификатор"] = "160840001662";
+    doc.payload.header["ГрузоотправительНаименование"] = 'ТОО "Kyzylorda Refinery"';
+    doc.payload.header["ГрузополучательИдентификатор"] = "5614086658";
+    doc.payload.header["ГрузополучательНерезидент"] = true;
+    const r = toDocumentRow(doc, null, "now");
+    expect(r.shipper_identifier).toBe("160840001662");
+    expect(r.consignee_identifier).toBe("5614086658");
+    expect(r.consignee_is_nonresident).toBe(true);
+    // И это НЕ то же самое, что поставщик с получателем.
+    expect(r.shipper_identifier).not.toBe(r.supplier_identifier);
+  });
+
+  it("раздел E: номер вагона переносится как есть, со всеми номерами", () => {
+    const doc = sntDoc();
+    doc.payload.header["ЖелезнодорожныйТранспорт"] = true;
+    doc.payload.header["НомерВагона"] = "75165282, 74966805, 73051385";
+    const r = toDocumentRow(doc, null, "now");
+    expect(r.transport_rail).toBe(true);
+    expect(r.wagon_number).toBe("75165282, 74966805, 73051385");
+  });
+
+  it("раздел F: номер договора и дата", () => {
+    const doc = sntDoc();
+    doc.payload.header["ДоговорПоставкиНомер"] = "78-14-2121-1";
+    doc.payload.header["ДоговорПоставкиДата"] = "2023-12-28T00:00:00";
+    doc.payload.header["ДоговорПоставкиУсловияПоставки"] = "FCA";
+    const r = toDocumentRow(doc, null, "now");
+    expect(r.contract_number).toBe("78-14-2121-1");
+    expect(r.contract_date).toBe("2023-12-28");
+    expect(r.delivery_terms).toBe("FCA");
+  });
+
+  it("отсутствующий признак даёт null, а не false", () => {
+    // Иначе «нет данных» неотличимо от «явно указано нет».
+    const r = toDocumentRow(sntDoc(), null, "now");
+    expect(r.has_alcohol).toBeNull();
+    expect(r.transport_rail).toBeNull();
+  });
+
+  it("раздел G1: колонки строки достаются из сырой табличной части", () => {
+    const doc = sntDoc();
+    Object.assign(doc.payload.tables["ДанныеПоНефтепродуктам"][0], {
+      "ПризнакПроисхождения": "4",
+      "КодТНВЭД": "2710192100",
+      "СтавкаНДС": "12%",
+      "СтавкаНДСЧисло": 12,
+      "ИдентификаторТовара": "19.20.25.01-2710192100<567189459>{18500034245}",
+      "Товар": "Керосин ТС-1 (18500034245 )",
+    });
+    const [line] = toLineRows(doc, "doc-1");
+    expect(line.origin_sign).toBe("4");
+    expect(line.tnved_code).toBe("2710192100");   // колонка 4 бланка
+    expect(line.vat_rate).toBe("12%");            // колонка 12
+    expect(line.vat_rate_percent).toBe(12);
+    expect(line.product_identifier).toContain("{18500034245}"); // колонка 15
+    expect(line.product_1c_name).toBe("Керосин ТС-1 (18500034245 )");
+    // pin_code — колонка 18 «Код товара», не ТН ВЭД.
+    expect(line.pin_code).toBe("18500034245");
+    expect(line.pin_code).not.toBe(line.tnved_code);
+  });
+
+  it("табличные части, кроме товарной, сохраняются целиком", () => {
+    const doc = sntDoc();
+    doc.payload.tables["ДанныеОГрузе1_2"] = [
+      { "НомерПутевогоЛиста": "00000029385", "ФИОВодителя": "Дуйсембин М", "НомерТТН": "00000029385" },
+    ];
+    const r = toDocumentRow(doc, null, "now");
+    expect(Object.keys(r.extra_tables)).toEqual(["ДанныеОГрузе1_2"]);
+    expect(r.extra_tables["ДанныеОГрузе1_2"][0]["ФИОВодителя"]).toBe("Дуйсембин М");
+    // Товарная часть в extra_tables не дублируется.
+    expect(r.extra_tables["ДанныеПоНефтепродуктам"]).toBeUndefined();
+  });
+
+  it("документ без дополнительных табличных частей даёт null", () => {
+    expect(toDocumentRow(sntDoc(), null, "now").extra_tables).toBeNull();
   });
 });
