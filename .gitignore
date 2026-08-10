@@ -60,3 +60,6 @@ supabase/.branches/
 
 # Визуальный компаньон brainstorming (локальные макеты)
 .superpowers/
+
+# выгрузки из 1С — боевые данные клиента, в git не место
+.data/
