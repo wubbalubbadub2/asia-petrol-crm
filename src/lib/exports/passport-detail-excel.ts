@@ -46,6 +46,9 @@ type PostgrestPage<T> = PromiseLike<{ data: T[] | null; error: PostgrestError | 
 
 // Slim registry row for the sub-rows — only what the columns read.
 type DetailShipment = {
+  /** Ключ связи со сроками оплаты (deal_payment_terms). Из запроса
+   *  приезжал и раньше, в типе объявлен не был. */
+  id: string;
   deal_id: string;
   registry_type: "KG" | "KZ" | null;
   date: string | null;
@@ -403,44 +406,73 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
 type DcgRow = { deal_id: string; id: string; position: number; company_group_id: string; price: number | null; price_kind: "preliminary" | "final"; quotation: number | null; discount: number | null; currency: string | null };
 
 // ── «Паспорт (долги)» — debt variant additions ──────────────────
-// 6 extra columns (deferral terms + planned payment date, per side)
-// appended after COLUMNS when opts.variant === "debt". Planned date =
-// shipment mode → basis date (loading_date for supplier, date for
-// buyer) + N days; "other" mode → the manually-set planned_pay_date.
-// Overdue (red/bold) = planned date is in the past AND the deal still
-// carries a balance/debt on that side.
-function addDaysISO(dateStr: string | null | undefined, days: number | null | undefined): string | null {
-  if (!dateStr || days == null) return null;
-  const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-function supplierPlanned(d: Deal, s: SubRow): string | null {
-  if (d.supplier_deferral_mode === "shipment") return addDaysISO(s.ship?.loading_date ?? null, d.supplier_deferral_days);
-  if (d.supplier_deferral_mode === "other") return d.supplier_planned_pay_date ?? null;
-  return null;
-}
-function buyerPlanned(d: Deal, s: SubRow): string | null {
-  if (d.buyer_deferral_mode === "shipment") return addDaysISO(s.ship?.date ?? null, d.buyer_deferral_days);
-  if (d.buyer_deferral_mode === "other") return d.buyer_planned_pay_date ?? null;
-  return null;
-}
-const DEBT_TODAY = new Date().toISOString().slice(0, 10);
-const supplierOverdue = (d: Deal, s: SubRow) => { const p = supplierPlanned(d, s); return !!p && p < DEBT_TODAY && (d.supplier_balance ?? 0) > 0; };
-const buyerOverdue = (d: Deal, s: SubRow) => { const p = buyerPlanned(d, s); return !!p && p < DEBT_TODAY && (d.buyer_debt ?? 0) < 0; };
+// Шесть колонок отсрочки. С 00141 выгрузка НИЧЕГО НЕ СЧИТАЕТ САМА:
+// срок, базис отсчёта и плановую дату отдаёт представление
+// deal_payment_terms, то же самое, что питает экран сделки и отчёт.
+//
+// До 00141 здесь жила вторая реализация формулы: дата СНТ + поле
+// СДЕЛКИ. После переезда сроков на приложение она давала неверное
+// число (срок приложения игнорировался), а плановую дату вообще
+// показывала только при supplier_deferral_mode = 'shipment' — то есть
+// у сделок, где менеджер вбил дни, но не тронул «Режим», колонка
+// молча пустовала.
+type TermRow = {
+  shipment_id: string;
+  side: "supplier" | "buyer";
+  deferral_days: number | null;
+  date_basis: "loading" | "shipment";
+  deferral_mode: string | null;
+  planned_pay_date: string | null;
+  days_to_pay: number | null;
+};
+type TermsMap = Map<string, TermRow>;
+const termKey = (shipmentId: string, side: "supplier" | "buyer") => `${shipmentId}|${side}`;
 
-const DEBT_COLUMNS: Column[] = [
-  { key: "sup_defer_days", header: "Отсрочка платежа Прод., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.supplier_deferral_days ?? "" },
-  { key: "sup_defer_basis", header: "Дата начала отсрочки (Прод.)", width: 16, band: "debt", read: () => "",
-    readShip: (d) => d.supplier_deferral_mode === "shipment" ? "с даты отгрузки" : d.supplier_deferral_mode === "other" ? (d.supplier_deferral_note ?? "прочее") : "" },
-  { key: "sup_planned", header: "Плановая дата оплаты Прод.", width: 14, band: "debt", numFmt: NUM_FMT_DATE, read: () => "",
-    readShip: (d, s) => { const p = supplierPlanned(d, s); return p ? excelDate(p) : ""; }, redIf: (d, s) => supplierOverdue(d, s) },
-  { key: "buy_defer_days", header: "Отсрочка платежа Покуп., дн.", width: 14, band: "debt", read: () => "", readShip: (d) => d.buyer_deferral_days ?? "" },
-  { key: "buy_defer_basis", header: "Дата начала отсрочки (Покуп.)", width: 16, band: "debt", read: () => "",
-    readShip: (d) => d.buyer_deferral_mode === "shipment" ? "с даты отгрузки" : d.buyer_deferral_mode === "other" ? (d.buyer_deferral_note ?? "прочее") : "" },
-  { key: "buy_planned", header: "Плановая дата оплаты Покуп.", width: 14, band: "debt", numFmt: NUM_FMT_DATE, read: () => "",
-    readShip: (d, s) => { const p = buyerPlanned(d, s); return p ? excelDate(p) : ""; }, redIf: (d, s) => buyerOverdue(d, s) },
-];
+// database.ts генерируется из прода и представления 00141 не знает —
+// описываем ровно используемые методы. Убрать после `npm run types:db`.
+type TermsQuery = {
+  in: (col: string, vals: string[]) => TermsQuery;
+  order: (col: string, opts: { ascending: boolean }) => TermsQuery;
+  range: (from: number, to: number) => PostgrestPage<TermRow>;
+};
+type TermsClient = { from: (relation: string) => { select: (cols: string) => TermsQuery } };
+
+export function buildDebtColumns(terms: TermsMap): Column[] {
+  const at = (s: SubRow, side: "supplier" | "buyer"): TermRow | null =>
+    s.ship ? terms.get(termKey(s.ship.id, side)) ?? null : null;
+
+  // «Дата начала отсрочки» теперь показывает реальный базис, а не
+  // фиксированную строку «с даты отгрузки»: с 00141 их два.
+  const basisText = (t: TermRow | null, note: string | null): string => {
+    if (!t) return "";
+    if (t.deferral_mode === "other") return note ?? "прочее";
+    return t.date_basis === "loading" ? "от даты вход. СНТ" : "от даты исход. СНТ";
+  };
+
+  // Красным — только настоящая просрочка и только пока сторона должна.
+  // Знак долга покупателя перевёрнут в 00060, отсюда разные сравнения.
+  const isOverdue = (t: TermRow | null, owes: boolean) =>
+    !!t && t.days_to_pay != null && t.days_to_pay < 0 && owes;
+
+  return [
+    { key: "sup_defer_days", header: "Отсрочка платежа Прод., дн.", width: 14, band: "debt",
+      read: () => "", readShip: (_d, s) => at(s, "supplier")?.deferral_days ?? "" },
+    { key: "sup_defer_basis", header: "Дата начала отсрочки (Прод.)", width: 16, band: "debt",
+      read: () => "", readShip: (d, s) => basisText(at(s, "supplier"), d.supplier_deferral_note ?? null) },
+    { key: "sup_planned", header: "Плановая дата оплаты Прод.", width: 14, band: "debt", numFmt: NUM_FMT_DATE,
+      read: () => "",
+      readShip: (_d, s) => { const p = at(s, "supplier")?.planned_pay_date; return p ? excelDate(p) : ""; },
+      redIf: (d, s) => isOverdue(at(s, "supplier"), (d.supplier_balance ?? 0) > 0) },
+    { key: "buy_defer_days", header: "Отсрочка платежа Покуп., дн.", width: 14, band: "debt",
+      read: () => "", readShip: (_d, s) => at(s, "buyer")?.deferral_days ?? "" },
+    { key: "buy_defer_basis", header: "Дата начала отсрочки (Покуп.)", width: 16, band: "debt",
+      read: () => "", readShip: (d, s) => basisText(at(s, "buyer"), d.buyer_deferral_note ?? null) },
+    { key: "buy_planned", header: "Плановая дата оплаты Покуп.", width: 14, band: "debt", numFmt: NUM_FMT_DATE,
+      read: () => "",
+      readShip: (_d, s) => { const p = at(s, "buyer")?.planned_pay_date; return p ? excelDate(p) : ""; },
+      redIf: (d, s) => isOverdue(at(s, "buyer"), (d.buyer_debt ?? 0) < 0) },
+  ];
+}
 
 export async function exportPassportDetailToExcel(
   deals: Deal[],
@@ -448,7 +480,8 @@ export async function exportPassportDetailToExcel(
   opts?: { variant?: "detail" | "debt"; fx?: { target: string; rates: FxRateRow[] } },
 ): Promise<void> {
   const isDebt = opts?.variant === "debt";
-  const columns = isDebt ? [...COLUMNS, ...DEBT_COLUMNS] : COLUMNS;
+  // Долговые колонки достраиваются ниже, когда приедут сроки из БД.
+  let columns: Column[] = COLUMNS;
   const [{ fetchDealLinesForExport }, { getGlobalRefs, getCachedRefsSync }, { fetchAllPaginated }] = await Promise.all([
     import("@/lib/hooks/use-deals"),
     import("@/lib/refs"),
@@ -495,6 +528,31 @@ export async function exportPassportDetailToExcel(
       ),
     )),
   ]);
+
+  // Сроки оплаты для варианта «долги». Отдельный запрос, а не часть
+  // Promise.all выше: обычной детальной выгрузке он не нужен, и лишний
+  // round-trip ей ни к чему. Чанки по 150 и постраничность — как у
+  // соседних выборок.
+  const termsByShipSide: TermsMap = new Map();
+  if (isDebt) {
+    const termChunks: string[][] = [];
+    for (let i = 0; i < dealIds.length; i += 150) termChunks.push(dealIds.slice(i, i + 150));
+    const termResults = await Promise.all(termChunks.map((ids) =>
+      fetchAllPaginated<TermRow>((from, to) =>
+        (sb as unknown as TermsClient)
+          .from("deal_payment_terms")
+          .select("shipment_id, side, deferral_days, date_basis, deferral_mode, planned_pay_date, days_to_pay")
+          .in("deal_id", ids)
+          .order("shipment_id", { ascending: true })
+          .range(from, to),
+      ),
+    ));
+    for (const res of termResults) {
+      if (res.error) throw new Error(`Условия оплаты: ${res.error.message}`);
+      for (const row of res.data) termsByShipSide.set(termKey(row.shipment_id, row.side), row);
+    }
+    columns = [...COLUMNS, ...buildDebtColumns(termsByShipSide)];
+  }
 
   const dcgByDeal = new Map<string, DcgRow[]>();
   for (const res of dcgResults) {
@@ -807,4 +865,4 @@ export async function exportPassportDetailToExcel(
 
 // Для регрессионных тестов (src/__tests__/export-date-cells.test.ts):
 // колонки-даты обязаны отдавать Date-ячейки, не текст.
-export { COLUMNS as DETAIL_COLUMNS, DEBT_COLUMNS };
+export { COLUMNS as DETAIL_COLUMNS };
