@@ -406,3 +406,31 @@ describe("поля печатного бланка (00143)", () => {
     expect(toDocumentRow(sntDoc(), null, "now").extra_tables).toBeNull();
   });
 });
+
+describe("стороны у ЭСФ", () => {
+  it("берутся из табличных частей, когда в шапке их нет", () => {
+    // У ЭСФ «Поставщики» и «Получатели» — табличные части, а не поля
+    // шапки. Без запаса фильтр по поставщику на вкладке ЭСФ был бы пуст.
+    const doc = sntDoc({ doc_kind: "esf", registration_number: "ESF-200240037215-20231027-44571663" });
+    doc.lines[0].snt_line_no = null;
+    doc.lines[0].table = "Товары";
+    delete doc.payload.header["ПоставщикИдентификатор"];
+    delete doc.payload.header["ПолучательИдентификатор"];
+    doc.payload.tables = {
+      "Товары": [{ "НомерСтроки": 1 }],
+      "Поставщики": [{ "НомерСтроки": 1, "ПоставщикИдентификатор": "990740000683", "ПоставщикНаименование": 'АО "ForteBank"' }],
+      "Получатели": [{ "НомерСтроки": 1, "ПолучательИдентификатор": "200240037215", "ПолучательНаименование": 'ТОО "АРҚА ПРОФ"' }],
+    };
+    const r = toDocumentRow(doc, null, "now");
+    expect(r.supplier_identifier).toBe("990740000683");
+    expect(r.supplier_name).toBe('АО "ForteBank"');
+    expect(r.recipient_identifier).toBe("200240037215");
+  });
+
+  it("шапка имеет приоритет над табличной частью", () => {
+    const doc = sntDoc();
+    doc.payload.header["ПоставщикИдентификатор"] = "111111111111";
+    doc.payload.tables["Поставщики"] = [{ "ПоставщикИдентификатор": "222222222222" }];
+    expect(toDocumentRow(doc, null, "now").supplier_identifier).toBe("111111111111");
+  });
+});

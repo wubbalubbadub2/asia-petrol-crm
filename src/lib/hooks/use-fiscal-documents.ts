@@ -31,6 +31,10 @@ export type FiscalDocumentRow = {
   operation_kind_label: string | null;
   counterparty_identifier: string | null;
   counterparty_name: string | null;
+  supplier_identifier: string | null;
+  supplier_name: string | null;
+  recipient_identifier: string | null;
+  recipient_name: string | null;
   total_amount: number | null;
   currency_code: string;
   is_void: boolean;
@@ -42,8 +46,9 @@ const LIST_SELECT = `
   id, doc_kind, direction_code, registration_number, doc_number_display,
   registration_date, state_code, state_label, doc_type_code, doc_type_label,
   operation_kind_code, operation_kind_label, counterparty_identifier,
-  counterparty_name, total_amount, currency_code, is_void, is_superseded,
-  line_count
+  counterparty_name, supplier_identifier, supplier_name,
+  recipient_identifier, recipient_name,
+  total_amount, currency_code, is_void, is_superseded, line_count
 `;
 
 /** Актуальная позиция: не замещена более поздним исправлением и не гашена. */
@@ -222,46 +227,69 @@ export function useFiscalCounterparties() {
 }
 
 /**
- * Документы, которые загрузчик отклонил и которых поэтому нет в
- * реестре. Читаются из представления fiscal_rejected_document —
- * сознательного окна сквозь RLS: базовая landing-таблица админская, а
- * знать о расхождении с журналом 1С должен тот, кто сверяет.
+ * Стороны для фильтров: поставщики и получатели по ВСЕМ документам, а не
+ * по одной вкладке. Фильтр стоит над вкладками и действует на все три,
+ * значит и список значений должен быть общим.
  *
- * Пустой список — нормальное состояние; предупреждение тогда не
- * показывается вовсе и исчезнет само, без правок кода, когда 1С
- * пришлёт эти документы исправленными.
+ * Группировка по БИНу, подпись — самое частое написание: один и тот же
+ * контрагент приезжает из 1С под разными вариантами имени, и собрать
+ * его по тексту нельзя.
  */
-export type FiscalRejectedRow = {
-  registration_number: string | null;
-  doc_kind: string | null;
-  operation_kind_code: string | null;
-  registration_date: string | null;
-  total_amount: number | null;
-  currency_code: string | null;
-  reject_reason: string | null;
+export type FiscalParty = { identifier: string; name: string; doc_count: number };
+
+type PartyRow = {
+  supplier_identifier: string | null;
+  supplier_name: string | null;
+  recipient_identifier: string | null;
+  recipient_name: string | null;
 };
 
-export function useFiscalRejected() {
+function collapse(rows: PartyRow[], idKey: keyof PartyRow, nameKey: keyof PartyRow): FiscalParty[] {
+  const acc = new Map<string, { names: Map<string, number>; n: number }>();
+  for (const r of rows) {
+    const id = (r[idKey] ?? "").trim();
+    if (!id) continue;
+    const e = acc.get(id) ?? { names: new Map<string, number>(), n: 0 };
+    e.n += 1;
+    const nm = (r[nameKey] ?? "").trim();
+    if (nm) e.names.set(nm, (e.names.get(nm) ?? 0) + 1);
+    acc.set(id, e);
+  }
+  return [...acc.entries()]
+    .map(([identifier, e]) => ({
+      identifier,
+      // Тай-брейк по алфавиту: при равном счёте подпись иначе прыгала бы.
+      name:
+        [...e.names.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ??
+        identifier,
+      doc_count: e.n,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+}
+
+export function useFiscalParties() {
   const sb = useRef(createClient());
-  const [rows, setRows] = useState<FiscalRejectedRow[]>([]);
+  const [suppliers, setSuppliers] = useState<FiscalParty[]>([]);
+  const [recipients, setRecipients] = useState<FiscalParty[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    void sb.current
-      .from("fiscal_rejected_document")
-      .select("*")
-      .order("registration_date")
-      .then(({ data }) => {
-        if (!cancelled) {
-          setRows((data ?? []) as FiscalRejectedRow[]);
-          setLoading(false);
-        }
-      });
+    void fetchAllPaginated<PartyRow>((from, to) =>
+      sb.current
+        .from("fiscal_document")
+        .select("supplier_identifier, supplier_name, recipient_identifier, recipient_name")
+        .range(from, to),
+    ).then(({ data }) => {
+      if (cancelled) return;
+      setSuppliers(collapse(data, "supplier_identifier", "supplier_name"));
+      setRecipients(collapse(data, "recipient_identifier", "recipient_name"));
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return { rows, loading };
+  return { suppliers, recipients, loading };
 }

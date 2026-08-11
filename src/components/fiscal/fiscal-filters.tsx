@@ -4,142 +4,93 @@ import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { CURRENCIES } from "@/lib/constants/currencies";
-import {
-  COUNTERPARTY_NONE,
-  OPERATION_KINDS,
-  OPERATION_KIND_NONE,
-} from "@/lib/fiscal/constants";
 import { activeFilterCount, type FiscalFilters } from "@/lib/fiscal/filter";
-import type { FiscalCounterparty } from "@/lib/hooks/use-fiscal-documents";
-
-type FacetOption = { value: string; label: string; count: number };
+import type { FiscalParty } from "@/lib/hooks/use-fiscal-documents";
 
 /**
- * Фильтры реестра.
+ * Фильтры реестра. Живут НАД вкладками и действуют на все три: состояние
+ * лежит в адресе, поэтому переключение вкладки его не сбрасывает.
  *
- * Значения перечислений — коды, подписи — синонимы. Списки состояний и
- * типов собираются из загруженной вкладки, а виды операции заданы
- * константой: «Ввоз» обязан присутствовать даже при нулевом счётчике,
- * иначе восемь импортных СНТ нельзя было бы даже попытаться найти,
- * пока обработку 1С не поправят.
+ * Поставщик и получатель — это поля 13/14 и 22/23 бланка. Значение
+ * фильтра — БИН, подпись — наименование: один и тот же контрагент
+ * приезжает из 1С под разными написаниями, и группировать по тексту
+ * нельзя.
+ *
+ * Каждый фильтр обёрнут в контейнер фиксированной ширины: у триггера
+ * SearchableSelect в стилях зашит w-full, и без обёртки он растягивается
+ * на всю строку.
  */
 export function FiscalFiltersBar({
   filters,
   onChange,
-  stateOptions,
-  typeOptions,
-  counterparties,
-  hasNonResident,
-  operationCounts,
+  suppliers,
+  recipients,
 }: {
   filters: FiscalFilters;
   onChange: (next: Partial<FiscalFilters>) => void;
-  stateOptions: FacetOption[];
-  typeOptions: FacetOption[];
-  counterparties: FiscalCounterparty[];
-  hasNonResident: boolean;
-  operationCounts: Map<string, number>;
+  suppliers: FiscalParty[];
+  recipients: FiscalParty[];
 }) {
   const count = activeFilterCount(filters);
-
-  const cpOptions = [
-    ...counterparties.map((c) => ({
-      value: c.counterparty_identifier,
-      // Число написаний показываем прямо в списке: оператору полезно
-      // знать, что за одним пунктом скрыты разные тексты в документах.
-      label:
-        c.name_variants > 1
-          ? `${c.canonical_name} · ${c.doc_count} док · ${c.name_variants} напис.`
-          : `${c.canonical_name} · ${c.doc_count} док`,
-    })),
-    ...(hasNonResident
-      ? [{ value: COUNTERPARTY_NONE, label: "Нерезиденты (без БИН)" }]
-      : []),
-  ];
-
-  const opOptions = [
-    ...OPERATION_KINDS.map((o) => ({
-      value: o.code,
-      label: `${o.label} · ${operationCounts.get(o.code) ?? 0}`,
-    })),
-    {
-      value: OPERATION_KIND_NONE,
-      label: `Без вида операции · ${operationCounts.get(OPERATION_KIND_NONE) ?? 0}`,
-    },
-  ];
+  const opts = (list: FiscalParty[]) =>
+    list.map((p) => ({ value: p.identifier, label: `${p.name} · ${p.doc_count}` }));
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 bg-white px-3 py-2">
-      <Input
-        value={filters.query}
-        onChange={(e) => onChange({ query: e.target.value })}
-        placeholder="Номер, госномер, контрагент, БИН"
-        className="h-8 w-[260px] text-[12px]"
-      />
+    <div className="flex flex-wrap items-end gap-2 px-4 pb-2">
+      <div className="w-[240px]">
+        <Label className="text-[10px] text-stone-500">Поиск</Label>
+        <Input
+          value={filters.query}
+          onChange={(e) => onChange({ query: e.target.value })}
+          placeholder="Номер, госномер, БИН"
+          className="h-8 text-[12px]"
+        />
+      </div>
 
-      <SearchableSelect
-        multi
-        options={stateOptions.map((o) => ({ value: o.value, label: `${o.label} · ${o.count}` }))}
-        value={filters.stateCodes}
-        onChange={(next) => onChange({ stateCodes: next })}
-        placeholder="Состояние"
-        triggerClassName="h-8 text-[12px]"
-      />
-
-      <SearchableSelect
-        multi
-        options={typeOptions.map((o) => ({ value: o.value, label: `${o.label} · ${o.count}` }))}
-        value={filters.docTypeCodes}
-        onChange={(next) => onChange({ docTypeCodes: next })}
-        placeholder="Тип"
-        triggerClassName="h-8 text-[12px]"
-      />
-
-      <SearchableSelect
-        multi
-        options={opOptions}
-        value={filters.operationKindCodes}
-        onChange={(next) => onChange({ operationKindCodes: next })}
-        placeholder="Вид операции"
-        triggerClassName="h-8 text-[12px]"
-      />
-
-      <SearchableSelect
-        multi
-        options={cpOptions}
-        value={filters.counterparties}
-        onChange={(next) => onChange({ counterparties: next })}
-        placeholder="Контрагент"
-        searchPlaceholder="Имя или БИН"
-        triggerClassName="h-8 text-[12px]"
-      />
-
-      <SearchableSelect
-        multi
-        options={CURRENCIES.map((c) => ({ value: c.value, label: c.label }))}
-        value={filters.currencies}
-        onChange={(next) => onChange({ currencies: next })}
-        placeholder="Валюта"
-        triggerClassName="h-8 text-[12px]"
-      />
-
-      <div className="flex items-center gap-1">
+      <div className="w-[130px]">
+        <Label className="text-[10px] text-stone-500">Дата с</Label>
         <Input
           type="date"
           value={filters.dateFrom}
           onChange={(e) => onChange({ dateFrom: e.target.value })}
-          className="h-8 w-[130px] text-[12px]"
-          title="Дата регистрации с"
+          className="h-8 text-[12px]"
         />
-        <span className="text-[11px] text-stone-400">—</span>
+      </div>
+      <div className="w-[130px]">
+        <Label className="text-[10px] text-stone-500">Дата по</Label>
         <Input
           type="date"
           value={filters.dateTo}
           onChange={(e) => onChange({ dateTo: e.target.value })}
-          className="h-8 w-[130px] text-[12px]"
-          title="Дата регистрации по"
+          className="h-8 text-[12px]"
+        />
+      </div>
+
+      <div className="w-[280px]">
+        <Label className="text-[10px] text-stone-500">Наименование поставщика</Label>
+        <SearchableSelect
+          multi
+          options={opts(suppliers)}
+          value={filters.suppliers}
+          onChange={(next) => onChange({ suppliers: next })}
+          placeholder="Все"
+          searchPlaceholder="Наименование или БИН"
+          triggerClassName="h-8 text-[12px]"
+        />
+      </div>
+
+      <div className="w-[280px]">
+        <Label className="text-[10px] text-stone-500">Наименование получателя</Label>
+        <SearchableSelect
+          multi
+          options={opts(recipients)}
+          value={filters.recipients}
+          onChange={(next) => onChange({ recipients: next })}
+          placeholder="Все"
+          searchPlaceholder="Наименование или БИН"
+          triggerClassName="h-8 text-[12px]"
         />
       </div>
 
@@ -149,16 +100,7 @@ export function FiscalFiltersBar({
           size="sm"
           className="h-8 text-[12px]"
           onClick={() =>
-            onChange({
-              query: "",
-              stateCodes: [],
-              docTypeCodes: [],
-              operationKindCodes: [],
-              counterparties: [],
-              currencies: [],
-              dateFrom: "",
-              dateTo: "",
-            })
+            onChange({ query: "", suppliers: [], recipients: [], dateFrom: "", dateTo: "" })
           }
         >
           <X className="mr-1 h-3.5 w-3.5" />

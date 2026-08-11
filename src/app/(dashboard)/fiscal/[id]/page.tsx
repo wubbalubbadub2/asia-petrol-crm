@@ -4,6 +4,7 @@ import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 import { currencySymbol } from "@/lib/constants/currencies";
@@ -67,19 +68,20 @@ export default function FiscalDocumentPage({ params }: { params: Promise<{ id: s
     <div className="flex h-full flex-col overflow-y-auto">
       {/* Шапка */}
       <div className="border-b border-stone-200 px-4 py-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="mb-2 flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-800"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> назад
-        </button>
-
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1
-            className="text-[20px] font-bold tracking-tight text-stone-900"
-            style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Тот же компонент и то же поведение, что на карточке сделки:
+              возврат через историю сохраняет ?filters списка (nuqs). */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.history.length > 1) router.back();
+              else router.push("/fiscal");
+            }}
           >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-xl font-bold font-mono">
             {kindLabel} № {doc.doc_number_display || "—"}
           </h1>
           <FiscalStateBadge code={doc.state_code} label={doc.state_label} />

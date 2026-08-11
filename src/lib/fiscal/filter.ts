@@ -11,18 +11,16 @@
  * словами, которые видит на экране.
  */
 
-import { COUNTERPARTY_NONE, OPERATION_KIND_NONE } from "@/lib/fiscal/constants";
+import { COUNTERPARTY_NONE } from "@/lib/fiscal/constants";
 import type { FiscalDocumentRow } from "@/lib/hooks/use-fiscal-documents";
 
 export type FiscalFilters = {
-  /** Подстрока: номер учётный и регистрационный, имя и БИН контрагента. */
+  /** Подстрока: номер учётный и регистрационный, имя и БИН сторон. */
   query: string;
-  stateCodes: string[];
-  docTypeCodes: string[];
-  operationKindCodes: string[];
-  /** БИН контрагента; COUNTERPARTY_NONE — нерезиденты без идентификатора. */
-  counterparties: string[];
-  currencies: string[];
+  /** БИН поставщика — поля 13/14 бланка. */
+  suppliers: string[];
+  /** БИН получателя — поля 22/23 бланка. */
+  recipients: string[];
   /** Границы по дате регистрации, включительно, формат ГГГГ-ММ-ДД. */
   dateFrom: string;
   dateTo: string;
@@ -30,11 +28,8 @@ export type FiscalFilters = {
 
 export const EMPTY_FISCAL_FILTERS: FiscalFilters = {
   query: "",
-  stateCodes: [],
-  docTypeCodes: [],
-  operationKindCodes: [],
-  counterparties: [],
-  currencies: [],
+  suppliers: [],
+  recipients: [],
   dateFrom: "",
   dateTo: "",
 };
@@ -42,11 +37,8 @@ export const EMPTY_FISCAL_FILTERS: FiscalFilters = {
 export function activeFilterCount(f: FiscalFilters): number {
   return (
     (f.query.trim() ? 1 : 0) +
-    (f.stateCodes.length ? 1 : 0) +
-    (f.docTypeCodes.length ? 1 : 0) +
-    (f.operationKindCodes.length ? 1 : 0) +
-    (f.counterparties.length ? 1 : 0) +
-    (f.currencies.length ? 1 : 0) +
+    (f.suppliers.length ? 1 : 0) +
+    (f.recipients.length ? 1 : 0) +
     (f.dateFrom ? 1 : 0) +
     (f.dateTo ? 1 : 0)
   );
@@ -69,6 +61,10 @@ export function matchesQuery(
     row.registration_number,
     row.counterparty_name,
     row.counterparty_identifier,
+    row.supplier_name,
+    row.supplier_identifier,
+    row.recipient_name,
+    row.recipient_identifier,
     canonicalName,
   ];
   return haystack.some((v) => v != null && v.toLowerCase().includes(q));
@@ -79,32 +75,20 @@ export function filterFiscalRows(
   filters: FiscalFilters,
   canonicalNameById?: Map<string, string>,
 ): FiscalDocumentRow[] {
-  const {
-    query, stateCodes, docTypeCodes, operationKindCodes,
-    counterparties, currencies, dateFrom, dateTo,
-  } = filters;
+  const { query, suppliers, recipients, dateFrom, dateTo } = filters;
 
   return rows.filter((r) => {
-    if (stateCodes.length && !stateCodes.includes(r.state_code)) return false;
-    if (docTypeCodes.length && !docTypeCodes.includes(r.doc_type_code)) return false;
-
-    if (operationKindCodes.length) {
-      // Пустой вид операции — полноценное значение фильтра: таких
-      // документов 6051 из 6979, без этой грани фильтр был бы
-      // односторонним.
-      const code = r.operation_kind_code ?? OPERATION_KIND_NONE;
-      if (!operationKindCodes.includes(code)) return false;
+    // Поставщик и получатель — стороны бланка (поля 13/14 и 22/23).
+    // Сравниваем по БИНу: один контрагент приезжает под разными
+    // написаниями, по тексту его не собрать.
+    if (suppliers.length) {
+      const id = r.supplier_identifier ?? COUNTERPARTY_NONE;
+      if (!suppliers.includes(id)) return false;
     }
-
-    if (counterparties.length) {
-      // Нерезиденты приезжают без идентификатора (27 документов) и
-      // группировке по БИНу не поддаются — им отведено отдельное
-      // значение фильтра, иначе они выпадали бы из любой выборки.
-      const id = r.counterparty_identifier ?? COUNTERPARTY_NONE;
-      if (!counterparties.includes(id)) return false;
+    if (recipients.length) {
+      const id = r.recipient_identifier ?? COUNTERPARTY_NONE;
+      if (!recipients.includes(id)) return false;
     }
-
-    if (currencies.length && !currencies.includes(r.currency_code)) return false;
 
     // registration_date хранится без часового пояса и приезжает как
     // «2023-05-05T09:57:12». Сравниваем по первым десяти символам:
@@ -146,24 +130,4 @@ export function currencyTotals(rows: FiscalDocumentRow[]): CurrencyTotal[] {
     if (b.currency === "KZT") return 1;
     return b.count - a.count;
   });
-}
-
-/** Значения перечислений, реально встречающиеся в загруженной вкладке. */
-export function facetOptions(
-  rows: FiscalDocumentRow[],
-  codeKey: "state_code" | "doc_type_code",
-  labelKey: "state_label" | "doc_type_label",
-): { value: string; label: string; count: number }[] {
-  const acc = new Map<string, { label: string; count: number }>();
-  for (const r of rows) {
-    const code = r[codeKey];
-    const entry = acc.get(code);
-    if (entry) entry.count += 1;
-    // Синоним берём из первой встреченной строки: показываем то, что
-    // видит оператор, а сравниваем всё равно по коду.
-    else acc.set(code, { label: r[labelKey] ?? code, count: 1 });
-  }
-  return [...acc.entries()]
-    .map(([value, v]) => ({ value, label: v.label, count: v.count }))
-    .sort((a, b) => b.count - a.count);
 }

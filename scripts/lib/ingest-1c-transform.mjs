@@ -203,6 +203,17 @@ export function toDocumentRow(doc, payloadId, seenAt) {
  */
 export function formFields(doc) {
   const h = doc.payload?.header || {};
+  // У ЭСФ стороны лежат не в шапке, а в табличных частях «Поставщики» и
+  // «Получатели» — там же те же имена полей. Без этого запаса
+  // supplier_* и recipient_* заполнялись бы только у СНТ (2353 из 6979),
+  // и фильтр по поставщику на вкладке ЭСФ был бы пустым.
+  const party = (table, key) => {
+    if (h[key] != null && h[key] !== "") return h[key];
+    const rows = doc.payload?.tables?.[table];
+    return Array.isArray(rows) && rows.length ? rows[0]?.[key] : null;
+  };
+  const sup = (key) => party("Поставщики", key);
+  const rec = (key) => party("Получатели", key);
   return {
     // Раздел A
     import_kind: str(h["ВидВвоза"]),
@@ -219,9 +230,9 @@ export function formFields(doc) {
     has_export_control: bool(h["ЕстьТоварыЭК"]),
 
     // Раздел B — поставщик (поля 13–21)
-    supplier_identifier: str(h["ПоставщикИдентификатор"]),
-    supplier_name: str(h["ПоставщикНаименование"]),
-    supplier_is_nonresident: bool(h["ПоставщикНерезидент"]),
+    supplier_identifier: str(sup("ПоставщикИдентификатор")),
+    supplier_name: str(sup("ПоставщикНаименование")),
+    supplier_is_nonresident: bool(sup("ПоставщикНерезидент")),
     supplier_branch_bin: str(h["ПоставщикБИНСтруктурногоПодразделения"]),
     supplier_country_code: str(h["ПоставщикКодСтраны"]),
     supplier_ship_country_code: str(h["ПоставщикКодСтраныОтправки"]),
@@ -230,9 +241,9 @@ export function formFields(doc) {
     supplier_warehouse_name: str(h["СкладОтправитель"]),
 
     // Раздел C — получатель (поля 22–30)
-    recipient_identifier: str(h["ПолучательИдентификатор"]),
-    recipient_name: str(h["ПолучательНаименование"]),
-    recipient_is_nonresident: bool(h["ПолучательНерезидент"]),
+    recipient_identifier: str(rec("ПолучательИдентификатор")),
+    recipient_name: str(rec("ПолучательНаименование")),
+    recipient_is_nonresident: bool(rec("ПолучательНерезидент")),
     recipient_branch_bin: str(h["ПолучательБИНСтруктурногоПодразделения"]),
     recipient_country_code: str(h["ПолучательКодСтраны"]),
     recipient_delivery_country_code: str(h["ПолучательКодСтраныДоставки"]),

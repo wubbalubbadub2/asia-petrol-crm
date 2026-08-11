@@ -8,20 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { FiscalFiltersBar } from "@/components/fiscal/fiscal-filters";
-import { FiscalRejectedNotice } from "@/components/fiscal/fiscal-rejected-notice";
 import { FiscalTable } from "@/components/fiscal/fiscal-table";
 import { FiscalCardList } from "@/components/mobile/fiscal-card-list";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import {
   DEFAULT_FISCAL_TAB,
   FISCAL_TABS,
-  OPERATION_KIND_NONE,
   fiscalTab,
   type FiscalTabKey,
 } from "@/lib/fiscal/constants";
 import {
   currencyTotals,
-  facetOptions,
   filterFiscalRows,
   EMPTY_FISCAL_FILTERS,
   type FiscalFilters,
@@ -29,18 +26,21 @@ import {
 import {
   useFiscalCounterparties,
   useFiscalDocuments,
-  useFiscalRejected,
+  useFiscalParties,
   useFiscalTabCounts,
 } from "@/lib/hooks/use-fiscal-documents";
 
 /**
  * Реестр фискальных документов: СНТ и ЭСФ из 1С.
  *
- * Три вкладки разведены по `direction_code`, а не по роли нашей
- * стороны, — клиент сверяет экран с журналом 1С, где импортная СНТ
- * лежит в журнале продаж. По умолчанию видны только актуальные позиции
- * (не замещённые исправлением и не гашеные); переключатель показывает
- * всю цепочку.
+ * Фильтры стоят НАД вкладками и действуют на все три: их состояние
+ * лежит в адресе, поэтому переключение вкладки его не сбрасывает, а
+ * ссылка на отфильтрованный журнал шарится и переживает перезагрузку.
+ *
+ * Вкладки разведены по `direction_code`, а не по роли нашей стороны, —
+ * клиент сверяет экран с журналом 1С, где импортная СНТ лежит в журнале
+ * продаж. По умолчанию видны только актуальные позиции (не замещённые
+ * исправлением и не гашеные); переключатель показывает всю цепочку.
  */
 export default function FiscalPage() {
   const isMobile = useIsMobile();
@@ -55,41 +55,29 @@ export default function FiscalPage() {
   const [chainRaw, setChainRaw] = useQueryState("chain");
   const showChain = chainRaw === "1";
 
-  // Фильтры живут в адресе: отфильтрованный журнал должен шариться
-  // ссылкой и переживать перезагрузку, как на остальных экранах.
   const [query, setQuery] = useQueryState("q", { defaultValue: "" });
-  const [stateCodes, setStateCodes] = useQueryState("state", parseAsArrayOf(parseAsString).withDefault([]));
-  const [docTypeCodes, setDocTypeCodes] = useQueryState("type", parseAsArrayOf(parseAsString).withDefault([]));
-  const [operationKindCodes, setOperationKindCodes] = useQueryState("op", parseAsArrayOf(parseAsString).withDefault([]));
-  const [counterparties, setCounterparties] = useQueryState("cp", parseAsArrayOf(parseAsString).withDefault([]));
-  const [currencies, setCurrencies] = useQueryState("cur", parseAsArrayOf(parseAsString).withDefault([]));
+  const [suppliers, setSuppliers] = useQueryState("sup", parseAsArrayOf(parseAsString).withDefault([]));
+  const [recipients, setRecipients] = useQueryState("rec", parseAsArrayOf(parseAsString).withDefault([]));
   const [dateFrom, setDateFrom] = useQueryState("from", { defaultValue: "" });
   const [dateTo, setDateTo] = useQueryState("to", { defaultValue: "" });
 
   const filters: FiscalFilters = useMemo(
-    () => ({
-      ...EMPTY_FISCAL_FILTERS,
-      query, stateCodes, docTypeCodes, operationKindCodes,
-      counterparties, currencies, dateFrom, dateTo,
-    }),
-    [query, stateCodes, docTypeCodes, operationKindCodes, counterparties, currencies, dateFrom, dateTo],
+    () => ({ ...EMPTY_FISCAL_FILTERS, query, suppliers, recipients, dateFrom, dateTo }),
+    [query, suppliers, recipients, dateFrom, dateTo],
   );
 
   const onFilterChange = (next: Partial<FiscalFilters>) => {
     if (next.query !== undefined) void setQuery(next.query || null);
-    if (next.stateCodes !== undefined) void setStateCodes(next.stateCodes.length ? next.stateCodes : null);
-    if (next.docTypeCodes !== undefined) void setDocTypeCodes(next.docTypeCodes.length ? next.docTypeCodes : null);
-    if (next.operationKindCodes !== undefined) void setOperationKindCodes(next.operationKindCodes.length ? next.operationKindCodes : null);
-    if (next.counterparties !== undefined) void setCounterparties(next.counterparties.length ? next.counterparties : null);
-    if (next.currencies !== undefined) void setCurrencies(next.currencies.length ? next.currencies : null);
+    if (next.suppliers !== undefined) void setSuppliers(next.suppliers.length ? next.suppliers : null);
+    if (next.recipients !== undefined) void setRecipients(next.recipients.length ? next.recipients : null);
     if (next.dateFrom !== undefined) void setDateFrom(next.dateFrom || null);
     if (next.dateTo !== undefined) void setDateTo(next.dateTo || null);
   };
 
   const { rows, loading, error } = useFiscalDocuments(tab, showChain);
   const { counts } = useFiscalTabCounts();
-  const { rows: cpRows, byId } = useFiscalCounterparties();
-  const { rows: rejected } = useFiscalRejected();
+  const { byId } = useFiscalCounterparties();
+  const { suppliers: supplierOptions, recipients: recipientOptions } = useFiscalParties();
 
   const canonicalNameById = useMemo(
     () => new Map([...byId].map(([id, c]) => [id, c.canonical_name])),
@@ -102,18 +90,6 @@ export default function FiscalPage() {
     () => filterFiscalRows(rows, deferredFilters, canonicalNameById),
     [rows, deferredFilters, canonicalNameById],
   );
-
-  const stateOptions = useMemo(() => facetOptions(rows, "state_code", "state_label"), [rows]);
-  const typeOptions = useMemo(() => facetOptions(rows, "doc_type_code", "doc_type_label"), [rows]);
-  const operationCounts = useMemo(() => {
-    const acc = new Map<string, number>();
-    for (const r of rows) {
-      const key = r.operation_kind_code ?? OPERATION_KIND_NONE;
-      acc.set(key, (acc.get(key) ?? 0) + 1);
-    }
-    return acc;
-  }, [rows]);
-  const hasNonResident = useMemo(() => rows.some((r) => !r.counterparty_identifier), [rows]);
   const totals = useMemo(() => currencyTotals(visible), [visible]);
 
   const current = counts[tab];
@@ -123,29 +99,33 @@ export default function FiscalPage() {
     <FiscalFiltersBar
       filters={filters}
       onChange={onFilterChange}
-      stateOptions={stateOptions}
-      typeOptions={typeOptions}
-      counterparties={cpRows}
-      hasNonResident={hasNonResident}
-      operationCounts={operationCounts}
+      suppliers={supplierOptions}
+      recipients={recipientOptions}
     />
   );
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-3 pt-3">
-        <h1
-          className="mb-2 text-[20px] font-bold tracking-tight text-stone-900"
-          style={{ fontFamily: "'Satoshi', 'DM Sans', sans-serif" }}
-        >
-          СНТ и ЭСФ
-        </h1>
-
-        <FiscalRejectedNotice rows={rejected} />
+      <div className="px-4 pt-3">
+        <h1 className="mb-2 text-xl font-bold text-stone-900">СНТ и ЭСФ</h1>
       </div>
 
+      {/* Фильтры НАД вкладками: действуют на все три */}
+      {!isMobile && filtersBar}
+
+      {isMobile && (
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Фильтры</SheetTitle>
+            </SheetHeader>
+            {filtersBar}
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Вкладки */}
-      <div className="flex items-center gap-0 border-b border-stone-200 px-3">
+      <div className="flex items-center gap-0 border-b border-stone-200 px-4">
         {FISCAL_TABS.map((t) => {
           const isActive = t.key === tab;
           const c = counts[t.key];
@@ -183,23 +163,9 @@ export default function FiscalPage() {
         </div>
       </div>
 
-      {/* Фильтры: на десктопе строкой, на телефоне в выдвижной панели */}
-      {!isMobile && filtersBar}
-
-      {isMobile && (
-        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>Фильтры</SheetTitle>
-            </SheetHeader>
-            {filtersBar}
-          </SheetContent>
-        </Sheet>
-      )}
-
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error ? (
-          <div className="px-3 py-6 text-[13px] text-red-600">
+          <div className="px-4 py-6 text-[13px] text-red-600">
             Не удалось загрузить реестр: {error}
           </div>
         ) : isMobile ? (
