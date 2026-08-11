@@ -57,14 +57,17 @@ export function FiscalPositions({
         <thead className="bg-stone-50 text-stone-500">
           <tr>
             <th className="w-[28px] px-1 py-1" />
-            <th className="w-[44px] px-2 py-1 text-left font-medium">№</th>
-            <th className="px-2 py-1 text-left font-medium">Наименование</th>
-            <th className="w-[110px] px-2 py-1 text-left font-medium">ПИН</th>
-            <th className="w-[110px] px-2 py-1 text-right font-medium">Количество</th>
-            <th className="w-[110px] px-2 py-1 text-right font-medium">Цена</th>
-            <th className="w-[130px] px-2 py-1 text-right font-medium">Без НДС</th>
-            <th className="w-[110px] px-2 py-1 text-right font-medium">НДС</th>
-            <th className="w-[130px] px-2 py-1 text-right font-medium">Сумма</th>
+            <th className="w-[44px] px-2 py-1 text-left font-medium" title="Колонка 1 бланка">№</th>
+            <th className="w-[36px] px-2 py-1 text-left font-medium" title="Колонка 2 бланка «Признак происхождения товара»">Пр.</th>
+            <th className="px-2 py-1 text-left font-medium" title="Колонка 3 бланка">Наименование</th>
+            <th className="w-[100px] px-2 py-1 text-left font-medium" title="Колонка 4 бланка «Код товара (ТН ВЭД ЕАЭС)»">ТН ВЭД</th>
+            <th className="w-[110px] px-2 py-1 text-left font-medium" title="Колонка 18 бланка «Код товара»">Код товара</th>
+            <th className="w-[110px] px-2 py-1 text-right font-medium" title="Колонки 5 и 6 бланка">Количество</th>
+            <th className="w-[100px] px-2 py-1 text-right font-medium" title="Колонка 8 бланка «Цена за единицу товара»">Цена</th>
+            <th className="w-[120px] px-2 py-1 text-right font-medium" title="Колонка 9 бланка «Стоимость товара без косвенных налогов»">Без налогов</th>
+            <th className="w-[52px] px-2 py-1 text-right font-medium" title="Колонка 12 бланка «НДС. Ставка»">Ст.</th>
+            <th className="w-[110px] px-2 py-1 text-right font-medium" title="Колонка 12 бланка «НДС. Сумма»">НДС</th>
+            <th className="w-[130px] px-2 py-1 text-right font-medium" title="Колонка 14 бланка «Общая стоимость товара с косвенными налогами»">Сумма</th>
           </tr>
         </thead>
 
@@ -96,6 +99,9 @@ export function FiscalPositions({
                   <td className="px-2 py-1 align-top font-mono tabular-nums text-stone-500">
                     {p.positionNo ?? "—"}
                   </td>
+                  <td className="px-2 py-1 align-top font-mono tabular-nums text-stone-500">
+                    {p.originSign ?? ""}
+                  </td>
                   <td className="px-2 py-1 align-top">
                     {p.name ?? "—"}
                     {expandable && (
@@ -103,6 +109,9 @@ export function FiscalPositions({
                         {p.lines.length} строк по партиям
                       </span>
                     )}
+                  </td>
+                  <td className="px-2 py-1 align-top font-mono tabular-nums text-stone-500">
+                    {p.tnvedCode ?? "—"}
                   </td>
                   <td className="px-2 py-1 align-top font-mono tabular-nums text-stone-500">
                     {p.pinCode ?? "—"}
@@ -133,6 +142,9 @@ export function FiscalPositions({
                   <td className="px-2 py-1 text-right align-top font-mono tabular-nums">
                     {formatMoney(p.amountNet)}
                   </td>
+                  <td className="px-2 py-1 text-right align-top text-stone-500">
+                    {p.vatRate ?? ""}
+                  </td>
                   <td className="px-2 py-1 text-right align-top font-mono tabular-nums">
                     {formatMoney(p.vatAmount)}
                   </td>
@@ -148,7 +160,7 @@ export function FiscalPositions({
                       <td className="px-2 py-0.5 text-right align-top font-mono text-[10px] tabular-nums text-stone-400">
                         {l.line_no}
                       </td>
-                      <td className="px-2 py-0.5 align-top" colSpan={2}>
+                      <td className="px-2 py-0.5 align-top" colSpan={4}>
                         {l.source_lot_id ? (
                           <button
                             type="button"
@@ -169,6 +181,25 @@ export function FiscalPositions({
                             нетто {formatVolume(l.net_weight)} {l.storage_unit ?? ""}
                           </span>
                         ) : null}
+                        {l.product_identifier ? (
+                          <span
+                            className="ml-2 font-mono text-[10px] text-stone-400"
+                            title="Колонка 15 бланка «Идентификатор товара в ИС ЭСФ»"
+                          >
+                            {l.product_identifier}
+                          </span>
+                        ) : null}
+                        {l.declaration_number ? (
+                          <span className="ml-2 text-[10px] text-stone-400" title="Колонки 16 и 17 бланка">
+                            ЗВТ {l.declaration_number}
+                            {l.declaration_position ? ` / поз. ${l.declaration_position}` : ""}
+                          </span>
+                        ) : null}
+                        {l.extra_info ? (
+                          <span className="ml-2 text-[10px] text-stone-400" title="Колонка 19 бланка «Дополнительная информация»">
+                            {l.extra_info}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-2 py-0.5 text-right align-top font-mono text-[10px] tabular-nums">
                         {formatVolume(l.quantity)} <span className="text-stone-400">{l.unit ?? ""}</span>
@@ -179,6 +210,7 @@ export function FiscalPositions({
                       <td className="px-2 py-0.5 text-right align-top font-mono text-[10px] tabular-nums">
                         {formatMoney(l.amount_net)}
                       </td>
+                      <td />
                       <td className="px-2 py-0.5 text-right align-top font-mono text-[10px] tabular-nums">
                         {formatMoney(l.vat_amount)}
                       </td>

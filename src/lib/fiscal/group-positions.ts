@@ -33,6 +33,24 @@ export type FiscalLine = {
   amount_net: number | null;
   amount: number | null;
   vat_amount: number | null;
+  // Колонки раздела G1 бланка (00143). Нужны только для показа —
+  // в свод позиции не входят.
+  origin_sign?: string | null;
+  tnved_code?: string | null;
+  unit_code?: string | null;
+  product_identifier?: string | null;
+  vat_rate?: string | null;
+  vat_rate_percent?: number | null;
+  without_vat?: boolean | null;
+  excise_rate?: string | null;
+  excise_rate_amount?: number | null;
+  excise_amount?: number | null;
+  product_1c_name?: string | null;
+  origin_source?: string | null;
+  declaration_number?: string | null;
+  declaration_position?: string | null;
+  product_name_eaeu?: string | null;
+  extra_info?: string | null;
 };
 
 export type FiscalPosition = {
@@ -45,6 +63,12 @@ export type FiscalPosition = {
   name: string | null;
   pinCode: string | null;
   unit: string | null;
+  /** Колонка 2 бланка. Одинакова внутри позиции. */
+  originSign: string | null;
+  /** Колонка 4 бланка «Код товара (ТН ВЭД ЕАЭС)». */
+  tnvedCode: string | null;
+  /** Колонка 12 бланка «НДС. Ставка», текстом как в документе. */
+  vatRate: string | null;
   /** Цена позиции. null, если внутри группы она разошлась. */
   price: number | null;
   priceVaries: boolean;
@@ -107,6 +131,9 @@ export function groupPositions(lines: FiscalLine[]): FiscalPosition[] {
       name: uniform(sorted.map((l) => l.name)).value,
       pinCode: uniform(sorted.map((l) => l.pin_code)).value,
       unit: unit.value,
+      originSign: uniform(sorted.map((l) => l.origin_sign ?? null)).value,
+      tnvedCode: uniform(sorted.map((l) => l.tnved_code ?? null)).value,
+      vatRate: uniform(sorted.map((l) => l.vat_rate ?? null)).value,
       price: price.varies ? null : price.value,
       priceVaries: price.varies,
       quantity: unit.varies ? null : sumOrNull(sorted.map((l) => l.quantity)),

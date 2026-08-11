@@ -10,14 +10,26 @@ import { currencySymbol } from "@/lib/constants/currencies";
 import { formatDMY, formatDMYTime, formatMoney } from "@/lib/format";
 import { FiscalStateBadge } from "@/components/fiscal/fiscal-state-badge";
 import { FiscalPositions } from "@/components/fiscal/fiscal-positions";
+import {
+  Field,
+  FieldGrid,
+  FiscalSection,
+  Marks,
+  RawTable,
+} from "@/components/fiscal/fiscal-section";
 import { useFiscalDocument, type FiscalLink } from "@/lib/hooks/use-fiscal-document";
 
 /**
- * Карточка фискального документа.
+ * Карточка фискального документа — по разделам ПЕЧАТНОГО БЛАНКА СНТ.
  *
- * Маршрут — по `id` (UUID первичного ключа). Учётный номер в маршруте
- * не участвует принципиально: он не уникален, «225» встречается у трёх
- * разных СНТ за 2023–2025.
+ * Подписи полей взяты из бланка вместе с номерами: клиент сверяет
+ * экран с печатной формой, и «13. ИИН/БИН» он там найдёт. Названий от
+ * себя здесь нет. Прежняя подпись «Наша сторона» была придумана нами и
+ * убрана: в документе есть поставщик (раздел B) и получатель (раздел
+ * C), а own_party — абстракция обработки 1С, зависящая от направления.
+ *
+ * Маршрут — по `id` (UUID). Учётный номер в маршруте не участвует:
+ * он не уникален, «225» встречается у трёх разных СНТ за 2023–2025.
  */
 export default function FiscalDocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -46,10 +58,14 @@ export default function FiscalDocumentPage({ params }: { params: Promise<{ id: s
   }
 
   const sym = currencySymbol(doc.currency_code, doc.currency_code);
-  const kindLabel = doc.doc_kind === "esf" ? "ЭСФ" : "СНТ";
+  const isSnt = doc.doc_kind === "snt";
+  const kindLabel = isSnt ? "СНТ" : "ЭСФ";
+  const country = (c: string | null) => c || null;
+  const extra = doc.extra_tables ?? {};
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
+      {/* Шапка */}
       <div className="border-b border-stone-200 px-4 py-3">
         <button
           type="button"
@@ -77,11 +93,9 @@ export default function FiscalDocumentPage({ params }: { params: Promise<{ id: s
               исправлен более поздним
             </span>
           )}
-          {doc.operation_kind_code === "Ввоз" && (
-            <span className="rounded-sm bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-700 ring-1 ring-inset ring-blue-600/20">
-              ввоз
-            </span>
-          )}
+          <span className="ml-auto font-mono text-[13px] font-semibold tabular-nums text-stone-900">
+            {formatMoney(doc.total_amount)} {sym}
+          </span>
         </div>
 
         <div className="mt-1 flex items-center gap-1">
@@ -97,70 +111,145 @@ export default function FiscalDocumentPage({ params }: { params: Promise<{ id: s
             <Copy className="h-3 w-3" />
           </button>
         </div>
+
+        {(corrects || correctedBy || relatedSnt) && (
+          <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-[12px]">
+            {corrects && <LinkRow label="Исправляет" link={corrects} />}
+            {correctedBy && <LinkRow label="Исправлен документом" link={correctedBy} />}
+            {relatedSnt && <LinkRow label="СНТ" link={relatedSnt} />}
+          </div>
+        )}
       </div>
 
-      {/* Шапка */}
-      <div className="grid grid-cols-1 gap-x-8 gap-y-1 px-4 py-3 text-[12px] sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Дата регистрации" value={formatDMYTime(doc.registration_date)} mono />
-        <Field label="Дата выписки" value={formatDMY(doc.issue_date)} mono />
-        <Field label="Дата отгрузки" value={formatDMY(doc.shipment_date)} mono />
-        <Field label="Направление" value={doc.direction_code} />
-        <Field label="Тип" value={doc.doc_type_label ?? doc.doc_type_code} />
-        <Field label="Статус" value={doc.status_label ?? doc.status_code} />
-        <Field
-          label="Вид операции"
-          value={doc.operation_kind_label ?? doc.operation_kind_code ?? "—"}
-        />
-        <Field
-          label="Наша сторона"
-          value={`${doc.own_party_name ?? "—"}${
-            doc.own_party_role_code ? ` · ${roleLabel(doc.own_party_role_code)}` : ""
-          }`}
-        />
-        <Field
-          label="Контрагент"
-          value={`${doc.counterparty_name ?? "—"}${
-            doc.counterparty_role_code ? ` · ${roleLabel(doc.counterparty_role_code)}` : ""
-          }`}
-          hint={doc.counterparty_identifier ?? "нерезидент, без БИН"}
-        />
-        <Field
-          label="Сумма"
-          value={`${formatMoney(doc.total_amount)} ${sym}`}
-          mono
-          strong
-        />
-        {doc.fx_rate !== 1 && (
-          // Курс справочный: пересчёт в тенге — отдельное решение,
-          // которое не принято, и здесь его нет.
+      {/* Раздел A */}
+      <FiscalSection title="Раздел A. Общий раздел">
+        <FieldGrid>
+          <Field label="1. Номер СНТ учетной системы" value={doc.doc_number_display} mono always />
+          <Field label="3.1. Дата и время регистрации" value={formatDMYTime(doc.registration_date)} mono />
+          <Field label="2. Дата отгрузки товара" value={formatDMY(doc.shipment_date)} mono />
+          <Field label="Дата выписки" value={formatDMY(doc.issue_date)} mono />
+          <Field label="5. Тип" value={doc.doc_type_label ?? doc.doc_type_code} />
+          <Field label="Направление" value={doc.direction_code} />
+          <Field label="Статус" value={doc.status_label ?? doc.status_code} />
+          <Field label="Состояние" value={doc.state_label ?? doc.state_code} />
+          <Field label="Вид операции" value={doc.operation_kind_label ?? doc.operation_kind_code} />
+          <Field label="7. Ввоз товаров на территорию РК" value={doc.import_kind} />
+          <Field label="8. Вывоз товаров с территории РК" value={doc.export_kind} />
+          <Field label="9. Перемещение товаров" value={doc.movement_kind} />
+          <Field label="49. Код валюты" value={doc.currency_code} mono />
           <Field
-            label="Курс документа"
-            value={`${doc.fx_rate} · пересчёт не выполняется`}
+            label="50. Курс валюты"
+            value={doc.fx_rate === 1 ? null : String(doc.fx_rate)}
+            hint="пересчёт не выполняется"
             mono
           />
-        )}
-        <Field label="Строк" value={String(doc.line_count)} mono />
-      </div>
+        </FieldGrid>
+        <Marks
+          items={[
+            ["10.1. Этиловый спирт", doc.has_ethyl_alcohol],
+            ["10.2. Вино наливом", doc.has_wine_material],
+            ["10.3. Пивоваренная продукция", doc.has_beer],
+            ["10.4. Алкогольная продукция", doc.has_alcohol],
+            ["10.5. Нефтепродукты", doc.has_oil_products],
+            ["10.6. Биотопливо", doc.has_biofuel],
+            ["10.7. Табачные изделия", doc.has_tobacco],
+            ["12. Подлежащие маркировке", doc.has_marked_goods],
+            ["11. Экспортный контроль", doc.has_export_control],
+          ]}
+        />
+      </FiscalSection>
 
-      {/* Цепочка исправлений */}
-      {(corrects || correctedBy || relatedSnt) && (
-        <div className="flex flex-wrap gap-x-6 gap-y-1 border-y border-stone-200 bg-stone-50 px-4 py-2 text-[12px]">
-          {corrects && <LinkRow label="Исправляет" link={corrects} />}
-          {correctedBy && <LinkRow label="Исправлен документом" link={correctedBy} />}
-          {relatedSnt && <LinkRow label="СНТ" link={relatedSnt} />}
-        </div>
+      {/* Разделы B и C */}
+      <FiscalSection title="Раздел B. Реквизиты поставщика">
+        <FieldGrid>
+          <Field label="13. ИИН/БИН" value={doc.supplier_identifier} mono always />
+          <Field label="14. Наименование поставщика/отправителя" value={doc.supplier_name} always />
+          <Field label="13.1. Нерезидент" value={doc.supplier_is_nonresident ? "☑ да" : null} />
+          <Field label="15. БИН структурного подразделения" value={doc.supplier_branch_bin} mono />
+          <Field label="18. Код страны регистрации" value={country(doc.supplier_country_code)} mono />
+          <Field label="19. Код страны отправки/отгрузки" value={country(doc.supplier_ship_country_code)} mono />
+          <Field label="20. Фактический адрес отправки" value={doc.supplier_address} />
+          <Field label="21. Идентификационный номер (ID) склада" value={doc.supplier_warehouse_id} mono hint={doc.supplier_warehouse_name} />
+        </FieldGrid>
+      </FiscalSection>
+
+      <FiscalSection title="Раздел C. Реквизиты получателя">
+        <FieldGrid>
+          <Field label="22. ИИН/БИН" value={doc.recipient_identifier} mono always />
+          <Field label="23. Наименование получателя" value={doc.recipient_name} always />
+          <Field label="22.1. Нерезидент" value={doc.recipient_is_nonresident ? "☑ да" : null} />
+          <Field label="24. БИН структурного подразделения" value={doc.recipient_branch_bin} mono />
+          <Field label="27. Код страны регистрации" value={country(doc.recipient_country_code)} mono />
+          <Field label="28. Код страны доставки/поставки" value={country(doc.recipient_delivery_country_code)} mono />
+          <Field label="29. Фактический адрес доставки" value={doc.recipient_address} />
+          <Field label="30. Идентификационный номер (ID) склада" value={doc.recipient_warehouse_id} mono hint={doc.recipient_warehouse_name} />
+          <Field label="Розничный реализатор" value={doc.recipient_is_retailer ? "☑ да" : null} />
+        </FieldGrid>
+      </FiscalSection>
+
+      {/* Раздел D */}
+      {(doc.shipper_identifier || doc.shipper_name || doc.consignee_identifier || doc.consignee_name) && (
+        <FiscalSection title="Раздел D. Грузоотправитель и грузополучатель">
+          <FieldGrid>
+            <Field label="31. ИИН/БИН грузоотправителя" value={doc.shipper_identifier} mono />
+            <Field label="34. ИИН/БИН грузополучателя" value={doc.consignee_identifier} mono />
+            <Field label="32. Наименование грузоотправителя" value={doc.shipper_name} />
+            <Field label="35. Наименование грузополучателя" value={doc.consignee_name} />
+            <Field label="33. Код страны отправки" value={country(doc.shipper_country_code)} mono />
+            <Field label="36. Код страны доставки" value={country(doc.consignee_country_code)} mono />
+            <Field label="31.1. Нерезидент" value={doc.shipper_is_nonresident ? "☑ да" : null} />
+            <Field label="34.1. Нерезидент" value={doc.consignee_is_nonresident ? "☑ да" : null} />
+            <Field label="D1a. Дополнительные сведения" value={doc.shipper_note} />
+            <Field label="D1b. Дополнительные сведения" value={doc.consignee_note} />
+          </FieldGrid>
+        </FiscalSection>
       )}
 
-      {/* Позиции */}
-      <div className="px-4 py-3">
-        <h2 className="mb-1.5 text-[13px] font-semibold text-stone-800">
-          Позиции бланка ИС ЭСФ
-          {lines.length > 0 && (
-            <span className="ml-2 text-[11px] font-normal text-stone-400">
-              {lines.length} строк табличной части
-            </span>
-          )}
-        </h2>
+      {/* Раздел E */}
+      {(doc.carrier_name || doc.wagon_number || doc.vehicle_number || doc.transport_rail || doc.transport_pipeline) && (
+        <FiscalSection title="Раздел E. Сведения по перевозке">
+          <FieldGrid>
+            <Field label="37. Наименование перевозчика" value={doc.carrier_name} />
+            <Field label="38. ИИН/БИН перевозчика" value={doc.carrier_identifier} mono />
+            <Field label="39.b.1 Номер вагона" value={doc.wagon_number} mono />
+            <Field label="39.a.1 Государственный номер АТС" value={doc.vehicle_number} mono />
+            <Field label="39.a.2 Государственный номер прицепа" value={doc.trailer_number} mono />
+            <Field label="Номер оттиска пломбы" value={doc.seal_number} mono />
+          </FieldGrid>
+          <Marks
+            items={[
+              ["39.a автомобильный", doc.transport_road],
+              ["39.b железнодорожный", doc.transport_rail],
+              ["39.c воздушный", doc.transport_air],
+              ["39.d морской или внутренний водный", doc.transport_sea],
+              ["39.e трубопровод", doc.transport_pipeline],
+              ["39.f мультимодальный", doc.transport_other],
+            ]}
+          />
+        </FiscalSection>
+      )}
+
+      {/* Раздел F */}
+      <FiscalSection title="Раздел F. Договор (контракт) на поставку товара">
+        <FieldGrid>
+          <Field
+            label="41. Номер"
+            value={doc.contract_number}
+            hint="договор либо приложение — по бланку это одно поле"
+            mono
+            always
+          />
+          <Field label="42. Дата договора (контракта)" value={formatDMY(doc.contract_date)} mono />
+          <Field label="42.1. Учетный номер" value={doc.contract_registry_number} mono />
+          <Field label="43. Условия оплаты по договору" value={doc.payment_terms} />
+          <Field label="44. Условия поставки (ИНКОТЕРМС)" value={doc.delivery_terms} />
+          <Field label="40.b Без договора (контракта)" value={doc.without_contract ? "☑ да" : null} />
+          <Field label="Полный текст договора в 1С" value={doc.contract_text} />
+        </FieldGrid>
+      </FiscalSection>
+
+      {/* Раздел G1 */}
+      <FiscalSection title="Раздел G1. Данные по товарам" count={lines.length}>
         <FiscalPositions
           lines={lines}
           currency={doc.currency_code}
@@ -170,43 +259,47 @@ export default function FiscalDocumentPage({ params }: { params: Promise<{ id: s
             router.push(`/fiscal?q=${encodeURIComponent(lot)}&chain=1`);
           }}
         />
-      </div>
-    </div>
-  );
-}
+      </FiscalSection>
 
-function roleLabel(code: string): string {
-  if (code === "supplier") return "поставщик";
-  if (code === "recipient") return "получатель";
-  return code;
-}
+      {/* Разделы L, M, N */}
+      <FiscalSection title="Разделы L, M, N. Отпуск, приёмка, отметки ОГД" defaultOpen={false}>
+        <FieldGrid>
+          <Field label="82. Ф.И.О. лица, оформившего СНТ" value={doc.issued_by_name} />
+          <Field label="86. Ф.И.О. лица, принявшего товар" value={doc.accepted_by_name} />
+          <Field label="80. Тип подписи" value={doc.signature_type} />
+          <Field label="85. Дата приема/отклонения товара" value={formatDMYTime(doc.accepted_at)} mono />
+          <Field label="Прием произвел (ИИН/БИН)" value={doc.accepted_by_identifier} mono />
+          <Field label="Дата отзыва" value={formatDMYTime(doc.revoked_at)} mono />
+          <Field label="83.1. Номер доверенности на отпуск" value={doc.proxy_release_number} mono hint={formatDMY(doc.proxy_release_date) || null} />
+          <Field label="86.2. Номер доверенности на приёмку" value={doc.proxy_receipt_number} mono hint={formatDMY(doc.proxy_receipt_date) || null} />
+          <Field label="90.3. Ф.И.О. водителя" value={doc.driver_name} />
+          <Field label="90.4. ИИН водителя" value={doc.driver_iin} mono />
+          <Field label="Код ОГД отправки" value={doc.ogd_code_dispatch} mono />
+          <Field label="Код ОГД доставки" value={doc.ogd_code_delivery} mono />
+        </FieldGrid>
+      </FiscalSection>
 
-function Field({
-  label,
-  value,
-  hint,
-  mono,
-  strong,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  mono?: boolean;
-  strong?: boolean;
-}) {
-  return (
-    <div className="flex gap-2">
-      <span className="w-[130px] shrink-0 text-stone-400">{label}</span>
-      <span className="min-w-0">
-        <span
-          className={`${mono ? "font-mono tabular-nums" : ""} ${
-            strong ? "font-semibold text-stone-900" : "text-stone-700"
-          }`}
-        >
-          {value || "—"}
-        </span>
-        {hint && <span className="ml-2 font-mono text-[10px] text-stone-400">{hint}</span>}
-      </span>
+      {/* Прочие табличные части документа */}
+      {Object.entries(extra).map(([name, rows]) => (
+        <FiscalSection key={name} title={`Табличная часть: ${name}`} defaultOpen={false} count={rows.length}>
+          <RawTable rows={rows} />
+        </FiscalSection>
+      ))}
+
+      {/* Служебное 1С — в бланке не печатается */}
+      <FiscalSection title="Служебные поля 1С" defaultOpen={false}>
+        <FieldGrid>
+          <Field label="Организация" value={doc.source_organization} />
+          <Field label="Документ-основание" value={doc.source_doc_basis} />
+          <Field label="Номер документа в 1С" value={doc.source_doc_number} mono />
+          <Field label="Пояснение к состоянию" value={doc.status_note} />
+          <Field label="Статус сопоставления" value={doc.matching_status} />
+          <Field label="Идентификатор ИС ЭСФ" value={doc.source_identifier} mono />
+          <Field label="Ссылка 1С" value={doc.source_ref} mono />
+          <Field label="Автор" value={doc.author} />
+          <Field label="Строк в документе" value={String(doc.line_count)} mono />
+        </FieldGrid>
+      </FiscalSection>
     </div>
   );
 }
