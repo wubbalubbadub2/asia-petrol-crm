@@ -336,6 +336,36 @@ BEGIN
     RAISE EXCEPTION 'сводка: признак ручной даты не выставлен';
   END IF;
 
+  -- ── 14. Ручная дата вводится по отгрузке (00144) ───────────────────
+  -- Клиент 2026-08-11: «дата должна появиться в разделе логистика на
+  -- каждую отгрузку». Дата отгрузки важнее даты приложения.
+  UPDATE deal_supplier_lines
+     SET deferral_date_basis = 'manual', deferral_planned_date = DATE '2026-10-15'
+   WHERE id = v_sup_ln;
+  UPDATE shipment_registry
+     SET supplier_planned_pay_date = DATE '2026-11-20'
+   WHERE deal_id = v_deal AND wagon_number = 'PT-0001';
+
+  SELECT planned_pay_date INTO v_planned FROM deal_payment_terms
+   WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0001';
+  IF v_planned <> DATE '2026-11-20' THEN
+    RAISE EXCEPTION 'дата отгрузки важнее даты приложения: ожидали 20.11.2026, получили %', v_planned;
+  END IF;
+
+  -- Без своей даты отгрузка падает обратно на дату приложения.
+  SELECT planned_pay_date INTO v_planned FROM deal_payment_terms
+   WHERE deal_id = v_deal AND side = 'supplier' AND wagon_number = 'PT-0003';
+  IF v_planned <> DATE '2026-10-15' THEN
+    RAISE EXCEPTION 'запасная дата приложения: ожидали 15.10.2026, получили %', v_planned;
+  END IF;
+
+  -- Стороны независимы: у покупателя отсчёт остался автоматическим.
+  SELECT date_basis INTO v_basis FROM deal_payment_terms
+   WHERE deal_id = v_deal AND side = 'buyer' AND wagon_number = 'PT-0001';
+  IF v_basis <> 'auto' THEN
+    RAISE EXCEPTION 'ручной режим поставщика не должен трогать покупателя, получили %', v_basis;
+  END IF;
+
   UPDATE deals SET supplier_deferral_mode = NULL, supplier_planned_pay_date = NULL WHERE id = v_deal;
   UPDATE deal_supplier_lines SET deferral_date_basis = NULL, deferral_planned_date = NULL WHERE id = v_sup_ln;
 END $$;

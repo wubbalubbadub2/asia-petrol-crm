@@ -212,7 +212,6 @@ export function SupplierLinesEditor({
         appendix: l.appendix ?? null,
         deferral_days: l.deferral_days ?? null,
         deferral_date_basis: l.deferral_date_basis ?? null,
-        deferral_planned_date: l.deferral_planned_date ?? null,
         price_source: l.price_source ?? null,
         quotation_type_name: l.quotation_type?.name ?? null,
       }))}
@@ -395,7 +394,6 @@ export function BuyerLinesEditor({
         appendix: l.appendix ?? null,
         deferral_days: l.deferral_days ?? null,
         deferral_date_basis: l.deferral_date_basis ?? null,
-        deferral_planned_date: l.deferral_planned_date ?? null,
         price_source: l.price_source ?? null,
         quotation_type_name: l.quotation_type?.name ?? null,
       }))}
@@ -463,7 +461,6 @@ type LineVM = {
   // NULL means «взять со сделки» (поля 00125), не «нет отсрочки».
   deferral_days: number | null;
   deferral_date_basis: "auto" | "manual" | null;
-  deferral_planned_date: string | null;
   // Migration 00077 — «Подкотировка», concrete wide-column of
   // quotations (price_cif_nwe / price_fob_med / …). Missing on
   // legacy lines; picker only shown when the parent quotation
@@ -1043,20 +1040,10 @@ function LinesEditorView({
                 Пусто НЕ значит «без отсрочки» — значит «взять со
                 сделки» (поля 00125). Поэтому подсказка про наследование,
                 иначе оператор прочитает пустую ячейку как ноль. */}
-            {/* При ручной дате срок в днях ни на что не влияет —
-                не показываем, чтобы не сбивать с толку. */}
-            {l.deferral_date_basis !== "manual" && (
-              <NumberCell
-                label={<span title="Пусто — срок берётся со сделки, а не «без отсрочки»">Условия оплаты, дн.</span>}
-                value={l.deferral_days}
-                editing={editing}
-                decimals={0}
-                onChange={(v) => onUpdate(l.id, { deferral_days: v })}
-              />
-            )}
-
-            {/* Клиент 2026-08-10: «от даты отгрузки (тут дата тянется
-                автоматом) или ввести дату самому». */}
+            {/* Клиент 2026-08-11: сперва «Отсчёт срока», потом срок в
+                днях — сначала решаем КАК считаем, затем СКОЛЬКО.
+                Варианты: «от даты отгрузки» (дата тянется автоматом)
+                или «дата вручную». */}
             <SelectCell
               label="Отсчёт срока"
               value={l.deferral_date_basis}
@@ -1065,28 +1052,26 @@ function LinesEditorView({
                   ? DEFERRAL_BASIS_LABEL[l.deferral_date_basis]
                   : `${DEFERRAL_BASIS_LABEL.auto} (по умолчанию)`
               }
-              hint="Пусто — от даты отгрузки"
+              hint={l.deferral_date_basis === "manual"
+                ? "Даты вводятся в разделе «Логистика», по каждой отгрузке"
+                : "Пусто — от даты отгрузки"}
               editing={editing}
               options={DEFERRAL_BASIS_OPTS}
               onChange={(v) => onUpdate(l.id, { deferral_date_basis: (v || null) as LineVM["deferral_date_basis"] })}
             />
 
-            {/* Ручная плановая дата — одна на приложение, то есть на все
-                его отгрузки. Показываем только в ручном режиме. */}
-            {l.deferral_date_basis === "manual" && (
-              <div>
-                <span className="block text-[11px] text-stone-400">Плановая дата оплаты</span>
-                {editing ? (
-                  <input
-                    type="date"
-                    value={l.deferral_planned_date ?? ""}
-                    onChange={(e) => onUpdate(l.id, { deferral_planned_date: e.target.value.trim() || null })}
-                    className="h-8 w-full rounded border border-stone-300 bg-white px-2 font-mono text-[13px] transition-colors hover:border-amber-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200"
-                  />
-                ) : (
-                  <span className="text-[13px]">{l.deferral_planned_date ? formatDMY(l.deferral_planned_date) : "—"}</span>
-                )}
-              </div>
+            {/* При ручной дате срок в днях ни на что не влияет — не
+                показываем, чтобы не сбивать с толку. Саму дату здесь
+                тоже не спрашиваем: клиент 2026-08-11 попросил вводить
+                её по каждой отгрузке, в разделе «Логистика». */}
+            {l.deferral_date_basis !== "manual" && (
+              <NumberCell
+                label={<span title="Пусто — срок берётся со сделки, а не «без отсрочки»">Условия оплаты, дн.</span>}
+                value={l.deferral_days}
+                editing={editing}
+                decimals={0}
+                onChange={(v) => onUpdate(l.id, { deferral_days: v })}
+              />
             )}
 
           </div>

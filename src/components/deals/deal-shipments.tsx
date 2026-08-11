@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { subscribeRegistry } from "@/lib/hooks/use-registry";
+import { subscribeRegistry, updateRegistryEntry } from "@/lib/hooks/use-registry";
 import { formatDMY } from "@/lib/format";
+import { usePaymentTermsSummary, summaryKey } from "@/lib/hooks/use-payment-terms-summary";
 
 type ShipmentRow = {
   id: string;
@@ -13,6 +14,10 @@ type ShipmentRow = {
   date: string | null;
   railway_tariff: number | null;
   invoice_number: string | null;
+  // Плановые даты оплаты по отгрузке (00144). Заполняются вручную,
+  // когда у приложения выбран отсчёт «дата вручную».
+  supplier_planned_pay_date: string | null;
+  buyer_planned_pay_date: string | null;
 };
 
 type DateGroup = {
@@ -46,11 +51,54 @@ function calcAmount(vol: number | null, tariff: number | null): number | null {
   return Math.ceil(vol) * tariff;
 }
 
+// Плановая дата оплаты по отгрузке. Отгрузка здесь — это дата, а не
+// вагон: у всех вагонов одной даты срок оплаты общий, поэтому правка
+// раскладывается на все строки реестра этой даты.
+function PlannedDateCell({ group, field, onSaved }: {
+  group: DateGroup;
+  field: "supplier_planned_pay_date" | "buyer_planned_pay_date";
+  onSaved: () => void;
+}) {
+  // Показываем значение, если оно одинаково у всех вагонов даты;
+  // если разошлось (правили в реестре построчно) — честно говорим об этом.
+  const values = new Set(group.wagons.map((w) => w[field] ?? ""));
+  const shared = values.size === 1 ? [...values][0] : null;
+  const [busy, setBusy] = useState(false);
+
+  async function commit(next: string) {
+    const value = next.trim() || null;
+    if (value === (shared || null)) return;
+    setBusy(true);
+    try {
+      await Promise.all(group.wagons.map((w) => updateRegistryEntry(w.id, { [field]: value } as Parameters<typeof updateRegistryEntry>[1])));
+      onSaved();
+    } catch { /* toast показан внутри updateRegistryEntry */ } finally { setBusy(false); }
+  }
+
+  return (
+    <input
+      type="date"
+      disabled={busy}
+      value={shared ?? ""}
+      title={shared == null ? "У вагонов этой даты стоят разные даты оплаты — ввод перезапишет все" : undefined}
+      onChange={(e) => void commit(e.target.value)}
+      className={`h-6 w-[110px] rounded border px-1 font-mono text-[10px] focus:outline-none focus:ring-1 focus:ring-amber-200 ${
+        shared == null ? "border-amber-400 bg-amber-50" : "border-stone-300 bg-white hover:border-amber-400"
+      }`}
+    />
+  );
+}
+
 export function DealShipments({ dealId, currencySymbol }: { dealId: string; currencySymbol: string }) {
   const sb = useRef(createClient());
   const [rows, setRows] = useState<ShipmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  // Ручной режим включается на приложении; здесь только узнаём, надо ли
+  // показывать колонку с датой (клиент 2026-08-11).
+  const { map: termsSummary } = usePaymentTermsSummary([dealId]);
+  const supManual = termsSummary.get(summaryKey(dealId, "supplier"))?.has_manual_date ?? false;
+  const buyManual = termsSummary.get(summaryKey(dealId, "buyer"))?.has_manual_date ?? false;
 
   // Stable fetcher — reused on mount AND on every invalidateRegistry()
   // notification (operator 2026-06-26: «загрузил массово с страницы
@@ -60,11 +108,14 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
   const reloadRows = useCallback(() => {
     sb.current
       .from("shipment_registry")
-      .select("id, wagon_number, shipment_volume, loading_volume, date, railway_tariff, invoice_number")
+      .select("id, wagon_number, shipment_volume, loading_volume, date, railway_tariff, invoice_number, supplier_planned_pay_date, buyer_planned_pay_date")
       .eq("deal_id", dealId)
       .order("date", { ascending: true })
       .then(({ data }) => {
-        setRows((data ?? []) as ShipmentRow[]);
+        // database.ts снимается с прода и колонок 00144 ещё не знает —
+        // тот же приём, что в use-registry.ts. Убрать после
+        // `npm run types:db`, когда миграция уедет в прод.
+        setRows((data ?? []) as unknown as ShipmentRow[]);
         setLoading(false);
       });
   }, [dealId]);
@@ -116,6 +167,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
             <th className="text-right py-1 pr-2 font-medium">Отгружено (тонн)</th>
             <th className="text-right py-1 pr-2 font-medium">Сумма {currencySymbol}</th>
             <th className="text-right py-1 pr-2 font-medium">Тариф факт</th>
+            {supManual && <th className="text-left py-1 pr-2 font-medium" title="Плановая дата оплаты поставщику. Ставится вручную, потому что у приложения выбран отсчёт «дата вручную».">Оплата пост.</th>}
+            {buyManual && <th className="text-left py-1 pr-2 font-medium" title="Плановая дата оплаты покупателем. Ставится вручную, потому что у приложения выбран отсчёт «дата вручную».">Оплата покуп.</th>}
             <th className="text-right py-1 font-medium">Вагонов</th>
           </tr>
         </thead>
@@ -134,6 +187,16 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
                 <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtVol(g.totalVolume)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalAmount, 2)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">{fmtNum(g.tariffFact)}</td>
+                {supManual && (
+                  <td className="py-1 pr-2" onClick={(e) => e.stopPropagation()}>
+                    <PlannedDateCell group={g} field="supplier_planned_pay_date" onSaved={reloadRows} />
+                  </td>
+                )}
+                {buyManual && (
+                  <td className="py-1 pr-2" onClick={(e) => e.stopPropagation()}>
+                    <PlannedDateCell group={g} field="buyer_planned_pay_date" onSaved={reloadRows} />
+                  </td>
+                )}
                 <td className="py-1 text-right">
                   <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] font-medium text-stone-500">{g.wagons.length}</span>
                 </td>
@@ -145,6 +208,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px]">{fmtVol(w.shipment_volume)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.amount, 2)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.railway_tariff)}</td>
+                  {supManual && <td className="py-0.5 pr-2" />}
+                  {buyManual && <td className="py-0.5 pr-2" />}
                   <td className="py-0.5 text-right text-[9px] text-stone-400">{w.invoice_number ?? ""}</td>
                 </tr>
               ))}
@@ -158,6 +223,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
             <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">
               {totalVol > 0 && totalAmt > 0 ? fmtNum(Math.round((totalAmt / Math.ceil(totalVol)) * 100) / 100) : "—"}
             </td>
+            {supManual && <td className="py-1 pr-2" />}
+            {buyManual && <td className="py-1 pr-2" />}
             <td className="py-1 text-right text-stone-500">{rows.length}</td>
           </tr>
         </tbody>
