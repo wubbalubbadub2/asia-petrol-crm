@@ -212,6 +212,7 @@ export function SupplierLinesEditor({
         appendix: l.appendix ?? null,
         deferral_days: l.deferral_days ?? null,
         deferral_date_basis: l.deferral_date_basis ?? null,
+        is_completed: l.is_completed ?? false,
         price_source: l.price_source ?? null,
         quotation_type_name: l.quotation_type?.name ?? null,
       }))}
@@ -394,6 +395,7 @@ export function BuyerLinesEditor({
         appendix: l.appendix ?? null,
         deferral_days: l.deferral_days ?? null,
         deferral_date_basis: l.deferral_date_basis ?? null,
+        is_completed: l.is_completed ?? false,
         price_source: l.price_source ?? null,
         quotation_type_name: l.quotation_type?.name ?? null,
       }))}
@@ -461,6 +463,7 @@ type LineVM = {
   // NULL means «взять со сделки» (поля 00125), не «нет отсрочки».
   deferral_days: number | null;
   deferral_date_basis: "auto" | "manual" | null;
+  is_completed: boolean;
   // Migration 00077 — «Подкотировка», concrete wide-column of
   // quotations (price_cif_nwe / price_fob_med / …). Missing on
   // legacy lines; picker only shown when the parent quotation
@@ -1030,6 +1033,25 @@ function LinesEditorView({
               editing={editing}
               onChange={(v) => onUpdate(l.id, { appendix: v })}
             />
+
+            {/* Клиент 2026-08-12: пометка «приложение завершено».
+                Информационная — ничего не блокирует и не прячет. */}
+            <div>
+              <span className="block text-[11px] text-stone-400">Завершено</span>
+              {editing ? (
+                <label className="flex h-8 cursor-pointer items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    checked={l.is_completed}
+                    onChange={(e) => onUpdate(l.id, { is_completed: e.target.checked })}
+                    className="h-3.5 w-3.5 cursor-pointer accent-amber-500"
+                  />
+                  <span className="text-stone-600">приложение завершено</span>
+                </label>
+              ) : (
+                <span className="text-[13px]">{l.is_completed ? "да" : "—"}</span>
+              )}
+            </div>
 
             {/* Условия оплаты (00141) — стоят рядом с «Приложением»,
                 потому что задаются именно по нему: клиент 2026-08-10,

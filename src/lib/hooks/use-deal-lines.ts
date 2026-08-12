@@ -30,6 +30,8 @@ export type DealSupplierLine = {
   deferral_days?: number | null;
   deferral_date_basis?: "auto" | "manual" | null;
   deferral_planned_date?: string | null;
+  /** Приложение завершено (00146). Пометка, на расчёты не влияет. */
+  is_completed?: boolean | null;
   id: string;
   deal_id: string;
   position: number;
@@ -71,6 +73,8 @@ export type DealBuyerLine = {
   deferral_days?: number | null;
   deferral_date_basis?: "auto" | "manual" | null;
   deferral_planned_date?: string | null;
+  /** Приложение завершено (00146). Пометка, на расчёты не влияет. */
+  is_completed?: boolean | null;
   id: string;
   deal_id: string;
   position: number;
