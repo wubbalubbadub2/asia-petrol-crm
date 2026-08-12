@@ -22,6 +22,7 @@ import { ActivityFeed } from "@/components/shared/activity-feed";
 import { DealPayments } from "@/components/deals/deal-payments";
 import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
 import { DealShipments } from "@/components/deals/deal-shipments";
+import { SupplierIncomingRegistry } from "@/components/deals/supplier-incoming-registry";
 import { DealCompanyChain } from "@/components/deals/deal-company-chain";
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 import { AuditHistory } from "@/components/shared/audit-history";
@@ -960,6 +961,9 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           {/* Anchor date for «Средний месяц» pickup — migration 00085. */}
           <Field label="Дата котировки (ср. месяц)" value={deal.avg_month_date} inputType="date" editing={editing} field="avg_month_date" dealId={deal.id} />
         </div>
+
+        {/* Реестр входящих СНТ — клиент 2026-08-12, только KZ. */}
+        {deal.deal_type === "KZ" && <SupplierIncomingRegistry dealId={deal.id} />}
 
         {/* Supplier pricing by month */}
         {deal.supplier_price_condition && deal.supplier_price_condition !== "manual" && (
