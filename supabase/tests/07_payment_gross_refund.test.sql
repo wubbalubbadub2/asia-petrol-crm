@@ -1,6 +1,12 @@
 -- Test: refresh_deal_payment_totals (миграция 00137)
--- «Оплата» = брутто (payment_type='payment'), «Возврат/Перезачет» =
--- refund+offset ПОЛОЖИТЕЛЬНЫМ числом, нетто = брутто − возвраты.
+-- «Оплата» = брутто (payment_type='payment'), «Возврат» = refund
+-- ПОЛОЖИТЕЛЬНЫМ числом, нетто = брутто − возвраты + взаимозачёт.
+--
+-- С 00145 взаимозачёт выделен из «Возврат/Перезачет» в собственную
+-- величину со знаком: он больше не вычитается вместе с возвратами, а
+-- прибавляется как есть. Поэтому фикстура ниже переведена на новый
+-- знак — взаимозачёт на −20 вместо прежних +20; итоговые нетто и
+-- баланс от этого не изменились.
 -- Баланс читает нетто и численно не меняется относительно 00062.
 
 BEGIN;
@@ -30,15 +36,18 @@ BEGIN
     (v_deal_id, 'supplier', 100, '2099-01-10', 'payment'),
     (v_deal_id, 'supplier', 200, '2099-01-11', 'payment'),
     (v_deal_id, 'supplier',  30, '2099-01-12', 'refund'),
-    (v_deal_id, 'supplier',  20, '2099-01-13', 'offset');
+    (v_deal_id, 'supplier', -20, '2099-01-13', 'offset');
 
   SELECT * INTO v_row FROM deals WHERE id = v_deal_id;
 
   IF v_row.supplier_payment_gross <> 300 THEN
     RAISE EXCEPTION 'supplier_payment_gross expected 300, got %', v_row.supplier_payment_gross;
   END IF;
-  IF v_row.supplier_refund_total <> 50 THEN
-    RAISE EXCEPTION 'supplier_refund_total expected 50 (положительное), got %', v_row.supplier_refund_total;
+  IF v_row.supplier_refund_total <> 30 THEN
+    RAISE EXCEPTION 'supplier_refund_total expected 30 (только возвраты), got %', v_row.supplier_refund_total;
+  END IF;
+  IF v_row.supplier_offset_total <> -20 THEN
+    RAISE EXCEPTION 'supplier_offset_total expected -20 (со знаком), got %', v_row.supplier_offset_total;
   END IF;
   IF v_row.supplier_payment <> 250 THEN
     RAISE EXCEPTION 'supplier_payment (нетто) expected 250, got %', v_row.supplier_payment;
@@ -52,7 +61,7 @@ BEGIN
   DELETE FROM deal_payments
    WHERE deal_id = v_deal_id AND payment_type = 'refund';
   SELECT * INTO v_row FROM deals WHERE id = v_deal_id;
-  IF v_row.supplier_payment_gross <> 300 OR v_row.supplier_refund_total <> 20
+  IF v_row.supplier_payment_gross <> 300 OR v_row.supplier_refund_total <> 0
      OR v_row.supplier_payment <> 280 THEN
     RAISE EXCEPTION 'после удаления возврата ожидалось 300/20/280, got %/%/%',
       v_row.supplier_payment_gross, v_row.supplier_refund_total, v_row.supplier_payment;
@@ -62,9 +71,9 @@ BEGIN
   UPDATE deal_payments SET payment_type = 'refund'
    WHERE deal_id = v_deal_id AND amount = 200;
   SELECT * INTO v_row FROM deals WHERE id = v_deal_id;
-  IF v_row.supplier_payment_gross <> 100 OR v_row.supplier_refund_total <> 220
+  IF v_row.supplier_payment_gross <> 100 OR v_row.supplier_refund_total <> 200
      OR v_row.supplier_payment <> -120 THEN
-    RAISE EXCEPTION 'после смены типа ожидалось 100/220/-120, got %/%/%',
+    RAISE EXCEPTION 'после смены типа ожидалось 100/200/-120, got %/%/%',
       v_row.supplier_payment_gross, v_row.supplier_refund_total, v_row.supplier_payment;
   END IF;
 END $$;
