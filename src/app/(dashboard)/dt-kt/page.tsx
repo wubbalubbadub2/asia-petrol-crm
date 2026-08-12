@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
+import { computeDtKtSaldo } from "@/lib/dtkt/saldo";
 import { useDelayed } from "@/lib/hooks/use-delayed";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
@@ -39,12 +40,18 @@ function fmt(v: number | null | undefined) {
 }
 function n(v: number | null | undefined) { return v ?? 0; }
 
+// Подсказки о знаке. Колонка «Сальдо на 1 янв.» вводится руками, и до
+// 12.08.2026 понять по форме, каким знаком её писать, было нельзя — три
+// записи из-за этого ввели в старой конвенции.
+const SIGN_HINT = "Вводится со своим знаком: минус — нам должны, плюс — мы должны. Знак берётся как есть и в расчёте не разворачивается.";
+const SALDO_HINT = "Сальдо 1 янв + Оплата + Возврат − Отгрузка − Штрафы − Сверхнорм − ОГЭМ. Минус (красным) — нам должны, плюс — мы должны.";
+
 // Inline editable cells for DT-KT (number / date / text)
-function InlineDtNum({ value, onSave, className = "" }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; className?: string }) {
+function InlineDtNum({ value, onSave, className = "", title }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; className?: string; title?: string }) {
   const [ed, setEd] = useState(false);
   const [lv, setLv] = useState("");
   if (!ed) return (
-    <button onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }}
+    <button onClick={() => { setLv(value == null ? "" : String(value)); setEd(true); }} title={title}
       className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 rounded px-1 py-0.5 cursor-text ${className}`}>
       {fmt(value)}
     </button>
@@ -93,17 +100,13 @@ function InlineDtText({ value, onSave, placeholder = "" }: { value: string | nul
   );
 }
 
-// payment передаётся отдельно: это сумма строк dt_kt_payments (см.
-// paymentOf), а не хранимая row.payment — иначе сальдо считалось бы от
-// устаревшего итога оплат.
-//
-// Конвенция знака (клиент 2026-07-30, разворот решения 2026-07-22):
-//   «− = нам должны (красным) / + = мы должны».
-// Раньше было «+ = нам должны». Формула = минус прежней; opening_balance
-// разово перевёрнут миграцией 00133, поэтому здесь берётся как есть (уже
-// в новой конвенции: нам должны → отрицательный).
+// Формула сальдо живёт в @/lib/dtkt/saldo — там же вся её история и
+// конвенция знака. Здесь только подстановка величин, которых нет в самой
+// строке: shipped (сумма реестра за год) и payment (сумма строк
+// dt_kt_payments, а не хранимая row.payment — иначе сальдо считалось бы
+// от устаревшего итога оплат).
 function computeSaldo(row: DtKtRecord, shipped: number, payment: number) {
-  return n(row.opening_balance) - payment + shipped + n(row.fines) + n(row.surcharge_preliminary) + n(row.ogem) + n(row.refund);
+  return computeDtKtSaldo(row, shipped, payment);
 }
 
 // --- Add Dialog with multiple payments ---
@@ -175,7 +178,11 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
             </select>
           </div>
           <div><Label className="text-[12px] text-stone-500">Год *</Label><Input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="h-8 text-[13px] font-mono" /></div>
-          <div><Label className="text-[12px] text-stone-500">Сальдо на 1 янв.</Label><Input type="number" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
+          <div>
+            <Label className="text-[12px] text-stone-500">Сальдо на 1 янв.</Label>
+            <Input type="number" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" title={SIGN_HINT} />
+            <p className="mt-0.5 text-[10px] text-stone-400">минус — нам должны, плюс — мы должны</p>
+          </div>
           <div><Label className="text-[12px] text-stone-500">Возврат</Label><Input type="number" step="0.01" value={refund} onChange={(e) => setRefund(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
           <div><Label className="text-[12px] text-stone-500">Штрафы</Label><Input type="number" step="0.01" value={fines} onChange={(e) => setFines(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
           <div><Label className="text-[12px] text-stone-500">Сверхнорм.</Label><Input type="number" step="0.01" value={surcharge} onChange={(e) => setSurcharge(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
@@ -514,7 +521,7 @@ export default function DtKtPage() {
                 <TableHead className="text-[11px]">Экспедитор</TableHead>
                 <TableHead className="text-[11px]">Группа комп.</TableHead>
                 <TableHead className="text-[11px]">Год</TableHead>
-                <TableHead className="text-right text-[11px]">Сальдо 1 янв.</TableHead>
+                <TableHead className="text-right text-[11px]" title={SIGN_HINT}>Сальдо 1 янв.<span className="ml-0.5 text-stone-300">?</span></TableHead>
                 <TableHead className="text-right text-[11px]">Оплата</TableHead>
                 <TableHead className="text-right text-[11px]">Отгр. тонн</TableHead>
                 <TableHead className="text-right text-[11px]">Отгр. сумма</TableHead>
@@ -522,7 +529,7 @@ export default function DtKtPage() {
                 <TableHead className="text-right text-[11px]">Штрафы</TableHead>
                 <TableHead className="text-right text-[11px]">Сверхнорм.</TableHead>
                 <TableHead className="text-right text-[11px]">ОГЭМ</TableHead>
-                <TableHead className="text-right text-[11px] font-semibold">Сальдо</TableHead>
+                <TableHead className="text-right text-[11px] font-semibold" title={SALDO_HINT}>Сальдо<span className="ml-0.5 font-normal text-stone-300">?</span></TableHead>
                 <TableHead className="w-[30px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -543,7 +550,7 @@ export default function DtKtPage() {
                       <TableCell className="text-[12px] text-stone-600">{rec.company_group?.name ?? "—"}</TableCell>
                       <TableCell className="font-mono text-[12px]">{rec.year ?? "—"}</TableCell>
                       <TableCell className="text-right">
-                        <InlineDtNum value={rec.opening_balance} onSave={(v) => updateDtKt(rec.id, { opening_balance: v })} />
+                        <InlineDtNum value={rec.opening_balance} onSave={(v) => updateDtKt(rec.id, { opening_balance: v })} title={SIGN_HINT} />
                       </TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums">
                         <button onClick={() => setExpandedPayments(expanded ? null : rec.id)}
