@@ -948,7 +948,15 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Оплата" value={deal.supplier_payment_gross} suffix={`${supplierCurrencySymbol} (оплаты)`} />
           <Field label="Возврат/Перезачет" value={deal.supplier_refund_total} suffix={`${supplierCurrencySymbol} (минусует)`} />
           <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
+          {/* Взаимозачёт (00145) — отдельная величина со знаком, в
+              «Оплату» не входит, в баланс прибавляется. */}
+          <Field label="Взаимозачет" value={deal.supplier_offset_total} suffix={`${supplierCurrencySymbol} (со знаком)`} />
           <Field label="Баланс" value={deal.supplier_balance} suffix={`${supplierCurrencySymbol} (авто)`} />
+          {/* Клиент 2026-08-12: обе галочки переехали сюда из «Логистики».
+              Место логичное — они прибавляют суммы именно к балансу
+              поставщика, а не к логистике. Формула не менялась. */}
+          <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
+          <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!deal.additional_expenses_in_price} editing={editing} onSaved={reload} />
           {/* Anchor date for «Средний месяц» pickup — migration 00085. */}
           <Field label="Дата котировки (ср. месяц)" value={deal.avg_month_date} inputType="date" editing={editing} field="avg_month_date" dealId={deal.id} />
         </div>
@@ -1130,8 +1138,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             <Field label="Факт объем" value={deal.actual_shipped_volume} suffix="тонн (реестр)" />
             <Field label="Сумма" value={deal.invoice_amount} suffix={`${logisticsCurrencySymbol} (реестр)`} />
             <Field label="ЭСФ грузоотправление" value={deal.additional_expenses_amount ?? 0} suffix={`${logisticsCurrencySymbol} (реестр)`} />
-            <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
-            <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!deal.additional_expenses_in_price} editing={editing} onSaved={reload} />
             <EditableSelect label="Коммерция" value={deal.supplier_manager_id} displayValue={deal.supplier_manager?.full_name ?? "—"} editing={editing} field="supplier_manager_id" dealId={deal.id} options={refs.managers} />
           </div>
           <DealShipments dealId={deal.id} currencySymbol={logisticsCurrencySymbol} />

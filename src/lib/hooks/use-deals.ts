@@ -40,6 +40,9 @@ export type Deal = {
   // (= gross − refund) и кормит формулу баланса.
   supplier_payment_gross: number | null;
   supplier_refund_total: number | null;
+  // Взаимозачёты со знаком (00145). В «Оплату» не входят, в баланс —
+  // слагаемым.
+  supplier_offset_total: number | null;
   supplier_payment_date: string | null;
   supplier_balance: number | null;
   supplier_departure_station_id: string | null;
@@ -63,6 +66,7 @@ export type Deal = {
   buyer_payment: number | null;
   buyer_payment_gross: number | null;
   buyer_refund_total: number | null;
+  buyer_offset_total: number | null;
   buyer_payment_date: string | null;
   buyer_debt: number | null;
   supplier_deferral_days: number | null;
@@ -348,14 +352,14 @@ const LIST_SELECT = `
   supplier_contracted_volume, supplier_contracted_amount, supplier_price,
   supplier_quotation, supplier_discount,
   supplier_shipped_amount, supplier_shipped_volume,
-  supplier_payment, supplier_payment_gross, supplier_refund_total,
+  supplier_payment, supplier_payment_gross, supplier_refund_total, supplier_offset_total,
   supplier_payment_date, supplier_balance,
   supplier_currency, supplier_manager_id,
   buyer_id, buyer_contract, buyer_delivery_basis,
   buyer_contracted_volume, buyer_contracted_amount, buyer_price,
   buyer_quotation, buyer_discount,
   buyer_ordered_volume, buyer_shipped_volume, buyer_shipped_amount,
-  buyer_payment, buyer_payment_gross, buyer_refund_total,
+  buyer_payment, buyer_payment_gross, buyer_refund_total, buyer_offset_total,
   buyer_payment_date, buyer_debt,
   buyer_currency, buyer_manager_id, trader_id,
   buyer_destination_station_id, supplier_departure_station_id,
