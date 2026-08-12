@@ -2057,55 +2057,79 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 //  отдельно («№» закреплена всегда).
 type PtBand = "deal" | "supplier" | "groups" | "buyer" | "logistics" | "payment";
 type PtUnit = { key: string; label: string; band: PtBand; h: number[]; body: number };
-const PT_UNITS: PtUnit[] = [
-  { key: "month", label: "Месяц", band: "deal", h: [2], body: 2 },
-  { key: "factory", label: "Завод", band: "deal", h: [3], body: 3 },
-  { key: "fuel", label: "ГСМ", band: "deal", h: [4], body: 4 },
-  { key: "sulfur", label: "%S", band: "deal", h: [5], body: 5 },
-  { key: "supplier", label: "Поставщик", band: "supplier", h: [6], body: 6 },
-  { key: "supplier_contract", label: "Номер приложения", band: "supplier", h: [7], body: 7 },
-  { key: "supplier_basis", label: "Базис", band: "supplier", h: [8], body: 8 },
-  { key: "supplier_volume", label: "Объем", band: "supplier", h: [9], body: 9 },
-  { key: "supplier_amount", label: "Сумма дог.", band: "supplier", h: [10], body: 10 },
-  { key: "supplier_price", label: "Цена", band: "supplier", h: [11], body: 11 },
-  { key: "supplier_shipped_amount", label: "Приход, сумма", band: "supplier", h: [12], body: 12 },
-  { key: "supplier_shipped_volume", label: "Приход, тонн", band: "supplier", h: [13], body: 13 },
-  { key: "supplier_payment", label: "Оплата", band: "supplier", h: [14], body: 14 },
-  { key: "supplier_refund", label: "Возврат/Перезачет", band: "supplier", h: [15], body: 15 },
-  { key: "supplier_balance", label: "Баланс", band: "supplier", h: [16], body: 16 },
-  { key: "groups", label: "Группы компании", band: "groups", h: [17, 18], body: 17 },
-  { key: "buyer", label: "Покупатель", band: "buyer", h: [19], body: 18 },
-  { key: "buyer_contract", label: "Номер приложения", band: "buyer", h: [20], body: 19 },
-  { key: "buyer_basis", label: "Базис", band: "buyer", h: [21], body: 20 },
-  { key: "buyer_volume", label: "Объем", band: "buyer", h: [22], body: 21 },
-  { key: "buyer_amount", label: "Сумма дог.", band: "buyer", h: [23], body: 22 },
-  { key: "buyer_price", label: "Цена", band: "buyer", h: [24], body: 23 },
-  { key: "buyer_ordered", label: "Заявлено", band: "buyer", h: [25], body: 24 },
-  { key: "buyer_remainder", label: "Остаток", band: "buyer", h: [26], body: 25 },
-  { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer", h: [27], body: 26 },
-  { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer", h: [28], body: 27 },
-  { key: "buyer_payment", label: "Оплата", band: "buyer", h: [29], body: 28 },
-  { key: "buyer_refund", label: "Возврат/Перезачет", band: "buyer", h: [30], body: 29 },
-  { key: "buyer_debt", label: "Долг", band: "buyer", h: [31], body: 30 },
-  { key: "forwarder", label: "Экспедитор", band: "logistics", h: [32], body: 31 },
-  { key: "logistics_group", label: "Группа комп.", band: "logistics", h: [33], body: 32 },
-  { key: "planned_tariff", label: "Тариф", band: "logistics", h: [34], body: 33 },
-  { key: "preliminary_tonnage", label: "Объем план", band: "logistics", h: [35], body: 34 },
-  { key: "preliminary_amount", label: "Предв. сумма", band: "logistics", h: [36], body: 35 },
-  { key: "actual_tariff", label: "Тариф факт", band: "logistics", h: [37], body: 36 },
-  { key: "actual_volume", label: "Факт объем", band: "logistics", h: [38], body: 37 },
-  { key: "invoice_amount", label: "Сумма", band: "logistics", h: [39], body: 38 },
-  { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics", h: [40], body: 39 },
-  { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics", h: [41], body: 40 },
-  { key: "manager", label: "Коммерция", band: "logistics", h: [42], body: 41 },
+// Описание колонки без номеров: порядок в массиве и есть их источник.
+type PtUnitDef = { key: string; label: string; band: PtBand; hSpan?: number };
+const PT_UNITS_ORDER: PtUnitDef[] = [
+  { key: "month", label: "Месяц", band: "deal" },
+  { key: "factory", label: "Завод", band: "deal" },
+  { key: "fuel", label: "ГСМ", band: "deal" },
+  { key: "sulfur", label: "%S", band: "deal" },
+  { key: "supplier", label: "Поставщик", band: "supplier" },
+  { key: "supplier_contract", label: "Номер приложения", band: "supplier" },
+  { key: "supplier_basis", label: "Базис", band: "supplier" },
+  { key: "supplier_volume", label: "Объем", band: "supplier" },
+  { key: "supplier_amount", label: "Сумма дог.", band: "supplier" },
+  { key: "supplier_price", label: "Цена", band: "supplier" },
+  { key: "supplier_shipped_amount", label: "Приход, сумма", band: "supplier" },
+  { key: "supplier_shipped_volume", label: "Приход, тонн", band: "supplier" },
+  { key: "supplier_payment", label: "Оплата", band: "supplier" },
+  { key: "supplier_refund", label: "Возврат/Перезачет", band: "supplier" },
+  { key: "supplier_balance", label: "Баланс", band: "supplier" },
+  { key: "groups", label: "Группы компании", band: "groups", hSpan: 2 },
+  { key: "buyer", label: "Покупатель", band: "buyer" },
+  { key: "buyer_contract", label: "Номер приложения", band: "buyer" },
+  { key: "buyer_basis", label: "Базис", band: "buyer" },
+  { key: "buyer_volume", label: "Объем", band: "buyer" },
+  { key: "buyer_amount", label: "Сумма дог.", band: "buyer" },
+  { key: "buyer_price", label: "Цена", band: "buyer" },
+  { key: "buyer_ordered", label: "Заявлено", band: "buyer" },
+  { key: "buyer_remainder", label: "Остаток", band: "buyer" },
+  { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer" },
+  { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer" },
+  { key: "buyer_payment", label: "Оплата", band: "buyer" },
+  { key: "buyer_refund", label: "Возврат/Перезачет", band: "buyer" },
+  { key: "buyer_debt", label: "Долг", band: "buyer" },
+  { key: "forwarder", label: "Экспедитор", band: "logistics" },
+  { key: "logistics_group", label: "Группа комп.", band: "logistics" },
+  { key: "planned_tariff", label: "Тариф", band: "logistics" },
+  { key: "preliminary_tonnage", label: "Объем план", band: "logistics" },
+  { key: "preliminary_amount", label: "Предв. сумма", band: "logistics" },
+  { key: "actual_tariff", label: "Тариф факт", band: "logistics" },
+  { key: "actual_volume", label: "Факт объем", band: "logistics" },
+  { key: "invoice_amount", label: "Сумма", band: "logistics" },
+  { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics" },
+  { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics" },
+  { key: "manager", label: "Коммерция", band: "logistics" },
   // Условия оплаты (00141/00142). Стоят в конце строки намеренно:
   // номера колонок здесь управляют CSS-правилами скрытия и закрепления,
   // и вставка в середину сдвинула бы два десятка индексов.
-  { key: "pay_terms_sup", label: "Условия (Пост.)", band: "payment", h: [43], body: 42 },
-  { key: "pay_days_sup",  label: "Дней до оплаты (Пост.)", band: "payment", h: [44], body: 43 },
-  { key: "pay_terms_buy", label: "Условия (Покуп.)", band: "payment", h: [45], body: 44 },
-  { key: "pay_days_buy",  label: "Дней до оплаты (Покуп.)", band: "payment", h: [46], body: 45 },
+  { key: "pay_terms_sup", label: "Условия (Пост.)", band: "payment" },
+  { key: "pay_days_sup", label: "Дней до оплаты (Пост.)", band: "payment" },
+  { key: "pay_terms_buy", label: "Условия (Покуп.)", band: "payment" },
+  { key: "pay_days_buy", label: "Дней до оплаты (Покуп.)", band: "payment" },
 ];
+
+// Номера колонок выводятся ИЗ ПОРЯДКА списка, а не проставляются руками.
+// Раньше они были захардкожены, и через них работают CSS-правила скрытия
+// и закрепления: любая вставка или перестановка требовала вручную сдвинуть
+// два десятка чисел, а ошибка проявлялась не падением сборки, а тихо
+// съехавшими колонками на самом нагруженном экране. Теперь порядок —
+// единственный источник правды.
+//
+// Отсчёт с 2: первую колонку занимает «№», её в списке нет. В строке
+// таблицы одна ячейка на колонку, в шапке — hSpan (у «Групп компании» их
+// две), поэтому счётчики расходятся после неё.
+const PT_UNITS: PtUnit[] = (() => {
+  let h = 2;
+  let body = 2;
+  return PT_UNITS_ORDER.map((u) => {
+    const span = u.hSpan ?? 1;
+    const unit: PtUnit = { key: u.key, label: u.label, band: u.band, h: Array.from({ length: span }, (_, i) => h + i), body };
+    h += span;
+    body += 1;
+    return unit;
+  });
+})();
 const PT_BAND_LABELS: Record<PtBand, string> = {
   deal: "Сделка", supplier: "Поставщик", groups: "Группы компании", buyer: "Покупатель", logistics: "Логистика",
   payment: "Условия оплаты",
