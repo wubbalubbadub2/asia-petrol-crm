@@ -19,22 +19,36 @@ type Payment = {
   id: string;
   side: "supplier" | "buyer";
   amount: number;
-  payment_date: string;
+  payment_date: string | null;
   description: string | null;
   currency: string | null;
   payment_type: PaymentType;
+  // Взаимозачёт (00145).
+  offset_kind: string | null;
+  counterparty_deal_id: string | null;
+  mirror_of: string | null;
 };
 
-// Net contribution to the deal's payment rollup: refunds and offsets
-// (перезачёты) subtract — they are minus by definition.
+// Вклад строки в нетто оплат: возврат (историческая строка) вычитается,
+// оплата и взаимозачёт хранят знак в самой сумме.
 function signedAmount(p: Payment): number {
-  return p.payment_type === "refund" || p.payment_type === "offset" ? -p.amount : p.amount;
+  // Возврат — историческая строка, хранится положительным и вычитается.
+  // Оплата и взаимозачёт хранят знак в самой сумме.
+  return p.payment_type === "refund" ? -p.amount : p.amount;
 }
 
+// Клиент 2026-08-12: тип оплаты убран. Возврат пишется той же оплатой
+// со знаком минус, взаимозачёт — отдельная сущность со своим знаком.
+// 'refund' остаётся только у исторических строк.
 const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   payment: "Оплата",
   refund: "Возврат",
-  offset: "Перезачёт",
+  offset: "Взаимозачёт",
+};
+
+const OFFSET_KIND_LABELS: Record<string, string> = {
+  bilateral: "2-х сторонний",
+  trilateral: "3-х сторонний",
 };
 
 function formatMoney(val: number): string {
@@ -59,27 +73,31 @@ function PaymentRow({
   const [editDesc, setEditDesc] = useState(false);
   const [descLv, setDescLv] = useState("");
 
-  const isMinus = p.payment_type === "refund" || p.payment_type === "offset";
+  const isMinus = p.payment_type === "refund" || p.amount < 0;
   return (
     <div className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] ${isMinus ? "bg-red-50/60" : "bg-stone-50"}`}>
-      {/* Type toggle */}
-      <select
-        value={p.payment_type}
-        onChange={(e) => {
-          const nv = e.target.value as PaymentType;
-          if (nv !== p.payment_type) onUpdate(p.id, { payment_type: nv });
-        }}
-        className={`h-5 text-[10px] border border-transparent rounded bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:border-amber-300 ${isMinus ? "text-red-600 font-medium" : "text-stone-600"}`}
-        title="Тип записи"
+      {/* Тип записи больше не переключается: он задаётся кнопкой
+          добавления. У взаимозачёта рядом показываем вид и встречную
+          сделку, если она выбрана. */}
+      <span
+        className={`shrink-0 rounded px-1 text-[10px] ${
+          p.payment_type === "offset" ? "bg-sky-100 text-sky-700"
+            : isMinus ? "text-red-600 font-medium" : "text-stone-500"
+        }`}
+        title={p.payment_type === "offset" && p.offset_kind ? OFFSET_KIND_LABELS[p.offset_kind] : "Тип записи"}
       >
-        <option value="payment">{PAYMENT_TYPE_LABELS.payment}</option>
-        <option value="refund">{PAYMENT_TYPE_LABELS.refund}</option>
-        <option value="offset">{PAYMENT_TYPE_LABELS.offset}</option>
-      </select>
+        {PAYMENT_TYPE_LABELS[p.payment_type]}
+        {p.payment_type === "offset" && p.offset_kind ? ` · ${OFFSET_KIND_LABELS[p.offset_kind]}` : ""}
+      </span>
+      {p.mirror_of && (
+        <span className="shrink-0 rounded bg-stone-200 px-1 text-[9px] text-stone-600" title="Создан автоматически встречным взаимозачётом другой сделки. Правится там.">
+          зеркало
+        </span>
+      )}
       {/* Date */}
       {!editDate ? (
         <button
-          onClick={() => { setDateLv(p.payment_date.split("T")[0]); setEditDate(true); }}
+          onClick={() => { setDateLv((p.payment_date ?? "").split("T")[0]); setEditDate(true); }}
           className="text-stone-500 w-20 text-left hover:bg-amber-50 rounded px-1 cursor-text"
         >
           {formatDMY(p.payment_date)}
@@ -90,7 +108,7 @@ function PaymentRow({
           onChange={(e) => setDateLv(e.target.value)}
           onBlur={() => {
             setEditDate(false);
-            if (dateLv && dateLv !== p.payment_date.split("T")[0]) onUpdate(p.id, { payment_date: dateLv });
+            if (dateLv && dateLv !== (p.payment_date ?? "").split("T")[0]) onUpdate(p.id, { payment_date: dateLv });
           }}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditDate(false); }}
           className="w-28 border border-amber-300 rounded px-1 py-0 text-[11px] bg-amber-50/50 focus:outline-none"
@@ -102,7 +120,7 @@ function PaymentRow({
           onClick={() => { setAmountLv(String(p.amount)); setEditAmount(true); }}
           className={`font-mono tabular-nums font-medium flex-1 text-left hover:bg-amber-50 rounded px-1 cursor-text ${isMinus ? "text-red-700" : "text-stone-800"}`}
         >
-          {isMinus ? "−" : ""}{formatMoney(p.amount)} {sym}
+          {p.payment_type === "refund" ? "−" : ""}{formatMoney(p.amount)} {sym}
         </button>
       ) : (
         <input
@@ -166,7 +184,7 @@ function PaymentList({ items, side, label, dealCurrency, onAdd, onUpdate, onDele
   side: "supplier" | "buyer";
   label: string;
   dealCurrency: string;
-  onAdd: (side: "supplier" | "buyer") => void;
+  onAdd: (side: "supplier" | "buyer", kind: "payment" | "offset") => void;
   onUpdate: (id: string, patch: Partial<Payment>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
@@ -182,9 +200,15 @@ function PaymentList({ items, side, label, dealCurrency, onAdd, onUpdate, onDele
     <div>
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-[12px] font-medium text-stone-600">{label}</h4>
-        <Button size="sm" variant="outline" onClick={() => onAdd(side)} className="h-6 text-[10px] px-2">
-          <Plus className="h-3 w-3 mr-1" /> Оплата
-        </Button>
+        <div className="flex gap-1">
+          {/* Клиент 2026-08-12: две кнопки вместо выбора типа. */}
+          <Button size="sm" variant="outline" onClick={() => onAdd(side, "payment")} className="h-6 px-2 text-[10px]">
+            <Plus className="mr-1 h-3 w-3" /> Оплата
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onAdd(side, "offset")} className="h-6 px-2 text-[10px]">
+            <Plus className="mr-1 h-3 w-3" /> Взаимозачёт
+          </Button>
+        </div>
       </div>
       {items.length === 0 ? (
         <p className="text-[11px] text-stone-400">Нет оплат</p>
@@ -220,6 +244,10 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   const [newDesc, setNewDesc] = useState("");
   const [newCurrency, setNewCurrency] = useState("");  // empty = inherit deal currency
   const [newType, setNewType] = useState<PaymentType>("payment");
+  // Взаимозачёт (00145): вид и встречная сделка.
+  const [newOffsetKind, setNewOffsetKind] = useState<"bilateral" | "trilateral">("trilateral");
+  const [newCounterparty, setNewCounterparty] = useState("");
+  const [dealOpts, setDealOpts] = useState<{ id: string; deal_code: string | null }[]>([]);
 
   async function loadPayments() {
     setLoading(true);
@@ -230,7 +258,9 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
       .order("payment_date", { ascending: true });
     // Migration 00051 introduces payment_type; tolerate older rows that
     // predate it by defaulting to 'payment'.
-    setPayments(((data ?? []) as Array<Omit<Payment, "payment_type"> & { payment_type?: PaymentType }>).map((r) => ({ ...r, payment_type: r.payment_type ?? "payment" })));
+    // database.ts снимается с прода и колонок 00145 ещё не знает —
+    // тот же приём, что в use-registry.ts. Убрать после `npm run types:db`.
+    setPayments(((data ?? []) as unknown as Array<Omit<Payment, "payment_type"> & { payment_type?: PaymentType }>).map((r) => ({ ...r, payment_type: r.payment_type ?? "payment" })));
     setLoading(false);
   }
 
@@ -249,16 +279,51 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     invalidateDeal(dealId);
   }
 
+  // Список сделок для выбора встречной — только при двустороннем.
+  useEffect(() => {
+    if (newType !== "offset" || newOffsetKind !== "bilateral" || dealOpts.length > 0) return;
+    supabaseRef.current
+      .from("deals")
+      .select("id, deal_code")
+      .eq("is_archived", false)
+      .neq("id", dealId)
+      .order("deal_code", { ascending: false })
+      .limit(1000)
+      .then(({ data }) => setDealOpts((data ?? []) as { id: string; deal_code: string | null }[]));
+  }, [newType, newOffsetKind, dealOpts.length, dealId]);
+
+  function openAddForm(s2: "supplier" | "buyer", kind: "payment" | "offset") {
+    setNewType(kind);
+    setAddingSide(s2);
+  }
+
   async function addPayment() {
-    if (!addingSide || !newAmount || !newDate) return;
-    const { error } = await supabaseRef.current.from("deal_payments").insert({
+    const isOffset = newType === "offset";
+    // У взаимозачёта даты нет (клиент 2026-08-12), у оплаты она обязательна.
+    if (!addingSide || !newAmount || (!isOffset && !newDate)) return;
+    if (isOffset && newOffsetKind === "bilateral" && !newCounterparty) {
+      toast.error("Выберите встречную сделку");
+      return;
+    }
+    // database.ts не знает колонок 00145 и считает payment_date
+    // обязательной — вставляем через нетипизированный доступ, как в
+    // use-registry.ts. Убрать после `npm run types:db`.
+    const insertRow = supabaseRef.current.from("deal_payments") as unknown as {
+      insert: (v: Record<string, unknown>) => PromiseLike<{ error: { message: string } | null }>;
+    };
+    const { error } = await insertRow.insert({
       deal_id: dealId,
       side: addingSide,
       amount: parseFloat(newAmount),
-      payment_date: newDate,
+      payment_date: isOffset ? null : newDate,
       description: newDesc || null,
       currency: newCurrency || null,
       payment_type: newType,
+      offset_kind: isOffset ? newOffsetKind : null,
+      counterparty_deal_id: isOffset && newOffsetKind === "bilateral" ? newCounterparty : null,
+      // database.ts не знает колонок 00145 и требует payment_date —
+      // приводим через unknown, как в use-registry.ts. Убрать после
+      // `npm run types:db`.
     });
     if (error) { toast.error(`Ошибка: ${error.message}`); return; }
     setAddingSide(null);
@@ -266,6 +331,8 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     setNewDesc("");
     setNewCurrency("");
     setNewType("payment");
+    setNewOffsetKind("trilateral");
+    setNewCounterparty("");
     await loadPayments();
     notifyDealCachesAfterPaymentWrite();
   }
@@ -277,7 +344,8 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   }
 
   async function updatePayment(id: string, patch: Partial<Payment>) {
-    const { error } = await supabaseRef.current.from("deal_payments").update(patch).eq("id", id);
+    const { error } = await supabaseRef.current.from("deal_payments")
+      .update(patch as Record<string, unknown>).eq("id", id);
     if (error) { toast.error(`Ошибка: ${error.message}`); return; }
     await loadPayments();
     notifyDealCachesAfterPaymentWrite();
@@ -299,45 +367,74 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
         {loading ? (
           <p className="text-[11px] text-stone-400">Загрузка...</p>
         ) : side ? (
-          <PaymentList items={filteredPayments} side={side} label={sideLabel} dealCurrency={dealCurrency} onAdd={setAddingSide} onUpdate={updatePayment} onDelete={deletePayment} />
+          <PaymentList items={filteredPayments} side={side} label={sideLabel} dealCurrency={dealCurrency} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" dealCurrency={dealCurrency} onAdd={setAddingSide} onUpdate={updatePayment} onDelete={deletePayment} />
-            <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" dealCurrency={dealCurrency} onAdd={setAddingSide} onUpdate={updatePayment} onDelete={deletePayment} />
+            <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" dealCurrency={dealCurrency} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
+            <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" dealCurrency={dealCurrency} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
           </div>
         )}
 
         {/* Add payment form */}
         {addingSide && (
-          <div className={`mt-3 rounded-md border p-3 ${newType === "payment" ? "border-amber-200 bg-amber-50/30" : "border-red-200 bg-red-50/30"}`}>
+          <div className={`mt-3 rounded-md border p-3 ${newType === "offset" ? "border-sky-200 bg-sky-50/30" : "border-amber-200 bg-amber-50/30"}`}>
             <p className="text-[12px] font-medium text-stone-700 mb-2">
-              {newType === "payment" ? "Новая оплата" : `Новый ${PAYMENT_TYPE_LABELS[newType].toLowerCase()}`} ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
+              {newType === "offset" ? "Новый взаимозачёт" : "Новая оплата"} ({addingSide === "supplier" ? "поставщику" : "от покупателя"})
             </p>
-            <div className="flex gap-2 items-end">
-              <div className="w-28">
-                <Label className="text-[10px]">Тип</Label>
-                <select value={newType} onChange={(e) => setNewType(e.target.value as PaymentType)} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
-                  <option value="payment">{PAYMENT_TYPE_LABELS.payment}</option>
-                  <option value="refund">{PAYMENT_TYPE_LABELS.refund}</option>
-                  <option value="offset">{PAYMENT_TYPE_LABELS.offset}</option>
-                </select>
-              </div>
+            <div className="flex flex-wrap items-end gap-2">
+              {/* Тип не выбирается — он задан кнопкой. У взаимозачёта
+                  вместо него вид и встречная сделка. */}
+              {newType === "offset" && (
+                <div className="w-32">
+                  <Label className="text-[10px]">Вид</Label>
+                  <select
+                    value={newOffsetKind}
+                    onChange={(e) => {
+                      const v = e.target.value as "bilateral" | "trilateral";
+                      setNewOffsetKind(v);
+                      if (v !== "bilateral") setNewCounterparty("");
+                    }}
+                    className="h-7 w-full cursor-pointer rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none"
+                  >
+                    <option value="bilateral">{OFFSET_KIND_LABELS.bilateral}</option>
+                    <option value="trilateral">{OFFSET_KIND_LABELS.trilateral}</option>
+                  </select>
+                </div>
+              )}
+              {newType === "offset" && newOffsetKind === "bilateral" && (
+                <div className="w-40">
+                  <Label className="text-[10px]">Встречная сделка</Label>
+                  <select
+                    value={newCounterparty}
+                    onChange={(e) => setNewCounterparty(e.target.value)}
+                    className="h-7 w-full cursor-pointer rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none"
+                    title="В выбранной сделке появится встречный взаимозачёт с противоположным знаком"
+                  >
+                    <option value="">— выберите —</option>
+                    {dealOpts.map((d) => <option key={d.id} value={d.id}>{d.deal_code ?? d.id.slice(0, 8)}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="w-28">
                 <Label className="text-[10px]">Сумма</Label>
-                <Input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="h-7 text-[12px] font-mono" />
+                <Input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)}
+                       placeholder={newType === "offset" ? "со знаком" : "минус = возврат"}
+                       className="h-7 font-mono text-[12px]" />
               </div>
               <div className="w-24">
                 <Label className="text-[10px]">Валюта</Label>
-                <select value={newCurrency} onChange={(e) => setNewCurrency(e.target.value)} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
+                <select value={newCurrency} onChange={(e) => setNewCurrency(e.target.value)} className="h-7 w-full cursor-pointer rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none">
                   <option value="">{dealCurrency} (сделка)</option>
                   {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
-              <div className="w-28">
-                <Label className="text-[10px]">Дата</Label>
-                <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="h-7 text-[12px]" />
-              </div>
-              <div className="flex-1 min-w-[140px]">
+              {newType !== "offset" && (
+                <div className="w-28">
+                  <Label className="text-[10px]">Дата</Label>
+                  <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="h-7 text-[12px]" />
+                </div>
+              )}
+              <div className="min-w-[140px] flex-1">
                 <Label className="text-[10px]">Описание</Label>
                 <Input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="комментарий" className="h-7 text-[12px]" />
               </div>
