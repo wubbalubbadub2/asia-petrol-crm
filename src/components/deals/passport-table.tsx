@@ -1198,13 +1198,6 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
       >
         <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
       </td>
-      {/* Тариф факт (грузоотпр.) — 00120: авто = Сумма грузоотпр. ÷
-          входящее СНТ; ручная правка закрепляет. */}
-      <td
-        className="border-r px-1 py-0.5 text-stone-700"
-        data-col="shipper_actual_tariff" data-deal-id={deal.id}
-        data-value={deal.shipper_actual_tariff ?? undefined}
-      ><EditableNumCell value={deal.shipper_actual_tariff} dealId={deal.id} field="shipper_actual_tariff" overrideField="shipper_actual_tariff_override" overridden={deal.shipper_actual_tariff_override} /></td>
       <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
         title="Сумма грузоотправителя = SUM(shipment_registry.additional_expenses)."
@@ -1384,6 +1377,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
           source rows), so this is for quick manual entry on deals
           that haven't been shipped yet. Title makes the rule
           visible on hover. */}
+      {/* Тариф факт (грузоотпр.) — 00120: авто = Сумма грузоотпр. ÷
+          входящее СНТ; ручная правка закрепляет. */}
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="shipper_actual_tariff" data-deal-id={deal.id}
+        data-value={deal.shipper_actual_tariff ?? undefined}
+      ><EditableNumCell value={deal.shipper_actual_tariff} dealId={deal.id} field="shipper_actual_tariff" overrideField="shipper_actual_tariff_override" overridden={deal.shipper_actual_tariff_override} /></td>
       <td className="px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
@@ -1982,7 +1982,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Оплата</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]">Дата оплаты</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fce3d6]" title="Взаимозачёты со знаком. В «Оплату» не входят, в баланс прибавляются.">Взаимозачет</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fce3d6]" title="Тариф менеджер = Сумма грузоотправления ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф менеджер</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]" title="Сумма по экспедитору.">Сумма ЖД</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]" title="Сумма грузоотправления = SUM(shipment_registry.additional_expenses).">Сумма грузоотправления</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]">Баланс</th>
@@ -2011,6 +2010,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Предв. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#d9d9d9]" title="Тариф факт (логисты) = Сумма ÷ объем СНТ (KZ — входящее, KG — исходящее). Авто; ручной ввод закрепляет.">Тариф факт</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Факт объем</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="Тариф грузоотправления = Сумма грузоотправления ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф грузоотправления</th>
               <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#e8e0f5]" title="Срок оплаты по приложению. «вручную» — плановую дату ставит менеджер.">Условия (Пост.)</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#e8e0f5]" title="Худшая по сделке: плановая дата минус сегодня. Минус — просрочка.">Дней (Пост.)</th>
@@ -2122,9 +2122,9 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "supplier_payment", label: "Оплата", band: "supplier" },
   { key: "supplier_payment_date", label: "Дата оплаты", band: "supplier" },
   { key: "supplier_offset", label: "Взаимозачет", band: "supplier" },
-  // Клиент 2026-08-12: три колонки переехали сюда из «Логистики» —
-  // они про деньги поставщика, а не про перевозку.
-  { key: "shipper_tariff", label: "Тариф менеджер", band: "supplier" },
+  // Клиент 2026-08-12: две суммы переехали сюда из «Логистики» —
+  // они про деньги поставщика, а не про перевозку. Тариф остался в
+  // «Логистике» (клиент 2026-08-12, уточнение).
   { key: "invoice_amount", label: "Сумма ЖД", band: "supplier" },
   { key: "additional_expenses", label: "Сумма грузоотправления", band: "supplier" },
   { key: "supplier_balance", label: "Баланс", band: "supplier" },
@@ -2149,6 +2149,9 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "preliminary_amount", label: "Предв. сумма", band: "logistics" },
   { key: "actual_tariff", label: "Тариф факт", band: "logistics" },
   { key: "actual_volume", label: "Факт объем", band: "logistics" },
+  // Клиент 2026-08-12: «тариф менеджер переименовать на тариф
+  // грузоотправление». Формула: сумма грузоотправления ÷ входящее СНТ.
+  { key: "shipper_tariff", label: "Тариф грузоотправления", band: "logistics" },
   { key: "manager", label: "Коммерция", band: "logistics" },
   // Условия оплаты (00141/00142). Стоят в конце строки намеренно:
   // номера колонок здесь управляют CSS-правилами скрытия и закрепления,
@@ -2380,7 +2383,6 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("amber", sum((d) => d.supplier_payment_gross))}
       {blank("amber")}
       {num("amber", sum((d) => d.supplier_offset_total))}
-      {blank("amber")}
       {num("amber", sum((d) => d.invoice_amount))}
       {num("amber", sum((d) => d.additional_expenses_amount))}
       {num("amber", sum((d) => d.supplier_balance))}
@@ -2407,6 +2409,7 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("stone", sum((d) => d.preliminary_amount))}
       {blank("stone")}
       {num("stone", sum((d) => d.actual_shipped_volume), 3)}
+      {blank("stone")}
       {blank("stone")}
       {/* Условия оплаты — величины несуммируемые, ячейки пустые. */}
       {blank("stone")}{blank("stone")}{blank("stone")}{blank("stone")}
