@@ -755,6 +755,49 @@ function EditableTextCell({ value, dealId, field, wide = false }: {
 // A fallback <option> is emitted for shownVal when refs haven't loaded
 // or don't include it (e.g. inactive entry) so the current label is
 // always visible — without it the select would silently render blank.
+// Дата в ячейке паспорта. Своего редактора не было — сделан по образцу
+// EditableTextCell: правка на месте, откат при ошибке.
+function EditableDateCell({ value, dealId, field }: {
+  value: string | null | undefined;
+  dealId: string;
+  field: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [localVal, setLocalVal] = useState("");
+  const pendingVal = useRef<string | null | undefined>(undefined);
+  const shown = pendingVal.current !== undefined ? pendingVal.current : value;
+  if (pendingVal.current !== undefined && pendingVal.current === value) pendingVal.current = undefined;
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setLocalVal((shown ?? "").slice(0, 10)); setEditing(true); }}
+        className="min-h-[18px] w-full cursor-text rounded px-1 text-left hover:bg-amber-50"
+      >
+        {shown ? formatDMY(shown) : ""}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      type="date"
+      value={localVal}
+      onChange={(e) => setLocalVal(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        const nv = localVal || null;
+        if (nv !== ((shown ?? null) && (shown ?? "").slice(0, 10))) {
+          pendingVal.current = nv;
+          updateDeal(dealId, { [field]: nv }).catch(() => { pendingVal.current = undefined; });
+        }
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
+      className="w-28 rounded border border-amber-300 bg-amber-50/50 px-1 py-0 text-[11px] focus:outline-none"
+    />
+  );
+}
+
 function EditableSelectCell({ value, displayLabel, dealId, field, options, color = "stone", onSaved }: {
   value: string | null | undefined;
   displayLabel: string;
@@ -1132,18 +1175,44 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dataCol="supplier_payment_gross"
         dataValue={deal.supplier_payment_gross}
       />
-      <PaymentBreakdownCell
-        dealId={deal.id}
-        gross={deal.supplier_payment_gross}
-        refund={deal.supplier_refund_total}
-        balance={deal.supplier_balance}
-        side="supplier"
-        kind="refund"
-        currency={deal.supplier_currency ?? ""}
+      {/* Дата оплаты — клиент 2026-08-12, рядом с самой оплатой. */}
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="supplier_payment_date" data-deal-id={deal.id}
+      >
+        <EditableDateCell value={deal.supplier_payment_date} dealId={deal.id} field="supplier_payment_date" />
+      </td>
+      {/* Взаимозачет (00145) — со знаком, в «Оплату» не входит. */}
+      <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
-        dataCol="supplier_refund_total"
-        dataValue={deal.supplier_refund_total}
-      />
+        title="Взаимозачёты со знаком. В «Оплату» не входят, в баланс прибавляются."
+        data-col="supplier_offset_total" data-deal-id={deal.id}
+        data-value={deal.supplier_offset_total ?? undefined}
+      >
+        <ComputedNumSigned value={deal.supplier_offset_total} />
+      </td>
+      <td
+        className="border-r px-1 py-0.5 text-stone-700" title="Сумма по экспедитору. Перезапишется при следующей правке реестра/ЭСФ."
+        data-col="invoice_amount" data-deal-id={deal.id}
+        data-value={deal.invoice_amount ?? undefined}
+      >
+        <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
+      </td>
+      {/* Тариф факт (грузоотпр.) — 00120: авто = Сумма грузоотпр. ÷
+          входящее СНТ; ручная правка закрепляет. */}
+      <td
+        className="border-r px-1 py-0.5 text-stone-700"
+        data-col="shipper_actual_tariff" data-deal-id={deal.id}
+        data-value={deal.shipper_actual_tariff ?? undefined}
+      ><EditableNumCell value={deal.shipper_actual_tariff} dealId={deal.id} field="shipper_actual_tariff" overrideField="shipper_actual_tariff_override" overridden={deal.shipper_actual_tariff_override} /></td>
+      <td
+        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
+        title="Сумма грузоотправителя = SUM(shipment_registry.additional_expenses)."
+        data-col="additional_expenses_amount" data-deal-id={deal.id}
+        data-value={deal.additional_expenses_amount ?? undefined}
+      >
+        {formatComputedNum(deal.additional_expenses_amount)}
+      </td>
       <td
         className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: отгружено − оплата"
         data-col="supplier_balance" data-deal-id={deal.id}
@@ -1246,18 +1315,15 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dataCol="buyer_payment_gross"
         dataValue={deal.buyer_payment_gross}
       />
-      <PaymentBreakdownCell
-        dealId={deal.id}
-        gross={deal.buyer_payment_gross}
-        refund={deal.buyer_refund_total}
-        balance={deal.buyer_debt}
-        side="buyer"
-        kind="refund"
-        currency={deal.buyer_currency ?? ""}
+      {/* Взаимозачет (00145) — со знаком, в «Оплату» не входит. */}
+      <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
-        dataCol="buyer_refund_total"
-        dataValue={deal.buyer_refund_total}
-      />
+        title="Взаимозачёты со знаком. В «Оплату» не входят, в долг прибавляются."
+        data-col="buyer_offset_total" data-deal-id={deal.id}
+        data-value={deal.buyer_offset_total ?? undefined}
+      >
+        <ComputedNumSigned value={deal.buyer_offset_total} />
+      </td>
       <td
         className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: оплата − отгружено"
         data-col="buyer_debt" data-deal-id={deal.id}
@@ -1318,28 +1384,6 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
           source rows), so this is for quick manual entry on deals
           that haven't been shipped yet. Title makes the rule
           visible on hover. */}
-      <td
-        className="border-r px-1 py-0.5 text-stone-700" title="Сумма по экспедитору. Перезапишется при следующей правке реестра/ЭСФ."
-        data-col="invoice_amount" data-deal-id={deal.id}
-        data-value={deal.invoice_amount ?? undefined}
-      >
-        <EditableNumCell value={deal.invoice_amount} dealId={deal.id} field="invoice_amount" />
-      </td>
-      {/* Тариф факт (грузоотпр.) — 00120: авто = Сумма грузоотпр. ÷
-          входящее СНТ; ручная правка закрепляет. */}
-      <td
-        className="border-r px-1 py-0.5 text-stone-700"
-        data-col="shipper_actual_tariff" data-deal-id={deal.id}
-        data-value={deal.shipper_actual_tariff ?? undefined}
-      ><EditableNumCell value={deal.shipper_actual_tariff} dealId={deal.id} field="shipper_actual_tariff" overrideField="shipper_actual_tariff_override" overridden={deal.shipper_actual_tariff_override} /></td>
-      <td
-        className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
-        title="Сумма грузоотправителя = SUM(shipment_registry.additional_expenses)."
-        data-col="additional_expenses_amount" data-deal-id={deal.id}
-        data-value={deal.additional_expenses_amount ?? undefined}
-      >
-        {formatComputedNum(deal.additional_expenses_amount)}
-      </td>
       <td className="px-1 py-0.5 text-stone-700">
         <EditableSelectCell value={deal.supplier_manager_id} displayLabel={(deal.supplier_manager_id && managerLabels.get(deal.supplier_manager_id)) || ""} dealId={deal.id} field="supplier_manager_id" options={refs.managers} />
       </td>
@@ -1483,6 +1527,7 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
   supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 2 },
   supplier_refund_total:      { label: "Возврат/Перезачет (Поставщик)", decimals: 2 },
+  supplier_offset_total:      { label: "Взаимозачет (Поставщик)",    decimals: 2 },
   supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
   buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
@@ -1493,6 +1538,7 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 2 },
   buyer_payment_gross:        { label: "Оплата (Покупатель)",         decimals: 2 },
   buyer_refund_total:         { label: "Возврат/Перезачет (Покупатель)", decimals: 2 },
+  buyer_offset_total:         { label: "Взаимозачет (Покупатель)",   decimals: 2 },
   buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
   planned_tariff:             { label: "Тариф",                       decimals: 2 },
   actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 2 },
@@ -1934,7 +1980,11 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Приход, сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fce3d6]">Приход, тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Оплата</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[85px] bg-[#fce3d6]" title="Возвраты и перезачёты (refund + offset). Вычитаются из оплаты при расчёте баланса.">Возврат/Перезачет</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]">Дата оплаты</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fce3d6]" title="Взаимозачёты со знаком. В «Оплату» не входят, в баланс прибавляются.">Взаимозачет</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fce3d6]" title="Тариф менеджер = Сумма грузоотправления ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф менеджер</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]" title="Сумма по экспедитору.">Сумма ЖД</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]" title="Сумма грузоотправления = SUM(shipment_registry.additional_expenses).">Сумма грузоотправления</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]">Баланс</th>
               {/* Company groups: 2 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#bcd7ee]">Компания</th>
@@ -1951,7 +2001,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Отгр. тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Отгр. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Оплата</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[85px] bg-[#fff2cc]" title="Возвраты и перезачёты (refund + offset). Вычитаются из оплаты при расчёте долга.">Возврат/Перезачет</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fff2cc]" title="Взаимозачёты со знаком. В «Оплату» не входят, в долг прибавляются.">Взаимозачет</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fff2cc]">Долг</th>
               {/* Logistics: 8 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Экспедитор</th>
@@ -1961,9 +2011,6 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Предв. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#d9d9d9]" title="Тариф факт (логисты) = Сумма ÷ объем СНТ (KZ — входящее, KG — исходящее). Авто; ручной ввод закрепляет.">Тариф факт</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#d9d9d9]">Факт объем</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#d9d9d9]">Сумма</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#d9d9d9]" title="Тариф менеджер = Сумма грузоотправителя ÷ входящее СНТ. Авто; ручной ввод закрепляет.">Тариф менеджер</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#d9d9d9]" title="ЭСФ грузоотправление = SUM(additional_expenses) из реестра. Если галочка «Грузоотправитель в цене» — плюсует к балансу поставщика.">ЭСФ грузоотправление</th>
               <th className="sticky top-7 z-20 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[90px] bg-[#d9d9d9]">Коммерция</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#e8e0f5]" title="Срок оплаты по приложению. «вручную» — плановую дату ставит менеджер.">Условия (Пост.)</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#e8e0f5]" title="Худшая по сделке: плановая дата минус сегодня. Минус — просрочка.">Дней (Пост.)</th>
@@ -2073,7 +2120,13 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "supplier_shipped_amount", label: "Приход, сумма", band: "supplier" },
   { key: "supplier_shipped_volume", label: "Приход, тонн", band: "supplier" },
   { key: "supplier_payment", label: "Оплата", band: "supplier" },
-  { key: "supplier_refund", label: "Возврат/Перезачет", band: "supplier" },
+  { key: "supplier_payment_date", label: "Дата оплаты", band: "supplier" },
+  { key: "supplier_offset", label: "Взаимозачет", band: "supplier" },
+  // Клиент 2026-08-12: три колонки переехали сюда из «Логистики» —
+  // они про деньги поставщика, а не про перевозку.
+  { key: "shipper_tariff", label: "Тариф менеджер", band: "supplier" },
+  { key: "invoice_amount", label: "Сумма ЖД", band: "supplier" },
+  { key: "additional_expenses", label: "Сумма грузоотправления", band: "supplier" },
   { key: "supplier_balance", label: "Баланс", band: "supplier" },
   { key: "groups", label: "Группы компании", band: "groups", hSpan: 2 },
   { key: "buyer", label: "Покупатель", band: "buyer" },
@@ -2087,7 +2140,7 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer" },
   { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer" },
   { key: "buyer_payment", label: "Оплата", band: "buyer" },
-  { key: "buyer_refund", label: "Возврат/Перезачет", band: "buyer" },
+  { key: "buyer_offset", label: "Взаимозачет", band: "buyer" },
   { key: "buyer_debt", label: "Долг", band: "buyer" },
   { key: "forwarder", label: "Экспедитор", band: "logistics" },
   { key: "logistics_group", label: "Группа комп.", band: "logistics" },
@@ -2096,9 +2149,6 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "preliminary_amount", label: "Предв. сумма", band: "logistics" },
   { key: "actual_tariff", label: "Тариф факт", band: "logistics" },
   { key: "actual_volume", label: "Факт объем", band: "logistics" },
-  { key: "invoice_amount", label: "Сумма", band: "logistics" },
-  { key: "shipper_tariff", label: "Тариф менеджер", band: "logistics" },
-  { key: "additional_expenses", label: "ЭСФ грузоотправление", band: "logistics" },
   { key: "manager", label: "Коммерция", band: "logistics" },
   // Условия оплаты (00141/00142). Стоят в конце строки намеренно:
   // номера колонок здесь управляют CSS-правилами скрытия и закрепления,
@@ -2328,7 +2378,11 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("amber", sum((d) => d.supplier_shipped_amount))}
       {num("amber", sum((d) => d.supplier_shipped_volume), 3)}
       {num("amber", sum((d) => d.supplier_payment_gross))}
-      {num("amber", sum((d) => d.supplier_refund_total))}
+      {blank("amber")}
+      {num("amber", sum((d) => d.supplier_offset_total))}
+      {blank("amber")}
+      {num("amber", sum((d) => d.invoice_amount))}
+      {num("amber", sum((d) => d.additional_expenses_amount))}
       {num("amber", sum((d) => d.supplier_balance))}
       {/* Группы компании (2 cols) */}
       {blank("purple")}{blank("purple")}
@@ -2343,7 +2397,7 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("blue", sum((d) => d.buyer_shipped_volume), 3)}
       {num("blue", sum((d) => d.buyer_shipped_amount))}
       {num("blue", sum((d) => d.buyer_payment_gross))}
-      {num("blue", sum((d) => d.buyer_refund_total))}
+      {num("blue", sum((d) => d.buyer_offset_total))}
       {num("blue", sum((d) => d.buyer_debt))}
       {/* Логистика (12 cols): expeditor / group / tariff blank-cells,
           затем суммируемые числа. Оба «Тариф факт» (00120) — ставки,
@@ -2353,9 +2407,6 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("stone", sum((d) => d.preliminary_amount))}
       {blank("stone")}
       {num("stone", sum((d) => d.actual_shipped_volume), 3)}
-      {num("stone", sum((d) => d.invoice_amount))}
-      {blank("stone")}
-      {num("stone", sum((d) => d.additional_expenses_amount))}
       {blank("stone")}
       {/* Условия оплаты — величины несуммируемые, ячейки пустые. */}
       {blank("stone")}{blank("stone")}{blank("stone")}{blank("stone")}
