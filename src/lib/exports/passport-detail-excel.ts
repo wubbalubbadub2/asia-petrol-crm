@@ -202,7 +202,7 @@ const COLUMNS: Column[] = [
       return price != null && s.ship?.loading_volume != null ? price * s.ship.loading_volume : null;
     } },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross, readShip: (_, s) => (s.supPay && !isRefundKind(s.supPay.payment_type) ? s.supPay.amount : null) },
-  { key: "supplier_refund", header: "Возврат/Перезачет", width: 16, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_refund_total, readShip: (_, s) => (s.supPay && isRefundKind(s.supPay.payment_type) ? s.supPay.amount : null) },
+  { key: "supplier_offset", header: "Взаимозачет", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_offset_total, readShip: (_, s) => (s.supPay?.payment_type === "offset" ? s.supPay.amount : null) },
   { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? excelDate(s.supPay.payment_date) : "") },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
@@ -236,7 +236,7 @@ const COLUMNS: Column[] = [
       return price != null && s.ship?.shipment_volume != null ? price * s.ship.shipment_volume : null;
     } },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment_gross, readShip: (_, s) => (s.buyPay && !isRefundKind(s.buyPay.payment_type) ? s.buyPay.amount : null) },
-  { key: "buyer_refund", header: "Возврат/Перезачет", width: 16, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_refund_total, readShip: (_, s) => (s.buyPay && isRefundKind(s.buyPay.payment_type) ? s.buyPay.amount : null) },
+  { key: "buyer_offset", header: "Взаимозачет", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_offset_total, readShip: (_, s) => (s.buyPay?.payment_type === "offset" ? s.buyPay.amount : null) },
   { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.buyPay?.payment_date ? excelDate(s.buyPay.payment_date) : "") },
   { key: "buyer_debt", header: "Долг / переплата", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_debt },
 

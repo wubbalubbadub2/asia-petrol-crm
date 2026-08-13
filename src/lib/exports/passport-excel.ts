@@ -122,7 +122,7 @@ const COLUMNS: Column[] = [
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross },
-  { key: "supplier_refund", header: "Возврат/Перезачет", width: 16, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_refund_total },
+  { key: "supplier_offset", header: "Взаимозачет", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_offset_total },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
   // ── Группы компании ────────────────────────────────────
@@ -154,7 +154,7 @@ const COLUMNS: Column[] = [
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment_gross },
-  { key: "buyer_refund", header: "Возврат/Перезачет", width: 16, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_refund_total },
+  { key: "buyer_offset", header: "Взаимозачет", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_offset_total },
   { key: "buyer_debt", header: "Долг / переплата", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_debt },
 
   // ── Логистика ──────────────────────────────────────────
