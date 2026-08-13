@@ -947,7 +947,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
           <Field label="Приход, сумма" value={deal.supplier_shipped_amount} suffix={supplierCurrencySymbol} />
           <Field label="Оплата" value={deal.supplier_payment_gross} suffix={`${supplierCurrencySymbol} (оплаты)`} />
-          <Field label="Возврат/Перезачет" value={deal.supplier_refund_total} suffix={`${supplierCurrencySymbol} (минусует)`} />
           <Field label="Дата оплаты" value={deal.supplier_payment_date} inputType="date" editing={editing} field="supplier_payment_date" dealId={deal.id} />
           {/* Взаимозачёт (00145) — отдельная величина со знаком, в
               «Оплату» не входит, в баланс прибавляется. */}
@@ -1033,7 +1032,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <Field label="Дата отгрузки" value={deal.buyer_ship_date} inputType="date" editing={editing} field="buyer_ship_date" dealId={deal.id} />
           <Field label="Сумма отгрузки" value={deal.buyer_shipped_amount} suffix={buyerCurrencySymbol} />
           <Field label="Оплата" value={deal.buyer_payment_gross} suffix={`${buyerCurrencySymbol} (оплаты)`} />
-          <Field label="Возврат/Перезачет" value={deal.buyer_refund_total} suffix={`${buyerCurrencySymbol} (минусует)`} />
           <Field label="Дата оплаты" value={deal.buyer_payment_date} inputType="date" editing={editing} field="buyer_payment_date" dealId={deal.id} />
           <Field label="Долг / переплата" value={deal.buyer_debt} suffix={`${buyerCurrencySymbol} (авто)`} />
         </div>

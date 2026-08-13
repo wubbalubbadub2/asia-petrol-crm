@@ -58,8 +58,6 @@ const COLS: Col[] = [
     cell: (r) => vol(r.supplierVolume), total: (rows) => vol(sum(rows, (r) => r.supplierVolume)) },
   { key: "sup_payment", header: "Оплата", band: "supplier", align: "right",
     cell: (r) => money(r.supplierPaymentGross), total: (rows) => money(sum(rows, (r) => r.supplierPaymentGross)) },
-  { key: "sup_refund", header: "Возврат/Перезачет", band: "supplier", align: "right",
-    cell: (r) => money(r.supplierRefund), total: (rows) => money(sum(rows, (r) => r.supplierRefund)) },
   { key: "sup_balance", header: "Баланс", band: "supplier", align: "right",
     cell: (r) => money(r.supplierBalance), total: (rows) => money(sum(rows, (r) => r.supplierBalance)) },
 
@@ -74,8 +72,6 @@ const COLS: Col[] = [
     cell: (r) => money(r.buyerAmount), total: (rows) => money(sum(rows, (r) => r.buyerAmount)) },
   { key: "buy_payment", header: "Оплата", band: "buyer", align: "right",
     cell: (r) => money(r.buyerPaymentGross), total: (rows) => money(sum(rows, (r) => r.buyerPaymentGross)) },
-  { key: "buy_refund", header: "Возврат/Перезачет", band: "buyer", align: "right",
-    cell: (r) => money(r.buyerRefund), total: (rows) => money(sum(rows, (r) => r.buyerRefund)) },
   { key: "buy_debt", header: "Долг", band: "buyer", align: "right",
     cell: (r) => money(r.buyerDebt), total: (rows) => money(sum(rows, (r) => r.buyerDebt)) },
 
