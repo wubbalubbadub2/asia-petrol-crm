@@ -348,6 +348,92 @@ function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
 // row column. The popover-button keeps the cell width constant and
 // keeps the inline-edit affordance discoverable (visible whenever the
 // popover is open).
+// Ячейка «Взаимозачет» с всплывающим окном — клиент 2026-08-12:
+// «нету всплывающего окошка для просмотра комментариев».
+//
+// Только просмотр, без правки. У двустороннего взаимозачёта есть
+// зеркало во встречной сделке, и правка отсюда должна была бы его
+// синхронизировать; безопаснее править в карточке сделки, где виден
+// вид зачёта и встречная сделка.
+function OffsetBreakdownCell({ dealId, side, value, currency, className }: {
+  dealId: string;
+  side: "supplier" | "buyer";
+  value: number | null | undefined;
+  currency: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<PaymentSnap[] | null>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const cellRef = useRef<HTMLTableCellElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchDealPayments(dealId, side).then((data) => {
+      if (!cancelled) setRows(data.filter((p) => p.payment_type === "offset"));
+    });
+    return () => { cancelled = true; };
+  }, [open, dealId, side]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (cellRef.current && !cellRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <>
+      <td
+        ref={cellRef}
+        onClick={() => {
+          const r = cellRef.current?.getBoundingClientRect();
+          if (r) setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+          setOpen((o) => !o);
+        }}
+        className={`${className ?? ""} cursor-pointer ${open ? "ring-2 ring-amber-300/70" : ""}`}
+        data-col={side === "supplier" ? "supplier_offset_total" : "buyer_offset_total"}
+        data-deal-id={dealId}
+        data-value={value != null ? String(value) : undefined}
+      >
+        <ComputedNumSigned value={value} />
+      </td>
+      {open && pos && typeof window !== "undefined" && createPortal(
+        <div
+          style={{ top: pos.top, right: pos.right }}
+          className="fixed z-50 min-w-[240px] max-w-[340px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl"
+        >
+          {rows === null ? (
+            <div className="font-mono">Загрузка…</div>
+          ) : rows.length === 0 ? (
+            <div className="font-medium">Взаимозачётов нет</div>
+          ) : (
+            <div>
+              <div className="mb-1 font-medium">Взаимозачётов: {rows.length}</div>
+              {rows.map((r) => (
+                <div key={r.id} className="border-t border-stone-700 py-1 first:border-0">
+                  <div className="font-mono tabular-nums">
+                    {formatNum(r.amount ?? 0)} {r.currency ?? currency}
+                  </div>
+                  {r.description ? (
+                    <div className="pl-1 text-[10px] text-stone-300">{r.description}</div>
+                  ) : (
+                    <div className="pl-1 text-[10px] text-stone-500">без комментария</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 function PaymentBreakdownCell({
   dealId, gross, refund, balance, side, kind, currency, className, dataCol, dataValue,
 }: {
@@ -1183,14 +1269,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         <EditableDateCell value={deal.supplier_payment_date} dealId={deal.id} field="supplier_payment_date" />
       </td>
       {/* Взаимозачет (00145) — со знаком, в «Оплату» не входит. */}
-      <td
+      <OffsetBreakdownCell
+        dealId={deal.id}
+        side="supplier"
+        value={deal.supplier_offset_total}
+        currency={deal.supplier_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
-        title="Взаимозачёты со знаком. В «Оплату» не входят, в баланс прибавляются."
-        data-col="supplier_offset_total" data-deal-id={deal.id}
-        data-value={deal.supplier_offset_total ?? undefined}
-      >
-        <ComputedNumSigned value={deal.supplier_offset_total} />
-      </td>
+      />
       <td
         className="border-r px-1 py-0.5 text-stone-700" title="Сумма по экспедитору. Перезапишется при следующей правке реестра/ЭСФ."
         data-col="invoice_amount" data-deal-id={deal.id}
@@ -1309,14 +1394,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dataValue={deal.buyer_payment_gross}
       />
       {/* Взаимозачет (00145) — со знаком, в «Оплату» не входит. */}
-      <td
+      <OffsetBreakdownCell
+        dealId={deal.id}
+        side="buyer"
+        value={deal.buyer_offset_total}
+        currency={deal.buyer_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
-        title="Взаимозачёты со знаком. В «Оплату» не входят, в долг прибавляются."
-        data-col="buyer_offset_total" data-deal-id={deal.id}
-        data-value={deal.buyer_offset_total ?? undefined}
-      >
-        <ComputedNumSigned value={deal.buyer_offset_total} />
-      </td>
+      />
       <td
         className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: оплата − отгружено"
         data-col="buyer_debt" data-deal-id={deal.id}
@@ -1610,7 +1694,16 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 
   // ── Per-user колонки (клиент 2026-07-17): скрытие + закрепление ──
   const [colPref, setColPref] = useUserPref<PassportColumnsPref>("passport_columns", { hidden: [], pinUntil: null });
-  const ptHidden = useMemo(() => new Set(colPref.hidden), [colPref.hidden]);
+  // Клиент 2026-08-12: «Сумма ЖД» и «Сумма грузоотправления» нужны
+  // только в KZ. В KG прячем принудительно, независимо от настройки
+  // колонок — там этих расходов просто нет.
+  const KZ_ONLY_COLS = ["invoice_amount", "additional_expenses"];
+  const ptHidden = useMemo(() => {
+    const set = new Set(colPref.hidden);
+    if (dealType === "KG") for (const k of KZ_ONLY_COLS) set.add(k);
+    return set;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colPref.hidden, dealType]);
   const ptHiddenDealCount = useMemo(
     () => PT_UNITS.filter((u) => u.band === "deal" && ptHidden.has(u.key)).length,
     [ptHidden],
