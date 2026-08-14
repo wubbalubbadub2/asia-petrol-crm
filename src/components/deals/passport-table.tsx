@@ -1353,20 +1353,20 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         data-col="buyer_ordered_volume" data-deal-id={deal.id}
         data-value={deal.buyer_ordered_volume ?? undefined}
       ><EditableNumCell value={deal.buyer_ordered_volume} dealId={deal.id} field="buyer_ordered_volume" /></td>
-      {/* Остаток — operator request 2026-06-23: «нужно добавить
-          колонку со стороны покупателя между Заявлено и Отгружено,
-          колонку Остаток по формуле отгружено минус заявлено».
-          Read-only computed: shipped − ordered (negative until
-          fulfilled, positive on overshipment). */}
+      {/* Остаток — колонка между «Заявлено» и «Отгружено» (оператор
+          2026-06-23). Формула перевёрнута клиентом 2026-08-14:
+          было «отгружено − заявлено», стало «заявлено − отгружено».
+          Теперь положительное значение = сколько ещё осталось
+          отгрузить, отрицательное = отгрузили сверх заявки. */}
       <td
-        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: отгружено − заявлено"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="auto: заявлено − отгружено"
         data-col="buyer_remaining" data-deal-id={deal.id}
-        data-value={((deal.buyer_shipped_volume ?? 0) - (deal.buyer_ordered_volume ?? 0))}
+        data-value={((deal.buyer_ordered_volume ?? 0) - (deal.buyer_shipped_volume ?? 0))}
       >
         {/* Остаток — это разность объёмов (тонн), не сумма; используем
             formatComputedVol чтобы было 3 знака после запятой, как и
             у других тоннажных колонок. */}
-        {formatComputedVol((deal.buyer_shipped_volume ?? 0) - (deal.buyer_ordered_volume ?? 0))}
+        {formatComputedVol((deal.buyer_ordered_volume ?? 0) - (deal.buyer_shipped_volume ?? 0))}
       </td>
       <VolumeBreakdownCell
         dealId={deal.id}
@@ -1934,7 +1934,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
       // Deal's typed field list without loosening the whole type.
       const raw =
         selection.colKey === "buyer_remaining"
-          ? (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0)
+          ? (d.buyer_ordered_volume ?? 0) - (d.buyer_shipped_volume ?? 0)
           : (d as unknown as Record<string, number | null | undefined>)[selection.colKey!];
       const v = typeof raw === "number" ? raw : null;
       if (v == null) continue;
@@ -2087,7 +2087,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Сумма дог.</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[60px] bg-[#fff2cc]">Цена</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Заявлено</th>
-              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]" title="отгружено − заявлено">Остаток</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]" title="заявлено − отгружено">Остаток</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Отгр. тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Отгр. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Оплата</th>
@@ -2486,7 +2486,7 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {blank("blue")}
       {blank("blue")}
       {num("blue", sum((d) => d.buyer_ordered_volume), 3)}
-      {num("blue", sum((d) => (d.buyer_shipped_volume ?? 0) - (d.buyer_ordered_volume ?? 0)), 3)}
+      {num("blue", sum((d) => (d.buyer_ordered_volume ?? 0) - (d.buyer_shipped_volume ?? 0)), 3)}
       {num("blue", sum((d) => d.buyer_shipped_volume), 3)}
       {num("blue", sum((d) => d.buyer_shipped_amount))}
       {num("blue", sum((d) => d.buyer_payment_gross))}
