@@ -1306,6 +1306,7 @@ export type Database = {
           actual_tariff: number | null
           actual_tariff_override: boolean
           additional_expenses_amount: number | null
+          supplier_railway_amount: number | null
           additional_expenses_in_price: boolean | null
           archived_at: string | null
           avg_month_date: string | null
@@ -1412,6 +1413,7 @@ export type Database = {
           actual_tariff?: number | null
           actual_tariff_override?: boolean
           additional_expenses_amount?: number | null
+          supplier_railway_amount?: number | null
           additional_expenses_in_price?: boolean | null
           archived_at?: string | null
           avg_month_date?: string | null
@@ -1518,6 +1520,7 @@ export type Database = {
           actual_tariff?: number | null
           actual_tariff_override?: boolean
           additional_expenses_amount?: number | null
+          supplier_railway_amount?: number | null
           additional_expenses_in_price?: boolean | null
           archived_at?: string | null
           avg_month_date?: string | null
@@ -3813,6 +3816,8 @@ export type Database = {
           loading_date: string | null
           loading_volume: number | null
           manager_tariff: number | null
+          supplier_railway_amount: number | null
+          supplier_railway_tariff: number | null
           month: string | null
           price_source: string | null
           quarter: string | null
@@ -3858,6 +3863,8 @@ export type Database = {
           loading_date?: string | null
           loading_volume?: number | null
           manager_tariff?: number | null
+          supplier_railway_amount?: number | null
+          supplier_railway_tariff?: number | null
           month?: string | null
           price_source?: string | null
           quarter?: string | null
@@ -3903,6 +3910,8 @@ export type Database = {
           loading_date?: string | null
           loading_volume?: number | null
           manager_tariff?: number | null
+          supplier_railway_amount?: number | null
+          supplier_railway_tariff?: number | null
           month?: string | null
           price_source?: string | null
           quarter?: string | null

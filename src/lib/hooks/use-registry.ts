@@ -54,6 +54,13 @@ export type ShipmentRecord = {
   // Клиент 2026-07-10: тариф от менеджера, только KZ. Формула
   // additional_expenses = ceil(loading_volume) × manager_tariff.
   manager_tariff?: number | null;
+  // Клиент 2026-08-15: «Сумма 2 — сумма ЖД расходов от поставщика»
+  // (migration 00150, только KZ). Связь двусторонняя: правишь тариф —
+  // пересчитывается сумма, правишь сумму — пересчитывается тариф.
+  // База — округл. входящее СНТ. Флага override нет: он не нужен,
+  // ручной ввод суммы не замораживается, а переводится в тариф.
+  supplier_railway_tariff?: number | null;
+  supplier_railway_amount?: number | null;
   // Migration 00117 — TRUE = тариф введён вручную; propagation из
   // справочника tariffs эту строку не обновляет.
   railway_tariff_override?: boolean | null;
@@ -103,6 +110,7 @@ const REG_SELECT = `
   supplier_appendix, buyer_appendix,
   invoice_number, comment, currency,
   additional_expenses, additional_expenses_override, manager_tariff,
+  supplier_railway_tariff, supplier_railway_amount,
   created_at,
   deal:deals(deal_code, currency, logistics_currency, year, month, supplier_departure_station_id, buyer_destination_station_id, supplier_contract, buyer_contract)
 `;
@@ -293,6 +301,8 @@ export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
   additional_expenses?: number | null;
   additional_expenses_override?: boolean | null;
   manager_tariff?: number | null;
+  supplier_railway_tariff?: number | null;
+  supplier_railway_amount?: number | null;
   railway_tariff_override?: boolean | null;
   loading_date?: string | null;
 };

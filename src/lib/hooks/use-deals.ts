@@ -96,6 +96,9 @@ export type Deal = {
   invoice_amount: number | null;
   additional_expenses_amount: number | null;
   additional_expenses_in_price: boolean | null;
+  // «Сумма 2» — ЖД расходы от поставщика, rollup по реестру (00150).
+  // Только показ в блоке «Поставщик»; в supplier_balance не входит.
+  supplier_railway_amount: number | null;
   logistics_notes: string | null;
   surcharge_amount: number | null;
   surcharge_reinvoiced_to: string | null;
@@ -368,6 +371,7 @@ const LIST_SELECT = `
   actual_tariff_override, shipper_actual_tariff, shipper_actual_tariff_override,
   actual_shipped_volume, invoice_amount, invoice_volume,
   additional_expenses_amount, additional_expenses_in_price,
+  supplier_railway_amount,
   logistics_currency, currency, is_archived, is_hidden, is_draft, created_at,
   supplier_lines_count, buyer_lines_count,
   supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date,

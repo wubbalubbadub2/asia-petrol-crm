@@ -95,6 +95,8 @@ const COLUMNS_PTS: Column[] = [
   { key: "railway_tariff",    header: "Тариф (логисты)",     width: 14, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.railway_tariff },
   { key: "rounded_tonnage",   header: "округл тоннаж от экспедитора", width: 16, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedTonnage(r) },
   { key: "shipped_amount",    header: "Сумма по тоннажу",    width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
+  { key: "supplier_railway_tariff", header: "Тариф ЖД (поставщик)", width: 16, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.supplier_railway_tariff ?? null },
+  { key: "supplier_railway_amount", header: "Сумма ЖД (поставщик)", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.supplier_railway_amount ?? null },
   { key: "manager_tariff",    header: "Тариф (менеджер)",    width: 14, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.manager_tariff ?? null },
   { key: "additional_expenses", header: "Сумма грузоотправителя", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.additional_expenses ?? null },
   { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? "" },
@@ -131,6 +133,8 @@ const COLUMNS_FULL: Column[] = [
   { key: "railway_tariff",      header: "Тариф (логисты)",  width: 14, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.railway_tariff },
   { key: "rounded_tonnage",     header: "Округл. тоннаж",   width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedTonnage(r) },
   { key: "shipped_amount",      header: "Сумма",            width: 16, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.shipped_tonnage_amount },
+  { key: "supplier_railway_tariff", header: "Тариф ЖД (поставщик)", width: 16, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.supplier_railway_tariff ?? null },
+  { key: "supplier_railway_amount", header: "Сумма ЖД (поставщик)", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.supplier_railway_amount ?? null },
   { key: "additional_expenses", header: "Сумма грузоотправителя", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.additional_expenses ?? null },
   { key: "currency",            header: "Валюта",           width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? "" },
   { key: "destination_station", header: "Ст. назн.",        width: 16, read: (r, l) => (r.destination_station_id && l.station.get(r.destination_station_id)) || "" },
@@ -251,7 +255,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     totalRow.height = 22;
     // Клиент 2026-07-15: «итоги не появились» — входящее СНТ и сумма
     // грузоотправителя не суммировались. Тарифы — ставки, не суммируем.
-    const TOTAL_KEYS = new Set(["shipment_volume", "loading_volume", "rounded_tonnage", "shipped_amount", "additional_expenses"]);
+    const TOTAL_KEYS = new Set(["shipment_volume", "loading_volume", "rounded_tonnage", "shipped_amount", "additional_expenses", "supplier_railway_amount"]);
     columns.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };

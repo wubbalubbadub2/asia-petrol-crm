@@ -243,6 +243,8 @@ function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg"
   let loading = 0, shipment = 0, rounded = 0;
   const amountByCur = new Map<string, number>();
   const shipperByCur = new Map<string, number>();
+  // «Сумма 2» — ЖД расходы от поставщика (00150), только KZ.
+  const supRailByCur = new Map<string, number>();
   for (const r of records) {
     loading += r.loading_volume ?? 0;
     shipment += r.shipment_volume ?? 0;
@@ -254,6 +256,7 @@ function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg"
     const cur = currencyFor(r, tab);
     if (r.shipped_tonnage_amount != null) amountByCur.set(cur, (amountByCur.get(cur) ?? 0) + r.shipped_tonnage_amount);
     if (r.additional_expenses != null) shipperByCur.set(cur, (shipperByCur.get(cur) ?? 0) + r.additional_expenses);
+    if (r.supplier_railway_amount != null) supRailByCur.set(cur, (supRailByCur.get(cur) ?? 0) + r.supplier_railway_amount);
   }
   const fmtByCur = (m: Map<string, number>) =>
     [...m.entries()].map(([c, v]) => `${fmtMoney(v)} ${c}`).join(" · ");
@@ -270,6 +273,10 @@ function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg"
       <td colSpan={2} className="border-r" />
       <td className={num}>{fmtVol(rounded)}</td>
       <td className={num}>{fmtByCur(amountByCur)}</td>
+      {/* Тариф ЖД (поставщик) — тарифы не суммируются */}
+      {tab === "kz" && <td className="border-r" />}
+      {tab === "kz" && <td className={num}>{fmtByCur(supRailByCur)}</td>}
+      {/* Тариф (менеджер) */}
       {tab === "kz" && <td className="border-r" />}
       <td className={num}>{fmtByCur(shipperByCur)}</td>
       {/* валюта + ст. назн. + ст. отпр. + прил. + № СФ + коммент + delete */}
@@ -2161,6 +2168,15 @@ export default function RegistryPage() {
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]" title="Тариф логистов (railway_tariff). Умножается на округл. базу → «Сумма».">Тариф (логисты)</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[70px]">округл</th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[65px]">сумма</th>
+                          {/* Клиент 2026-08-15, «Сумма 2»: ЖД расходы от поставщика.
+                              Пара тариф ↔ сумма считается в обе стороны от округл.
+                              входящего СНТ (migration 00150). Только KZ. */}
+                          {tab === "kz" && (
+                            <>
+                              <th className="border-r px-2 py-1 text-right font-medium min-w-[80px]" title="Тариф ЖД расходов от поставщика (supplier_railway_tariff, только KZ). Умножается на округл. входящее СНТ → «Сумма ЖД (поставщик)».">Тариф ЖД (поставщик)</th>
+                              <th className="border-r px-2 py-1 text-right font-medium min-w-[90px]" title="Сумма ЖД расходов от поставщика. Двусторонняя формула: правишь сумму — пересчитывается тариф (сумма ÷ округл. входящее СНТ). В баланс поставщика не входит.">Сумма ЖД (поставщик)</th>
+                            </>
+                          )}
                           {tab === "kz" && (
                             <th className="border-r px-2 py-1 text-right font-medium min-w-[80px]" title="Тариф менеджера (manager_tariff, только KZ). Умножается на округл. базу → «Сумма грузоотправителя».">Тариф (менеджер)</th>
                           )}
@@ -2273,6 +2289,16 @@ export default function RegistryPage() {
                                   suffix={currencyFor(r, tab)}
                                 />
                               </td>
+                              {/* «Сумма 2» — ЖД расходы от поставщика (00150). Обе
+                                  ячейки редактируемые: триггер сам решает, какую
+                                  сторону пересчитать. Флага override нет — ручная
+                                  сумма превращается в тариф, а не замораживается. */}
+                              {tab === "kz" && (
+                                <>
+                                  <td className="border-r px-1 py-0.5"><EN value={r.supplier_railway_tariff} recId={r.id} field="supplier_railway_tariff" onSaved={reload} /></td>
+                                  <td className="border-r px-1 py-0.5"><EN value={r.supplier_railway_amount} recId={r.id} field="supplier_railway_amount" onSaved={reload} /></td>
+                                </>
+                              )}
                               {tab === "kz" && (
                                 <td className="border-r px-1 py-0.5"><EN value={r.manager_tariff} recId={r.id} field="manager_tariff" onSaved={reload} /></td>
                               )}
