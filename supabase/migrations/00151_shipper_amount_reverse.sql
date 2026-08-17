@@ -188,92 +188,93 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ── Разбор накопленных override-строк ───────────────────────────────
--- Снимок сумм ДО правки. Сверяем по нему построчно в конце: разошлась
--- хотя бы одна больше чем на копейку — миграция падает целиком.
+-- Всё в ОДНОМ DO-блоке, без временных таблиц. Первая версия держала
+-- снимок сумм в TEMP TABLE и падала в SQL-редакторе Supabase с
+-- «relation "_m151_before" does not exist»: там каждый запрос идёт
+-- своим соединением из пула, и временная таблица до следующего
+-- запроса не доживает. Снимок теперь не нужен — исходную сумму
+-- каждой строки держим в переменной цикла и сверяем тут же.
 --
--- Обычная временная таблица без ON COMMIT DROP: файл может исполняться
--- в автокоммите, и ON COMMIT DROP снёс бы снимок сразу после создания.
-DROP TABLE IF EXISTS _m151_before;
-CREATE TEMP TABLE _m151_before AS
-SELECT id, additional_expenses AS amount_before, manager_tariff AS tariff_before
-  FROM shipment_registry
- WHERE COALESCE(additional_expenses_override, FALSE)
-    OR additional_expenses IS NOT NULL;
-
+-- Миграция идемпотентна: после успешного прохода флаг снят, и
+-- повторный запуск ничего не находит. Безопасно перезапускать.
 DO $$
 DECLARE
-  v_derived  INT;
-  v_restored INT;
-  v_kept     INT;
-  v_moved    INT;
-  v_worst    NUMERIC;
+  r          RECORD;
+  v_base     NUMERIC;
+  v_after    NUMERIC;
+  v_derived  INT := 0;
+  v_restored INT := 0;
+  v_kept     INT := 0;
+  v_sum_before NUMERIC;
+  v_sum_after  NUMERIC;
 BEGIN
-  -- Выводим тариф из ручной суммы там, где база есть. Саму сумму не
-  -- трогаем — она остаётся той, что ввёл человек, а тариф подстраивается
-  -- под неё. Это и есть обратная формула.
-  --
-  -- Тариф считаем напрямую, а не «прогоном триггера»: обратная формула
-  -- внутри срабатывает по IS DISTINCT FROM на сумме, а сумма здесь как
-  -- раз и не должна меняться. Выражение базы повторяет v_effective_base
-  -- из триггера: сперва ручное округление, иначе объём по типу реестра
-  -- с учётом round_volume.
-  UPDATE shipment_registry r
-     SET manager_tariff = r.additional_expenses / (
-           CASE
-             WHEN r.rounded_volume_override IS NOT NULL THEN r.rounded_volume_override
-             WHEN r.registry_type = 'KZ' THEN
-               CASE WHEN r.round_volume THEN CEIL(r.loading_volume) ELSE r.loading_volume END
-             ELSE
-               CASE WHEN r.round_volume THEN CEIL(r.shipment_volume) ELSE r.shipment_volume END
-           END),
-         additional_expenses_override = FALSE
-   WHERE COALESCE(r.additional_expenses_override, FALSE)
-     AND r.additional_expenses IS NOT NULL
-     AND COALESCE(
-           CASE
-             WHEN r.rounded_volume_override IS NOT NULL THEN r.rounded_volume_override
-             WHEN r.registry_type = 'KZ' THEN
-               CASE WHEN r.round_volume THEN CEIL(r.loading_volume) ELSE r.loading_volume END
-             ELSE
-               CASE WHEN r.round_volume THEN CEIL(r.shipment_volume) ELSE r.shipment_volume END
-           END, 0) > 0;
-  GET DIAGNOSTICS v_derived = ROW_COUNT;
+  SELECT COALESCE(SUM(additional_expenses), 0) INTO v_sum_before FROM shipment_registry;
 
-  -- Проставив тариф, мы запустили прямую формулу, и она пересчитала
-  -- сумму из тарифа. Там, где сумма на объём нацело не делится, это
-  -- даёт осадок в доли тиына: 1000 ÷ 30 = 33.3333, обратно 30 × 33.3333
-  -- = 999.9990. На экране (2 знака) не видно, но в базе цифра уже не
-  -- та, что ввёл человек.
-  --
-  -- Возвращаем исходные суммы. Обратная ветка триггера ловит правку
-  -- суммы, сохраняет её как есть и выводит из неё тот же тариф —
-  -- поэтому второй проход сходится и осадка не оставляет.
-  UPDATE shipment_registry r
-     SET additional_expenses = b.amount_before
-    FROM _m151_before b
-   WHERE r.id = b.id
-     AND r.additional_expenses IS DISTINCT FROM b.amount_before;
-  GET DIAGNOSTICS v_restored = ROW_COUNT;
+  FOR r IN
+    SELECT id, additional_expenses, registry_type, loading_volume,
+           shipment_volume, round_volume, rounded_volume_override
+      FROM shipment_registry
+     WHERE COALESCE(additional_expenses_override, FALSE)
+       AND additional_expenses IS NOT NULL
+  LOOP
+    -- Выражение базы повторяет v_effective_base из триггера: сперва
+    -- ручное округление, иначе объём по типу реестра с учётом round_volume.
+    v_base := CASE
+      WHEN r.rounded_volume_override IS NOT NULL THEN r.rounded_volume_override
+      WHEN r.registry_type = 'KZ' THEN
+        CASE WHEN r.round_volume THEN CEIL(r.loading_volume) ELSE r.loading_volume END
+      ELSE
+        CASE WHEN r.round_volume THEN CEIL(r.shipment_volume) ELSE r.shipment_volume END
+    END;
 
-  SELECT count(*) INTO v_kept
-    FROM shipment_registry
-   WHERE COALESCE(additional_expenses_override, FALSE);
+    IF COALESCE(v_base, 0) <= 0 THEN
+      -- Базы нет — тариф выводить не из чего. Строка остаётся ручной,
+      -- флаг защищает введённую человеком сумму.
+      v_kept := v_kept + 1;
+      CONTINUE;
+    END IF;
 
-  -- Допуска нет: после восстановления суммы обязаны совпасть точь-в-точь.
-  SELECT count(*), COALESCE(MAX(ABS(COALESCE(r.additional_expenses, 0) - COALESCE(b.amount_before, 0))), 0)
-    INTO v_moved, v_worst
-    FROM _m151_before b
-    JOIN shipment_registry r ON r.id = b.id
-   WHERE r.additional_expenses IS DISTINCT FROM b.amount_before;
+    -- Тариф считаем напрямую, а не «прогоном триггера»: обратная
+    -- формула внутри срабатывает по IS DISTINCT FROM на сумме, а сумма
+    -- здесь как раз меняться не должна.
+    UPDATE shipment_registry
+       SET manager_tariff = r.additional_expenses / v_base,
+           additional_expenses_override = FALSE
+     WHERE id = r.id;
+    v_derived := v_derived + 1;
 
-  IF v_moved > 0 THEN
+    -- Проставив тариф, мы запустили прямую формулу, и она пересчитала
+    -- сумму из тарифа. Там, где сумма на объём нацело не делится, это
+    -- даёт осадок в доли тиына: 1000 ÷ 30 = 33.3333, обратно
+    -- 30 × 33.3333 = 999.9990. На экране (2 знака) не видно, но в базе
+    -- цифра уже не та, что ввёл человек.
+    SELECT additional_expenses INTO v_after FROM shipment_registry WHERE id = r.id;
+
+    IF v_after IS DISTINCT FROM r.additional_expenses THEN
+      -- Возвращаем исходную сумму. Обратная ветка триггера ловит правку
+      -- суммы, сохраняет её как есть и выводит из неё тот же тариф —
+      -- второй проход сходится и осадка не оставляет.
+      UPDATE shipment_registry SET additional_expenses = r.additional_expenses WHERE id = r.id;
+      v_restored := v_restored + 1;
+
+      SELECT additional_expenses INTO v_after FROM shipment_registry WHERE id = r.id;
+      IF v_after IS DISTINCT FROM r.additional_expenses THEN
+        RAISE EXCEPTION
+          '00151: строка % — сумма не вернулась к исходной (% вместо %). Миграция отменена.',
+          r.id, v_after, r.additional_expenses;
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- Контрольная сумма по всей таблице: ловит и те строки, которых цикл
+  -- не касался. Допуска нет — итог обязан совпасть точь-в-точь.
+  SELECT COALESCE(SUM(additional_expenses), 0) INTO v_sum_after FROM shipment_registry;
+  IF v_sum_after IS DISTINCT FROM v_sum_before THEN
     RAISE EXCEPTION
-      '00151: Сумма 3 сдвинулась в % строках, максимум на %. Миграция отменена.',
-      v_moved, v_worst;
+      '00151: итог Суммы 3 по реестру поехал с % на %. Миграция отменена.',
+      v_sum_before, v_sum_after;
   END IF;
 
-  RAISE NOTICE '00151: тариф выведен из ручной суммы в % строках; % сумм восстановлено после округления тарифа; % строк остались ручными (нет базы); ни одна сумма не изменилась',
-    v_derived, v_restored, v_kept;
+  RAISE NOTICE '00151: тариф выведен из ручной суммы в % строках; % сумм восстановлено после округления тарифа; % строк остались ручными (нет базы); итог по реестру % — не изменился',
+    v_derived, v_restored, v_kept, v_sum_after;
 END $$;
-
-DROP TABLE IF EXISTS _m151_before;
