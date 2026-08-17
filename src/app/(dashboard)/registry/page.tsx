@@ -2178,9 +2178,9 @@ export default function RegistryPage() {
                             </>
                           )}
                           {tab === "kz" && (
-                            <th className="border-r px-2 py-1 text-right font-medium min-w-[80px]" title="Тариф менеджера (manager_tariff, только KZ). Умножается на округл. базу → «Сумма грузоотправителя».">Тариф (менеджер)</th>
+                            <th className="border-r px-2 py-1 text-right font-medium min-w-[80px]" title="Тариф менеджера (manager_tariff, только KZ). Двусторонняя формула: тариф × округл. база → «Сумма грузоотправителя», и обратно — сумма ÷ округл. база → тариф.">Тариф (менеджер)</th>
                           )}
-                          <th className="border-r px-2 py-1 text-right font-medium min-w-[90px]" title="Сумма грузоотправителя. Если в сделке включена галочка «Грузоотправитель в цене» — плюсуется к балансу поставщика.">Сумма грузоотправителя</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[90px]" title="Сумма грузоотправителя = округл. база × Тариф (менеджер). Ввод суммы пересчитывает тариф. Если в сделке включена галочка «Грузоотправитель в цене» — плюсуется к балансу поставщика.">Сумма грузоотправителя</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[70px]">
                             <span className="inline-flex items-center gap-1">
                               валюта
@@ -2302,10 +2302,11 @@ export default function RegistryPage() {
                               {tab === "kz" && (
                                 <td className="border-r px-1 py-0.5"><EN value={r.manager_tariff} recId={r.id} field="manager_tariff" onSaved={reload} /></td>
                               )}
-                              {/* Клиент 2026-07-14: сумму грузоотправителя нужно вносить и БЕЗ
-                                  тарифа менеджера. Без override-флага BEFORE-триггер (00113)
-                                  перетирал ручной ввод (manager_tariff NULL → сумма NULL). */}
-                              <td className="border-r px-1 py-0.5"><EN value={r.additional_expenses} recId={r.id} field="additional_expenses" overrideField="additional_expenses_override" overridden={r.additional_expenses_override} titleManual="Сумма введена вручную — авто-расчёт (округл × Тариф (менеджер)) её не трогает." titleAuto="Авто: округл. база × Тариф (менеджер). Введите значение, чтобы закрепить вручную." onSaved={reload} /></td>
+                              {/* Клиент 2026-08-15: у Суммы 3 обратная формула — ввод суммы
+                                  пересчитывает «Тариф (менеджер)» (сумма ÷ округл. база),
+                                  а не замораживает её флагом (00151). Флаг остался только
+                                  для строк без базы: там тариф выводить не из чего. */}
+                              <td className="border-r px-1 py-0.5"><EN value={r.additional_expenses} recId={r.id} field="additional_expenses" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ES
                                   value={r.currency}
