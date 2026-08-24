@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, Fragment , useCallback } from "react";
-import { Plus, Filter, Trash2, X } from "lucide-react";
+import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import { computeDtKtSaldo } from "@/lib/dtkt/saldo";
@@ -437,6 +438,52 @@ export default function DtKtPage() {
     return { opening, payment, regVol, regAmt, refund, fines, surcharge, ogem, saldo };
   }, [filtered, getRegistrySum, paymentOf]);
 
+  // Excel — динамический import(), exceljs не тянется в основной бандл.
+  // Выгружается ТЕКУЩАЯ выборка, чтобы файл совпадал с экраном, и с теми
+  // же величинами: сальдо считает страница, экспорт его только печатает.
+  // Два варианта (клиент 2026-08-25): сокращённый — как таблица;
+  // детальный — плюс даты/суммы оплат и АВР от экспедитора.
+  const [exporting, setExporting] = useState(false);
+  async function handleExport(variant: "short" | "detail") {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { exportDtKtToExcel } = await import("@/lib/exports/dtkt-excel");
+      const rows = filtered.map((rec) => {
+        const reg = getRegistrySum(rec.forwarder_id, rec.company_group_id);
+        const pay = paymentOf(rec);
+        return {
+          forwarderId: rec.forwarder_id,
+          companyGroupId: rec.company_group_id,
+          forwarder: rec.forwarder?.name ?? "—",
+          companyGroup: rec.company_group?.name ?? "—",
+          year: rec.year ?? null,
+          openingBalance: rec.opening_balance,
+          payment: pay,
+          shippedVolume: reg.vol,
+          shippedAmount: reg.amt,
+          refund: rec.refund,
+          fines: rec.fines,
+          surcharge: rec.surcharge_preliminary,
+          ogem: rec.ogem,
+          saldo: computeSaldo(rec, reg.amt, pay),
+          payments: (dtktPayments[rec.id] ?? []).map((p) => ({
+            date: p.payment_date,
+            amount: p.amount,
+            currency: p.currency,
+            description: p.description,
+          })),
+        };
+      });
+      await exportDtKtToExcel(rows, { year: yearFilter, variant });
+      toast.success("Файл готов");
+    } catch (e) {
+      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function clearAllFilters() {
     setForwarderFilter("");
     setCompanyGroupFilter("");
@@ -448,9 +495,38 @@ export default function DtKtPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">ДТ-КТ Логистика</h1>
-        <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setShowAdd(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />Добавить
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            {/* DropdownMenuTrigger не принимает asChild в типах этого
+                репозитория — триггер стилизован под соседнюю кнопку,
+                как в паспорте и реестре. */}
+            <DropdownMenuTrigger
+              className="inline-flex items-center justify-center whitespace-nowrap gap-1 h-8 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium shadow-xs hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              disabled={exporting || filtered.length === 0}
+              title="Экспорт текущей выборки в Excel"
+            >
+              {exporting ? <Loader2 className="mr-0.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-0.5 h-3.5 w-3.5" />}
+              Excel
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuItem onClick={() => handleExport("short")} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">Сальдо (сокращённый)</span>
+                  <span className="text-[11px] text-stone-500">Одна строка на экспедитора и плательщика ЖД</span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("detail")} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">Сальдо (детальный)</span>
+                  <span className="text-[11px] text-stone-500">Плюс даты и суммы оплат и АВР от экспедитора</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setShowAdd(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Добавить
+          </Button>
+        </div>
       </div>
       <div className="space-y-2">
         <div className="flex items-center gap-3 flex-wrap">

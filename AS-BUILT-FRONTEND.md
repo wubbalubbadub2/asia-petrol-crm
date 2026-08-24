@@ -372,6 +372,7 @@ Single source of truth: `src/lib/dtkt/saldo.ts`. Color: Green (positive), Red (n
 - Add payment per DT-KT row
 - "Добавить" button → AddDtKtDialog
 - Delete DT-KT row: trash icon → cascades to dt_kt_payments
+- Excel dropdown → `src/lib/exports/dtkt-excel.ts`: «Сальдо (сокращённый)» (one row per forwarder × payer) and «Сальдо (детальный)» (collapsible sub-rows: payment dates/amounts/currency and АВР dates/tonnage/amounts grouped by shipment date). Exports the currently filtered rows; saldo comes from the page, never recomputed in the exporter.
 
 ---
 
