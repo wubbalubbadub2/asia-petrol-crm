@@ -7,9 +7,9 @@
 // Запуск: node scripts/dtkt-saldo-check.mjs [year] [path-to-env]
 //   node scripts/dtkt-saldo-check.mjs 2026
 //
-// Формула (клиент 2026-08-12):
-//   Сальдо = Сальдо 1 янв + Оплата + Возврат − Отгрузка − Штрафы − Сверхнорм − ОГЭМ
-//   минус = нам должны, плюс = мы должны.
+// Формула (клиент 2026-08-25):
+//   Сальдо = Сальдо 1 янв + Возврат + Отгрузка + Штрафы + Сверхнорм + ОГЭМ − Оплата
+//   плюс = мы должны экспедитору, минус = нам должны.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
@@ -75,20 +75,20 @@ for (const r of ship) {
 }
 
 console.log(`\nДТ-КТ Логистика — сверка сальдо за ${YEAR} год (${recs.length} записей)`);
-console.log(`Формула: Сальдо 1 янв + Оплата + Возврат − Отгрузка − Штрафы − Сверхнорм − ОГЭМ`);
-console.log(`Знак: минус = нам должны, плюс = мы должны\n`);
+console.log(`Формула: Сальдо 1 янв + Возврат + Отгрузка + Штрафы + Сверхнорм + ОГЭМ − Оплата`);
+console.log(`Знак: плюс = мы должны экспедитору, минус = нам должны\n`);
 
 let total = 0;
 for (const r of recs) {
   const s = sums.get(`${r.forwarder_id}::${r.company_group_id ?? ""}`) ?? { vol: 0, amt: 0 };
   const ps = payByRec[r.id] ?? [];
   const pay = ps.length ? ps.reduce((a, p) => a + n(p.amount), 0) : n(r.payment);
-  const saldo = n(r.opening_balance) + pay + n(r.refund)
-    - s.amt - n(r.fines) - n(r.surcharge_preliminary) - n(r.ogem);
+  const saldo = n(r.opening_balance) + n(r.refund)
+    + s.amt + n(r.fines) + n(r.surcharge_preliminary) + n(r.ogem) - pay;
   total += saldo;
   console.log(`${r.forwarder?.name ?? "—"} / ${r.company_group?.name ?? "—"}`);
   console.log(`   1 янв ${pad(f(r.opening_balance), 16)}   оплата ${pad(f(pay), 16)}   возврат ${pad(f(r.refund), 14)}`);
   console.log(`   отгр  ${pad(f(s.amt), 16)}   штрафы ${pad(f(r.fines), 16)}   сверхн  ${pad(f(r.surcharge_preliminary), 14)}   ОГЭМ ${pad(f(r.ogem), 12)}`);
-  console.log(`   САЛЬДО ${pad(f(saldo), 15)}   ${saldo < 0 ? "нам должны" : saldo > 0 ? "мы должны" : "закрыто"}\n`);
+  console.log(`   САЛЬДО ${pad(f(saldo), 15)}   ${saldo > 0 ? "мы должны" : saldo < 0 ? "нам должны" : "закрыто"}\n`);
 }
 console.log(`ИТОГО по ${recs.length} записям: ${f(total)}`);

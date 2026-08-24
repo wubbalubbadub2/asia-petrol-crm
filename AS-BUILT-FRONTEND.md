@@ -350,7 +350,7 @@ Singularity Trading CRM is a specialized petroleum product trading platform serv
 
 **File:** `/src/app/(dashboard)/dt-kt/page.tsx`
 **Title:** ДТ-КТ Логистика
-**Purpose:** Forwarder logistics accounting: opening balance + payments − shipments − fines − surcharges − other deductions = closing saldo.
+**Purpose:** Forwarder logistics accounting: what we still owe the forwarder — opening balance + shipments + fines + surcharges + other charges − payments = closing saldo.
 **Visibility:** All authenticated users
 **Editability:** Writable (all numeric fields inline-editable, can add/edit/delete payment records)
 **Top-Level Layout:**
@@ -361,9 +361,10 @@ Singularity Trading CRM is a specialized petroleum product trading platform serv
 
 **Computed Saldo:**
 ```
-Saldo = opening_balance + sum(payments) − shipped_tonnage_amount − fines − surcharge_preliminary − ogem − refund
+Saldo = opening_balance + refund + shipped_tonnage_amount + fines + surcharge_preliminary + ogem − sum(payments)
 ```
-Color: Green (positive), Red (negative)
+Sign convention (client 2026-08-25): plus = we owe the forwarder, minus = the forwarder owes us.
+Single source of truth: `src/lib/dtkt/saldo.ts`. Color: Green (positive), Red (negative).
 
 **Actions:**
 - Inline edit numeric cells

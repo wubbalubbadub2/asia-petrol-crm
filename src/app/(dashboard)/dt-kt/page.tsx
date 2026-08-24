@@ -44,7 +44,7 @@ function n(v: number | null | undefined) { return v ?? 0; }
 // 12.08.2026 понять по форме, каким знаком её писать, было нельзя — три
 // записи из-за этого ввели в старой конвенции.
 const SIGN_HINT = "Вводится со своим знаком: минус — нам должны, плюс — мы должны. Знак берётся как есть и в расчёте не разворачивается.";
-const SALDO_HINT = "Сальдо 1 янв + Оплата + Возврат − Отгрузка − Штрафы − Сверхнорм − ОГЭМ. Минус (красным) — нам должны, плюс — мы должны.";
+const SALDO_HINT = "Сальдо 1 янв + Возврат + Отгрузка + Штрафы + Сверхнорм + ОГЭМ − Оплата. Плюс — мы должны экспедитору, минус (красным) — нам должны.";
 
 // Inline editable cells for DT-KT (number / date / text)
 function InlineDtNum({ value, onSave, className = "", title }: { value: number | null | undefined; onSave: (v: number | null) => Promise<void>; className?: string; title?: string }) {
