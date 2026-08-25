@@ -2,7 +2,7 @@
  * Паспорт (детальный) → Excel.
  *
  * Client-specced layout 2026-07-14 (files/Паспорт/passport-detail-2026-07-09.xlsx):
- * 63 columns in the same five bands as the regular passport export, PLUS
+ * 65 columns in the same five bands as the regular passport export, PLUS
  * one sub-row per shipment_registry row under each deal — the client's
  * «шаблон выгрузки» block (KG/26/500) maps 1:1 to registry wagons.
  *
@@ -16,6 +16,11 @@
  *    «Цена гр. (avg)» dropped («эта графа не нужна»).
  *  • «Остаток, т» = Заявлено − Отгружено (positive; клиент: «остаток
  *    сделать плюсовой») — opposite sign vs the regular export.
+ *  • Supplier band carries «Сумма ЖД (поставщик)» и «Сумма
+ *    грузоотправления» (00150 / 00151) между «Взаимозачетом» и
+ *    «Балансом» — клиент 2026-08-15: суммы 2 и 3 показываются со
+ *    стороны поставщика. Добавлены 25.08 (в выгрузке их не было, хотя
+ *    на экране и в кратком паспорте они с 15.08).
  *  • Logistics band: Плательщик жд тарифа, жд тариф план, Плановая
  *    сумма жд, Объем по счету-фактуре, жд тариф факт, Сумма жд по
  *    счету-фактуре, Менеджер по покупке + Менеджер по продаже.
@@ -63,6 +68,7 @@ type DetailShipment = {
   supplier_appendix: string | null;
   buyer_appendix: string | null;
   additional_expenses?: number | null;
+  supplier_railway_amount?: number | null;
   currency?: string | null;
   // Заполняются только в fx-режиме: цена, пересчитанная по курсу даты
   // ЭТОЙ строки. Пусто в обычной выгрузке.
@@ -204,6 +210,19 @@ const COLUMNS: Column[] = [
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross, readShip: (_, s) => (s.supPay && !isRefundKind(s.supPay.payment_type) ? s.supPay.amount : null) },
   { key: "supplier_offset", header: "Взаимозачет", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_offset_total, readShip: (_, s) => (s.supPay?.payment_type === "offset" ? s.supPay.amount : null) },
   { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? excelDate(s.supPay.payment_date) : "") },
+  // Суммы 2 и 3 (00150 / 00151). В выгрузке их не было вовсе, хотя на
+  // экране и в кратком паспорте они есть с 15.08 — клиент нашёл пропажу
+  // 25.08 на КЗ. Место то же, что на экране: со стороны поставщика,
+  // между «Взаимозачетом» и «Балансом».
+  //
+  // В главной строке — роллап сделки, в под-строке — величина ЭТОГО
+  // вагона из реестра. Обе величины вагонные, поэтому сумма под-строк
+  // сходится с главной строкой, как у «Приход, сумма» и «Сумма жд по
+  // счету-фактуре».
+  { key: "supplier_railway_amount", header: "Сумма ЖД (поставщик)", width: 16, band: "supplier", numFmt: NUM_FMT_AMOUNT,
+    read: (d) => d.supplier_railway_amount, readShip: (_, s) => s.ship?.supplier_railway_amount ?? null },
+  { key: "additional_expenses_amount", header: "Сумма грузоотправления", width: 18, band: "supplier", numFmt: NUM_FMT_AMOUNT,
+    read: (d) => d.additional_expenses_amount, readShip: (_, s) => s.ship?.additional_expenses ?? null },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
   // ── Группы компании ────────────────────────────────────
@@ -377,7 +396,7 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
     fetchAllPaginated<DetailShipment>((from, to) =>
       sb
         .from("shipment_registry")
-        .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix, additional_expenses, currency")
+        .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix, additional_expenses, supplier_railway_amount, currency")
         .in("deal_id", ids)
         // Tie-breaker (deal_id, id) — same determinism reasoning as
         // above; `date` alone has plenty of duplicate values here.

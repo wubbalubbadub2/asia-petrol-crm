@@ -123,6 +123,14 @@ const COLUMNS: Column[] = [
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross },
   { key: "supplier_offset", header: "Взаимозачет", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_offset_total },
+  // Суммы 2 и 3 стоят СО СТОРОНЫ ПОСТАВЩИКА, между «Взаимозачетом» и
+  // «Балансом» — как на экране паспорта. Клиент 2026-08-15: «Сумма 1 —
+  // это раздел логистов, сумма 2,3 менеджер, должны быть отображены со
+  // стороны поставщика». Раньше обе висели в конце блока «Логистика»:
+  // порядок разошёлся с экраном, и в детальной выгрузке их не было
+  // вовсе. Порядок закреплён passport-export-columns.test.ts.
+  { key: "supplier_railway_amount", header: "Сумма ЖД (поставщик)", width: 16, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_railway_amount },
+  { key: "additional_expenses_amount", header: "Сумма грузоотправления", width: 18, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.additional_expenses_amount },
   { key: "supplier_balance", header: "Баланс", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_balance },
 
   // ── Группы компании ────────────────────────────────────
@@ -164,9 +172,6 @@ const COLUMNS: Column[] = [
   { key: "preliminary_amount", header: "Предв. сумма", width: 13, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.preliminary_amount },
   { key: "actual_shipped_volume", header: "Факт объем", width: 11, band: "logistics", numFmt: NUM_FMT_VOLUME, read: (d) => d.actual_shipped_volume },
   { key: "invoice_amount", header: "Сумма (логисты)", width: 14, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.invoice_amount },
-  // «Сумма 2» — ЖД расходы от поставщика (00150), только KZ.
-  { key: "supplier_railway_amount", header: "Сумма ЖД (поставщик)", width: 16, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_railway_amount },
-  { key: "additional_expenses_amount", header: "Сумма грузоотправления", width: 18, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.additional_expenses_amount },
   { key: "supplier_manager", header: "Коммерция", width: 16, band: "logistics", read: (d) => d.supplier_manager?.full_name ?? "" },
 ];
 
