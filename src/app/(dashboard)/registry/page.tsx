@@ -19,6 +19,7 @@ import {
 import { useRegistry, createRegistryEntry, updateRegistryEntry, bulkInsertRegistry, type ShipmentRecord, type RegistryUpdate } from "@/lib/hooks/use-registry";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { reportExportError } from "@/lib/chunk-error";
 import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
 import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -1523,7 +1524,7 @@ export default function RegistryPage() {
       });
       toast.success(`Выгружено ${filteredRecords.length} строк`);
     } catch (e) {
-      toast.error(`Ошибка выгрузки: ${e instanceof Error ? e.message : String(e)}`);
+      reportExportError(e, "Ошибка выгрузки");
     } finally {
       setExporting(false);
     }

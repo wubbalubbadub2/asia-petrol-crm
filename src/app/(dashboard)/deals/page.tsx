@@ -27,6 +27,7 @@ import { useRole } from "@/lib/hooks/use-role";
 import { useGlobalRefs } from "@/lib/refs";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { reportExportError } from "@/lib/chunk-error";
 
 const tabs = [
   { key: "kg", label: "Паспорт KG" },
@@ -232,7 +233,7 @@ export default function DealsPage() {
       }
       toast.success("Файл готов");
     } catch (e) {
-      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+      reportExportError(e);
     } finally {
       setExporting(false);
     }

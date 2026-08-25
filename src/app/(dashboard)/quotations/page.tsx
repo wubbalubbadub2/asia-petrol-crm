@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PriceCalculator } from "@/components/quotations/price-calculator";
 import { QuotationSummary } from "@/components/quotations/quotation-summary";
 import { toast } from "sonner";
+import { reportExportError } from "@/lib/chunk-error";
 import {
   Dialog,
   DialogContent,
@@ -277,7 +278,7 @@ function QuotationDetail({ productType, onBack }: { productType: QuotationProduc
       });
       toast.success(`Файл готов: ${n} строк`);
     } catch (e) {
-      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+      reportExportError(e);
     } finally {
       setExporting(false);
     }

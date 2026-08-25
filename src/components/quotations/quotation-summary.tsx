@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { reportExportError } from "@/lib/chunk-error";
 
 type ProductType = { id: string; name: string; sub_name: string | null };
 type DailyQuotation = {
@@ -170,7 +171,7 @@ export function QuotationSummary() {
       const n = await exportQuotationSummaryToExcel({ year, triggerDays, fixedDay, rows });
       toast.success(`Файл готов: ${n} продуктов`);
     } catch (e) {
-      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+      reportExportError(e);
     } finally {
       setExporting(false);
     }

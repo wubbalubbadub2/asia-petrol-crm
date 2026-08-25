@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment , useCallback } from "react";
 import { Plus, Filter, Trash2, X, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { reportExportError } from "@/lib/chunk-error";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -478,7 +479,7 @@ export default function DtKtPage() {
       await exportDtKtToExcel(rows, { year: yearFilter, variant });
       toast.success("Файл готов");
     } catch (e) {
-      toast.error(`Не удалось экспортировать: ${(e as Error).message}`);
+      reportExportError(e);
     } finally {
       setExporting(false);
     }
