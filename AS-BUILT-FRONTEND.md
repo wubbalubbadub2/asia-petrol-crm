@@ -365,6 +365,8 @@ Saldo = opening_balance + refund + shipped_tonnage_amount + fines + surcharge_pr
 ```
 Sign convention (client 2026-08-25): plus = we owe the forwarder, minus = the forwarder owes us.
 Single source of truth: `src/lib/dtkt/saldo.ts`. Color: Green (positive), Red (negative).
+`opening_balance` is stored in the SAME convention (minus = the forwarder owed us on 1 January)
+and is read as-is; rows entered by hand in the old convention were aligned by migration 00152.
 
 **Actions:**
 - Inline edit numeric cells

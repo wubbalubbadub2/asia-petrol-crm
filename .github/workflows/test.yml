@@ -92,6 +92,7 @@ jobs:
           # append-only и уже применены, — поэтому исключаем по имени.
           DATA_ONLY_MIGRATIONS="
           00103_renumber_kg_26_454_to_445.sql
+          00152_dtkt_opening_balance_single_convention.sql
           "
 
           # Страховка от тихой потери схемы: если в исключённый файл
