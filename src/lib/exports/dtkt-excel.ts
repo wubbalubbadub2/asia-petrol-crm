@@ -69,6 +69,7 @@ type SubRow = { pay: DtKtExportPayment | null; avr: AvrRow | null };
 // Деньги — 2 знака, красный минус: знак сальдо здесь смысловой.
 const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000";
+const NUM_FMT_DATE = "dd.mm.yy";
 
 type Column = {
   key: string;
@@ -84,10 +85,16 @@ type Column = {
   total?: boolean;
 };
 
-/** ISO-строка → Date, чтобы Excel сортировал даты хронологически. */
+/**
+ * ISO-строка → Date в UTC-полночь календарного дня — как
+ * `excelDate` детального паспорта. Клиент 2026-08-03: «даты в экспорте
+ * не в формате даты — нельзя фильтровать по месяцу»; Excel группирует
+ * автофильтр по году/месяцу только у date-типизированных ячеек, а срез
+ * до 10 символов не даёт часовому поясу утащить дату на сутки назад.
+ */
 function excelDate(iso: string | null | undefined): Date | null {
   if (!iso) return null;
-  const d = new Date(iso);
+  const d = new Date(iso.slice(0, 10) + "T00:00:00Z");
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -107,7 +114,7 @@ const COL_SALDO: Column = { key: "saldo", header: "Сальдо", width: 18, num
 // Колонки, живущие только в детальном варианте: в главной строке пусто,
 // значение появляется в под-строке.
 const COL_PAY_DATE: Column = {
-  key: "pay_date", header: "Дата оплаты", width: 13,
+  key: "pay_date", header: "Дата оплаты", width: 13, numFmt: NUM_FMT_DATE, align: "center",
   read: () => null, readSub: (_r, s) => excelDate(s.pay?.date),
 };
 const COL_PAY_CURRENCY: Column = {
@@ -115,7 +122,7 @@ const COL_PAY_CURRENCY: Column = {
   read: () => null, readSub: (_r, s) => s.pay?.currency ?? null,
 };
 const COL_AVR_DATE: Column = {
-  key: "avr_date", header: "Дата АВР", width: 13,
+  key: "avr_date", header: "Дата АВР", width: 13, numFmt: NUM_FMT_DATE, align: "center",
   read: () => null, readSub: (_r, s) => excelDate(s.avr?.date),
 };
 const COL_AVR_WAGONS: Column = {
@@ -199,15 +206,27 @@ async function fetchAvrByPair(year: number): Promise<Map<string, AvrRow[]>> {
   return out;
 }
 
-export async function exportDtKtToExcel(rows: DtKtExportRow[], ctx: DtKtExportContext): Promise<void> {
+/**
+ * Модуль exceljs передаётся снаружи: в браузере — динамическим import(),
+ * в тесте — обычным. Нужен ровно конструктор книги, поэтому тип
+ * структурный: у типов exceljs нет `default`, он синтетический.
+ */
+type ExcelJSModule = { Workbook: new () => import("exceljs").Workbook };
+
+/**
+ * Сборка книги без сети и без браузера — чтобы её можно было проверить
+ * тестом на настоящих ячейках, а не на массиве описаний колонок
+ * (`src/__tests__/dtkt-excel-workbook.test.ts`).
+ */
+export function buildDtKtWorkbook(
+  ExcelJS: ExcelJSModule,
+  rows: DtKtExportRow[],
+  ctx: DtKtExportContext,
+  avrByPair: Map<string, AvrRow[]>,
+) {
   const isDetail = ctx.variant === "detail";
   const columns = isDetail ? COLUMNS_DETAIL : COLUMNS_SHORT;
 
-  // Реестр тянем только для детального варианта — сокращённому хватает
-  // готовых сумм со страницы.
-  const avrByPair = isDetail ? await fetchAvrByPair(ctx.year) : new Map<string, AvrRow[]>();
-
-  const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Singularity Trading CRM";
   wb.created = new Date();
@@ -216,7 +235,14 @@ export async function exportDtKtToExcel(rows: DtKtExportRow[], ctx: DtKtExportCo
   const ws = wb.addWorksheet(sheetName, {
     views: [{ state: "frozen", xSplit: 2, ySplit: 2 }],
     pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-    properties: { outlineLevelRow: 1 } as never,
+    // summaryBelow: false — под-строки идут ПОД своей записью, значит
+    // кнопка «свернуть» должна стоять на ней же. По умолчанию OOXML
+    // считает итог нижним, и Excel вешает кнопку на следующую запись:
+    // жмёшь плюс у «Арқа Проф», а сворачивается TENGRI WAY.
+    properties: {
+      outlineLevelRow: 1,
+      outlineProperties: { summaryBelow: false, summaryRight: false },
+    } as never,
   });
 
   // ── Title row ────────────────────────────────────────────
@@ -325,6 +351,19 @@ export async function exportDtKtToExcel(rows: DtKtExportRow[], ctx: DtKtExportCo
 
   ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: columns.length } };
 
+  return wb;
+}
+
+export async function exportDtKtToExcel(rows: DtKtExportRow[], ctx: DtKtExportContext): Promise<void> {
+  // Реестр тянем только для детального варианта — сокращённому хватает
+  // готовых сумм со страницы.
+  const avrByPair = ctx.variant === "detail"
+    ? await fetchAvrByPair(ctx.year)
+    : new Map<string, AvrRow[]>();
+
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = buildDtKtWorkbook(ExcelJS, rows, ctx, avrByPair);
+
   // ── Download ────────────────────────────────────────────
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer as ArrayBuffer], {
@@ -341,5 +380,6 @@ export async function exportDtKtToExcel(rows: DtKtExportRow[], ctx: DtKtExportCo
   URL.revokeObjectURL(url);
 }
 
-// Для регрессионных тестов (src/__tests__/dtkt-excel-columns.test.ts).
+// Для регрессионных тестов (dtkt-excel-columns, dtkt-excel-workbook).
 export { COLUMNS_SHORT as DTKT_SHORT_COLUMNS, COLUMNS_DETAIL as DTKT_DETAIL_COLUMNS, excelDate };
+export type { AvrRow as DtKtAvrRow };
