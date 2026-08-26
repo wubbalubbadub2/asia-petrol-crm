@@ -4,6 +4,7 @@ import {
   TrendingUp,
   FileText,
   ClipboardList,
+  TrainFront,
   Truck,
   Calculator,
   DollarSign,
@@ -62,6 +63,12 @@ export const navItems: NavItem[] = [
     label: "Заявки",
     href: "/applications",
     icon: ClipboardList,
+    section: "ops",
+  },
+  {
+    label: "Заявки на перевозку",
+    href: "/transport-requests",
+    icon: TrainFront,
     section: "ops",
   },
   {
