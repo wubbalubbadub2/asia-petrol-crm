@@ -12,17 +12,18 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * Коды ЕТСНГ и ГНГ — свойство ЗАВОДА, а не продукта: клиент 26.08.2026
- * прислал таблицу «КОД ГНГ, ТНВЭД», где ЕТСНГ у всех один (221066), а
- * ГНГ различается по заводу — марка мазута у них разная. Оттуда же
- * станция отправления: маршрут заявки начинается с неё.
+ * Станция отправления — из таблицы «КОД ГНГ, ТНВЭД» клиента (26.08.2026):
+ * с неё начинается маршрут заявки.
+ *
+ * Коды ЕТСНГ и ГНГ здесь БОЛЬШЕ НЕ ЖИВУТ. Сначала они легли на завод
+ * (00154), но клиент уточнил: «в заводу и продукту» — в той таблице был
+ * один продукт, мазут. Коды переехали в справочник «Коды груза»,
+ * матрицу «завод + продукт» (00155).
  */
 type Factory = {
   id?: string;
   name: string;
   code?: string;
-  etsng_code?: string;
-  gng_code?: string;
   departure_station_id?: string | null;
   departure_station?: { name: string; code: string | null } | null;
   is_active?: boolean;
@@ -40,14 +41,6 @@ const columns: ColumnDef<Factory, unknown>[] = [
     accessorKey: "code",
     header: "Код",
     cell: ({ row }) => row.original.code ?? "—",
-  },
-  {
-    id: "codes",
-    header: "ЕТСНГ / ГНГ",
-    cell: ({ row }) => {
-      const { etsng_code: e, gng_code: g } = row.original;
-      return e || g ? [e, g].filter(Boolean).join(", ") : "—";
-    },
   },
   {
     id: "departure",
@@ -80,8 +73,6 @@ function FactoryForm({ item, onSave, onClose }: FormProps) {
   const [form, setForm] = useState<Partial<Factory>>({
     name: item?.name ?? "",
     code: item?.code ?? "",
-    etsng_code: item?.etsng_code ?? "",
-    gng_code: item?.gng_code ?? "",
     departure_station_id: item?.departure_station_id ?? null,
     is_active: item?.is_active ?? true,
   });
@@ -140,27 +131,6 @@ function FactoryForm({ item, onSave, onClose }: FormProps) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="etsng_code">Код ЕТСНГ</Label>
-          <Input
-            id="etsng_code"
-            value={form.etsng_code ?? ""}
-            onChange={(e) => set("etsng_code", e.target.value)}
-            placeholder="221066"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="gng_code">Код ГНГ</Label>
-          <Input
-            id="gng_code"
-            value={form.gng_code ?? ""}
-            onChange={(e) => set("gng_code", e.target.value)}
-            placeholder="27101967"
-          />
-        </div>
-      </div>
-
       <div className="space-y-1.5">
         <Label>Станция отправления</Label>
         <SearchableSelect
@@ -206,7 +176,7 @@ export default function FactoriesPage() {
   const { data, loading, save, remove } = useSupabaseTable<Factory>(
     "factories",
     "name",
-    "id, name, code, etsng_code, gng_code, departure_station_id, " +
+    "id, name, code, departure_station_id, " +
       "departure_station:stations(name, code), is_active"
   );
 

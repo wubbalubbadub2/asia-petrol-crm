@@ -18,6 +18,7 @@ import {
   TrainFront,
   Route,
   FileSignature,
+  Barcode,
 } from "lucide-react";
 
 const sections = [
@@ -50,6 +51,12 @@ const sections = [
     href: "/spravochnik/consignees",
     icon: PackageCheck,
     description: "Получатели груза по ЖД накладным",
+  },
+  {
+    title: "Коды груза",
+    href: "/spravochnik/cargo-codes",
+    icon: Barcode,
+    description: "ЕТСНГ и ГНГ по паре «завод + продукт»",
   },
   {
     title: "Бланки компаний",

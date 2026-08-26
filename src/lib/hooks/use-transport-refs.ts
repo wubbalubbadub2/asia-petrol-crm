@@ -22,11 +22,13 @@ import { toast } from "sonner";
 export type RefRow = { id: string; name: string };
 
 /**
- * Коды ЕТСНГ и ГНГ живут на ЗАВОДЕ (00154): клиент 26.08 прислал
- * таблицу, где ЕТСНГ у всех один, а ГНГ различается по заводу — марка
- * мазута у них разная.
+ * Коды ЕТСНГ и ГНГ — по паре «завод + продукт» (00155). Клиент 26.08:
+ * «в заводу и продукту». У одного завода мазут и дизель имеют разные
+ * ГНГ, а один и тот же мазут у разных заводов — тоже разный.
  */
-export type FactoryRef = RefRow & {
+export type CargoCodeRef = {
+  factory_id: string;
+  fuel_type_id: string;
   etsng_code: string | null;
   gng_code: string | null;
 };
@@ -59,7 +61,8 @@ export type TransportRefs = {
   stations: StationRef[];
   carriers: RefRow[];
   consignees: ConsigneeRef[];
-  factories: FactoryRef[];
+  factories: RefRow[];
+  cargoCodes: CargoCodeRef[];
   forwarders: RefRow[];
   routes: RouteRef[];
   buyers: RefRow[];
@@ -68,6 +71,7 @@ export type TransportRefs = {
 const EMPTY: TransportRefs = {
   companies: [], fuels: [], stations: [], carriers: [],
   consignees: [], factories: [], forwarders: [], routes: [], buyers: [],
+  cargoCodes: [],
 };
 
 let cache: TransportRefs | null = null;
@@ -104,7 +108,7 @@ export function useTransportRefs() {
       active("stations", "id, name, code"),
       active("transport_carriers", "id, name"),
       active("consignees", "id, name, bin_iin, code_4, okpo, address"),
-      active("factories", "id, name, etsng_code, gng_code"),
+      active("factories", "id, name"),
       active("forwarders", "id, name"),
       sb.from("transport_routes")
         .select("id, name, transport_route_stations(position, stations(name, code))")
@@ -117,6 +121,10 @@ export function useTransportRefs() {
         .eq("type", "buyer")
         .eq("is_active", true)
         .order("full_name"),
+      // Матрица кодов груза — у неё нет is_active, берём целиком: строк
+      // столько же, сколько пар «завод × продукт», это десятки.
+      sb.from("transport_cargo_codes")
+        .select("factory_id, fuel_type_id, etsng_code, gng_code"),
     ]).then((results) => {
       if (cancelled) return;
       const bad = results.find((r) => r.error);
@@ -125,18 +133,19 @@ export function useTransportRefs() {
         setLoading(false);
         return;
       }
-      const [co, fu, st, ca, cn, fa, fw, ro, bu] = results.map((r) => r.data ?? []);
+      const [co, fu, st, ca, cn, fa, fw, ro, bu, cc] = results.map((r) => r.data ?? []);
       const next: TransportRefs = {
         companies: co as RefRow[],
         fuels: fu as FuelRef[],
         stations: st as StationRef[],
         carriers: ca as RefRow[],
         consignees: cn as ConsigneeRef[],
-        factories: fa as FactoryRef[],
+        factories: fa as RefRow[],
         forwarders: fw as RefRow[],
         routes: ro as RouteRef[],
         buyers: (bu as { id: string; full_name: string; short_name: string | null }[])
           .map((b) => ({ id: b.id, name: b.short_name || b.full_name })),
+        cargoCodes: cc as CargoCodeRef[],
       };
       cache = next;
       setRefs(next);
@@ -152,4 +161,17 @@ export function useTransportRefs() {
 /** Сбросить кэш — после правки справочника из другой вкладки. */
 export function invalidateTransportRefs() {
   cache = null;
+}
+
+/** Коды груза по паре «завод + продукт». Пары нет — пусто. */
+export function codesForPair(
+  codes: CargoCodeRef[],
+  factoryId: string,
+  fuelTypeId: string,
+): { etsng: string; gng: string } {
+  if (!factoryId || !fuelTypeId) return { etsng: "", gng: "" };
+  const hit = codes.find(
+    (c) => c.factory_id === factoryId && c.fuel_type_id === fuelTypeId,
+  );
+  return { etsng: hit?.etsng_code ?? "", gng: hit?.gng_code ?? "" };
 }

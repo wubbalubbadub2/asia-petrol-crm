@@ -15,6 +15,7 @@ import { MONTHS_RU } from "@/lib/constants/months-ru";
 import {
   useTransportRefs,
   printedRoute,
+  codesForPair,
   type TransportRefs,
 } from "@/lib/hooks/use-transport-refs";
 import { fillTemplate } from "@/lib/transport/fill-template";
@@ -247,18 +248,23 @@ export function TransportRequestForm({
   const routeText = useMemo(() => printedRoute(route), [route]);
 
   /**
-   * Коды груза задаёт ЗАВОД, а не продукт (00154). Клиент 26.08
-   * прислал таблицу «КОД ГНГ, ТНВЭД»: ЕТСНГ у всех 221066, а ГНГ
-   * различается по заводу — марка мазута у них разная. Введённые
-   * вручную коды не перебиваются: у конкретной партии бывает своя.
+   * Коды груза зависят от ПАРЫ «завод + продукт» (00155). Клиент 26.08:
+   * «в заводу и продукту» — у одного завода мазут и дизель имеют разные
+   * ГНГ, а один и тот же мазут у разных заводов тоже разный.
+   *
+   * Коды следуют за парой: сменил завод или продукт — подставились
+   * коды новой пары, а если её нет в справочнике, поля очищаются. Иначе
+   * в заявке остался бы код от прежнего завода — правдоподобный и
+   * неверный.
    */
-  function pickConsignor(id: string) {
-    const f = refs.factories.find((x) => x.id === id);
+  function applyPair(factoryId: string, fuelId: string) {
+    const { etsng, gng } = codesForPair(refs.cargoCodes, factoryId, fuelId);
     setV((prev) => ({
       ...prev,
-      consignor_factory_id: id,
-      etsng_code: f?.etsng_code ?? prev.etsng_code,
-      gng_code: f?.gng_code ?? prev.gng_code,
+      consignor_factory_id: factoryId,
+      fuel_type_id: fuelId,
+      etsng_code: etsng,
+      gng_code: gng,
     }));
   }
 
@@ -531,7 +537,7 @@ export function TransportRequestForm({
                 <SearchableSelect
                   options={opts(refs.fuels)}
                   value={v.fuel_type_id}
-                  onChange={(val) => set("fuel_type_id", val)}
+                  onChange={(val) => applyPair(v.consignor_factory_id, val)}
                   placeholder="Выберите продукт"
                   triggerClassName="w-full"
                 />
@@ -559,7 +565,7 @@ export function TransportRequestForm({
                 placeholder="7"
               />
             </Field>
-            <Field label="Код ЕТСНГ" hint="Из справочника заводов">
+            <Field label="Код ЕТСНГ" hint="Из справочника «Коды груза»">
               <Input value={v.etsng_code} onChange={(e) => set("etsng_code", e.target.value)} placeholder="221066" />
             </Field>
             <Field label="Код ГНГ">
@@ -652,11 +658,11 @@ export function TransportRequestForm({
             <Derived label="Код грузополучателя" value={consignee?.code_4 ?? ""} />
             <Derived label="Код ОКПО" value={consignee?.okpo ?? ""} />
             <Derived label="Адрес" value={consignee?.address ?? ""} />
-            <Field label="Грузоотправитель" hint="Задаёт коды ЕТСНГ и ГНГ">
+            <Field label="Грузоотправитель" hint="Вместе с продуктом задаёт коды груза">
               <SearchableSelect
                 options={opts(refs.factories)}
                 value={v.consignor_factory_id}
-                onChange={pickConsignor}
+                onChange={(val) => applyPair(val, v.fuel_type_id)}
                 placeholder="Выберите завод"
                 triggerClassName="w-full"
               />
