@@ -9,9 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
+// full_name печатается в заявке на перевозку («Мазут топочный марки
+// М-100»), а name остаётся коротким для таблиц CRM. Коды ЕТСНГ и ГНГ —
+// свойство продукта, поэтому живут здесь, а не в заявке (00153).
 type FuelType = {
   id?: string;
   name: string;
+  full_name?: string;
+  etsng_code?: string;
+  gng_code?: string;
   sulfur_percent?: number;
   color?: string;
   sort_order?: number;
@@ -60,6 +66,19 @@ const columns: ColumnDef<FuelType, unknown>[] = [
     },
   },
   {
+    accessorKey: "full_name",
+    header: "Полное наименование",
+    cell: ({ row }) => row.original.full_name ?? "—",
+  },
+  {
+    accessorKey: "etsng_code",
+    header: "ЕТСНГ / ГНГ",
+    cell: ({ row }) => {
+      const { etsng_code: e, gng_code: g } = row.original;
+      return e || g ? [e, g].filter(Boolean).join(", ") : "—";
+    },
+  },
+  {
     accessorKey: "sort_order",
     header: "Порядок",
     cell: ({ row }) => row.original.sort_order ?? "—",
@@ -85,6 +104,9 @@ type FormProps = {
 function FuelTypeForm({ item, onSave, onClose }: FormProps) {
   const [form, setForm] = useState<Partial<FuelType>>({
     name: item?.name ?? "",
+    full_name: item?.full_name ?? "",
+    etsng_code: item?.etsng_code ?? "",
+    gng_code: item?.gng_code ?? "",
     sulfur_percent: item?.sulfur_percent ?? undefined,
     color: item?.color ?? "#cccccc",
     sort_order: item?.sort_order ?? undefined,
@@ -122,6 +144,40 @@ function FuelTypeForm({ item, onSave, onClose }: FormProps) {
           onChange={(e) => set("name", e.target.value)}
           placeholder="Дизельное топливо"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="full_name">Полное наименование для заявки</Label>
+        <Input
+          id="full_name"
+          value={form.full_name ?? ""}
+          onChange={(e) => set("full_name", e.target.value)}
+          placeholder="Мазут топочный марки М-100"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Печатается в заявке на перевозку. Пусто — берётся наименование выше.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="etsng_code">Код ЕТСНГ</Label>
+          <Input
+            id="etsng_code"
+            value={form.etsng_code ?? ""}
+            onChange={(e) => set("etsng_code", e.target.value)}
+            placeholder="221066"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="gng_code">Код ГНГ</Label>
+          <Input
+            id="gng_code"
+            value={form.gng_code ?? ""}
+            onChange={(e) => set("gng_code", e.target.value)}
+            placeholder="27101967"
+          />
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -204,7 +260,7 @@ export default function FuelTypesPage() {
   const { data, loading, save, remove } = useSupabaseTable<FuelType>(
     "fuel_types",
     "sort_order",
-    "id, name, sulfur_percent, color, sort_order, is_active"
+    "id, name, full_name, etsng_code, gng_code, sulfur_percent, color, sort_order, is_active"
   );
 
   if (loading) {

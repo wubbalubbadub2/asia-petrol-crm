@@ -15,6 +15,8 @@ import {
   Users,
   Briefcase,
   PackageCheck,
+  TrainFront,
+  Route,
 } from "lucide-react";
 
 const sections = [
@@ -47,6 +49,18 @@ const sections = [
     href: "/spravochnik/consignees",
     icon: PackageCheck,
     description: "Получатели груза по ЖД накладным",
+  },
+  {
+    title: "Перевозчики ЖД",
+    href: "/spravochnik/carriers",
+    icon: TrainFront,
+    description: "Железные дороги для заявок на перевозку",
+  },
+  {
+    title: "Маршруты",
+    href: "/spravochnik/routes",
+    icon: Route,
+    description: "Цепочки станций для заявок на перевозку",
   },
   {
     title: "Станции",

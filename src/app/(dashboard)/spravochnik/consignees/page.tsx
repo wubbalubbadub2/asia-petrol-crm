@@ -9,10 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
+// Код, ОКПО и адрес нужны заявке на перевозку (00153). Раньше они
+// лежали в самой заявке, из-за чего менеджер вбивал их заново на каждую;
+// клиент 25.08: «все что можно лучше тянуть со справочника».
 type Consignee = {
   id?: string;
   name: string;
   bin_iin?: string;
+  code_4?: string;
+  okpo?: string;
+  address?: string;
   is_active?: boolean;
 };
 
@@ -26,6 +32,21 @@ const columns: ColumnDef<Consignee, unknown>[] = [
     accessorKey: "bin_iin",
     header: "БИН / ИИН",
     cell: ({ row }) => row.original.bin_iin ?? "—",
+  },
+  {
+    accessorKey: "code_4",
+    header: "Код",
+    cell: ({ row }) => row.original.code_4 ?? "—",
+  },
+  {
+    accessorKey: "okpo",
+    header: "ОКПО",
+    cell: ({ row }) => row.original.okpo ?? "—",
+  },
+  {
+    accessorKey: "address",
+    header: "Адрес",
+    cell: ({ row }) => row.original.address ?? "—",
   },
   {
     accessorKey: "is_active",
@@ -49,6 +70,9 @@ function ConsigneeForm({ item, onSave, onClose }: FormProps) {
   const [form, setForm] = useState<Partial<Consignee>>({
     name: item?.name ?? "",
     bin_iin: item?.bin_iin ?? "",
+    code_4: item?.code_4 ?? "",
+    okpo: item?.okpo ?? "",
+    address: item?.address ?? "",
     is_active: item?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
@@ -95,6 +119,37 @@ function ConsigneeForm({ item, onSave, onClose }: FormProps) {
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="code_4">Код грузополучателя</Label>
+          <Input
+            id="code_4"
+            value={form.code_4 ?? ""}
+            onChange={(e) => set("code_4", e.target.value)}
+            placeholder="5669"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="okpo">Код ОКПО</Label>
+          <Input
+            id="okpo"
+            value={form.okpo ?? ""}
+            onChange={(e) => set("okpo", e.target.value)}
+            placeholder="26737181"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="address">Адрес</Label>
+        <Input
+          id="address"
+          value={form.address ?? ""}
+          onChange={(e) => set("address", e.target.value)}
+          placeholder="г. Кара-Балта Восточная промзона"
+        />
+      </div>
+
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -122,7 +177,7 @@ export default function ConsigneesPage() {
   const { data, loading, save, remove } = useSupabaseTable<Consignee>(
     "consignees",
     "name",
-    "id, name, bin_iin, is_active"
+    "id, name, bin_iin, code_4, okpo, address, is_active"
   );
 
   if (loading) {
