@@ -246,12 +246,17 @@ export function TransportRequestForm({
 
   const routeText = useMemo(() => printedRoute(route), [route]);
 
-  /** Продукт задаёт печатное наименование и коды. */
-  function pickFuel(id: string) {
-    const f = refs.fuels.find((x) => x.id === id);
+  /**
+   * Коды груза задаёт ЗАВОД, а не продукт (00154). Клиент 26.08
+   * прислал таблицу «КОД ГНГ, ТНВЭД»: ЕТСНГ у всех 221066, а ГНГ
+   * различается по заводу — марка мазута у них разная. Введённые
+   * вручную коды не перебиваются: у конкретной партии бывает своя.
+   */
+  function pickConsignor(id: string) {
+    const f = refs.factories.find((x) => x.id === id);
     setV((prev) => ({
       ...prev,
-      fuel_type_id: id,
+      consignor_factory_id: id,
       etsng_code: f?.etsng_code ?? prev.etsng_code,
       gng_code: f?.gng_code ?? prev.gng_code,
     }));
@@ -526,7 +531,7 @@ export function TransportRequestForm({
                 <SearchableSelect
                   options={opts(refs.fuels)}
                   value={v.fuel_type_id}
-                  onChange={pickFuel}
+                  onChange={(val) => set("fuel_type_id", val)}
                   placeholder="Выберите продукт"
                   triggerClassName="w-full"
                 />
@@ -554,7 +559,7 @@ export function TransportRequestForm({
                 placeholder="7"
               />
             </Field>
-            <Field label="Код ЕТСНГ">
+            <Field label="Код ЕТСНГ" hint="Из справочника заводов">
               <Input value={v.etsng_code} onChange={(e) => set("etsng_code", e.target.value)} placeholder="221066" />
             </Field>
             <Field label="Код ГНГ">
@@ -647,11 +652,11 @@ export function TransportRequestForm({
             <Derived label="Код грузополучателя" value={consignee?.code_4 ?? ""} />
             <Derived label="Код ОКПО" value={consignee?.okpo ?? ""} />
             <Derived label="Адрес" value={consignee?.address ?? ""} />
-            <Field label="Грузоотправитель">
+            <Field label="Грузоотправитель" hint="Задаёт коды ЕТСНГ и ГНГ">
               <SearchableSelect
                 options={opts(refs.factories)}
                 value={v.consignor_factory_id}
-                onChange={(val) => set("consignor_factory_id", val)}
+                onChange={pickConsignor}
                 placeholder="Выберите завод"
                 triggerClassName="w-full"
               />

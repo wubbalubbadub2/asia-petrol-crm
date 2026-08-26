@@ -20,13 +20,21 @@ import { toast } from "sonner";
  */
 
 export type RefRow = { id: string; name: string };
+
+/**
+ * Коды ЕТСНГ и ГНГ живут на ЗАВОДЕ (00154): клиент 26.08 прислал
+ * таблицу, где ЕТСНГ у всех один, а ГНГ различается по заводу — марка
+ * мазута у них разная.
+ */
+export type FactoryRef = RefRow & {
+  etsng_code: string | null;
+  gng_code: string | null;
+};
 export type StationRef = { id: string; name: string; code: string | null };
 export type FuelRef = {
   id: string;
   name: string;
   full_name: string | null;
-  etsng_code: string | null;
-  gng_code: string | null;
 };
 export type ConsigneeRef = {
   id: string;
@@ -51,7 +59,7 @@ export type TransportRefs = {
   stations: StationRef[];
   carriers: RefRow[];
   consignees: ConsigneeRef[];
-  factories: RefRow[];
+  factories: FactoryRef[];
   forwarders: RefRow[];
   routes: RouteRef[];
   buyers: RefRow[];
@@ -92,11 +100,11 @@ export function useTransportRefs() {
 
     Promise.all([
       active("company_groups", "id, name"),
-      active("fuel_types", "id, name, full_name, etsng_code, gng_code"),
+      active("fuel_types", "id, name, full_name"),
       active("stations", "id, name, code"),
       active("transport_carriers", "id, name"),
       active("consignees", "id, name, bin_iin, code_4, okpo, address"),
-      active("factories", "id, name"),
+      active("factories", "id, name, etsng_code, gng_code"),
       active("forwarders", "id, name"),
       sb.from("transport_routes")
         .select("id, name, transport_route_stations(position, stations(name, code))")
@@ -124,7 +132,7 @@ export function useTransportRefs() {
         stations: st as StationRef[],
         carriers: ca as RefRow[],
         consignees: cn as ConsigneeRef[],
-        factories: fa as RefRow[],
+        factories: fa as FactoryRef[],
         forwarders: fw as RefRow[],
         routes: ro as RouteRef[],
         buyers: (bu as { id: string; full_name: string; short_name: string | null }[])

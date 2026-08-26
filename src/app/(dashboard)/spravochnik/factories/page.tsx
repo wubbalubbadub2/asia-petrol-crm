@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { CrudTable } from "@/components/shared/crud-table";
@@ -8,13 +8,27 @@ import { useSupabaseTable } from "@/lib/hooks/use-references";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { createClient } from "@/lib/supabase/client";
 
+/**
+ * Коды ЕТСНГ и ГНГ — свойство ЗАВОДА, а не продукта: клиент 26.08.2026
+ * прислал таблицу «КОД ГНГ, ТНВЭД», где ЕТСНГ у всех один (221066), а
+ * ГНГ различается по заводу — марка мазута у них разная. Оттуда же
+ * станция отправления: маршрут заявки начинается с неё.
+ */
 type Factory = {
   id?: string;
   name: string;
   code?: string;
+  etsng_code?: string;
+  gng_code?: string;
+  departure_station_id?: string | null;
+  departure_station?: { name: string; code: string | null } | null;
   is_active?: boolean;
 };
+
+type StationOption = { id: string; name: string; code: string | null };
 
 const columns: ColumnDef<Factory, unknown>[] = [
   {
@@ -26,6 +40,23 @@ const columns: ColumnDef<Factory, unknown>[] = [
     accessorKey: "code",
     header: "Код",
     cell: ({ row }) => row.original.code ?? "—",
+  },
+  {
+    id: "codes",
+    header: "ЕТСНГ / ГНГ",
+    cell: ({ row }) => {
+      const { etsng_code: e, gng_code: g } = row.original;
+      return e || g ? [e, g].filter(Boolean).join(", ") : "—";
+    },
+  },
+  {
+    id: "departure",
+    header: "Станция отправления",
+    cell: ({ row }) => {
+      const st = row.original.departure_station;
+      if (!st) return <span className="text-muted-foreground">—</span>;
+      return st.code ? `${st.name} (${st.code})` : st.name;
+    },
   },
   {
     accessorKey: "is_active",
@@ -49,11 +80,25 @@ function FactoryForm({ item, onSave, onClose }: FormProps) {
   const [form, setForm] = useState<Partial<Factory>>({
     name: item?.name ?? "",
     code: item?.code ?? "",
+    etsng_code: item?.etsng_code ?? "",
+    gng_code: item?.gng_code ?? "",
+    departure_station_id: item?.departure_station_id ?? null,
     is_active: item?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
+  const [stations, setStations] = useState<StationOption[]>([]);
+  const sbRef = useRef(createClient());
 
-  function set(key: keyof Factory, value: string | boolean) {
+  useEffect(() => {
+    sbRef.current
+      .from("stations")
+      .select("id, name, code")
+      .eq("is_active", true)
+      .order("name")
+      .then(({ data }) => setStations((data ?? []) as StationOption[]));
+  }, []);
+
+  function set(key: keyof Factory, value: string | boolean | null) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -95,6 +140,45 @@ function FactoryForm({ item, onSave, onClose }: FormProps) {
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="etsng_code">Код ЕТСНГ</Label>
+          <Input
+            id="etsng_code"
+            value={form.etsng_code ?? ""}
+            onChange={(e) => set("etsng_code", e.target.value)}
+            placeholder="221066"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="gng_code">Код ГНГ</Label>
+          <Input
+            id="gng_code"
+            value={form.gng_code ?? ""}
+            onChange={(e) => set("gng_code", e.target.value)}
+            placeholder="27101967"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Станция отправления</Label>
+        <SearchableSelect
+          options={stations.map((st) => ({
+            value: st.id,
+            label: st.code ? `${st.name} (${st.code})` : st.name,
+          }))}
+          value={form.departure_station_id ?? ""}
+          onChange={(val) => set("departure_station_id", val || null)}
+          placeholder="Выберите станцию"
+          searchPlaceholder="Станция или код…"
+          triggerClassName="w-full"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          С неё начинается маршрут в заявке на перевозку.
+        </p>
+      </div>
+
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -122,7 +206,8 @@ export default function FactoriesPage() {
   const { data, loading, save, remove } = useSupabaseTable<Factory>(
     "factories",
     "name",
-    "id, name, code, is_active"
+    "id, name, code, etsng_code, gng_code, departure_station_id, " +
+      "departure_station:stations(name, code), is_active"
   );
 
   if (loading) {
