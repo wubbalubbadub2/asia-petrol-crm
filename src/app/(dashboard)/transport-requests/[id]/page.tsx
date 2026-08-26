@@ -14,6 +14,7 @@ export default function TransportRequestPage() {
   const params = useParams<{ id: string }>();
   const [values, setValues] = useState<RequestFormValues | null>(null);
   const [heading, setHeading] = useState("Заявка на перевозку");
+  const [number, setNumber] = useState<number | null>(null);
   const [missing, setMissing] = useState(false);
   const sbRef = useRef(createClient());
 
@@ -38,6 +39,7 @@ export default function TransportRequestPage() {
         }
         setValues(valuesFromRow(data));
         setHeading(`Заявка № ${data.request_number}/${String(data.request_year).slice(2)}`);
+        setNumber(Number(data.request_number));
       });
   }, [params?.id]);
 
@@ -59,5 +61,12 @@ export default function TransportRequestPage() {
 
   // Существующую заявку не перезаполняем чужими данными при смене
   // компании: поля уже введены, подстановка затёрла бы их.
-  return <TransportRequestForm initial={values} heading={heading} prefillFromLast={false} />;
+  return (
+    <TransportRequestForm
+      initial={values}
+      heading={heading}
+      prefillFromLast={false}
+      requestNumber={number}
+    />
+  );
 }

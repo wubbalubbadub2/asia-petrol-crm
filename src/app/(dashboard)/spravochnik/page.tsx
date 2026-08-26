@@ -17,6 +17,7 @@ import {
   PackageCheck,
   TrainFront,
   Route,
+  FileSignature,
 } from "lucide-react";
 
 const sections = [
@@ -49,6 +50,12 @@ const sections = [
     href: "/spravochnik/consignees",
     icon: PackageCheck,
     description: "Получатели груза по ЖД накладным",
+  },
+  {
+    title: "Бланки компаний",
+    href: "/spravochnik/company-templates",
+    icon: FileSignature,
+    description: "Шаблоны заявок с шапкой, подписью и печатью",
   },
   {
     title: "Перевозчики ЖД",

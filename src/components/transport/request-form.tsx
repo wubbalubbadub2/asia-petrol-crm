@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
+import { FileDown, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,18 @@ import {
   printedRoute,
   type TransportRefs,
 } from "@/lib/hooks/use-transport-refs";
+import { fillTemplate } from "@/lib/transport/fill-template";
+import {
+  buildTemplateValues,
+  buildDateLine,
+  documentFileName,
+  type RequestDocumentInput,
+} from "@/lib/transport/request-values";
+import {
+  downloadTemplate,
+  saveRequestFile,
+  triggerDownload,
+} from "@/lib/transport/storage";
 
 /**
  * Форма заявки на перевозку.
@@ -204,13 +216,21 @@ type Props = {
   heading: string;
   /** Подставлять ли данные последней заявки при выборе компании. */
   prefillFromLast: boolean;
+  /** Номер сохранённой заявки — уходит в имя файла. */
+  requestNumber?: number | null;
 };
 
-export function TransportRequestForm({ initial, heading, prefillFromLast }: Props) {
+export function TransportRequestForm({
+  initial,
+  heading,
+  prefillFromLast,
+  requestNumber,
+}: Props) {
   const router = useRouter();
   const { refs, loading } = useTransportRefs();
   const [v, setV] = useState<RequestFormValues>(initial);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const sbRef = useRef(createClient());
   // Пока менеджер не тронул поле «Вагонов», оно следует за тоннажем.
   const wagonsTouched = useRef(initial.wagons !== "");
@@ -328,6 +348,93 @@ export function TransportRequestForm({ initial, heading, prefillFromLast }: Prop
     }
   }
 
+  /** Значения для документа — уже разрешённые названия, не идентификаторы. */
+  function documentInput(): RequestDocumentInput {
+    const name = (rows: { id: string; name: string }[], id: string) =>
+      rows.find((r) => r.id === id)?.name ?? "";
+    const krg = refs.consignees.find((c) => c.id === v.payer_krg_consignee_id);
+    return {
+      date: v.date,
+      fuelName: fuel?.full_name || fuel?.name || "",
+      tonnage: v.tonnage === "" ? null : Number(v.tonnage.replace(",", ".")),
+      wagons: v.wagons === "" ? null : Number(v.wagons),
+      cargoPurpose: v.cargo_purpose,
+      stationName: station?.name ?? "",
+      stationCode: station?.code ?? "",
+      siding: v.siding,
+      carrierName: name(refs.carriers, v.carrier_id),
+      consigneeName: consignee?.name ?? "",
+      consigneeBin: consignee?.bin_iin ?? "",
+      consigneeCode: consignee?.code_4 ?? "",
+      consigneeAddress: consignee?.address ?? "",
+      consigneeOkpo: consignee?.okpo ?? "",
+      etsngCode: v.etsng_code,
+      gngCode: v.gng_code,
+      specialMarks: v.special_marks,
+      consignorName: name(refs.factories, v.consignor_factory_id),
+      wagonOwnerName: name(refs.forwarders, v.wagon_owner_forwarder_id),
+      kzhPayerName: name(refs.forwarders, v.forwarder_kzh_id),
+      krgPayerName: krg?.name ?? "",
+      routeText,
+      buyerName: name(refs.buyers, v.buyer_id),
+      periodMonth: v.period_month === "" ? null : Number(v.period_month),
+      periodYear: v.period_year === "" ? null : Number(v.period_year),
+    };
+  }
+
+  /**
+   * Word собирается ПОВЕРХ бланка компании: шапка, подпись и печать
+   * остаются её, меняются только значения в правой колонке и дата.
+   * Копия документа кладётся рядом с заявкой — чтобы было видно, какой
+   * именно файл ушёл контрагенту.
+   */
+  async function generateWord() {
+    if (!v.id) {
+      toast.error("Сначала сохраните заявку");
+      return;
+    }
+    setGenerating(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = sbRef.current as any;
+      const { data: tpl, error } = await sb
+        .from("transport_company_templates")
+        .select("id, file_path")
+        .eq("company_group_id", v.company_group_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (error) throw error;
+      if (!tpl) {
+        toast.error("У компании нет загруженного бланка — добавьте его в справочнике «Бланки компаний»");
+        return;
+      }
+
+      const bytes = await downloadTemplate(tpl.file_path);
+      const blob = await fillTemplate(bytes, {
+        dateLine: buildDateLine(v.date),
+        values: buildTemplateValues(documentInput()),
+      });
+
+      const company = refs.companies.find((c) => c.id === v.company_group_id)?.name;
+      const fileName = documentFileName(requestNumber, v.date, company, "docx");
+      triggerDownload(blob, fileName);
+
+      const stamp = Date.now();
+      // Файл у менеджера уже скачан; неудача с историей не должна
+      // выглядеть как неудача выгрузки.
+      try {
+        await saveRequestFile({ requestId: v.id, kind: "docx", blob, fileName, stampMs: stamp });
+        await sb.from("transport_requests").update({ template_id: tpl.id }).eq("id", v.id);
+      } catch (e) {
+        toast.warning(`Документ скачан, но не сохранился в истории: ${(e as Error).message}`);
+      }
+    } catch (e) {
+      toast.error(`Не удалось сформировать документ: ${(e as Error).message}`);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-40 items-center justify-center text-muted-foreground">
@@ -347,6 +454,20 @@ export function TransportRequestForm({ initial, heading, prefillFromLast }: Prop
           </Button>
           <Button size="sm" onClick={() => persist("issued")} disabled={saving}>
             Сохранить заявку
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={generateWord}
+            disabled={generating || !v.id}
+            title={v.id ? "Заполнить бланк компании" : "Сначала сохраните заявку"}
+          >
+            {generating ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileDown className="mr-1 h-3.5 w-3.5" />
+            )}
+            Скачать Word
           </Button>
         </div>
       </div>
