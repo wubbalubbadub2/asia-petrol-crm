@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, FileText, Loader2, Plus, Search } from "lucide-react";
+import { Copy, FileText, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import {
 import { formatDMY } from "@/lib/format";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { CARRIED_OVER_COLUMNS } from "@/components/transport/request-form";
+import { deleteRequestWithFiles } from "@/lib/transport/storage";
+import { useRole } from "@/lib/role-context";
 
 /**
  * Список заявок на перевозку.
@@ -58,10 +60,12 @@ function StatusBadge({ status }: { status: Row["status"] }) {
 
 export default function TransportRequestsPage() {
   const router = useRouter();
+  const { isAdmin } = useRole();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [copying, setCopying] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const sbRef = useRef(createClient());
 
   const load = useCallback(async () => {
@@ -112,6 +116,21 @@ export default function TransportRequestsPage() {
       toast.error(`Не удалось скопировать: ${(e as Error).message}`);
     } finally {
       setCopying(null);
+    }
+  }
+
+  async function removeRequest(r: Row) {
+    const label = `№ ${r.request_number}/${String(r.request_year).slice(2)}`;
+    if (!confirm(`Удалить заявку ${label}? Сформированные файлы тоже удалятся.`)) return;
+    setDeleting(r.id);
+    try {
+      await deleteRequestWithFiles(r.id);
+      setRows((prev) => prev.filter((x) => x.id !== r.id));
+      toast.success(`Заявка ${label} удалена`);
+    } catch (e) {
+      toast.error(`Не удалось удалить: ${(e as Error).message}`);
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -176,7 +195,7 @@ export default function TransportRequestsPage() {
                 <TableHead>Станция назначения</TableHead>
                 <TableHead>Период</TableHead>
                 <TableHead className="w-28">Статус</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-28" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -226,6 +245,20 @@ export default function TransportRequestsPage() {
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-destructive hover:text-destructive"
+                      disabled={!isAdmin || deleting === r.id}
+                      onClick={() => removeRequest(r)}
+                      title={isAdmin ? "Удалить заявку" : "Удалять заявки может администратор"}
+                    >
+                      {deleting === r.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
                       )}
                     </Button>
                   </TableCell>

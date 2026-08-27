@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileDown, Loader2, Save } from "lucide-react";
+import { FileDown, Loader2, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,9 @@ import {
   downloadTemplate,
   saveRequestFile,
   triggerDownload,
+  deleteRequestWithFiles,
 } from "@/lib/transport/storage";
+import { useRole } from "@/lib/role-context";
 
 /**
  * Форма заявки на перевозку.
@@ -228,10 +230,12 @@ export function TransportRequestForm({
   requestNumber,
 }: Props) {
   const router = useRouter();
+  const { isAdmin } = useRole();
   const { refs, loading } = useTransportRefs();
   const [v, setV] = useState<RequestFormValues>(initial);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const sbRef = useRef(createClient());
   // Пока менеджер не тронул поле «Вагонов», оно следует за тоннажем.
   const wagonsTouched = useRef(initial.wagons !== "");
@@ -446,6 +450,21 @@ export function TransportRequestForm({
     }
   }
 
+  async function removeRequest() {
+    if (!v.id) return;
+    const label = requestNumber ? `№ ${requestNumber}` : "черновик";
+    if (!confirm(`Удалить заявку ${label}? Сформированные файлы тоже удалятся.`)) return;
+    setDeleting(true);
+    try {
+      await deleteRequestWithFiles(v.id);
+      toast.success("Заявка удалена");
+      router.replace("/transport-requests");
+    } catch (e) {
+      toast.error(`Не удалось удалить: ${(e as Error).message}`);
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-40 items-center justify-center text-muted-foreground">
@@ -480,6 +499,23 @@ export function TransportRequestForm({
             )}
             Скачать Word
           </Button>
+          {v.id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={removeRequest}
+              disabled={!isAdmin || deleting}
+              title={isAdmin ? "Удалить заявку" : "Удалять заявки может администратор"}
+            >
+              {deleting ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+              )}
+              Удалить
+            </Button>
+          )}
         </div>
       </div>
 

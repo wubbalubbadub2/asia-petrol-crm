@@ -108,3 +108,31 @@ export function triggerDownload(blob: Blob, fileName: string): void {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Удалить заявку вместе с её файлами.
+ *
+ * Строки `transport_request_files` уносит каскад в базе, а сами файлы в
+ * бакете — нет: политики бакета заведены только на чтение и загрузку.
+ * Поэтому файлы пробуем убрать отдельно и НЕ считаем неудачу поводом
+ * отменить удаление: заявка должна исчезнуть в любом случае, а
+ * осиротевший файл в закрытом бакете никому не виден.
+ */
+export async function deleteRequestWithFiles(requestId: string): Promise<void> {
+  const sb = createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = sb as any;
+
+  const { data: files } = await db
+    .from("transport_request_files")
+    .select("file_path")
+    .eq("request_id", requestId);
+
+  const paths = ((files ?? []) as { file_path: string }[]).map((f) => f.file_path);
+  if (paths.length > 0) {
+    await sb.storage.from(FILES_BUCKET).remove(paths).catch(() => {});
+  }
+
+  const { error } = await db.from("transport_requests").delete().eq("id", requestId);
+  if (error) throw new Error(error.message);
+}
