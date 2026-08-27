@@ -71,12 +71,28 @@ export function calculatePrice(input: PriceFormationInput): PriceFormationResult
 }
 
 /**
- * Get quotation prices for a date range (for trigger mode)
+ * Границы окна котировок для режима «Триггер».
+ *
+ * Окно ВКЛЮЧАЕТ сам startDate: «Триггер (35 дней)» — это стартовая дата
+ * и ещё 34 дня, то есть 35 календарных дат, попадающих в выборку
+ * `date >= start AND date <= end` (price-calculator.tsx). Среднее по ним
+ * и становится котировкой, поэтому граница окна — это цена.
+ *
+ * Считаем строго в UTC. Раньше здесь было `new Date(startDate +
+ * "T00:00:00")` (ЛОКАЛЬНАЯ полночь) плюс `setDate`, а результат
+ * снимался через `toISOString()` (UTC) — и конец окна уезжал на сутки в
+ * зависимости от таймзоны браузера:
+ *   Asia/Almaty (+05) → 2026-02-18, UTC → 2026-02-19, New York → 2026-02-19.
+ * Пользователи все в Казахстане, поэтому в проде окно всегда было
+ * 35-дневным включительно; эта правка закрепляет ровно это поведение и
+ * убирает зависимость от таймзоны. Числа у казахстанских пользователей
+ * не меняются.
  */
 export function getDateRange(startDate: string, days: number): { start: string; end: string } {
-  const start = new Date(startDate + "T00:00:00");
-  const end = new Date(start);
-  end.setDate(end.getDate() + days);
+  const end = new Date(`${startDate}T00:00:00Z`);
+  // Math.max: окно из 0 или 1 дня — это сам startDate, а не пустой
+  // диапазон с концом раньше начала.
+  end.setUTCDate(end.getUTCDate() + Math.max(0, days - 1));
   return {
     start: startDate,
     end: end.toISOString().split("T")[0],

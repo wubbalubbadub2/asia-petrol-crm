@@ -26,6 +26,30 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-08-27 — Окно «Триггера» больше не зависит от таймзоны браузера
+- **What changed:** `getDateRange` в `src/lib/calculations/price-formation.ts`; тесты `src/__tests__/price-formation.test.ts`. Схема не менялась.
+- **Type:** [FORMULA]
+- **Client reason:** прямой жалобы не было. Найдено при разборе красного CI: два теста дат падали на GitHub Actions (UTC) и проходили локально (+05).
+
+**Что было сломано.** Конец окна считался так: `new Date(startDate + "T00:00:00")` — это ЛОКАЛЬНАЯ полночь, дальше `setDate(+days)`, а результат снимался через `toISOString()`, то есть в UTC. Дата конца уезжала на сутки в зависимости от таймзоны браузера:
+
+| Таймзона | `getDateRange("2026-01-15", 35).end` |
+|---|---|
+| Asia/Almaty (+05) | `2026-02-18` |
+| UTC | `2026-02-19` |
+| America/New_York | `2026-02-19` |
+
+Граница окна кормит запрос `date >= start AND date <= end` в `price-calculator.tsx`, среднее по этим котировкам и становится ценой. То есть лишний день в окне — это другая цена.
+
+- **Before → After:**
+  - Было: `end = локальная_полночь(start) + days`, затем перевод в UTC. Результат зависел от таймзоны: в Казахстане выходило `start + days − 1`, в UTC и западнее — `start + days`.
+  - Стало: `end = UTC_полночь(start) + max(0, days − 1)`, вся арифметика в UTC. Всегда `start + days − 1`, то есть окно ВКЛЮЧАЕТ стартовую дату: «Триггер (35 дней)» = стартовая дата и ещё 34.
+  - **Числа у пользователей не меняются.** Все пользователи в Казахстане (+05) и в проде уже получали 35-дневное окно включительно; правка закрепляет ровно это поведение и убирает зависимость от таймзоны. Изменилось бы поведение только у клиента в UTC или западнее — таких нет.
+  - Заодно `days = 0` и `days = 1` больше не дают конец раньше начала: окно схлопывается в саму стартовую дату.
+- **Проверка:** `npm test` — 27 файлов, 312 тестов, и под локальной таймзоной, и под `TZ=UTC` (условия CI); новые тесты: независимость от таймзоны (UTC / Asia/Almaty / America/New_York / Pacific/Kiritimati дают одну дату), окно в 1 и 0 дней, високосный февраль. Проверено, что новый тест падает на старой реализации. `npm run build` — `Compiled successfully`, `Finished TypeScript` без ошибок; `eslint` по изменённым файлам чистый.
+- **Rebuild impact:** PRICING — зафиксирована граница окна режима «Триггер»: окно включает стартовую дату, `end = start + дни − 1`.
+
+
 ### 2026-08-27 — Взаимозачёт: видно встречную сделку и правится прямо из паспорта
 - **What changed:** `src/components/deals/passport-table.tsx` (`OffsetBreakdownCell` + новая `OffsetEditRow`), `src/components/deals/deal-payments.tsx` (`PaymentRow`), `src/lib/payments/totals.ts`, новый `src/lib/payments/offset-kinds.ts`, `src/lib/hooks/use-deals.ts` (`PaymentSnap`, `fetchDealPayments`, новые `fetchDealCodeIndex` / `dealCodeLabel`). Схема не менялась — колонки 00145 уже есть.
 - **Type:** [UI-FIELD] + [FORMULA] (только фронтовый оптимистичный пересчёт)

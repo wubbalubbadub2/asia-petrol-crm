@@ -92,6 +92,7 @@ describe("Price Formation Calculator", () => {
   });
 
   describe("getDateRange", () => {
+    // Окно включает сам startDate: «35 дней» = стартовая дата и ещё 34.
     it("calculates date range from start + days", () => {
       const range = getDateRange("2026-01-15", 35);
       expect(range.start).toBe("2026-01-15");
@@ -101,6 +102,38 @@ describe("Price Formation Calculator", () => {
     it("handles month boundary", () => {
       const range = getDateRange("2026-03-20", 40);
       expect(range.end).toBe("2026-04-28"); // Mar 20 + 39 days ahead
+    });
+
+    // Регрессия: конец окна считался локальной полуночью, а снимался
+    // через toISOString() (UTC), и в разных таймзонах выходили разные
+    // даты — Asia/Almaty давала 2026-02-18, а UTC (CI) 2026-02-19.
+    // Граница окна кормит среднее по котировкам, то есть цену, поэтому
+    // она обязана быть одинаковой у всех.
+    it("не зависит от таймзоны браузера", () => {
+      const tz = process.env.TZ;
+      try {
+        const ends = ["UTC", "Asia/Almaty", "America/New_York", "Pacific/Kiritimati"].map((z) => {
+          process.env.TZ = z;
+          return getDateRange("2026-01-15", 35).end;
+        });
+        expect(new Set(ends).size).toBe(1);
+        expect(ends[0]).toBe("2026-02-18");
+      } finally {
+        process.env.TZ = tz;
+      }
+    });
+
+    it("граница: окно в 1 день — это сам startDate", () => {
+      expect(getDateRange("2026-01-15", 1).end).toBe("2026-01-15");
+    });
+
+    it("граница: 0 дней не даёт конец раньше начала", () => {
+      expect(getDateRange("2026-01-15", 0).end).toBe("2026-01-15");
+    });
+
+    it("граница: високосный февраль", () => {
+      // 2028 — високосный: 20.02 + 9 дней включительно = 29.02.
+      expect(getDateRange("2028-02-20", 10).end).toBe("2028-02-29");
     });
   });
 });
