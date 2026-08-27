@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,9 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { invalidateDealBundle } from "@/lib/hooks/use-deal-bundle";
-import { invalidateDeal, invalidateDealPayments } from "@/lib/hooks/use-deals";
+import { invalidateDeal, invalidateDealPayments, fetchDealCodeIndex, dealCodeLabel, type DealCodeRef } from "@/lib/hooks/use-deals";
+import { signedAmount } from "@/lib/payments/totals";
+import { OFFSET_KIND_LABELS } from "@/lib/payments/offset-kinds";
 import { formatDMY } from "@/lib/format";
 
 type PaymentType = "payment" | "refund" | "offset";
@@ -29,13 +32,9 @@ type Payment = {
   mirror_of: string | null;
 };
 
-// Вклад строки в нетто оплат: возврат (историческая строка) вычитается,
-// оплата и взаимозачёт хранят знак в самой сумме.
-function signedAmount(p: Payment): number {
-  // Возврат — историческая строка, хранится положительным и вычитается.
-  // Оплата и взаимозачёт хранят знак в самой сумме.
-  return p.payment_type === "refund" ? -p.amount : p.amount;
-}
+// Вклад строки в нетто оплат (возврат вычитается, взаимозачёт идёт со
+// своим знаком) живёт в @/lib/payments/totals — там же, где им пользуется
+// паспорт, чтобы конвенция 00145 не разъехалась между экранами.
 
 // Клиент 2026-08-12: тип оплаты убран. Возврат пишется той же оплатой
 // со знаком минус, взаимозачёт — отдельная сущность со своим знаком.
@@ -46,21 +45,18 @@ const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   offset: "Взаимозачёт",
 };
 
-const OFFSET_KIND_LABELS: Record<string, string> = {
-  bilateral: "2-х сторонний",
-  trilateral: "3-х сторонний",
-};
-
 function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Single payment row with inline editable date/amount/description/currency
 function PaymentRow({
-  p, dealCurrency, onUpdate, onDelete,
+  p, dealCurrency, dealCodes, dealOpts, onUpdate, onDelete,
 }: {
   p: Payment;
   dealCurrency: string;
+  dealCodes: Map<string, DealCodeRef> | null;
+  dealOpts: DealCodeRef[];
   onUpdate: (id: string, patch: Partial<Payment>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
@@ -92,6 +88,49 @@ function PaymentRow({
       {p.mirror_of && (
         <span className="shrink-0 rounded bg-stone-200 px-1 text-[9px] text-stone-600" title="Создан автоматически встречным взаимозачётом другой сделки. Правится там.">
           зеркало
+        </span>
+      )}
+      {/* Встречная сделка (00145). Клиент 2026-08-27: «в списке не видно,
+          на какую сделку ушёл взаимозачёт». У зеркала — только ссылка:
+          зеркало правится в исходной сделке, триггер сюда его переносит. */}
+      {p.payment_type === "offset" && p.offset_kind === "bilateral" && (
+        <span className="flex shrink-0 items-center gap-0.5">
+          <span className="text-stone-400">→</span>
+          {p.mirror_of ? (
+            <Link
+              href={`/deals/${p.counterparty_deal_id}`}
+              className="rounded px-1 text-sky-700 hover:bg-sky-50 hover:underline"
+              title="Исходная сделка взаимозачёта"
+            >
+              {p.counterparty_deal_id ? dealCodeLabel(p.counterparty_deal_id, dealCodes) : "—"}
+            </Link>
+          ) : (
+            <>
+              <select
+                value={p.counterparty_deal_id ?? ""}
+                onChange={(e) => {
+                  const nv = e.target.value || null;
+                  if (nv !== (p.counterparty_deal_id ?? null)) onUpdate(p.id, { counterparty_deal_id: nv });
+                }}
+                className="h-5 max-w-[140px] cursor-pointer rounded border border-transparent bg-transparent px-0.5 text-[10px] text-sky-700 hover:bg-amber-50 focus:border-amber-300 focus:outline-none"
+                title="Встречная сделка: в ней лежит зеркальный взаимозачёт с обратным знаком"
+              >
+                <option value="">— выберите —</option>
+                {dealOpts.map((d) => (
+                  <option key={d.id} value={d.id}>{d.deal_code ?? d.id.slice(0, 8)}</option>
+                ))}
+              </select>
+              {p.counterparty_deal_id && (
+                <Link
+                  href={`/deals/${p.counterparty_deal_id}`}
+                  className="rounded px-0.5 text-[10px] text-sky-600 hover:bg-sky-50"
+                  title="Открыть встречную сделку"
+                >
+                  ↗
+                </Link>
+              )}
+            </>
+          )}
         </span>
       )}
       {/* Date */}
@@ -179,11 +218,13 @@ function PaymentRow({
 // Объявлен на уровне модуля, а не внутри DealPayments: компонент,
 // созданный во время рендера, пересоздаётся на каждой перерисовке и
 // теряет состояние. Замыкания на родителя заменены пропсами.
-function PaymentList({ items, side, label, dealCurrency, onAdd, onUpdate, onDelete }: {
+function PaymentList({ items, side, label, dealCurrency, dealCodes, dealOpts, onAdd, onUpdate, onDelete }: {
   items: Payment[];
   side: "supplier" | "buyer";
   label: string;
   dealCurrency: string;
+  dealCodes: Map<string, DealCodeRef> | null;
+  dealOpts: DealCodeRef[];
   onAdd: (side: "supplier" | "buyer", kind: "payment" | "offset") => void;
   onUpdate: (id: string, patch: Partial<Payment>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -215,7 +256,7 @@ function PaymentList({ items, side, label, dealCurrency, onAdd, onUpdate, onDele
       ) : (
         <div className="space-y-1">
           {items.map((p) => (
-            <PaymentRow key={p.id} p={p} dealCurrency={dealCurrency} onUpdate={onUpdate} onDelete={onDelete} />
+            <PaymentRow key={p.id} p={p} dealCurrency={dealCurrency} dealCodes={dealCodes} dealOpts={dealOpts} onUpdate={onUpdate} onDelete={onDelete} />
           ))}
           <div className="flex items-center gap-2 px-2 py-1 text-[11px] border-t border-stone-200">
             <span className="text-stone-500 w-20 font-medium">Итого:</span>
@@ -247,7 +288,9 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
   // Взаимозачёт (00145): вид и встречная сделка.
   const [newOffsetKind, setNewOffsetKind] = useState<"bilateral" | "trilateral">("trilateral");
   const [newCounterparty, setNewCounterparty] = useState("");
-  const [dealOpts, setDealOpts] = useState<{ id: string; deal_code: string | null }[]>([]);
+  // Справочник кодов сделок: нужен и для выбора встречной, и чтобы
+  // показать её код в уже сохранённой строке взаимозачёта.
+  const [dealCodes, setDealCodes] = useState<Map<string, DealCodeRef> | null>(null);
 
   async function loadPayments() {
     setLoading(true);
@@ -279,18 +322,15 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     invalidateDeal(dealId);
   }
 
-  // Список сделок для выбора встречной — только при двустороннем.
+  // Справочник тянем сразу: код встречной сделки нужен уже при первом
+  // рендере списка, а не только когда открыта форма добавления.
   useEffect(() => {
-    if (newType !== "offset" || newOffsetKind !== "bilateral" || dealOpts.length > 0) return;
-    supabaseRef.current
-      .from("deals")
-      .select("id, deal_code")
-      .eq("is_archived", false)
-      .neq("id", dealId)
-      .order("deal_code", { ascending: false })
-      .limit(1000)
-      .then(({ data }) => setDealOpts((data ?? []) as { id: string; deal_code: string | null }[]));
-  }, [newType, newOffsetKind, dealOpts.length, dealId]);
+    let cancelled = false;
+    fetchDealCodeIndex()
+      .then((m) => { if (!cancelled) setDealCodes(m); })
+      .catch(() => { if (!cancelled) setDealCodes(new Map()); });
+    return () => { cancelled = true; };
+  }, []);
 
   function openAddForm(s2: "supplier" | "buyer", kind: "payment" | "offset") {
     setNewType(kind);
@@ -351,6 +391,15 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
     notifyDealCachesAfterPaymentWrite();
   }
 
+  // В выборе встречной сделки — активные сделки, кроме текущей. Уже
+  // выбранную архивную оставляем, иначе select показал бы пустоту и
+  // случайное сохранение стёрло бы связь.
+  const dealOpts = useMemo(() => {
+    if (!dealCodes) return [];
+    const chosen = new Set(payments.map((p) => p.counterparty_deal_id).filter((v): v is string => !!v));
+    return [...dealCodes.values()].filter((d) => d.id !== dealId && (!d.is_archived || chosen.has(d.id)));
+  }, [dealCodes, dealId, payments]);
+
   const filteredPayments = side ? payments.filter((p) => p.side === side) : payments;
   const supplierPayments = payments.filter((p) => p.side === "supplier");
   const buyerPayments = payments.filter((p) => p.side === "buyer");
@@ -367,11 +416,11 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
         {loading ? (
           <p className="text-[11px] text-stone-400">Загрузка...</p>
         ) : side ? (
-          <PaymentList items={filteredPayments} side={side} label={sideLabel} dealCurrency={dealCurrency} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
+          <PaymentList items={filteredPayments} side={side} label={sideLabel} dealCurrency={dealCurrency} dealCodes={dealCodes} dealOpts={dealOpts} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" dealCurrency={dealCurrency} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
-            <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" dealCurrency={dealCurrency} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
+            <PaymentList items={supplierPayments} side="supplier" label="Оплата поставщику" dealCurrency={dealCurrency} dealCodes={dealCodes} dealOpts={dealOpts} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
+            <PaymentList items={buyerPayments} side="buyer" label="Оплата от покупателя" dealCurrency={dealCurrency} dealCodes={dealCodes} dealOpts={dealOpts} onAdd={openAddForm} onUpdate={updatePayment} onDelete={deletePayment} />
           </div>
         )}
 

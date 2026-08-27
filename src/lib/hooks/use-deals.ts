@@ -201,11 +201,17 @@ export function invalidateDealShipments(dealId: string) {
 // double-fetches on rapid clicks.
 export type PaymentSnap = {
   id: string;
-  payment_date: string;
+  // У взаимозачёта даты нет (00145 снял NOT NULL) — поэтому nullable.
+  payment_date: string | null;
   amount: number | null;
   currency: string | null;
   description: string | null;
   payment_type: string | null;
+  // Реквизиты взаимозачёта (00145). Нужны попапу «Взаимозачет» в
+  // паспорте: без встречной сделки не видно, куда ушли деньги.
+  offset_kind: string | null;
+  counterparty_deal_id: string | null;
+  mirror_of: string | null;
 };
 
 // Keyed by `${dealId}:${side}` — supplier/buyer payments live in the
@@ -224,7 +230,7 @@ export function fetchDealPayments(
   const p = Promise.resolve(
     sb
       .from("deal_payments")
-      .select("id, payment_date, amount, currency, description, payment_type")
+      .select("id, payment_date, amount, currency, description, payment_type, offset_kind, counterparty_deal_id, mirror_of")
       .eq("deal_id", dealId)
       .eq("side", side)
       .order("payment_date", { ascending: true }),
@@ -235,11 +241,50 @@ export function fetchDealPayments(
       paymentsCache.delete(key);
       throw error;
     }
-    return (data ?? []) as PaymentSnap[];
+    // database.ts снят с прода до 00145 и колонок взаимозачёта ещё не
+    // знает — тот же приём, что в use-registry.ts и deal-payments.tsx.
+    // Убрать приведение после `npm run types:db`.
+    return (data ?? []) as unknown as PaymentSnap[];
   });
   paymentsCache.set(key, p);
   return p;
 }
+
+// Справочник «id сделки → код» для взаимозачётов: в попапе паспорта и в
+// карточке сделки надо и показать встречную сделку, и дать её выбрать.
+// Тянем один раз на загрузку страницы — пара колонок на несколько тысяч
+// строк дешевле, чем точечный запрос на каждую строку взаимозачёта.
+export type DealCodeRef = { id: string; deal_code: string | null; is_archived: boolean | null };
+
+let dealCodeIndexPromise: Promise<Map<string, DealCodeRef>> | null = null;
+
+export function fetchDealCodeIndex(): Promise<Map<string, DealCodeRef>> {
+  if (dealCodeIndexPromise) return dealCodeIndexPromise;
+  const sb = createClient();
+  dealCodeIndexPromise = Promise.resolve(
+    sb.from("deals").select("id, deal_code, is_archived").order("deal_code", { ascending: false }).limit(5000),
+  )
+    .then(({ data, error }) => {
+      if (error) {
+        // Как и у оплат: роняем кэш, чтобы следующий клик сходил в сеть.
+        dealCodeIndexPromise = null;
+        throw error;
+      }
+      const rows = (data ?? []) as DealCodeRef[];
+      return new Map(rows.map((d) => [d.id, d]));
+    })
+    .catch((e) => {
+      dealCodeIndexPromise = null;
+      throw e;
+    });
+  return dealCodeIndexPromise;
+}
+
+/** Подпись сделки в списке взаимозачётов: код, а если его нет — хвост id. */
+export function dealCodeLabel(id: string, index: Map<string, DealCodeRef> | null): string {
+  return index?.get(id)?.deal_code ?? id.slice(0, 8);
+}
+
 export function invalidateDealPayments(dealId: string, side?: "supplier" | "buyer") {
   if (side) {
     paymentsCache.delete(`${dealId}:${side}`);

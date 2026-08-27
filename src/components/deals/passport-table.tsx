@@ -13,7 +13,7 @@ import {
   summaryOverdue,
   type PaymentTermsSummary,
 } from "@/lib/hooks/use-payment-terms-summary";
-import { type Deal, type ShipmentSnap, type PaymentSnap, updateDeal, fetchDealShipments, fetchDealPayments, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
+import { type Deal, type ShipmentSnap, type PaymentSnap, type DealCodeRef, updateDeal, fetchDealShipments, fetchDealPayments, fetchDealCodeIndex, dealCodeLabel, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
@@ -21,7 +21,8 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { toast } from "sonner";
 import { parseNum } from "@/lib/utils/parse-num";
-import { splitPaymentTotals, isRefundKind } from "@/lib/payments/totals";
+import { splitPaymentTotals, isRefundKind, offsetTotalInDealCurrency } from "@/lib/payments/totals";
+import { OFFSET_KINDS, OFFSET_KIND_LABELS, offsetKindLabel } from "@/lib/payments/offset-kinds";
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
 import { formatDMY } from "@/lib/format";
@@ -339,61 +340,320 @@ function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
   );
 }
 
-// UX choice (2026-06-18): single click opens the breakdown popover;
-// the popover carries an «Изменить итог» button at the bottom which
-// switches the cell into the existing inline-edit input. Rationale —
-// splitting the cell into a number-zone + pencil-icon zone would
-// reduce the click target for both actions in an already-dense table
-// (~11px font, 36 columns), and we'd need to also split the totals
-// row column. The popover-button keeps the cell width constant and
-// keeps the inline-edit affordance discoverable (visible whenever the
-// popover is open).
-// Ячейка «Взаимозачет» с всплывающим окном — клиент 2026-08-12:
-// «нету всплывающего окошка для просмотра комментариев».
+// Ячейка «Взаимозачет» с всплывающим окном.
 //
-// Только просмотр, без правки. У двустороннего взаимозачёта есть
-// зеркало во встречной сделке, и правка отсюда должна была бы его
-// синхронизировать; безопаснее править в карточке сделки, где виден
-// вид зачёта и встречная сделка.
-function OffsetBreakdownCell({ dealId, side, value, currency, className }: {
+// Клиент 2026-08-12: «нету всплывающего окошка для просмотра комментариев».
+// Клиент 2026-08-27: «нужно, чтобы было видно, с какой сделки пришли
+// деньги» и «сделать так же, как и оплаты, чтобы можно было в самом
+// паспорте вносить взаимозачёты, не заходя в сделку».
+//
+// Денежный контракт (00145) — чтобы оптимистичные числа совпали с тем,
+// что вернёт сервер:
+//   • amount взаимозачёта хранится СО ЗНАКОМ и ПРИБАВЛЯЕТСЯ к нетто:
+//     payment = gross − refund + offset;
+//   • supplier_balance = приход − payment    → Δбаланса = −Δвзаимозачёта;
+//     buyer_debt       = payment − отгружено → Δдолга   = +Δвзаимозачёта;
+//   • в rollup идут только строки в валюте сделки (currency NULL = валюта
+//     сделки) — тот же фильтр, что в refresh_deal_payment_totals, поэтому
+//     валюту из паспорта не меняем: строка в чужой валюте молча выпала бы
+//     из итога;
+//   • даты у взаимозачёта нет — 00145 снял NOT NULL с payment_date;
+//   • зеркало (mirror_of) правится только в исходной сделке: триггер
+//     sync_offset_mirror перезаписывает его при каждой правке оригинала,
+//     поэтому здесь оно показано и не редактируется.
+
+type OffsetPatch = {
+  amount?: number;
+  description?: string | null;
+  offset_kind?: string | null;
+  counterparty_deal_id?: string | null;
+};
+
+// Строка взаимозачёта внутри попапа: сумма, вид, встречная сделка и
+// комментарий. Сумма и комментарий держат локальное состояние (ввод
+// коммитится на blur), вид и встречная сделка идут прямо из пропов —
+// их правка перерисовывает строку сразу.
+function OffsetEditRow({ p, dealCurrency, dealCodes, dealOpts, onPatch, onDelete }: {
+  p: PaymentSnap;
+  dealCurrency: string;
+  dealCodes: Map<string, DealCodeRef> | null;
+  dealOpts: DealCodeRef[];
+  onPatch: (id: string, patch: OffsetPatch) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [amount, setAmount] = useState(p.amount != null ? String(p.amount) : "");
+  const [desc, setDesc] = useState(p.description ?? "");
+  const cur = p.currency ?? dealCurrency;
+
+  if (p.mirror_of) {
+    return (
+      <div className="border-t border-stone-700 py-1 first:border-0">
+        <div className="flex items-center gap-1">
+          <span className="font-mono tabular-nums">{formatNum(p.amount ?? 0)} {cur}</span>
+          <span
+            className="rounded bg-stone-700 px-1 text-[9px] text-stone-300"
+            title="Создан встречным взаимозачётом другой сделки. Правится там."
+          >
+            зеркало
+          </span>
+        </div>
+        <div className="text-[10px] text-stone-400">
+          {offsetKindLabel(p.offset_kind)}
+          {p.counterparty_deal_id ? ` · из сделки ${dealCodeLabel(p.counterparty_deal_id, dealCodes)}` : ""}
+        </div>
+        {p.description ? <div className="text-[10px] text-stone-400">{p.description}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-stone-700 py-1 first:border-0">
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          step="0.01"
+          value={amount}
+          placeholder="со знаком"
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setAmount(e.target.value)}
+          onBlur={() => {
+            // amount NOT NULL в БД — пустой ввод трактуем как 0.
+            const n = amount.trim() === "" ? 0 : parseFloat(amount);
+            if (!Number.isNaN(n) && n !== p.amount) onPatch(p.id, { amount: n });
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          className="w-[104px] rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-right font-mono text-[11px] text-stone-100 focus:border-amber-400 focus:outline-none"
+        />
+        <span className="w-8 text-[10px] text-stone-400">{cur}</span>
+        <select
+          value={p.offset_kind ?? ""}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            const nv = e.target.value || null;
+            // Встречная сделка разрешена только двустороннему
+            // (deal_payments_counterparty_only_bilateral_chk) — при
+            // переходе на трёхсторонний снимаем её тем же запросом.
+            onPatch(p.id, nv === "bilateral"
+              ? { offset_kind: nv }
+              : { offset_kind: nv, counterparty_deal_id: null });
+          }}
+          className="flex-1 rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-[10px] text-stone-100 focus:border-amber-400 focus:outline-none"
+        >
+          {!p.offset_kind && <option value="">— вид —</option>}
+          {OFFSET_KINDS.map((k) => <option key={k} value={k}>{OFFSET_KIND_LABELS[k]}</option>)}
+        </select>
+        <button
+          type="button"
+          title="Удалить взаимозачёт"
+          onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}
+          className="px-0.5 text-[13px] leading-none text-stone-400 hover:text-red-400"
+        >×</button>
+      </div>
+      {p.offset_kind === "bilateral" && (
+        <div className="mt-0.5 flex items-center gap-1">
+          <span className="w-[104px] text-right text-[10px] text-stone-400">Встречная</span>
+          <select
+            value={p.counterparty_deal_id ?? ""}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onPatch(p.id, { counterparty_deal_id: e.target.value || null })}
+            title="В выбранной сделке появится зеркальный взаимозачёт с противоположным знаком"
+            className="flex-1 rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-[10px] text-stone-100 focus:border-amber-400 focus:outline-none"
+          >
+            <option value="">— выберите сделку —</option>
+            {dealOpts.map((d) => <option key={d.id} value={d.id}>{d.deal_code ?? d.id.slice(0, 8)}</option>)}
+          </select>
+        </div>
+      )}
+      <input
+        value={desc}
+        placeholder="комментарий"
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => setDesc(e.target.value)}
+        onBlur={() => {
+          const nv = desc.trim() || null;
+          if (nv !== (p.description ?? null)) onPatch(p.id, { description: nv });
+        }}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        className="mt-0.5 w-full rounded border border-stone-600 bg-stone-700 px-1 py-0.5 text-[10px] text-stone-100 focus:border-amber-400 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function OffsetBreakdownCell({ dealId, side, value, net, balance, currency, className }: {
   dealId: string;
   side: "supplier" | "buyer";
   value: number | null | undefined;
+  /** deals.supplier_payment / buyer_payment — нетто, куда взаимозачёт входит слагаемым. */
+  net: number | null | undefined;
+  /** deals.supplier_balance / buyer_debt — едет за нетто. */
+  balance: number | null | undefined;
   currency: string;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<PaymentSnap[] | null>(null);
+  // Держим ВЕСЬ список стороны (кэш общий на сторону), взаимозачёты
+  // фильтруем на рендере — как в PaymentBreakdownCell.
+  const [payments, setPayments] = useState<PaymentSnap[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [dealCodes, setDealCodes] = useState<Map<string, DealCodeRef> | null>(null);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const cellRef = useRef<HTMLTableCellElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  const rows = useMemo(
+    () => (payments ?? []).filter((p) => p.payment_type === "offset"),
+    [payments],
+  );
+
+  // Активные сделки, кроме текущей. Уже выбранную архивную оставляем,
+  // иначе select показал бы пустоту и случайное сохранение стёрло бы связь.
+  const dealOpts = useMemo(() => {
+    if (!dealCodes) return [];
+    const chosen = new Set(rows.map((p) => p.counterparty_deal_id).filter((v): v is string => !!v));
+    return [...dealCodes.values()].filter((d) => d.id !== dealId && (!d.is_archived || chosen.has(d.id)));
+  }, [dealCodes, dealId, rows]);
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
-    fetchDealPayments(dealId, side).then((data) => {
-      if (!cancelled) setRows(data.filter((p) => p.payment_type === "offset"));
-    });
-    return () => { cancelled = true; };
-  }, [open, dealId, side]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (cellRef.current && !cellRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    function onDocMouseDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (cellRef.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [open]);
+
+  async function toggle() {
+    if (open) { setOpen(false); return; }
+    const r = cellRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+    setOpen(true);
+    if (dealCodes === null) {
+      fetchDealCodeIndex().then(setDealCodes).catch(() => setDealCodes(new Map()));
+    }
+    if (payments !== null) return;
+    setLoading(true);
+    try {
+      setPayments(await fetchDealPayments(dealId, side));
+    } catch {
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Оптимистично: список и три числа сделки патчатся сразу, запрос
+  // уходит в фоне, при ошибке — откат + toast (клиент 2026-07-16: «на
+  // фронте мы всегда меняем сразу — как в Excel»).
+  function applyOptimistic(prevAll: PaymentSnap[] | null, nextAll: PaymentSnap[]) {
+    setPayments(nextAll);
+    const nextOffset = offsetTotalInDealCurrency(nextAll, currency);
+    const delta = nextOffset - offsetTotalInDealCurrency(prevAll ?? [], currency);
+    if (side === "supplier") {
+      applyDealPatch(dealId, {
+        supplier_offset_total: nextOffset,
+        supplier_payment: (net ?? 0) + delta,
+        supplier_balance: (balance ?? 0) - delta,
+      });
+    } else {
+      applyDealPatch(dealId, {
+        buyer_offset_total: nextOffset,
+        buyer_payment: (net ?? 0) + delta,
+        buyer_debt: (balance ?? 0) + delta,
+      });
+    }
+  }
+
+  function revertOptimistic(prevAll: PaymentSnap[] | null, message: string) {
+    setPayments(prevAll);
+    if (side === "supplier") {
+      applyDealPatch(dealId, {
+        supplier_offset_total: value ?? 0,
+        supplier_payment: net ?? 0,
+        supplier_balance: balance ?? 0,
+      });
+    } else {
+      applyDealPatch(dealId, {
+        buyer_offset_total: value ?? 0,
+        buyer_payment: net ?? 0,
+        buyer_debt: balance ?? 0,
+      });
+    }
+    toast.error(`Взаимозачёт: ${message}`);
+  }
+
+  // Двусторонний взаимозачёт меняет и встречную сделку — её зеркало
+  // пишет триггер. Сбрасываем кэш оплат обеих сторон встречной сделки,
+  // иначе её попап показал бы устаревший список.
+  function syncCachesInBackground(counterparties: Array<string | null | undefined>) {
+    invalidateDealPayments(dealId, side);
+    for (const id of counterparties) if (id) invalidateDealPayments(id);
+    invalidateDeal(dealId);
+  }
+
+  async function patchOffset(id: string, patch: OffsetPatch) {
+    const prev = payments;
+    const before = (prev ?? []).find((p) => p.id === id);
+    applyOptimistic(prev, (prev ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    const sb = createClient();
+    // database.ts снят с прода до 00145 и колонок взаимозачёта не знает.
+    const table = sb.from("deal_payments") as unknown as {
+      update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => PromiseLike<{ error: { message: string } | null }> };
+    };
+    const { error } = await table.update(patch).eq("id", id);
+    if (error) { revertOptimistic(prev, error.message); return; }
+    syncCachesInBackground([before?.counterparty_deal_id, patch.counterparty_deal_id]);
+  }
+
+  async function deleteOffset(id: string) {
+    if (!confirm("Удалить взаимозачёт?")) return;
+    const prev = payments;
+    const before = (prev ?? []).find((p) => p.id === id);
+    applyOptimistic(prev, (prev ?? []).filter((p) => p.id !== id));
+    const sb = createClient();
+    const { error } = await sb.from("deal_payments").delete().eq("id", id);
+    if (error) { revertOptimistic(prev, error.message); return; }
+    syncCachesInBackground([before?.counterparty_deal_id]);
+  }
+
+  // Новая строка появляется сразу и редактируется на месте — тот же
+  // приём, что у «+ Оплата». Вид по умолчанию трёхсторонний: он не
+  // требует встречной сделки, поэтому вставка всегда валидна.
+  async function addOffset() {
+    const id = crypto.randomUUID();
+    const prev = payments;
+    const draft: PaymentSnap = {
+      id, payment_date: null, amount: 0, currency: null, description: null,
+      payment_type: "offset", offset_kind: "trilateral", counterparty_deal_id: null, mirror_of: null,
+    };
+    applyOptimistic(prev, [...(prev ?? []), draft]);
+    const sb = createClient();
+    const table = sb.from("deal_payments") as unknown as {
+      insert: (v: Record<string, unknown>) => PromiseLike<{ error: { message: string } | null }>;
+    };
+    const { error } = await table.insert({
+      id,
+      deal_id: dealId,
+      side,
+      amount: 0,
+      // У взаимозачёта даты нет (00145).
+      payment_date: null,
+      payment_type: "offset",
+      offset_kind: "trilateral",
+    });
+    if (error) { revertOptimistic(prev, error.message); return; }
+    syncCachesInBackground([]);
+  }
 
   return (
     <>
       <td
         ref={cellRef}
-        onClick={() => {
-          const r = cellRef.current?.getBoundingClientRect();
-          if (r) setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
-          setOpen((o) => !o);
-        }}
+        onClick={toggle}
         className={`${className ?? ""} cursor-pointer ${open ? "ring-2 ring-amber-300/70" : ""}`}
         data-col={side === "supplier" ? "supplier_offset_total" : "buyer_offset_total"}
         data-deal-id={dealId}
@@ -403,28 +663,35 @@ function OffsetBreakdownCell({ dealId, side, value, currency, className }: {
       </td>
       {open && pos && typeof window !== "undefined" && createPortal(
         <div
+          ref={popRef}
           style={{ top: pos.top, right: pos.right }}
-          className="fixed z-50 min-w-[240px] max-w-[340px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl"
+          className="fixed z-50 min-w-[300px] max-w-[380px] rounded-md bg-stone-800 px-3 py-2 text-[11px] text-stone-100 shadow-xl"
         >
-          {rows === null ? (
+          {loading || payments === null ? (
             <div className="font-mono">Загрузка…</div>
-          ) : rows.length === 0 ? (
-            <div className="font-medium">Взаимозачётов нет</div>
           ) : (
             <div>
-              <div className="mb-1 font-medium">Взаимозачётов: {rows.length}</div>
+              <div className="mb-1 font-medium">
+                {rows.length === 0 ? "Взаимозачётов нет" : `Взаимозачётов: ${rows.length}`}
+              </div>
               {rows.map((r) => (
-                <div key={r.id} className="border-t border-stone-700 py-1 first:border-0">
-                  <div className="font-mono tabular-nums">
-                    {formatNum(r.amount ?? 0)} {r.currency ?? currency}
-                  </div>
-                  {r.description ? (
-                    <div className="pl-1 text-[10px] text-stone-300">{r.description}</div>
-                  ) : (
-                    <div className="pl-1 text-[10px] text-stone-500">без комментария</div>
-                  )}
-                </div>
+                <OffsetEditRow
+                  key={r.id}
+                  p={r}
+                  dealCurrency={currency}
+                  dealCodes={dealCodes}
+                  dealOpts={dealOpts}
+                  onPatch={patchOffset}
+                  onDelete={deleteOffset}
+                />
               ))}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); addOffset(); }}
+                className="mt-1 w-full rounded border border-stone-600 px-2 py-0.5 text-[10px] text-stone-300 hover:bg-stone-700 focus:outline-none"
+              >
+                + Взаимозачёт
+              </button>
             </div>
           )}
         </div>,
@@ -434,6 +701,15 @@ function OffsetBreakdownCell({ dealId, side, value, currency, className }: {
   );
 }
 
+// UX choice (2026-06-18): single click opens the breakdown popover;
+// the popover carries an «Изменить итог» button at the bottom which
+// switches the cell into the existing inline-edit input. Rationale —
+// splitting the cell into a number-zone + pencil-icon zone would
+// reduce the click target for both actions in an already-dense table
+// (~11px font, 36 columns), and we'd need to also split the totals
+// row column. The popover-button keeps the cell width constant and
+// keeps the inline-edit affordance discoverable (visible whenever the
+// popover is open).
 function PaymentBreakdownCell({
   dealId, gross, refund, balance, side, kind, currency, className, dataCol, dataValue,
 }: {
@@ -522,10 +798,13 @@ function PaymentBreakdownCell({
   // Формулы триггера: supplier_balance = приход − нетто + …
   // → Δбаланса = −Δнетто; buyer_debt = нетто − отгружено
   // → Δдолга = +Δнетто.
-  function applyOptimistic(nextAll: PaymentSnap[]) {
+  // Дельта нетто считается по СПИСКАМ, а не по пропам gross/refund:
+  // с 00145 в нетто входит ещё и взаимозачёт (payment = gross − refund
+  // + offset), а отдельной колонки взаимозачёта у этой ячейки нет.
+  function applyOptimistic(prevAll: PaymentSnap[] | null, nextAll: PaymentSnap[]) {
     setPayments(nextAll);
     const t = splitPaymentTotals(nextAll);
-    const deltaNet = t.net - ((gross ?? 0) - (refund ?? 0));
+    const deltaNet = t.net - splitPaymentTotals(prevAll ?? []).net;
     if (side === "supplier") {
       applyDealPatch(dealId, {
         supplier_payment_gross: t.gross,
@@ -577,7 +856,7 @@ function PaymentBreakdownCell({
 
   async function patchPayment(id: string, patch: { amount?: number; payment_date?: string }) {
     const prev = payments; const prevGross = gross; const prevRefund = refund; const prevBalance = balance;
-    applyOptimistic((prev ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    applyOptimistic(prev, (prev ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").update(patch).eq("id", id);
     if (error) { revertOptimistic(prev, prevGross, prevRefund, prevBalance, error.message); return; }
@@ -587,7 +866,7 @@ function PaymentBreakdownCell({
   async function deletePayment(id: string) {
     if (!confirm(isRefundCell ? "Удалить возврат/перезачёт?" : "Удалить оплату?")) return;
     const prev = payments; const prevGross = gross; const prevRefund = refund; const prevBalance = balance;
-    applyOptimistic((prev ?? []).filter((p) => p.id !== id));
+    applyOptimistic(prev, (prev ?? []).filter((p) => p.id !== id));
     const sb = createClient();
     const { error } = await sb.from("deal_payments").delete().eq("id", id);
     if (error) { revertOptimistic(prev, prevGross, prevRefund, prevBalance, error.message); return; }
@@ -603,9 +882,12 @@ function PaymentBreakdownCell({
     const id = crypto.randomUUID();
     const today = new Date().toISOString().slice(0, 10);
     const prev = payments; const prevGross = gross; const prevRefund = refund; const prevBalance = balance;
-    applyOptimistic([
+    applyOptimistic(prev, [
       ...(prev ?? []),
-      { id, payment_date: today, amount: 0, currency: null, description: null, payment_type: paymentType },
+      {
+        id, payment_date: today, amount: 0, currency: null, description: null,
+        payment_type: paymentType, offset_kind: null, counterparty_deal_id: null, mirror_of: null,
+      },
     ]);
     const sb = createClient();
     const { error } = await sb.from("deal_payments").insert({
@@ -1273,6 +1555,8 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dealId={deal.id}
         side="supplier"
         value={deal.supplier_offset_total}
+        net={deal.supplier_payment}
+        balance={deal.supplier_balance}
         currency={deal.supplier_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
       />
@@ -1401,6 +1685,8 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dealId={deal.id}
         side="buyer"
         value={deal.buyer_offset_total}
+        net={deal.buyer_payment}
+        balance={deal.buyer_debt}
         currency={deal.buyer_currency ?? ""}
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
       />
