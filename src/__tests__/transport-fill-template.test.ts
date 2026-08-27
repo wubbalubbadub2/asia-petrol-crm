@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { fillTemplateToBytes, inspectTemplate } from "@/lib/transport/fill-template";
-import { buildTemplateValues, buildDateLine } from "@/lib/transport/request-values";
+import { buildTemplateValues, formatRequestDate } from "@/lib/transport/request-values";
 import { TEMPLATE_ROWS } from "@/lib/transport/template-rows";
 
 /**
@@ -90,7 +90,7 @@ let templateBytes: Uint8Array;
 beforeAll(async () => {
   templateBytes = new Uint8Array(readFileSync(TEMPLATE));
   const out = await fillTemplateToBytes(templateBytes, {
-    dateLine: buildDateLine(ORT.date),
+    date: formatRequestDate(ORT.date),
     values: buildTemplateValues(ORT),
   });
   filled = await readBack(out);
@@ -147,7 +147,7 @@ describe("заполненная заявка", () => {
       "Принадлежность вагонов": "ТОО «PTC Operator»",
       "Маршрут транспортировки": "Темир (660308) — Турксиб-эксп. (704402) — Карабалта (715905)",
       "Покупатель": "ОсОО Ойл Ресорсиз Трейдинг",
-      "Период перевозки": "март 2026 г.",
+      "Период перевозки": "Март 2026 г.",
     };
     for (const [label, value] of Object.entries(expected)) {
       expect(filled.rows.get(label)?.value, label).toBe(value);
@@ -184,11 +184,11 @@ describe("заполненная заявка", () => {
 describe("повторное заполнение", () => {
   it("заполняет уже заполненный документ, а не дописывает к нему", async () => {
     const once = await fillTemplateToBytes(templateBytes, {
-      dateLine: buildDateLine("2026-03-27"),
+      date: formatRequestDate("2026-03-27"),
       values: buildTemplateValues(ORT),
     });
     const twice = await fillTemplateToBytes(once, {
-      dateLine: buildDateLine("2026-05-01"),
+      date: formatRequestDate("2026-05-01"),
       values: buildTemplateValues({ ...ORT, tonnage: 300, wagons: 5 }),
     });
     const again = await readBack(twice);

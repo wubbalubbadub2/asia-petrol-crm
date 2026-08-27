@@ -21,7 +21,7 @@ import {
 import { fillTemplate } from "@/lib/transport/fill-template";
 import {
   buildTemplateValues,
-  buildDateLine,
+  formatRequestDate,
   documentFileName,
   type RequestDocumentInput,
 } from "@/lib/transport/request-values";
@@ -426,7 +426,7 @@ export function TransportRequestForm({
 
       const bytes = await downloadTemplate(tpl.file_path);
       const blob = await fillTemplate(bytes, {
-        dateLine: buildDateLine(v.date),
+        date: formatRequestDate(v.date),
         values: buildTemplateValues(documentInput()),
       });
 

@@ -86,19 +86,20 @@ export default function CompanyTemplatesPage() {
       const bytes = new Uint8Array(await file.arrayBuffer());
 
       // ── Проверка бланка до загрузки ──
+      //
+      // Разбор настоящих бланков (26.08) показал: одинаковых у компаний
+      // нет. «Покупатель» есть у одной из четырёх, в заявке на план ГУ
+      // вместо «Период перевозки» стоит «Месяц отгрузки», зато добавлены
+      // «Страна назначения» и «Порт». Поэтому отказываем только когда
+      // нет строк, без которых документ бессмыслен, а про остальное
+      // предупреждаем: пусть человек решает.
       const info = await inspectTemplate(bytes);
-      if (info.missing.length > 0) {
+      if (info.missingRequired.length > 0) {
         toast.error(
-          `Бланк не принят: не нашлись строки — ${info.missing.join("; ")}. ` +
-            "Названия строк менять нельзя: по ним система заполняет заявку.",
+          `Бланк не принят: не нашлись обязательные строки — ${info.missingRequired.join("; ")}. ` +
+            "Похоже, это не заявка или названия строк изменены.",
           { duration: 15000 },
         );
-        return;
-      }
-      if (!info.hasDateLine) {
-        toast.error("Бланк не принят: нет строки «Заявка от …» над таблицей", {
-          duration: 12000,
-        });
         return;
       }
 
@@ -124,7 +125,25 @@ export default function CompanyTemplatesPage() {
       });
       if (error) throw error;
 
-      toast.success(`Бланк принят: все ${TEMPLATE_ROWS.length} строк на месте`);
+      const notes: string[] = [];
+      if (info.missing.length > 0) {
+        notes.push(`не заполнятся: ${info.missing.join(", ")}`);
+      }
+      if (info.extra.length > 0) {
+        notes.push(`останутся как есть: ${info.extra.join(", ")}`);
+      }
+      if (!info.hasDateLine) {
+        notes.push("дату придётся ставить вручную — строки «Заявка от…» или «Дата…» нет");
+      }
+
+      if (notes.length > 0) {
+        toast.warning(
+          `Бланк принят: ${info.found.length} из ${TEMPLATE_ROWS.length} строк. ` + notes.join("; "),
+          { duration: 15000 },
+        );
+      } else {
+        toast.success(`Бланк принят: все ${TEMPLATE_ROWS.length} строк на месте`);
+      }
       await load();
     } catch (e) {
       toast.error(`Не удалось загрузить бланк: ${(e as Error).message}`);

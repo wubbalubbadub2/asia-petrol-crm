@@ -1,4 +1,11 @@
-import { TEMPLATE_ROWS, normalizeRowLabel } from "@/lib/transport/template-rows";
+import {
+  TEMPLATE_ROWS,
+  REQUIRED_ROWS,
+  normalizeRowLabel,
+  rowVariants,
+  dateLine,
+  dateLinePrefix,
+} from "@/lib/transport/template-rows";
 
 /**
  * Заполнение бланка заявки на перевозку.
@@ -31,11 +38,15 @@ const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 export type TemplateValue = { label: string; lines: string[] };
 
 export type TemplateInspection = {
-  /** Названия строк, найденные в бланке. */
+  /** Названия строк контракта, найденные в бланке. */
   found: string[];
-  /** Строки контракта, которых в бланке нет. */
+  /** Строки контракта, которых в бланке нет, — заполнять будет нечего. */
   missing: string[];
-  /** Нашлась ли строка «Заявка от …» над таблицей. */
+  /** Из них обязательные: без них файл вообще не заявка. */
+  missingRequired: string[];
+  /** Строки бланка, которых нет в контракте, — их не трогаем. */
+  extra: string[];
+  /** Нашлась ли строка с датой над таблицей. */
   hasDateLine: boolean;
 };
 
@@ -149,14 +160,42 @@ function labelledRows(doc: Document): Map<string, Element> {
   return map;
 }
 
+/** Как строка контракта называется в ЭТОМ бланке. Нет — undefined. */
+function findRow(rows: Map<string, Element>, label: string): Element | undefined {
+  for (const variant of rowVariants(label)) {
+    const hit = rows.get(normalizeRowLabel(variant));
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/** Подписи строк бланка в исходном написании — для отчёта о лишних. */
+function rawLabels(doc: Document): string[] {
+  const out: string[] = [];
+  for (const tr of els(doc, "tr")) {
+    const cells = directCells(tr);
+    if (cells.length < 2) continue;
+    const t = textOf(cells[0]).replace(/\s+/g, " ").trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
+
 /**
- * Абзац с датой над таблицей — «Заявка от 27.03.2026 г.».
+ * Абзац с датой над таблицей.
  *
- * Берём ПЕРВЫЙ подходящий абзац: в бланке он один и стоит выше
- * таблицы, а внутри ячеек такого текста быть не может.
+ * У разных компаний он называется по-разному: «Заявка от 27.03.2026 г.»
+ * или «Дата 31.07.2026 г.» отдельной строкой, а слово «Заявка» стоит
+ * ниже самостоятельным заголовком. Подпись сохраняем, меняем дату.
+ *
+ * Берём ПЕРВЫЙ подходящий абзац: в бланке он один и стоит выше таблицы.
  */
-function dateParagraph(doc: Document): Element | undefined {
-  return els(doc, "p").find((p) => textOf(p).trim().startsWith("Заявка от"));
+function dateParagraph(doc: Document): { p: Element; prefix: string } | undefined {
+  for (const p of els(doc, "p")) {
+    const prefix = dateLinePrefix(textOf(p));
+    if (prefix) return { p, prefix };
+  }
+  return undefined;
 }
 
 /**
@@ -172,11 +211,21 @@ export async function inspectTemplate(bytes: DocxBytes): Promise<TemplateInspect
   const found: string[] = [];
   const missing: string[] = [];
   for (const label of TEMPLATE_ROWS) {
-    if (rows.has(normalizeRowLabel(label))) found.push(label);
+    if (findRow(rows, label)) found.push(label);
     else missing.push(label);
   }
 
-  return { found, missing, hasDateLine: dateParagraph(doc) !== undefined };
+  const known = new Set<string>();
+  for (const label of TEMPLATE_ROWS) {
+    for (const variant of rowVariants(label)) known.add(normalizeRowLabel(variant));
+  }
+  const extra = rawLabels(doc).filter((l) => !known.has(normalizeRowLabel(l)));
+
+  const missingRequired = missing.filter((l) =>
+    (REQUIRED_ROWS as readonly string[]).includes(l),
+  );
+
+  return { found, missing, missingRequired, extra, hasDateLine: dateParagraph(doc) !== undefined };
 }
 
 /**
@@ -187,17 +236,18 @@ export async function inspectTemplate(bytes: DocxBytes): Promise<TemplateInspect
  */
 export async function fillTemplate(
   bytes: DocxBytes,
-  opts: { dateLine: string; values: TemplateValue[] },
+  opts: { date: string; values: TemplateValue[] },
 ): Promise<Blob> {
   const { zip, xml } = await readDocumentXml(bytes);
   const doc = parseDocument(xml);
 
+  // Подпись строки с датой оставляем ту, что стоит в бланке компании.
   const dp = dateParagraph(doc);
-  if (dp) setParagraphText(dp, [opts.dateLine]);
+  if (dp) setParagraphText(dp.p, [dateLine(opts.date, dp.prefix)]);
 
   const rows = labelledRows(doc);
   for (const { label, lines } of opts.values) {
-    const tr = rows.get(normalizeRowLabel(label));
+    const tr = findRow(rows, label);
     if (!tr) continue;
     const cells = directCells(tr);
     setCellText(cells[1], lines.length ? lines : [""]);
@@ -216,7 +266,7 @@ export async function fillTemplate(
 /** Для тестов: то же заполнение, но результат — байты, а не Blob. */
 export async function fillTemplateToBytes(
   bytes: DocxBytes,
-  opts: { dateLine: string; values: TemplateValue[] },
+  opts: { date: string; values: TemplateValue[] },
 ): Promise<Uint8Array> {
   const blob = await fillTemplate(bytes, opts);
   return new Uint8Array(await blob.arrayBuffer());

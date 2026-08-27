@@ -1,5 +1,5 @@
 import { MONTHS_RU } from "@/lib/constants/months-ru";
-import { TEMPLATE_ROWS, dateLine } from "@/lib/transport/template-rows";
+import { TEMPLATE_ROWS } from "@/lib/transport/template-rows";
 import type { TemplateValue } from "@/lib/transport/fill-template";
 
 /**
@@ -78,18 +78,23 @@ export function formatRequestDate(iso: string): string {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : "";
 }
 
-export function buildDateLine(iso: string): string {
-  return dateLine(formatRequestDate(iso));
-}
-
-/** «март 2026 г.» */
+/**
+ * «Август 2026 г.» — с заглавной.
+ *
+ * В справочнике месяцы лежат строчными («август»), а во всех настоящих
+ * заявках период написан с большой буквы: «Август 2026 г.»,
+ * «Сентябрь 2026 г.». Разница видна в готовом документе, поэтому
+ * приводим здесь, а не правим общий справочник — он питает ещё и
+ * таблицы CRM, где строчные уместны.
+ */
 export function formatPeriod(
   month: number | null | undefined,
   year: number | null | undefined,
 ): string {
   if (!month || !year) return "";
   const name = MONTHS_RU[month - 1];
-  return name ? `${name} ${year} г.` : "";
+  if (!name) return "";
+  return `${name[0].toUpperCase()}${name.slice(1)} ${year} г.`;
 }
 
 /** «ОсОО «Ромашка», ИНН 010092009» — ИНН только если он есть. */
