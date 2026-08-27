@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileDown, Loader2, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, FileDown, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 import { fillTemplate } from "@/lib/transport/fill-template";
 import {
   buildTemplateValues,
+  formatPeriod,
   formatRequestDate,
   documentFileName,
   type RequestDocumentInput,
@@ -84,8 +85,16 @@ export type RequestFormValues = {
   route_id: string;
   buyer_id: string;
   period_month: string;
+  /** Последний месяц периода: «Август-сентябрь 2026 г.». Пусто — один месяц. */
+  period_month_to: string;
   period_year: string;
+  destination_country: string;
+  port: string;
+  wagon_numbers: string;
 };
+
+/** Строка «Оплата по <дорога> …» в ячейке «Экспедитор по ЖД». */
+export type PayerLine = { railway: string; text: string };
 
 const CARGO_PURPOSES: { value: string; label: string }[] = [
   { value: "export", label: "Экспорт" },
@@ -99,7 +108,8 @@ export const CARRIED_OVER_COLUMNS = [
   "destination_station_id", "siding", "carrier_id", "consignee_id",
   "etsng_code", "gng_code", "special_marks", "consignor_factory_id",
   "wagon_owner_forwarder_id", "forwarder_kzh_id", "payer_krg_consignee_id",
-  "route_id", "buyer_id", "period_month", "period_year",
+  "route_id", "buyer_id", "period_month", "period_month_to", "period_year",
+  "destination_country", "port", "wagon_numbers",
 ] as const;
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -112,7 +122,8 @@ export function emptyValues(): RequestFormValues {
     carrier_id: "", consignee_id: "", etsng_code: "", gng_code: "",
     special_marks: "", consignor_factory_id: "", wagon_owner_forwarder_id: "",
     forwarder_kzh_id: "", payer_krg_consignee_id: "", route_id: "",
-    buyer_id: "", period_month: "", period_year: "",
+    buyer_id: "", period_month: "", period_month_to: "", period_year: "",
+    destination_country: "", port: "", wagon_numbers: "",
   };
 }
 
@@ -144,7 +155,11 @@ export function valuesFromRow(row: Record<string, unknown>): RequestFormValues {
     route_id: str("route_id"),
     buyer_id: str("buyer_id"),
     period_month: str("period_month"),
+    period_month_to: str("period_month_to"),
     period_year: str("period_year"),
+    destination_country: str("destination_country"),
+    port: str("port"),
+    wagon_numbers: str("wagon_numbers"),
   };
 }
 
@@ -176,12 +191,24 @@ function rowFromValues(v: RequestFormValues) {
     route_id: nul(v.route_id),
     buyer_id: nul(v.buyer_id),
     period_month: num(v.period_month),
+    period_month_to: num(v.period_month_to),
     period_year: num(v.period_year),
+    destination_country: nul(v.destination_country),
+    port: nul(v.port),
+    wagon_numbers: nul(v.wagon_numbers),
   };
 }
 
 const opts = (rows: { id: string; name: string }[]) =>
   rows.map((r) => ({ value: r.id, label: r.name }));
+
+function movePayer(list: PayerLine[], index: number, delta: number): PayerLine[] {
+  const target = index + delta;
+  if (target < 0 || target >= list.length) return list;
+  const next = [...list];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
 
 function Field({
   label,
@@ -221,6 +248,8 @@ type Props = {
   prefillFromLast: boolean;
   /** Номер сохранённой заявки — уходит в имя файла. */
   requestNumber?: number | null;
+  /** Строки оплат сохранённой заявки. */
+  initialPayers?: PayerLine[];
 };
 
 export function TransportRequestForm({
@@ -228,11 +257,13 @@ export function TransportRequestForm({
   heading,
   prefillFromLast,
   requestNumber,
+  initialPayers,
 }: Props) {
   const router = useRouter();
   const { isAdmin } = useRole();
   const { refs, loading } = useTransportRefs();
   const [v, setV] = useState<RequestFormValues>(initial);
+  const [payers, setPayers] = useState<PayerLine[]>(initialPayers ?? []);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -250,6 +281,15 @@ export function TransportRequestForm({
   const route = refs.routes.find((r) => r.id === v.route_id);
 
   const routeText = useMemo(() => printedRoute(route), [route]);
+
+  // Ровно те строки, что уйдут в ячейку «Экспедитор по ЖД».
+  const payerPreview = useMemo(
+    () =>
+      payers
+        .map((p) => `Оплата по ${p.railway.trim()} ${p.text.trim()}`.trim())
+        .filter((line) => line !== "Оплата по"),
+    [payers],
+  );
 
   /**
    * Коды груза зависят от ПАРЫ «завод + продукт» (00155). Клиент 26.08:
@@ -322,8 +362,49 @@ export function TransportRequestForm({
       date: cur.date,
       company_group_id: id,
     }));
+
+    // Оплаты по ЖД у одной компании тоже повторяются от заявки к
+    // заявке — переносим вместе с остальными полями.
+    const { data: lines } = await sb
+      .from("transport_request_payers")
+      .select("railway, payer_text")
+      .eq("request_id", data.id)
+      .order("position");
+    setPayers(
+      ((lines ?? []) as { railway: string; payer_text: string | null }[]).map((l) => ({
+        railway: l.railway,
+        text: l.payer_text ?? "",
+      })),
+    );
+
     wagonsTouched.current = true;
     toast.success("Поля заполнены по прошлой заявке этой компании");
+  }
+
+  /**
+   * Строки оплат переписываются целиком: удалить и вставить заново
+   * надёжнее, чем сводить позиции по одной, — их единицы.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function savePayers(sb: any, requestId: string) {
+    const { error: delErr } = await sb
+      .from("transport_request_payers")
+      .delete()
+      .eq("request_id", requestId);
+    if (delErr) throw delErr;
+
+    const rows = payers
+      .filter((p) => p.railway.trim() !== "")
+      .map((p, i) => ({
+        request_id: requestId,
+        position: i + 1,
+        railway: p.railway.trim(),
+        payer_text: p.text.trim() || null,
+      }));
+    if (rows.length === 0) return;
+
+    const { error } = await sb.from("transport_request_payers").insert(rows);
+    if (error) throw error;
   }
 
   async function persist(status: "draft" | "issued") {
@@ -344,6 +425,7 @@ export function TransportRequestForm({
       if (v.id) {
         const { error } = await sb.from("transport_requests").update(row).eq("id", v.id);
         if (error) throw error;
+        await savePayers(sb, v.id);
         toast.success("Сохранено");
         router.refresh();
       } else {
@@ -353,6 +435,7 @@ export function TransportRequestForm({
           .select("id")
           .single();
         if (error) throw error;
+        await savePayers(sb, data.id as string);
         toast.success("Заявка создана");
         router.replace(`/transport-requests/${data.id}`);
       }
@@ -367,7 +450,6 @@ export function TransportRequestForm({
   function documentInput(): RequestDocumentInput {
     const name = (rows: { id: string; name: string }[], id: string) =>
       rows.find((r) => r.id === id)?.name ?? "";
-    const krg = refs.consignees.find((c) => c.id === v.payer_krg_consignee_id);
     return {
       date: v.date,
       fuelName: fuel?.full_name || fuel?.name || "",
@@ -388,12 +470,15 @@ export function TransportRequestForm({
       specialMarks: v.special_marks,
       consignorName: name(refs.factories, v.consignor_factory_id),
       wagonOwnerName: name(refs.forwarders, v.wagon_owner_forwarder_id),
-      kzhPayerName: name(refs.forwarders, v.forwarder_kzh_id),
-      krgPayerName: krg?.name ?? "",
+      payers: payers.filter((p) => p.railway.trim() !== ""),
       routeText,
       buyerName: name(refs.buyers, v.buyer_id),
       periodMonth: v.period_month === "" ? null : Number(v.period_month),
+      periodMonthTo: v.period_month_to === "" ? null : Number(v.period_month_to),
       periodYear: v.period_year === "" ? null : Number(v.period_year),
+      destinationCountry: v.destination_country,
+      port: v.port,
+      wagonNumbers: v.wagon_numbers,
     };
   }
 
@@ -608,6 +693,19 @@ export function TransportRequestForm({
               <Input value={v.gng_code} onChange={(e) => set("gng_code", e.target.value)} placeholder="27101967" />
             </Field>
             <div className="sm:col-span-2">
+              <Field
+                label="Номера вагонов-цистерн"
+                hint="Если номера известны заранее; через запятую"
+              >
+                <Textarea
+                  rows={2}
+                  value={v.wagon_numbers}
+                  onChange={(e) => set("wagon_numbers", e.target.value)}
+                  placeholder="51694719, 51726354, …"
+                />
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
               <Field label="Особые отметки">
                 <Textarea
                   rows={2}
@@ -649,6 +747,23 @@ export function TransportRequestForm({
                 onChange={(val) => set("carrier_id", val)}
                 placeholder="Выберите перевозчика"
                 triggerClassName="w-full"
+              />
+            </Field>
+            <Field
+              label="Страна назначения"
+              hint="Только если груз уходит за пределы КЗХ"
+            >
+              <Input
+                value={v.destination_country}
+                onChange={(e) => set("destination_country", e.target.value)}
+                placeholder="Грузия, далее водным транспортом"
+              />
+            </Field>
+            <Field label="Порт" hint="Если есть перевалка на воду">
+              <Input
+                value={v.port}
+                onChange={(e) => set("port", e.target.value)}
+                placeholder="Батуми"
               />
             </Field>
             <div className="sm:col-span-2">
@@ -712,24 +827,84 @@ export function TransportRequestForm({
                 triggerClassName="w-full"
               />
             </Field>
-            <Field label="Оплата по КЗХ">
-              <SearchableSelect
-                options={opts(refs.forwarders)}
-                value={v.forwarder_kzh_id}
-                onChange={(val) => set("forwarder_kzh_id", val)}
-                placeholder="Выберите экспедитора"
-                triggerClassName="w-full"
-              />
-            </Field>
-            <Field label="Оплата по КРГ" hint="По умолчанию — грузополучатель">
-              <SearchableSelect
-                options={opts(refs.consignees)}
-                value={v.payer_krg_consignee_id}
-                onChange={(val) => set("payer_krg_consignee_id", val)}
-                placeholder="Выберите плательщика"
-                triggerClassName="w-full"
-              />
-            </Field>
+            <div className="sm:col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-[12px]">Экспедитор по ЖД — оплаты</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPayers((prev) => [...prev, { railway: "", text: "" }])}
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Добавить оплату
+                </Button>
+              </div>
+              {payers.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Обычно две строки: КЗХ и КРГ. У экспортной заявки бывает больше — РЖД,
+                  АЗЖД, ГРЖД.
+                </p>
+              )}
+              {payers.map((line, i) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <Input
+                    className="w-24 shrink-0"
+                    value={line.railway}
+                    onChange={(e) =>
+                      setPayers((prev) =>
+                        prev.map((x, idx) => (idx === i ? { ...x, railway: e.target.value } : x)),
+                      )
+                    }
+                    placeholder="КЗХ"
+                  />
+                  <Input
+                    className="min-w-0 flex-1"
+                    value={line.text}
+                    onChange={(e) =>
+                      setPayers((prev) =>
+                        prev.map((x, idx) => (idx === i ? { ...x, text: e.target.value } : x)),
+                      )
+                    }
+                    placeholder="– ТОО «PTC Operator»"
+                  />
+                  <Button
+                    type="button" variant="ghost" size="icon" className="h-9 w-8 shrink-0"
+                    disabled={i === 0}
+                    onClick={() => setPayers((prev) => movePayer(prev, i, -1))}
+                    aria-label="Выше"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button" variant="ghost" size="icon" className="h-9 w-8 shrink-0"
+                    disabled={i === payers.length - 1}
+                    onClick={() => setPayers((prev) => movePayer(prev, i, 1))}
+                    aria-label="Ниже"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button" variant="ghost" size="icon"
+                    className="h-9 w-8 shrink-0 text-destructive"
+                    onClick={() => setPayers((prev) => prev.filter((_, idx) => idx !== i))}
+                    aria-label="Убрать"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              {payerPreview.length > 0 && (
+                <div className="rounded border bg-muted/40 px-2.5 py-2">
+                  <p className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    В заявке напечатается
+                  </p>
+                  {payerPreview.map((line, i) => (
+                    <p key={i} className="font-mono text-[12px] leading-snug">{line}</p>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -748,6 +923,18 @@ export function TransportRequestForm({
                 triggerClassName="w-full"
               />
             </Field>
+            <Field label="по месяц" hint="Если период — диапазон">
+              <SearchableSelect
+                options={[
+                  { value: "", label: "— один месяц —" },
+                  ...MONTHS_RU.map((m, i) => ({ value: String(i + 1), label: m })),
+                ]}
+                value={v.period_month_to}
+                onChange={(val) => set("period_month_to", val)}
+                placeholder="— один месяц —"
+                triggerClassName="w-full"
+              />
+            </Field>
             <Field label="Год">
               <Input
                 inputMode="numeric"
@@ -756,14 +943,14 @@ export function TransportRequestForm({
                 placeholder="2026"
               />
             </Field>
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-4">
               <Derived
                 label="В заявке напечатается"
-                value={
-                  v.period_month && v.period_year
-                    ? `${MONTHS_RU[Number(v.period_month) - 1]} ${v.period_year} г.`
-                    : ""
-                }
+                value={formatPeriod(
+                  v.period_month === "" ? null : Number(v.period_month),
+                  v.period_year === "" ? null : Number(v.period_year),
+                  v.period_month_to === "" ? null : Number(v.period_month_to),
+                )}
               />
             </div>
           </CardContent>

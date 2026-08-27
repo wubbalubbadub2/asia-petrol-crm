@@ -141,22 +141,24 @@ describe("«Месяц отгрузки» — как в заявке на пла
 
 describe("строки, которых нет в контракте", () => {
   it("перечисляются как «останутся как есть» и не мешают приёму", async () => {
+    // Строка, которой система не знает вовсе. «Страна назначения» и
+    // «Порт» лишними больше НЕ считаются: их мы умеем заполнять.
     const info = await inspectTemplate(
-      await variant((x) => x.replace(">Особые отметки<", ">Страна назначения<")),
+      await variant((x) => x.replace(">Особые отметки<", ">Примечание перевозчика<")),
     );
     expect(info.missingRequired).toEqual([]);
-    expect(info.extra).toEqual(["Страна назначения"]);
+    expect(info.extra).toEqual(["Примечание перевозчика"]);
     expect(info.missing).toEqual(["Особые отметки"]);
   });
 
   it("их содержимое не затирается при заполнении", async () => {
-    const bytes = await variant((x) => x.replace(">Особые отметки<", ">Порт<"));
+    const bytes = await variant((x) => x.replace(">Особые отметки<", ">Примечание перевозчика<"));
     const filled = await fillTemplateToBytes(bytes, {
       date: formatRequestDate(VALUES.date),
       values: buildTemplateValues(VALUES),
     });
     const { rows } = await readRows(filled);
-    expect(rows.has("Порт")).toBe(true);
+    expect(rows.has("Примечание перевозчика")).toBe(true);
   });
 });
 
@@ -177,5 +179,112 @@ describe("период перевозки", () => {
     });
     const { rows } = await readRows(filled);
     expect(rows.get("Период перевозки")).toBe("Август 2026 г.");
+  });
+});
+
+describe("формы из настоящих заявок, которых не было в модели", () => {
+  it("период диапазоном — «Август-сентябрь 2026 г.», как у ОМИ", async () => {
+    const filled = await fillTemplateToBytes(base(), {
+      date: formatRequestDate("2026-08-26"),
+      values: buildTemplateValues({
+        date: "2026-08-26",
+        periodMonth: 8,
+        periodMonthTo: 9,
+        periodYear: 2026,
+      }),
+    });
+    const { rows } = await readRows(filled);
+    expect(rows.get("Период перевозки")).toBe("Август-сентябрь 2026 г.");
+  });
+
+  it("тот же месяц в обоих полях диапазоном не считается", async () => {
+    const filled = await fillTemplateToBytes(base(), {
+      date: formatRequestDate("2026-08-26"),
+      values: buildTemplateValues({
+        date: "2026-08-26",
+        periodMonth: 8,
+        periodMonthTo: 8,
+        periodYear: 2026,
+      }),
+    });
+    const { rows } = await readRows(filled);
+    expect(rows.get("Период перевозки")).toBe("Август 2026 г.");
+  });
+
+  it("оплат по ЖД может быть четыре — как в заявке на Батуми", async () => {
+    const filled = await fillTemplateToBytes(base(), {
+      date: formatRequestDate("2026-08-26"),
+      values: buildTemplateValues({
+        date: "2026-08-26",
+        payers: [
+          { railway: "КЗХ", text: "PTC OPERATOR ТОО КОД 2782503" },
+          { railway: "РЖД", text: "РТС-ТРАНС ООО КОД 1006067843 РАСЧЕТ ЧЕРЕЗ ЦФТО" },
+          { railway: "АЗЖД", text: "ADY Express 57550226" },
+          { railway: "ГРЖД", text: "GR Transit LLC 156341" },
+        ],
+      }),
+    });
+    const { rows } = await readRows(filled);
+    const cell = rows.get("Экспедитор по ЖД") ?? "";
+    expect(cell).toContain("Оплата по КЗХ PTC OPERATOR ТОО КОД 2782503");
+    expect(cell).toContain("Оплата по ГРЖД GR Transit LLC 156341");
+  });
+
+  it("привычные две оплаты пишутся как раньше", async () => {
+    const filled = await fillTemplateToBytes(base(), {
+      date: formatRequestDate("2026-03-27"),
+      values: buildTemplateValues({
+        date: "2026-03-27",
+        payers: [
+          { railway: "КЗХ", text: "– ТОО «PTC Operator»" },
+          { railway: "КРГ", text: "груженый и порожний пробег: ОсОО «China Petrol»" },
+        ],
+      }),
+    });
+    const { rows } = await readRows(filled);
+    const cell = rows.get("Экспедитор по ЖД") ?? "";
+    expect(cell).toContain("Оплата по КЗХ – ТОО «PTC Operator»");
+    expect(cell).toContain("Оплата по КРГ груженый и порожний пробег: ОсОО «China Petrol»");
+  });
+
+  it("«Страна назначения» и «Порт» заполняются, если строки есть в бланке", async () => {
+    const bytes = await variant((x) =>
+      x.replace(">Тупик<", ">Страна назначения<").replace(">Особые отметки<", ">Порт<"),
+    );
+    const info = await inspectTemplate(bytes);
+    // Они больше не «лишние»: система умеет их заполнять.
+    expect(info.extra).toEqual([]);
+
+    const filled = await fillTemplateToBytes(bytes, {
+      date: formatRequestDate("2026-08-26"),
+      values: buildTemplateValues({
+        date: "2026-08-26",
+        destinationCountry: "Грузия, далее водным транспортом",
+        port: "Батуми",
+      }),
+    });
+    const { rows } = await readRows(filled);
+    expect(rows.get("Страна назначения")).toBe("Грузия, далее водным транспортом");
+    expect(rows.get("Порт")).toBe("Батуми");
+  });
+
+  it("«Номера вагонов-цистерн» заполняются — как у ОМИ", async () => {
+    const bytes = await variant((x) => x.replace(">Тупик<", ">Номера вагонов-цистерн<"));
+    const filled = await fillTemplateToBytes(bytes, {
+      date: formatRequestDate("2026-08-26"),
+      values: buildTemplateValues({
+        date: "2026-08-26",
+        wagonNumbers: "51694719, 51726354, 51602407",
+      }),
+    });
+    const { rows } = await readRows(filled);
+    expect(rows.get("Номера вагонов-цистерн")).toBe("51694719, 51726354, 51602407");
+  });
+
+  it("эталонный бланк без этих строк принимается без предупреждений", async () => {
+    const info = await inspectTemplate(base());
+    expect(info.missing).toEqual([]);
+    expect(info.extra).toEqual([]);
+    expect(info.missingRequired).toEqual([]);
   });
 });

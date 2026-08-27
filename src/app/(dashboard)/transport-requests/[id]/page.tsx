@@ -8,6 +8,7 @@ import {
   TransportRequestForm,
   valuesFromRow,
   type RequestFormValues,
+  type PayerLine,
 } from "@/components/transport/request-form";
 
 export default function TransportRequestPage() {
@@ -15,6 +16,7 @@ export default function TransportRequestPage() {
   const [values, setValues] = useState<RequestFormValues | null>(null);
   const [heading, setHeading] = useState("Заявка на перевозку");
   const [number, setNumber] = useState<number | null>(null);
+  const [payers, setPayers] = useState<PayerLine[]>([]);
   const [missing, setMissing] = useState(false);
   const sbRef = useRef(createClient());
 
@@ -40,6 +42,15 @@ export default function TransportRequestPage() {
         setValues(valuesFromRow(data));
         setHeading(`Заявка № ${data.request_number}/${String(data.request_year).slice(2)}`);
         setNumber(Number(data.request_number));
+        sb.from("transport_request_payers")
+          .select("railway, payer_text")
+          .eq("request_id", id)
+          .order("position")
+          .then(({ data: lines }: { data: { railway: string; payer_text: string | null }[] | null }) =>
+            setPayers(
+              (lines ?? []).map((l) => ({ railway: l.railway, text: l.payer_text ?? "" })),
+            ),
+          );
       });
   }, [params?.id]);
 
@@ -67,6 +78,7 @@ export default function TransportRequestPage() {
       heading={heading}
       prefillFromLast={false}
       requestNumber={number}
+      initialPayers={payers}
     />
   );
 }

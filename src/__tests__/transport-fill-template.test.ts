@@ -39,8 +39,13 @@ const ORT = {
   specialMarks: "",
   consignorName: 'ТОО "RAMCO REFINERY"',
   wagonOwnerName: "ТОО «PTC Operator»",
-  kzhPayerName: "ТОО «PTC Operator»",
-  krgPayerName: "ОсОО «China Petrol Company «Zhongda»",
+  payers: [
+    { railway: "КЗХ", text: "– ТОО «PTC Operator»" },
+    {
+      railway: "КРГ",
+      text: "груженый и порожний пробег: ОсОО «China Petrol Company «Zhongda»",
+    },
+  ],
   routeText: "Темир (660308) — Турксиб-эксп. (704402) — Карабалта (715905)",
   buyerName: "ОсОО Ойл Ресорсиз Трейдинг",
   periodMonth: 3,

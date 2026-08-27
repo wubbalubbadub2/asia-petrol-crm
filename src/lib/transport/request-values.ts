@@ -1,5 +1,5 @@
 import { MONTHS_RU } from "@/lib/constants/months-ru";
-import { TEMPLATE_ROWS } from "@/lib/transport/template-rows";
+import { FILLABLE_ROWS } from "@/lib/transport/template-rows";
 import type { TemplateValue } from "@/lib/transport/fill-template";
 
 /**
@@ -37,12 +37,17 @@ export type RequestDocumentInput = {
   specialMarks?: string | null;
   consignorName?: string | null;
   wagonOwnerName?: string | null;
-  kzhPayerName?: string | null;
-  krgPayerName?: string | null;
   routeText?: string | null;
   buyerName?: string | null;
   periodMonth?: number | null;
+  /** Последний месяц периода: «Август-сентябрь 2026 г.». */
+  periodMonthTo?: number | null;
   periodYear?: number | null;
+  destinationCountry?: string | null;
+  port?: string | null;
+  wagonNumbers?: string | null;
+  /** Строки «Оплата по <дорога> …» — их бывает больше двух. */
+  payers?: { railway: string; text: string }[];
 };
 
 const CARGO_PURPOSE_LABELS: Record<string, string> = {
@@ -78,23 +83,30 @@ export function formatRequestDate(iso: string): string {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : "";
 }
 
+const capitalize = (w: string) => `${w[0].toUpperCase()}${w.slice(1)}`;
+
 /**
- * «Август 2026 г.» — с заглавной.
+ * «Август 2026 г.» или «Август-сентябрь 2026 г.».
  *
  * В справочнике месяцы лежат строчными («август»), а во всех настоящих
- * заявках период написан с большой буквы: «Август 2026 г.»,
- * «Сентябрь 2026 г.». Разница видна в готовом документе, поэтому
- * приводим здесь, а не правим общий справочник — он питает ещё и
- * таблицы CRM, где строчные уместны.
+ * заявках период написан с большой буквы. Разница видна в готовом
+ * документе, поэтому приводим здесь, а не правим общий справочник — он
+ * питает ещё и таблицы CRM, где строчные уместны.
+ *
+ * Диапазон встречается у ОМИ: «Август-сентябрь 2026 г.» — второй месяц
+ * там строчный, так и оставляем.
  */
 export function formatPeriod(
   month: number | null | undefined,
   year: number | null | undefined,
+  monthTo?: number | null,
 ): string {
   if (!month || !year) return "";
-  const name = MONTHS_RU[month - 1];
-  if (!name) return "";
-  return `${name[0].toUpperCase()}${name.slice(1)} ${year} г.`;
+  const from = MONTHS_RU[month - 1];
+  if (!from) return "";
+  const to = monthTo && monthTo !== month ? MONTHS_RU[monthTo - 1] : null;
+  const head = to ? `${capitalize(from)}-${to}` : capitalize(from);
+  return `${head} ${year} г.`;
 }
 
 /** «ОсОО «Ромашка», ИНН 010092009» — ИНН только если он есть. */
@@ -104,14 +116,19 @@ function formatConsignee(name: string, bin: string): string {
 }
 
 /**
- * Ячейка «Экспедитор по ЖД» — две оплаты в одной клетке, как в образце.
- * Пустая сторона строку не занимает.
+ * Ячейка «Экспедитор по ЖД» — по строке на дорогу.
+ *
+ * У обычной заявки их две (КЗХ и КРГ), у экспортной через Батуми —
+ * четыре: КЗХ, РЖД, АЗЖД и ГРЖД. Общее у строк только начало «Оплата по
+ * <дорога>», дальше текст пишут как принято у этой дороги, поэтому
+ * остаток берём как есть.
  */
-function formatRailwayPayers(kzh: string, krg: string): string[] {
-  const lines: string[] = [];
-  if (kzh) lines.push(`Оплата по КЗХ – ${kzh}`);
-  if (krg) lines.push(`Оплата по КРГ груженый и порожний пробег: ${krg}`);
-  return lines;
+function formatRailwayPayers(
+  payers: { railway: string; text: string }[] | undefined,
+): string[] {
+  return (payers ?? [])
+    .map((p) => `Оплата по ${s(p.railway)} ${s(p.text)}`.trim())
+    .filter((line) => line !== "Оплата по");
 }
 
 /**
@@ -137,13 +154,16 @@ export function buildTemplateValues(input: RequestDocumentInput): TemplateValue[
     "Особые отметки": s(input.specialMarks).split("\n"),
     "Грузоотправитель": [s(input.consignorName)],
     "Принадлежность вагонов": [s(input.wagonOwnerName)],
-    "Экспедитор по ЖД": formatRailwayPayers(s(input.kzhPayerName), s(input.krgPayerName)),
+    "Экспедитор по ЖД": formatRailwayPayers(input.payers),
     "Маршрут транспортировки": [s(input.routeText)],
     "Покупатель": [s(input.buyerName)],
-    "Период перевозки": [formatPeriod(input.periodMonth, input.periodYear)],
+    "Период перевозки": [formatPeriod(input.periodMonth, input.periodYear, input.periodMonthTo)],
+    "Страна назначения": [s(input.destinationCountry)],
+    "Порт": [s(input.port)],
+    "Номера вагонов-цистерн": [s(input.wagonNumbers)],
   };
 
-  return TEMPLATE_ROWS.map((label) => ({
+  return FILLABLE_ROWS.map((label) => ({
     label,
     lines: byLabel[label] ?? [""],
   }));

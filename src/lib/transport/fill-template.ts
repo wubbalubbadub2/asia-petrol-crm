@@ -1,5 +1,6 @@
 import {
   TEMPLATE_ROWS,
+  FILLABLE_ROWS,
   REQUIRED_ROWS,
   normalizeRowLabel,
   rowVariants,
@@ -215,8 +216,11 @@ export async function inspectTemplate(bytes: DocxBytes): Promise<TemplateInspect
     else missing.push(label);
   }
 
+  // «Лишними» считаем строки, которых мы не умеем заполнять. Строки
+  // из FILLABLE_ROWS лишними не являются, даже если в этом бланке их
+  // нет: они просто не у всех.
   const known = new Set<string>();
-  for (const label of TEMPLATE_ROWS) {
+  for (const label of FILLABLE_ROWS) {
     for (const variant of rowVariants(label)) known.add(normalizeRowLabel(variant));
   }
   const extra = rawLabels(doc).filter((l) => !known.has(normalizeRowLabel(l)));

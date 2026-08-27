@@ -110,6 +110,26 @@ export default function TransportRequestsPage() {
         .single();
       if (error) throw error;
 
+      // Оплаты по ЖД — часть заявки, копия без них была бы неполной.
+      const { data: lines } = await sb
+        .from("transport_request_payers")
+        .select("position, railway, payer_text")
+        .eq("request_id", id)
+        .order("position");
+      const payerRows = (lines ?? []) as {
+        position: number; railway: string; payer_text: string | null;
+      }[];
+      if (payerRows.length > 0) {
+        await sb.from("transport_request_payers").insert(
+          payerRows.map((l) => ({
+            request_id: created.id,
+            position: l.position,
+            railway: l.railway,
+            payer_text: l.payer_text,
+          })),
+        );
+      }
+
       toast.success("Копия создана");
       router.push(`/transport-requests/${created.id}`);
     } catch (e) {
