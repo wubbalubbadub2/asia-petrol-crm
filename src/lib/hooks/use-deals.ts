@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllPages } from "@/lib/supabase/paginate";
 import type { TablesInsert } from "@/lib/types/database";
 import { toast } from "sonner";
 
@@ -258,22 +259,25 @@ export type DealCodeRef = { id: string; deal_code: string | null; is_archived: b
 
 let dealCodeIndexPromise: Promise<Map<string, DealCodeRef>> | null = null;
 
+// Тянем ПОСТРАНИЧНО: PostgREST режет ответ на max-rows независимо от
+// .limit() — см. @/lib/supabase/paginate. Архивные сделки тоже берём:
+// иначе у взаимозачёта на архивную сделку вместо кода отрисовался бы
+// огрызок uuid.
 export function fetchDealCodeIndex(): Promise<Map<string, DealCodeRef>> {
   if (dealCodeIndexPromise) return dealCodeIndexPromise;
   const sb = createClient();
-  dealCodeIndexPromise = Promise.resolve(
-    sb.from("deals").select("id, deal_code, is_archived").order("deal_code", { ascending: false }).limit(5000),
-  )
-    .then(({ data, error }) => {
-      if (error) {
-        // Как и у оплат: роняем кэш, чтобы следующий клик сходил в сеть.
-        dealCodeIndexPromise = null;
-        throw error;
-      }
-      const rows = (data ?? []) as DealCodeRef[];
-      return new Map(rows.map((d) => [d.id, d]));
-    })
+  dealCodeIndexPromise = fetchAllPages<DealCodeRef>(async (from, to) => {
+    const { data, error } = await sb
+      .from("deals")
+      .select("id, deal_code, is_archived")
+      .order("deal_code", { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as DealCodeRef[];
+  })
+    .then((rows) => new Map(rows.map((d) => [d.id, d])))
     .catch((e) => {
+      // Как и у оплат: роняем кэш, чтобы следующий клик сходил в сеть.
       dealCodeIndexPromise = null;
       throw e;
     });
