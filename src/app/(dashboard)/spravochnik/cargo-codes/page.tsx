@@ -27,6 +27,8 @@ type CargoCode = {
   fuel_type_id: string;
   etsng_code?: string;
   gng_code?: string;
+  /** ТН ВЭД в заявку не печатается — держим как справочный. */
+  tnved_code?: string;
   factory?: { name: string } | null;
   fuel_type?: { name: string } | null;
 };
@@ -56,6 +58,11 @@ const columns: ColumnDef<CargoCode, unknown>[] = [
     header: "Код ГНГ",
     cell: ({ row }) => row.original.gng_code ?? "—",
   },
+  {
+    accessorKey: "tnved_code",
+    header: "Код ТН ВЭД",
+    cell: ({ row }) => row.original.tnved_code ?? "—",
+  },
 ];
 
 type FormProps = {
@@ -70,6 +77,7 @@ function CargoCodeForm({ item, onSave, onClose }: FormProps) {
     fuel_type_id: item?.fuel_type_id ?? "",
     etsng_code: item?.etsng_code ?? "",
     gng_code: item?.gng_code ?? "",
+    tnved_code: item?.tnved_code ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [factories, setFactories] = useState<Option[]>([]);
@@ -156,6 +164,19 @@ function CargoCodeForm({ item, onSave, onClose }: FormProps) {
         </div>
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor="tnved_code">Код ТН ВЭД</Label>
+        <Input
+          id="tnved_code"
+          value={form.tnved_code ?? ""}
+          onChange={(e) => set("tnved_code", e.target.value)}
+          placeholder="2710196201"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          В заявку не печатается — в бланках такой строки нет. Хранится для справки.
+        </p>
+      </div>
+
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Отмена
@@ -172,7 +193,7 @@ export default function CargoCodesPage() {
   const { data, loading, save, remove } = useSupabaseTable<CargoCode>(
     "transport_cargo_codes",
     "created_at",
-    "id, factory_id, fuel_type_id, etsng_code, gng_code, " +
+    "id, factory_id, fuel_type_id, etsng_code, gng_code, tnved_code, " +
       "factory:factories(name), fuel_type:fuel_types(name)",
   );
 
@@ -188,7 +209,9 @@ export default function CargoCodesPage() {
     <div className="space-y-4">
       <div className="max-w-3xl text-[13px] text-muted-foreground">
         Коды подставляются в заявку по паре «грузоотправитель + продукт». Пары нет —
-        поля в заявке останутся пустыми, и их придётся заполнить вручную.
+        поля в заявке останутся пустыми, и их придётся заполнить вручную. У мазута
+        марка важна: у ПКОП 1,00% и 1,50% дают разные коды, поэтому в заявке
+        выбирайте конкретную марку, а не общий «Мазут».
       </div>
       <CrudTable<CargoCode>
         data={data}
