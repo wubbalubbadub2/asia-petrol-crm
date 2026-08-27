@@ -20,6 +20,11 @@ import {
 } from "@/lib/hooks/use-transport-refs";
 import { fillTemplate } from "@/lib/transport/fill-template";
 import {
+  buildRequestPdf,
+  extractTemplateImages,
+  loadPdfFonts,
+} from "@/lib/transport/build-pdf";
+import {
   buildTemplateValues,
   formatPeriod,
   formatRequestDate,
@@ -265,7 +270,7 @@ export function TransportRequestForm({
   const [v, setV] = useState<RequestFormValues>(initial);
   const [payers, setPayers] = useState<PayerLine[]>(initialPayers ?? []);
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState<"docx" | "pdf" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const sbRef = useRef(createClient());
   // Пока менеджер не тронул поле «Вагонов», оно следует за тоннажем.
@@ -493,7 +498,7 @@ export function TransportRequestForm({
       toast.error("Сначала сохраните заявку");
       return;
     }
-    setGenerating(true);
+    setGenerating("docx");
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = sbRef.current as any;
@@ -531,7 +536,74 @@ export function TransportRequestForm({
     } catch (e) {
       toast.error(`Не удалось сформировать документ: ${(e as Error).message}`);
     } finally {
-      setGenerating(false);
+      setGenerating(null);
+    }
+  }
+
+  /**
+   * PDF рисуется своим макетом: конвертера Word → PDF на сервере нет.
+   * Из бланка компании берутся картинки — шапка сверху, подпись и
+   * печать в блоке подписи, — поэтому документ похож на Word, но не
+   * повторяет его байт в байт. Клиент выбрал этот путь 25.08.
+   */
+  async function generatePdf() {
+    if (!v.id) {
+      toast.error("Сначала сохраните заявку");
+      return;
+    }
+    setGenerating("pdf");
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = sbRef.current as any;
+      const { data: tpl } = await sb
+        .from("transport_company_templates")
+        .select("file_path")
+        .eq("company_group_id", v.company_group_id)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      // Без бланка PDF всё равно соберётся — просто без шапки и печати.
+      let images = { header: [] as Uint8Array[], body: [] as Uint8Array[] };
+      if (tpl) {
+        try {
+          images = await extractTemplateImages(await downloadTemplate(tpl.file_path));
+        } catch {
+          toast.warning("Бланк не прочитался — PDF будет без печати и шапки");
+        }
+      }
+
+      const company = refs.companies.find((c) => c.id === v.company_group_id)?.name ?? "";
+      const fonts = await loadPdfFonts();
+      const bytes = await buildRequestPdf(
+        {
+          date: formatRequestDate(v.date),
+          values: buildTemplateValues(documentInput()),
+          companyName: company,
+          headerImages: images.header,
+          bodyImages: images.body,
+        },
+        fonts,
+      );
+
+      const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+      const fileName = documentFileName(requestNumber, v.date, company, "pdf");
+      triggerDownload(blob, fileName);
+
+      try {
+        await saveRequestFile({
+          requestId: v.id,
+          kind: "pdf",
+          blob,
+          fileName,
+          stampMs: Date.now(),
+        });
+      } catch (e) {
+        toast.warning(`PDF скачан, но не сохранился в истории: ${(e as Error).message}`);
+      }
+    } catch (e) {
+      toast.error(`Не удалось сформировать PDF: ${(e as Error).message}`);
+    } finally {
+      setGenerating(null);
     }
   }
 
@@ -574,15 +646,33 @@ export function TransportRequestForm({
             variant="secondary"
             size="sm"
             onClick={generateWord}
-            disabled={generating || !v.id}
+            disabled={generating !== null || !v.id}
             title={v.id ? "Заполнить бланк компании" : "Сначала сохраните заявку"}
           >
-            {generating ? (
+            {generating === "docx" ? (
               <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
             ) : (
               <FileDown className="mr-1 h-3.5 w-3.5" />
             )}
             Скачать Word
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={generatePdf}
+            disabled={generating !== null || !v.id}
+            title={
+              v.id
+                ? "Свой макет с шапкой и печатью из бланка — похоже на Word, но не байт в байт"
+                : "Сначала сохраните заявку"
+            }
+          >
+            {generating === "pdf" ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileDown className="mr-1 h-3.5 w-3.5" />
+            )}
+            PDF
           </Button>
           {v.id && (
             <Button
