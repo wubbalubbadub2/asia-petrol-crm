@@ -22,6 +22,12 @@ import { toast } from "sonner";
 export type RefRow = { id: string; name: string };
 
 /**
+ * Завод знает свою станцию отправления (00154) — с неё начинается
+ * маршрут, и в форме это подсказка при выборе маршрута.
+ */
+export type FactoryRef = RefRow & { departure_station_id: string | null };
+
+/**
  * Коды ЕТСНГ и ГНГ — по паре «завод + продукт» (00155). Клиент 26.08:
  * «в заводу и продукту». У одного завода мазут и дизель имеют разные
  * ГНГ, а один и тот же мазут у разных заводов — тоже разный.
@@ -61,7 +67,7 @@ export type TransportRefs = {
   stations: StationRef[];
   carriers: RefRow[];
   consignees: ConsigneeRef[];
-  factories: RefRow[];
+  factories: FactoryRef[];
   cargoCodes: CargoCodeRef[];
   forwarders: RefRow[];
   routes: RouteRef[];
@@ -108,7 +114,7 @@ export function useTransportRefs() {
       active("stations", "id, name, code"),
       active("transport_carriers", "id, name"),
       active("consignees", "id, name, bin_iin, code_4, okpo, address"),
-      active("factories", "id, name"),
+      active("factories", "id, name, departure_station_id"),
       active("forwarders", "id, name"),
       sb.from("transport_routes")
         .select("id, name, transport_route_stations(position, stations(name, code))")
@@ -140,7 +146,7 @@ export function useTransportRefs() {
         stations: st as StationRef[],
         carriers: ca as RefRow[],
         consignees: cn as ConsigneeRef[],
-        factories: fa as RefRow[],
+        factories: fa as FactoryRef[],
         forwarders: fw as RefRow[],
         routes: ro as RouteRef[],
         buyers: (bu as { id: string; full_name: string; short_name: string | null }[])

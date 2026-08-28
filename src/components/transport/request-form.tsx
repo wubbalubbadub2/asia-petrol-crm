@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, FileDown, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -100,6 +101,9 @@ export type RequestFormValues = {
 
 /** Строка «Оплата по <дорога> …» в ячейке «Экспедитор по ЖД». */
 export type PayerLine = { railway: string; text: string };
+
+/** Дороги, встречавшиеся в заявках. Список открытый: можно вписать свою. */
+const RAILWAYS = ["КЗХ", "КРГ", "РЖД", "АЗЖД", "ГРЖД"] as const;
 
 const CARGO_PURPOSES: { value: string; label: string }[] = [
   { value: "export", label: "Экспорт" },
@@ -269,6 +273,30 @@ export function TransportRequestForm({
   const { refs, loading } = useTransportRefs();
   const [v, setV] = useState<RequestFormValues>(initial);
   const [payers, setPayers] = useState<PayerLine[]>(initialPayers ?? []);
+
+  /**
+   * Плательщик по железной дороге — это экспедитор, грузополучатель
+   * или контрагент. Иностранные перевозчики вроде «РТС-ТРАНС» или «ADY
+   * Express» ни в одном справочнике не заведены, поэтому строка
+   * остаётся редактируемой: выбор подставляет название, а дописать
+   * можно что угодно.
+   */
+  const payerOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { value: string; label: string }[] = [];
+    for (const [group, rows] of [
+      ["Экспедиторы", refs.forwarders],
+      ["Грузополучатели", refs.consignees],
+      ["Контрагенты", refs.buyers],
+    ] as const) {
+      for (const r of rows) {
+        if (seen.has(r.name)) continue;
+        seen.add(r.name);
+        out.push({ value: r.name, label: `${r.name} — ${group.toLowerCase()}` });
+      }
+    }
+    return out;
+  }, [refs.forwarders, refs.consignees, refs.buyers]);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState<"docx" | "pdf" | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -286,6 +314,27 @@ export function TransportRequestForm({
   const route = refs.routes.find((r) => r.id === v.route_id);
 
   const routeText = useMemo(() => printedRoute(route), [route]);
+
+  const consignor = refs.factories.find((f) => f.id === v.consignor_factory_id);
+  const consignorName = consignor?.name ?? "";
+
+  /**
+   * Пара выбрана, а кодов нет — про это надо сказать вслух: иначе
+   * менеджер отправит заявку с пустой строкой «Код ЕТСНГ, ГНГ» и узнает
+   * об этом от контрагента.
+   */
+  const codesMissing =
+    v.fuel_type_id !== "" &&
+    v.consignor_factory_id !== "" &&
+    v.etsng_code === "" &&
+    v.gng_code === "";
+
+  /** Станция отправления завода — с неё начинается маршрут. */
+  const departureStation = useMemo(() => {
+    const id = consignor?.departure_station_id;
+    if (!id) return null;
+    return refs.stations.find((st) => st.id === id) ?? null;
+  }, [consignor, refs.stations]);
 
   // Ровно те строки, что уйдут в ячейку «Экспедитор по ЖД».
   const payerPreview = useMemo(
@@ -632,6 +681,13 @@ export function TransportRequestForm({
 
   return (
     <div className="space-y-4">
+      {/* Известные дороги подсказкой, но вписать свою можно: список не
+          закрыт — в батумской заявке появились АЗЖД и ГРЖД. */}
+      <datalist id="transport-railways">
+        {RAILWAYS.map((r) => (
+          <option key={r} value={r} />
+        ))}
+      </datalist>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{heading}</h1>
         <div className="flex gap-2">
@@ -740,23 +796,49 @@ export function TransportRequestForm({
         {/* ── Груз ────────────────────────────────────────── */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-[15px]">Груз</CardTitle>
+            <CardTitle className="text-[15px]">Груз и грузоотправитель</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Field label="Наименование нефтепродукта">
-                <SearchableSelect
-                  options={opts(refs.fuels)}
-                  value={v.fuel_type_id}
-                  onChange={(val) => applyPair(v.consignor_factory_id, val)}
-                  placeholder="Выберите продукт"
-                  triggerClassName="w-full"
-                />
-              </Field>
-            </div>
+            {/*
+              Продукт и завод стоят ВЫШЕ кодов намеренно: коды зависят
+              от этой пары, и пока она не выбрана, показывать их нечего.
+              Грузоотправитель поэтому живёт здесь, а не среди прочих
+              участников перевозки.
+            */}
+            <Field label="Наименование нефтепродукта">
+              <SearchableSelect
+                options={opts(refs.fuels)}
+                value={v.fuel_type_id}
+                onChange={(val) => applyPair(v.consignor_factory_id, val)}
+                placeholder="Выберите продукт"
+                triggerClassName="w-full"
+              />
+            </Field>
+            <Field label="Грузоотправитель — завод">
+              <SearchableSelect
+                options={opts(refs.factories)}
+                value={v.consignor_factory_id}
+                onChange={(val) => applyPair(val, v.fuel_type_id)}
+                placeholder="Выберите завод"
+                triggerClassName="w-full"
+              />
+            </Field>
             <div className="sm:col-span-2">
               <Derived label="В заявке напечатается" value={fuel?.full_name || fuel?.name || ""} />
             </div>
+            <Derived label="Код ЕТСНГ" value={v.etsng_code} />
+            <Derived label="Код ГНГ" value={v.gng_code} />
+            {codesMissing && (
+              <div className="sm:col-span-2 rounded border border-amber-300 bg-amber-50 px-2.5 py-2">
+                <p className="text-[12px] leading-snug text-amber-900">
+                  Для пары «{fuel?.name}» + «{consignorName}» кодов в справочнике нет — в
+                  заявке строка «Код ЕТСНГ, ГНГ» останется пустой.{" "}
+                  <Link href="/spravochnik/cargo-codes" className="underline">
+                    Добавить в справочник «Коды груза»
+                  </Link>
+                </p>
+              </div>
+            )}
             <Field label="Кол-во, тонн">
               <Input
                 inputMode="decimal"
@@ -775,12 +857,6 @@ export function TransportRequestForm({
                 }}
                 placeholder="7"
               />
-            </Field>
-            <Field label="Код ЕТСНГ" hint="Из справочника «Коды груза»">
-              <Input value={v.etsng_code} onChange={(e) => set("etsng_code", e.target.value)} placeholder="221066" />
-            </Field>
-            <Field label="Код ГНГ">
-              <Input value={v.gng_code} onChange={(e) => set("gng_code", e.target.value)} placeholder="27101967" />
             </Field>
             <div className="sm:col-span-2">
               <Field
@@ -814,6 +890,20 @@ export function TransportRequestForm({
             <CardTitle className="text-[15px]">Маршрут и станции</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
+            {/* Маршрут начинается со станции выбранного завода —
+                показываем её, чтобы было видно, какой маршрут подходит. */}
+            {departureStation && (
+              <div className="sm:col-span-2 rounded border bg-muted/40 px-2.5 py-2">
+                <p className="text-[12px] leading-snug">
+                  Станция отправления завода «{consignorName}» —{" "}
+                  <span className="font-mono">
+                    {departureStation.name}
+                    {departureStation.code ? ` (${departureStation.code})` : ""}
+                  </span>
+                  . С неё должен начинаться маршрут.
+                </p>
+              </div>
+            )}
             <Field label="Станция назначения">
               <SearchableSelect
                 options={refs.stations.map((s) => ({
@@ -899,15 +989,6 @@ export function TransportRequestForm({
             <Derived label="Код грузополучателя" value={consignee?.code_4 ?? ""} />
             <Derived label="Код ОКПО" value={consignee?.okpo ?? ""} />
             <Derived label="Адрес" value={consignee?.address ?? ""} />
-            <Field label="Грузоотправитель" hint="Вместе с продуктом задаёт коды груза">
-              <SearchableSelect
-                options={opts(refs.factories)}
-                value={v.consignor_factory_id}
-                onChange={(val) => applyPair(val, v.fuel_type_id)}
-                placeholder="Выберите завод"
-                triggerClassName="w-full"
-              />
-            </Field>
             <Field label="Принадлежность вагонов">
               <SearchableSelect
                 options={opts(refs.forwarders)}
@@ -936,10 +1017,18 @@ export function TransportRequestForm({
                   АЗЖД, ГРЖД.
                 </p>
               )}
+              {payers.length > 0 && (
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Выбор плательщика подставляет его в строку. Строку можно дописать
+                  руками — у каждой дороги формулировка своя: «груженый и порожний
+                  пробег:», «КОД 2782503».
+                </p>
+              )}
               {payers.map((line, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <Input
                     className="w-24 shrink-0"
+                    list="transport-railways"
                     value={line.railway}
                     onChange={(e) =>
                       setPayers((prev) =>
@@ -948,6 +1037,20 @@ export function TransportRequestForm({
                     }
                     placeholder="КЗХ"
                   />
+                  <div className="w-52 shrink-0">
+                    <SearchableSelect
+                      options={payerOptions}
+                      value=""
+                      onChange={(name) =>
+                        setPayers((prev) =>
+                          prev.map((x, idx) => (idx === i ? { ...x, text: `– ${name}` } : x)),
+                        )
+                      }
+                      placeholder="Плательщик из справочника"
+                      searchPlaceholder="Экспедитор, получатель…"
+                      triggerClassName="w-full"
+                    />
+                  </div>
                   <Input
                     className="min-w-0 flex-1"
                     value={line.text}
