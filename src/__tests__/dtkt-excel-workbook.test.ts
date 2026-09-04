@@ -206,3 +206,20 @@ describe("книга ДТ-КТ — пустая выборка", () => {
     expect(ws.getCell(2, 1).value).toBe("Экспедитор");
   });
 });
+
+// Клиент 2026-09-04: Excel открывал dtkt-saldo-short-*.xlsx только через
+// «восстановить». Причина — exceljs 4.4 пишет в <sheetPr> сначала
+// <pageSetUpPr fitToPage>, потом <outlinePr>, а схема OOXML требует
+// обратный порядок; Excel считает файл битым. Проверка на записанном
+// файле: модель книги порядка узлов не показывает.
+describe("книга ДТ-КТ — файл открывается в Excel без восстановления", () => {
+  it.each(["short", "detail"] as const)("%s: в <sheetPr> нет pageSetUpPr перед outlinePr", async (variant) => {
+    const JSZip = (await import("jszip")).default;
+    const wb = buildDtKtWorkbook(ExcelJS, rows, { year: 2026, variant }, avr);
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    const xml = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    const sheetPr = xml.match(/<sheetPr>(.*?)<\/sheetPr>/)?.[1] ?? "";
+    expect(sheetPr).toContain("<outlinePr");
+    expect(sheetPr).not.toMatch(/<pageSetUpPr[^>]*\/>.*<outlinePr/);
+  });
+});

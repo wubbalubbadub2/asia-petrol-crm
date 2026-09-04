@@ -234,7 +234,13 @@ export function buildDtKtWorkbook(
   const sheetName = isDetail ? "ДТ-КТ сальдо (дет.)" : "ДТ-КТ сальдо";
   const ws = wb.addWorksheet(sheetName, {
     views: [{ state: "frozen", xSplit: 2, ySplit: 2 }],
-    pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    // Без fitToPage — нарочно. exceljs 4.4 пишет <pageSetUpPr> раньше
+    // <outlinePr>, а схема OOXML требует обратный порядок: вместе с
+    // outlineProperties ниже это даёт файл, который Excel открывает
+    // только через «восстановить» (клиент 2026-09-04). Кнопка группы
+    // важнее вписывания в лист при печати; остальные выгрузки
+    // outlineProperties не ставят, им fitToPage не мешает.
+    pageSetup: { orientation: "landscape", paperSize: 9 },
     // summaryBelow: false — под-строки идут ПОД своей записью, значит
     // кнопка «свернуть» должна стоять на ней же. По умолчанию OOXML
     // считает итог нижним, и Excel вешает кнопку на следующую запись:

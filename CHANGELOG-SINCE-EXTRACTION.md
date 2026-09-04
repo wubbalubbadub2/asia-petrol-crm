@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-04 — Выгрузка ДТ-КТ открывается в Excel без «восстановить»
+- **What changed:** `src/lib/exports/dtkt-excel.ts` — из `pageSetup` листа убран `fitToPage` (с `fitToWidth`/`fitToHeight`); остались `orientation: landscape`, `paperSize: 9`. Регрессионный тест на записанный файл в `src/__tests__/dtkt-excel-workbook.test.ts`.
+- **Type:** [EXPORT]
+- **Before → After:** exceljs 4.4 пишет в `<sheetPr>` сначала `<pageSetUpPr fitToPage>`, потом `<outlinePr>`; схема OOXML требует обратный порядок, и Excel считал оба варианта (short/detail) битыми. Теперь в `<sheetPr>` только `<outlinePr>`; данные, колонки, группировка под-строк не менялись. Побочный эффект: при печати лист больше не вписывается в ширину одной страницы.
+- **Client reason:** клиент 2026-09-04 — «при выгрузке дт/кт выходит ошибка» (Excel: «We found a problem with some content…»).
+- **Rebuild impact:** presentation only
+
 ### 2026-08-28 — Форма заявки: зависимые поля встали ниже определяющих, коды больше не набираются руками
 - **What changed:** `src/components/transport/request-form.tsx` (порядок полей, коды только для чтения, выбор плательщика из справочника, подсказка про станцию отправления), `use-transport-refs.ts` (завод отдаёт станцию отправления), тест `src/__tests__/transport-form-order.test.ts` (14 проверок).
 - **Type:** [UI-FIELD] [BUGFIX]
