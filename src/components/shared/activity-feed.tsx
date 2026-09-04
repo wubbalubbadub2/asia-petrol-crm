@@ -5,7 +5,7 @@ import { Send, MessageSquare, DollarSign, Truck, FileText, Settings } from "luci
 import { Button } from "@/components/ui/button";
 import { type ActivityMessage } from "@/lib/hooks/use-deal-activity";
 import { currencySymbol } from "@/lib/constants/currencies";
-import { formatDMYTime } from "@/lib/format";
+import { formatDMYTime, formatPrice } from "@/lib/format";
 
 function formatAmount(n: number): string {
   // Money canon 2026-07-07: always 2 decimals.
@@ -63,12 +63,14 @@ const FIELD_LABELS: Record<string, string> = {
 // Format a single value for display. Numeric values get Russian thousand
 // separators + optional currency/unit suffix. Strings render as-is.
 // Null / undefined renders as «—».
-function formatValue(raw: unknown, suffix: string, isNumeric: boolean): string {
+function formatValue(raw: unknown, suffix: string, isNumeric: boolean, isPrice = false): string {
   if (raw === null || raw === undefined) return "—";
   if (isNumeric) {
     const n = toNum(raw);
     if (n === null) return "—";
-    return formatAmount(n) + (suffix ? " " + suffix : "");
+    // Цена за тонну — 3 знака (клиент 2026-09-04), остальные числа — деньги.
+    const text = isPrice ? formatPrice(n) : formatAmount(n);
+    return text + (suffix ? " " + suffix : "");
   }
   const s = String(raw);
   return s === "" ? "—" : s;
@@ -136,7 +138,8 @@ function renderActivityContent(msg: ActivityMessage): string {
     field.includes("tonnage") ||
     field === "surcharge_amount"
   );
-  return `${label}: ${formatValue(md.old, suffix, isNumeric)} → ${formatValue(md.new, suffix, isNumeric)}`;
+  const isPrice = field.includes("price");
+  return `${label}: ${formatValue(md.old, suffix, isNumeric, isPrice)} → ${formatValue(md.new, suffix, isNumeric, isPrice)}`;
 }
 
 const TYPE_ICONS: Record<string, { icon: typeof MessageSquare; color: string; bg: string }> = {

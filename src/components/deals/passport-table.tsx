@@ -25,7 +25,7 @@ import { splitPaymentTotals, isRefundKind, offsetTotalInDealCurrency } from "@/l
 import { OFFSET_KINDS, OFFSET_KIND_LABELS, offsetKindLabel } from "@/lib/payments/offset-kinds";
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
-import { formatDMY } from "@/lib/format";
+import { formatDMY, formatPrice } from "@/lib/format";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -1217,11 +1217,11 @@ function EditableCGPrice({ cgId, value, onSaved }: { cgId: string; value: number
   if (!editing) return (
     <button onClick={() => { setLocalVal(value?.toString() ?? ""); setEditing(true); }}
       className="font-mono text-purple-500 hover:bg-purple-50 rounded px-0.5 cursor-text">
-      {value != null ? formatNum(value) : ""}
+      {value != null && value !== 0 ? formatPrice(value) : ""}
     </button>
   );
   return (
-    <input autoFocus type="number" step="0.01" value={localVal}
+    <input autoFocus type="number" step="0.001" value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={async () => {
         setEditing(false);
@@ -1517,7 +1517,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)"
         data-col="supplier_price" data-deal-id={deal.id}
         data-value={deal.supplier_price ?? undefined}
-      >{formatComputedNum(deal.supplier_price)}</td>
+      >{formatPrice(deal.supplier_price)}</td>
       <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="сумма из секции цен"
         data-col="supplier_shipped_amount" data-deal-id={deal.id}
@@ -1634,7 +1634,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)"
         data-col="buyer_price" data-deal-id={deal.id}
         data-value={deal.buyer_price ?? undefined}
-      >{formatComputedNum(deal.buyer_price)}</td>
+      >{formatPrice(deal.buyer_price)}</td>
       <td
         className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"
         data-col="buyer_ordered_volume" data-deal-id={deal.id}
@@ -1905,7 +1905,7 @@ function PassportSkeletonRow() {
 const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_contracted_volume: { label: "Объем контракт (Поставщик)", decimals: 3 },
   supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 2 },
-  supplier_price:             { label: "Цена (Поставщик)",           decimals: 2 },
+  supplier_price:             { label: "Цена (Поставщик)",           decimals: 3 },
   supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 2 },
   supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
   supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 2 },
@@ -1913,7 +1913,7 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
   buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
-  buyer_price:                { label: "Цена (Покупатель)",           decimals: 2 },
+  buyer_price:                { label: "Цена (Покупатель)",           decimals: 3 },
   buyer_ordered_volume:       { label: "Заявлено (Покупатель)",       decimals: 3 },
   buyer_remaining:            { label: "Остаток (Покупатель)",        decimals: 3 },
   buyer_shipped_volume:       { label: "Отгр. тонн (Покупатель)",     decimals: 3 },

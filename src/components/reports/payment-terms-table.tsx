@@ -18,13 +18,15 @@
  * переучивался.
  */
 import Link from "next/link";
-import { formatDMY } from "@/lib/format";
+import { formatDMY, formatPrice } from "@/lib/format";
 import {
   type PaymentTermsRow,
   groupSaldoMap,
   isOverdueVisible,
 } from "@/lib/hooks/use-payment-terms";
 
+// Цена за тонну — 3 знака (клиент 2026-09-04); суммы остаются с 2.
+const price = (v: number | null) => (v == null ? "—" : formatPrice(v));
 const money = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const vol = (v: number | null) =>
@@ -155,7 +157,7 @@ function FragmentGroup({
             </td>
             <td className={td}>{formatDMY(r.basis_date)}</td>
             <td className={tdNum}>{money(r.shipped_amount)}</td>
-            <td className={tdNum}>{money(r.price)}</td>
+            <td className={tdNum}>{price(r.price)}</td>
             <td className={tdNum}>{vol(r.shipped_volume)}</td>
             <td className={tdNum}>{firstOfDeal ? money(r.deal_payment) : ""}</td>
             <td className={tdNum}>{firstOfDeal ? money(r.deal_saldo) : ""}</td>

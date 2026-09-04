@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-04 — Цена за тонну везде с 3 знаками после запятой
+- **What changed:** `src/lib/format.ts` — новые `formatPrice` / `formatPriceOrBlank` (3 знака), правило в шапке файла. Экран: `passport-table.tsx` (колонки «Цена» поставщика и покупателя, цена группы компаний и её поле ввода со step 0.001, выделение ячеек по этим колонкам), `deal-company-chain.tsx`, `deal-lines-editor.tsx`, `deal-trigger-prices.tsx` (расчётная цена в таблице и в поле формы), `fiscal-positions.tsx`, отчёты `price-report.tsx` / `collection-table.tsx` / `payment-terms-table.tsx`, `activity-feed.tsx` (поля с `price`), `deals/new/page.tsx` (step у цены группы). Excel: `passport-excel.ts` и `passport-detail-excel.ts` — колонки «Цена предв.», «Цена оконч.», «Цена финальная», «Цена гр. (avg)» получили `#,##0.000`. Тесты `format-price.test.ts`, `passport-export-price-format.test.ts`.
+- **Type:** [PRESENTATION]
+- **Before → After:** цена за тонну показывалась как деньги, 2 знака (`896,50`) → 3 знака (`896,500`). Хранение (NUMERIC(14,4) / NUMERIC), формулы, суммы, оплаты, сальдо, тарифы, скидки, котировки и FX не менялись — по-прежнему 2 знака. Выгрузка котировок и калькулятор котировок и раньше шли с 3 знаками.
+- **Client reason:** клиент 2026-09-04 — «во всех ценах нужно чтобы после запятой было 3 цифры»; уточнено: только цена за тонну, на экране и в Excel.
+- **Rebuild impact:** presentation only
+
 ### 2026-09-04 — Выгрузка ДТ-КТ открывается в Excel без «восстановить»
 - **What changed:** `src/lib/exports/dtkt-excel.ts` — из `pageSetup` листа убран `fitToPage` (с `fitToWidth`/`fitToHeight`); остались `orientation: landscape`, `paperSize: 9`. Регрессионный тест на записанный файл в `src/__tests__/dtkt-excel-workbook.test.ts`.
 - **Type:** [EXPORT]

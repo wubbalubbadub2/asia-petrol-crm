@@ -670,7 +670,7 @@ export default function NewDealPage() {
                           : <span className="text-[10px] text-stone-400">(ожидание)</span>}
                       </Label>
                       <Input
-                        type="number" step="0.01"
+                        type="number" step="0.001"
                         value={cg.price}
                         onChange={(e) => updateCompanyGroup(idx, "price", e.target.value)}
                         placeholder="авто из котировки − скидки"

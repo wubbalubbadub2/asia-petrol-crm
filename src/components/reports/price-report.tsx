@@ -1,8 +1,8 @@
 import type { PriceRow } from "@/lib/hooks/use-fx-reports";
-import { formatDMY } from "@/lib/format";
+import { formatDMY, formatPrice } from "@/lib/format";
 
-const fmt = (v: number | null) =>
-  v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+// Цена за тонну — 3 знака (клиент 2026-09-04).
+const fmt = (v: number | null) => (v == null ? "—" : formatPrice(v));
 
 export function PriceReport({ rows }: { rows: PriceRow[] }) {
   // Caption — this component only ever renders the one «Цена» report, so

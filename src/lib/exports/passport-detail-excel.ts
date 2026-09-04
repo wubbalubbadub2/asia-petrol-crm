@@ -117,6 +117,9 @@ type Column = {
 const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_PRICE = "#,##0.00";
+// Цена за тонну — 3 знака (клиент 2026-09-04); котировка, скидка,
+// тариф остаются деньгами с 2 знаками.
+const NUM_FMT_PRICE_TON = "#,##0.000";
 const NUM_FMT_DATE = "dd.mm.yy";
 
 const MONTHS_RU = [
@@ -171,8 +174,8 @@ function groupBlock(position: number): Column[] {
     { key: `group_${position}_exchange`, header: "Биржа", width: 11, band: "groups", read: () => "" },
     { key: `group_${position}_quotation`, header: "Котировка", width: 11, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => groupAt(d, position)?.quotation ?? null },
     { key: `group_${position}_discount`, header: "Скидка", width: 10, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => groupAt(d, position)?.discount ?? null },
-    { key: `group_${position}_preliminary_price`, header: "Цена предв.", width: 11, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => groupPrice(d, position, "preliminary") },
-    { key: `group_${position}_final_price`, header: "Цена финальная", width: 11, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => groupPrice(d, position, "final") },
+    { key: `group_${position}_preliminary_price`, header: "Цена предв.", width: 11, band: "groups", numFmt: NUM_FMT_PRICE_TON, read: (d) => groupPrice(d, position, "preliminary") },
+    { key: `group_${position}_final_price`, header: "Цена финальная", width: 11, band: "groups", numFmt: NUM_FMT_PRICE_TON, read: (d) => groupPrice(d, position, "final") },
   ];
 }
 
@@ -193,8 +196,8 @@ const COLUMNS: Column[] = [
   { key: "supplier_exchange", header: "Биржа", width: 12, band: "supplier", read: (d) => exchange(d, "supplier"), readShip: (d) => exchange(d, "supplier") },
   { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation, readShip: (d) => d.supplier_quotation },
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
-  { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
-  { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price,
+  { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE_TON, read: (d) => preliminaryPrice(d, "supplier") },
+  { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE_TON, read: (d) => d.supplier_price,
     readShip: (d, s) => s.ship?.fx_supplier_price ?? d.supplier_price },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
   // С 00119 дата входящего СНТ — собственная колонка loading_date
@@ -239,8 +242,8 @@ const COLUMNS: Column[] = [
   { key: "buyer_exchange", header: "Биржа", width: 12, band: "buyer", read: (d) => exchange(d, "buyer"), readShip: (d) => exchange(d, "buyer") },
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
-  { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
-  { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price,
+  { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE_TON, read: (d) => preliminaryPrice(d, "buyer") },
+  { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE_TON, read: (d) => d.buyer_price,
     readShip: (d, s) => s.ship?.fx_buyer_price ?? d.buyer_price },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   // Положительный остаток: Заявлено − Отгружено (клиентская аннотация

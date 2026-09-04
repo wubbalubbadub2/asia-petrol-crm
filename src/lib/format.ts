@@ -2,8 +2,10 @@
  * Единый источник правды для форматирования чисел в UI.
  *
  * Правила (утверждено клиентом 2026-07-07):
- * • Деньги (сумма, оплата, баланс, долг, тариф, цена $/т, скидка,
- *   котировка, FX-курс) — 2 знака после запятой всегда.
+ * • Деньги (сумма, оплата, баланс, долг, тариф, скидка, котировка,
+ *   FX-курс) — 2 знака после запятой всегда.
+ * • Цена за тонну — 3 знака всегда (клиент 2026-09-04: «во всех ценах
+ *   нужно чтобы после запятой было 3 цифры»; до этого шла как деньги).
  * • Тонны / объёмы — 3 знака после запятой всегда.
  * • Целые числа (кол-во дней триггера, кол-во строк, размер файла) —
  *   0 знаков.
@@ -17,7 +19,7 @@
 
 const RU = "ru-RU";
 
-/** Деньги / цена / тариф / котировка / FX. Всегда 2 знака. */
+/** Деньги / тариф / котировка / FX. Всегда 2 знака. */
 export function formatMoney(v: number | null | undefined): string {
   if (v == null) return "";
   return v.toLocaleString(RU, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,6 +29,18 @@ export function formatMoney(v: number | null | undefined): string {
 export function formatMoneyOrBlank(v: number | null | undefined): string {
   if (v == null || v === 0) return "";
   return formatMoney(v);
+}
+
+/** Цена за тонну. Всегда 3 знака. */
+export function formatPrice(v: number | null | undefined): string {
+  if (v == null) return "";
+  return v.toLocaleString(RU, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+/** Как formatPrice, но 0 → "". */
+export function formatPriceOrBlank(v: number | null | undefined): string {
+  if (v == null || v === 0) return "";
+  return formatPrice(v);
 }
 
 /** Тонны / объём. Всегда 3 знака. */

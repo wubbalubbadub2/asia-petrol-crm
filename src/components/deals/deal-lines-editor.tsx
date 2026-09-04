@@ -40,7 +40,7 @@ import { invalidateShipmentPrices } from "@/lib/hooks/use-deal-trigger-prices";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { toast } from "sonner";
-import { formatDMY } from "@/lib/format";
+import { formatDMY, formatPrice } from "@/lib/format";
 
 type PriceStage = "preliminary" | "final";
 
@@ -925,7 +925,7 @@ function LinesEditorView({
                     Предв.
                   </span>
                   <span className="font-mono tabular-nums text-[12px] font-medium text-amber-900">
-                    {l.preliminary_price.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatPrice(l.preliminary_price)}
                   </span>
                   {tier === "manual_formula" && l.preliminary_fx_rate != null && (
                     <span className="text-[10px] text-amber-700/80">
@@ -1118,7 +1118,7 @@ function LinesEditorView({
                 <span className="text-stone-500"> {currencySymbol}</span>
                 {l.price != null && l.rollup.volume > 0 && (
                   <span className="ml-1 text-stone-400">
-                    (по цене {l.price.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                    (по цене {formatPrice(l.price)})
                   </span>
                 )}
               </span>

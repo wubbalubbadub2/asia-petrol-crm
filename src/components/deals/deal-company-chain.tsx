@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { formatPrice } from "@/lib/format";
 import { Plus, Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,7 @@ export function DealCompanyChain({
   }
 
   // Money canon 2026-07-07: prices, tariff, margin → 2 decimals.
+  const fmtPrice = (v: number | null) => (v == null ? "—" : formatPrice(v));
   const fmt = (v: number | null) =>
     v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -134,7 +136,7 @@ export function DealCompanyChain({
             <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{supplierName}</p>
             {supplierPrice != null && (
               <p className="text-[11px] font-mono tabular-nums text-amber-700 mt-0.5">
-                {fmt(supplierPrice)} {supplierCurrencySymbol}
+                {fmtPrice(supplierPrice)} {supplierCurrencySymbol}
               </p>
             )}
           </div>
@@ -153,7 +155,7 @@ export function DealCompanyChain({
                   <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{cg.company_group?.name ?? "—"}</p>
                   {cg.price != null && (
                     <p className="text-[11px] font-mono tabular-nums text-purple-700 mt-0.5 flex items-center justify-center gap-1">
-                      <span>{fmt(cg.price)} {groupSym}</span>
+                      <span>{fmtPrice(cg.price)} {groupSym}</span>
                       <span
                         className={`rounded px-1 py-px text-[8px] font-sans font-semibold uppercase tracking-wide ${
                           cg.price_kind === "final"
@@ -178,7 +180,7 @@ export function DealCompanyChain({
             <p className="text-[12px] font-medium text-stone-800 truncate max-w-[180px]">{buyerName}</p>
             {buyerPrice != null && (
               <p className="text-[11px] font-mono tabular-nums text-blue-700 mt-0.5">
-                {fmt(buyerPrice)} {buyerCurrencySymbol}
+                {fmtPrice(buyerPrice)} {buyerCurrencySymbol}
               </p>
             )}
           </div>

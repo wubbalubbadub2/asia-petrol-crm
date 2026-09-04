@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { currencySymbol } from "@/lib/constants/currencies";
-import { formatMoney, formatVolume } from "@/lib/format";
+import { formatMoney, formatPrice, formatVolume } from "@/lib/format";
 import { groupPositions, type FiscalLine } from "@/lib/fiscal/group-positions";
 
 /**
@@ -136,7 +136,7 @@ export function FiscalPositions({
                         разная
                       </span>
                     ) : (
-                      formatMoney(p.price)
+                      formatPrice(p.price)
                     )}
                   </td>
                   <td className="px-2 py-1 text-right align-top font-mono tabular-nums">
@@ -205,7 +205,7 @@ export function FiscalPositions({
                         {formatVolume(l.quantity)} <span className="text-stone-400">{l.unit ?? ""}</span>
                       </td>
                       <td className="px-2 py-0.5 text-right align-top font-mono text-[10px] tabular-nums">
-                        {formatMoney(l.price)}
+                        {formatPrice(l.price)}
                       </td>
                       <td className="px-2 py-0.5 text-right align-top font-mono text-[10px] tabular-nums">
                         {formatMoney(l.amount_net)}

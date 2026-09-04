@@ -14,7 +14,7 @@ import {
   type TriggerBasis,
   type ShipmentPrice,
 } from "@/lib/hooks/use-deal-trigger-prices";
-import { formatDMY } from "@/lib/format";
+import { formatDMY, formatPrice } from "@/lib/format";
 
 // Money canon 2026-07-07: 2 decimals for money (котировка, скидка,
 // цена $/т, сумма). formatVol — 3 decimals for tonnage.
@@ -259,7 +259,7 @@ export function DealTriggerPrices({
                     <td className="py-1 pr-2"><EdNum value={row.trigger_days} onSave={(v) => update(row.id, { trigger_days: v ?? 35 })} /></td>
                     <td className="py-1 pr-2"><EdNum value={row.quotation_avg} onSave={(v) => applyRowPatch(row, { quotation_avg: v })} /></td>
                     <td className="py-1 pr-2"><EdNum value={row.discount} onSave={(v) => applyRowPatch(row, { discount: v })} /></td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatMoney(row.calculated_price)}</td>
+                    <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatPrice(row.calculated_price)}</td>
                     <td className="py-1 pr-2"><EdNum value={row.volume} onSave={(v) => applyRowPatch(row, { volume: v })} /></td>
                     <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatMoney(row.amount)}</td>
                     <td className="py-1 pr-2 max-w-[120px]"><EdText value={row.notes} onSave={(v) => update(row.id, { notes: v })} /></td>
@@ -358,7 +358,7 @@ export function DealTriggerPrices({
               </div>
               <div className="w-24">
                 <Label className="text-[10px]">Цена</Label>
-                <Input value={calculatedPrice != null ? calculatedPrice.toFixed(2) : ""} readOnly
+                <Input value={calculatedPrice != null ? calculatedPrice.toFixed(3) : ""} readOnly
                   className="h-7 text-[11px] font-mono bg-stone-50 font-medium" />
               </div>
             </div>

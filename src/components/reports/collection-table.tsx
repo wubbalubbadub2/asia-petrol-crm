@@ -5,9 +5,12 @@
  * Бэнды и цвета — как в паспорте, чтобы взгляд не переучивался.
  */
 import Link from "next/link";
+import { formatPrice } from "@/lib/format";
 import type { FxDealRow } from "@/lib/fx/convert-deal";
 import { currencySymbol } from "@/lib/constants/currencies";
 
+// Цена за тонну — 3 знака (клиент 2026-09-04); суммы остаются с 2.
+const price = (v: number | null) => (v == null ? "—" : formatPrice(v));
 const money = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const vol = (v: number | null) =>
@@ -51,7 +54,7 @@ const COLS: Col[] = [
 
   { key: "supplier", header: "Поставщик", band: "supplier", cell: (r) => r.supplier || "—" },
   { key: "sup_contract", header: "Номер приложения", band: "supplier", cell: (r) => r.supplierContract || "—" },
-  { key: "sup_price", header: "Цена", band: "supplier", align: "right", cell: (r) => money(r.supplierPrice) },
+  { key: "sup_price", header: "Цена", band: "supplier", align: "right", cell: (r) => price(r.supplierPrice) },
   { key: "sup_amount", header: "Приход сумма", band: "supplier", align: "right",
     cell: (r) => money(r.supplierAmount), total: (rows) => money(sum(rows, (r) => r.supplierAmount)) },
   { key: "sup_volume", header: "Приход объем", band: "supplier", align: "right",
@@ -65,7 +68,7 @@ const COLS: Col[] = [
 
   { key: "buyer", header: "Покупатель", band: "buyer", cell: (r) => r.buyer || "—" },
   { key: "buy_contract", header: "Номер приложения", band: "buyer", cell: (r) => r.buyerContract || "—" },
-  { key: "buy_price", header: "Цена", band: "buyer", align: "right", cell: (r) => money(r.buyerPrice) },
+  { key: "buy_price", header: "Цена", band: "buyer", align: "right", cell: (r) => price(r.buyerPrice) },
   { key: "buy_volume", header: "Отгружено тонн", band: "buyer", align: "right",
     cell: (r) => vol(r.buyerVolume), total: (rows) => vol(sum(rows, (r) => r.buyerVolume)) },
   { key: "buy_amount", header: "Отгружено сумма", band: "buyer", align: "right",
