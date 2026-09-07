@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-07 — Справочник «Заводы» снова грузится
+- **What changed:** `src/app/(dashboard)/spravochnik/factories/page.tsx` — выборка вынесена в `src/lib/refs/factories-select.ts`, встраивание станции отправления получило явный ключ `stations!departure_station_id`. Тест `src/__tests__/factories-select.test.ts`. Схема не менялась.
+- **Type:** [BEHAVIOR]
+- **Before → After:** после применения 00154 (`factories.departure_station_id`) между `factories` и `stations` стало две связи (вторая — `stations.default_factory_id` из 00022), и PostgREST отвечал «Could not embed because more than one relationship was found for 'factories' and 'stations'» — список заводов не открывался. Теперь ключ указан явно, как на странице «Станции».
+- **Client reason:** клиент 2026-09-07 — скриншот ошибки загрузки в справочнике.
+- **Rebuild impact:** presentation only
+
 ### 2026-09-04 — Цена за тонну везде с 3 знаками после запятой
 - **What changed:** `src/lib/format.ts` — новые `formatPrice` / `formatPriceOrBlank` (3 знака), правило в шапке файла. Экран: `passport-table.tsx` (колонки «Цена» поставщика и покупателя, цена группы компаний и её поле ввода со step 0.001, выделение ячеек по этим колонкам), `deal-company-chain.tsx`, `deal-lines-editor.tsx`, `deal-trigger-prices.tsx` (расчётная цена в таблице и в поле формы), `fiscal-positions.tsx`, отчёты `price-report.tsx` / `collection-table.tsx` / `payment-terms-table.tsx`, `activity-feed.tsx` (поля с `price`), `deals/new/page.tsx` (step у цены группы). Excel: `passport-excel.ts` и `passport-detail-excel.ts` — колонки «Цена предв.», «Цена оконч.», «Цена финальная», «Цена гр. (avg)» получили `#,##0.000`. Тесты `format-price.test.ts`, `passport-export-price-format.test.ts`.
 - **Type:** [PRESENTATION]

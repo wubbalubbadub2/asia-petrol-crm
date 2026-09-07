@@ -5,6 +5,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { CrudTable } from "@/components/shared/crud-table";
 import { useSupabaseTable } from "@/lib/hooks/use-references";
+import { FACTORIES_LIST_SELECT } from "@/lib/refs/factories-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -176,8 +177,7 @@ export default function FactoriesPage() {
   const { data, loading, save, remove } = useSupabaseTable<Factory>(
     "factories",
     "name",
-    "id, name, code, departure_station_id, " +
-      "departure_station:stations(name, code), is_active"
+    FACTORIES_LIST_SELECT,
   );
 
   if (loading) {
