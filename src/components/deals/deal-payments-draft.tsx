@@ -147,7 +147,7 @@ function SideList({
               <span className="flex flex-wrap gap-x-3 font-mono tabular-nums font-bold text-stone-900">
                 {[...totals.entries()].map(([code, v]) => (
                   <span key={code}>
-                    {v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol(code)}
+                    {v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} {currencySymbol(code)}
                   </span>
                 ))}
               </span>
@@ -194,7 +194,7 @@ function PaymentDraftRow({
       />
       <Input
         type="number"
-        step="0.01"
+        step="0.001"
         value={p.amount}
         onChange={(e) => onUpdate({ amount: e.target.value })}
         placeholder="0,00"

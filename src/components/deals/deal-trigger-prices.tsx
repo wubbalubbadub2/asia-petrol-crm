@@ -16,11 +16,11 @@ import {
 } from "@/lib/hooks/use-deal-trigger-prices";
 import { formatDMY, formatPrice } from "@/lib/format";
 
-// Money canon 2026-07-07: 2 decimals for money (котировка, скидка,
+// Money canon 2026-09-08: 3 decimals for money (котировка, скидка,
 // цена $/т, сумма). formatVol — 3 decimals for tonnage.
 function formatMoney(val: number | null | undefined): string {
   if (val == null) return "—";
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 function formatVol(val: number | null | undefined): string {
   if (val == null) return "—";
@@ -354,7 +354,7 @@ export function DealTriggerPrices({
               </div>
               <div className="w-20">
                 <Label className="text-[10px]">Скидка</Label>
-                <Input type="number" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} className="h-7 text-[11px] font-mono" />
+                <Input type="number" step="0.001" value={discount} onChange={(e) => setDiscount(e.target.value)} className="h-7 text-[11px] font-mono" />
               </div>
               <div className="w-24">
                 <Label className="text-[10px]">Цена</Label>

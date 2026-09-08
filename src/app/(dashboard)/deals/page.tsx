@@ -59,10 +59,10 @@ function FuelBadge({ name, color }: { name?: string; color?: string }) {
 }
 
 // Dead code (no callers found 2026-07-07). Kept as canonical money
-// helper for future use — 2 decimals per client canon.
+// helper for future use — 3 decimals per client canon 2026-09-08.
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 export default function DealsPage() {

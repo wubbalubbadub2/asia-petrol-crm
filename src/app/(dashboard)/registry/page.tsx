@@ -70,8 +70,8 @@ function hexToRgba(hex: string | null | undefined, alpha: number): string {
 }
 
 function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
-// Money canon 2026-07-07: always 2 decimals (сумма, тариф, etc).
-function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Money canon 2026-09-08: always 3 decimals (сумма, тариф, etc).
+function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 // Tonnage display: always 3 decimals, even for whole / 2-decimal values.
 // Per client request — "после запятой 3 ноля должно быть".
 function fmtVol(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
@@ -189,7 +189,7 @@ function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
           type="number"
-          step="0.01"
+          step="0.001"
           value={lv}
           onChange={(e) => setLv(e.target.value)}
           onBlur={() => {
@@ -332,7 +332,7 @@ function EAmount({ value, override, recId, onSaved, suffix = "" }: {
       autoFocus
       onFocus={(e) => e.currentTarget.select()}
       type="number"
-      step="0.01"
+      step="0.001"
       value={lv}
       onChange={(e) => setLv(e.target.value)}
       onBlur={() => {
@@ -633,7 +633,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-1 py-1"><input type="date" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full h-6 text-[10px] border border-green-300 rounded px-1 bg-green-50" /></td>
       <td className="border-r px-1 py-1">
         <input
-          type="number" step="0.01"
+          type="number" step="0.001"
           value={tariffVal == null ? "" : String(tariffVal)}
           onChange={(e) => {
             const raw = e.target.value;
@@ -1025,7 +1025,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
               <Sel l="Плательщик ж/д тарифа" v={cgId} fn={setCgId} opts={cgs.map((c) => ({ value: c.id, label: c.name }))} />
               <Sel l="Ст. назначения" v={destId} fn={setDestId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. отправления" v={depId} fn={setDepId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
-              <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
+              <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.001" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
 
               {/* Variant pickers — only shown when the deal has >1 line
                   on a side. Below each, a sibling «Приложение» picker

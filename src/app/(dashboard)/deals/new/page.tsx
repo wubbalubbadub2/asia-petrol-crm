@@ -557,7 +557,7 @@ export default function NewDealPage() {
               </div>
               <div>
                 <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
-                <Input type="number" step="0.01" value={supplierVolume} onChange={(e) => setSupplierVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+                <Input type="number" step="0.001" value={supplierVolume} onChange={(e) => setSupplierVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
               </div>
               <div className="flex items-center gap-2 pt-5">
                 <input
@@ -602,7 +602,7 @@ export default function NewDealPage() {
               </div>
               <div>
                 <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
-                <Input type="number" step="0.01" value={buyerVolume} onChange={(e) => setBuyerVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
+                <Input type="number" step="0.001" value={buyerVolume} onChange={(e) => setBuyerVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
               </div>
             </div>
             <div>
@@ -656,11 +656,11 @@ export default function NewDealPage() {
                     </div>
                     <div className="w-24">
                       <Label className="text-[11px] text-stone-500">Котировка</Label>
-                      <Input type="number" step="0.01" value={cg.quotation} onChange={(e) => updateCompanyGroup(idx, "quotation", e.target.value)} className="h-8 text-[13px] font-mono" />
+                      <Input type="number" step="0.001" value={cg.quotation} onChange={(e) => updateCompanyGroup(idx, "quotation", e.target.value)} className="h-8 text-[13px] font-mono" />
                     </div>
                     <div className="w-24">
                       <Label className="text-[11px] text-stone-500">Скидка</Label>
-                      <Input type="number" step="0.01" value={cg.discount} onChange={(e) => updateCompanyGroup(idx, "discount", e.target.value)} className="h-8 text-[13px] font-mono" />
+                      <Input type="number" step="0.001" value={cg.discount} onChange={(e) => updateCompanyGroup(idx, "discount", e.target.value)} className="h-8 text-[13px] font-mono" />
                     </div>
                     <div className="w-24">
                       <Label className="text-[11px] text-stone-500">
@@ -719,11 +719,11 @@ export default function NewDealPage() {
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Тариф план</Label>
-              <Input type="number" step="0.01" value={plannedTariff} onChange={(e) => setPlannedTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
+              <Input type="number" step="0.001" value={plannedTariff} onChange={(e) => setPlannedTariff(e.target.value)} className="h-8 text-[13px] font-mono" />
             </div>
             <div>
               <Label className="text-[12px] text-stone-500">Объем предварит. (тонн)</Label>
-              <Input type="number" step="0.01" value={preliminaryTonnage} onChange={(e) => setPreliminaryTonnage(e.target.value)} className="h-8 text-[13px] font-mono" />
+              <Input type="number" step="0.001" value={preliminaryTonnage} onChange={(e) => setPreliminaryTonnage(e.target.value)} className="h-8 text-[13px] font-mono" />
             </div>
         </CollapsibleSection>
 

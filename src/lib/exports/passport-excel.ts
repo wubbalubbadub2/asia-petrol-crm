@@ -25,14 +25,13 @@ type Column = {
   read: (deal: Deal) => string | number | null | undefined;
 };
 
-// Client canon 2026-07-07: money (сумма, цена $/т, котировка, скидка,
-// тариф, FX) — 2 decimals. Volume — 3 decimals.
-const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
+// Client canon 2026-09-08: деньги (сумма, цена $/т, котировка, скидка,
+// тариф, FX) — 3 decimals, как и объём. До 2026-09-08 деньги шли с 2
+// знаками, а 3 знака были только у цены за тонну (клиент 2026-09-04) —
+// поэтому отдельный NUM_FMT_PRICE больше не нужен.
+const NUM_FMT_AMOUNT = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
-const NUM_FMT_PRICE = "#,##0.00";
-// Цена за тонну — 3 знака (клиент 2026-09-04); котировка, скидка,
-// тариф остаются деньгами с 2 знаками.
-const NUM_FMT_PRICE_TON = "#,##0.000";
+const NUM_FMT_PRICE = "#,##0.000";
 
 // Group name at a specific chain position (1..6) on a deal. Returns
 // "" if that position is empty — Excel's auto-filter treats blanks as
@@ -120,8 +119,8 @@ const COLUMNS: Column[] = [
   // Preliminary first, then final. While stage='preliminary' the deal's
   // supplier_price == preliminary price; after finalize, the snapshot
   // moves to line.preliminary_price and supplier_price holds the final.
-  { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE_TON, read: (d) => preliminaryPrice(d, "supplier") },
-  { key: "supplier_price", header: "Цена оконч.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE_TON, read: (d) => d.supplier_price },
+  { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
+  { key: "supplier_price", header: "Цена оконч.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price },
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross },
@@ -145,7 +144,7 @@ const COLUMNS: Column[] = [
   { key: "company_group_1", header: "Группа 1", width: 18, band: "groups", read: (d) => companyAtPosition(d, 1) },
   { key: "company_group_2", header: "Группа 2", width: 18, band: "groups", read: (d) => companyAtPosition(d, 2) },
   { key: "company_group_3", header: "Группа 3", width: 18, band: "groups", read: (d) => companyAtPosition(d, 3) },
-  { key: "company_avg_price", header: "Цена гр. (avg)", width: 13, band: "groups", numFmt: NUM_FMT_PRICE_TON, read: (d) => avgGroupPrice(d) },
+  { key: "company_avg_price", header: "Цена гр. (avg)", width: 13, band: "groups", numFmt: NUM_FMT_PRICE, read: (d) => avgGroupPrice(d) },
 
   // ── Покупатель ─────────────────────────────────────────
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
@@ -155,8 +154,8 @@ const COLUMNS: Column[] = [
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
-  { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE_TON, read: (d) => preliminaryPrice(d, "buyer") },
-  { key: "buyer_price", header: "Цена оконч.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE_TON, read: (d) => d.buyer_price },
+  { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
+  { key: "buyer_price", header: "Цена оконч.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   // Остаток = отгружено − заявлено (operator 2026-06-23). Computed
   // on the fly from the loaded scalars so the export stays in sync

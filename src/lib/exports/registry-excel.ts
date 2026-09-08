@@ -39,10 +39,10 @@ export type RegistryExportContext = {
   dealChains: Map<string, string[]>;
 };
 
-// Client canon 2026-07-07: tariff = money = 2 decimals.
+// Client canon 2026-09-08: tariff = money = 3 decimals (было 2).
 const NUM_FMT_VOLUME = "#,##0.000";
-const NUM_FMT_TARIFF = "#,##0.00";
-const NUM_FMT_AMOUNT = "#,##0.00";
+const NUM_FMT_TARIFF = "#,##0.000";
+const NUM_FMT_AMOUNT = "#,##0.000";
 
 type Column = {
   key: string;
@@ -298,3 +298,8 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+
+// Открыты для теста числовых форматов (money-decimals.test.ts) — так же,
+// как PASSPORT_COLUMNS / DTKT_*_COLUMNS в соседних выгрузках.
+export { COLUMNS_PTS as REGISTRY_PTS_COLUMNS, COLUMNS_FULL as REGISTRY_FULL_COLUMNS };

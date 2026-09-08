@@ -66,8 +66,9 @@ type AvrRow = { date: string; volume: number; amount: number; wagons: number };
 /** Под-строка детального варианта: i-я оплата рядом с i-м АВР. */
 type SubRow = { pay: DtKtExportPayment | null; avr: AvrRow | null };
 
-// Деньги — 2 знака, красный минус: знак сальдо здесь смысловой.
-const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
+// Деньги — 3 знака (клиент 2026-09-08, было 2), красный минус: знак
+// сальдо здесь смысловой.
+const NUM_FMT_AMOUNT = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_VOLUME = "#,##0.000";
 const NUM_FMT_DATE = "dd.mm.yy";
 

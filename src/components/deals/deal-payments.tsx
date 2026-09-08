@@ -45,8 +45,9 @@ const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   offset: "Взаимозачёт",
 };
 
+// Money canon 2026-09-08: 3 decimals.
 function formatMoney(val: number): string {
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 // Single payment row with inline editable date/amount/description/currency
@@ -163,7 +164,7 @@ function PaymentRow({
         </button>
       ) : (
         <input
-          autoFocus type="number" step="0.01" value={amountLv}
+          autoFocus type="number" step="0.001" value={amountLv}
           onChange={(e) => setAmountLv(e.target.value)}
           onBlur={() => {
             setEditAmount(false);
@@ -466,7 +467,7 @@ export function DealPayments({ dealId, currencySymbol: dealCurrencySymbol, side 
               )}
               <div className="w-28">
                 <Label className="text-[10px]">Сумма</Label>
-                <Input type="number" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)}
+                <Input type="number" step="0.001" value={newAmount} onChange={(e) => setNewAmount(e.target.value)}
                        placeholder={newType === "offset" ? "со знаком" : "минус = возврат"}
                        className="h-7 font-mono text-[12px]" />
               </div>

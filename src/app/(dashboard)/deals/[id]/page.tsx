@@ -128,12 +128,11 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
     pendingVal.current = undefined;
   }
 
-  // Client canon 2026-07-07: volume = 3/3, everything else (money,
-  // price, tariff, FX, quotation) = 2/2. Old behaviour ({max:3, no min})
-  // showed non-volume ints as «1 200» — no trailing decimals.
-  const numOpts: Intl.NumberFormatOptions = isVolume
-    ? { minimumFractionDigits: 3, maximumFractionDigits: 3 }
-    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  // Client canon 2026-07-07, деньги пересмотрены 2026-09-08: и объём,
+  // и деньги (сумма, цена, тариф, FX, котировка) — по 3 знака, поэтому
+  // ветвление по isVolume здесь больше не нужно. Old behaviour
+  // ({max:3, no min}) showed ints as «1 200» — no trailing decimals.
+  const numOpts: Intl.NumberFormatOptions = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
   const formatted = shown != null && shown !== ""
     ? (typeof shown === "number"
       ? Number(shown).toLocaleString("ru-RU", numOpts)
