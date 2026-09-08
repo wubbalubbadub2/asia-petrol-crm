@@ -37,8 +37,8 @@ type DtKtPayment = { id: string; payment_date: string; amount: number; descripti
 type RegistrySums = { forwarder_id: string; company_group_id: string | null; total_volume: number; total_amount: number };
 
 function fmt(v: number | null | undefined) {
-  // Money — always 2 decimals per client canon 2026-07-07.
-  return v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Money — always 3 decimals per client canon 2026-09-08.
+  return v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 function n(v: number | null | undefined) { return v ?? 0; }
 
@@ -59,7 +59,7 @@ function InlineDtNum({ value, onSave, className = "", title }: { value: number |
     </button>
   );
   return (
-    <input autoFocus type="number" step="0.01" value={lv}
+    <input autoFocus type="number" step="0.001" value={lv}
       onChange={(e) => setLv(e.target.value)}
       onBlur={() => { setEd(false); const x = lv.trim() === "" ? null : parseFloat(lv.replace(",", ".")); if (x !== value) onSave(Number.isFinite(x as number) ? x : null); }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEd(false); }}
@@ -182,13 +182,13 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
           <div><Label className="text-[12px] text-stone-500">Год *</Label><Input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="h-8 text-[13px] font-mono" /></div>
           <div>
             <Label className="text-[12px] text-stone-500">Сальдо на 1 янв.</Label>
-            <Input type="number" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" title={SIGN_HINT} />
+            <Input type="number" step="0.001" value={balance} onChange={(e) => setBalance(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.000" title={SIGN_HINT} />
             <p className="mt-0.5 text-[10px] text-stone-400">минус — нам должны, плюс — мы должны</p>
           </div>
-          <div><Label className="text-[12px] text-stone-500">Возврат</Label><Input type="number" step="0.01" value={refund} onChange={(e) => setRefund(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
-          <div><Label className="text-[12px] text-stone-500">Штрафы</Label><Input type="number" step="0.01" value={fines} onChange={(e) => setFines(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
-          <div><Label className="text-[12px] text-stone-500">Сверхнорм.</Label><Input type="number" step="0.01" value={surcharge} onChange={(e) => setSurcharge(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
-          <div><Label className="text-[12px] text-stone-500">ОГЭМ</Label><Input type="number" step="0.01" value={ogem} onChange={(e) => setOgem(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.00" /></div>
+          <div><Label className="text-[12px] text-stone-500">Возврат</Label><Input type="number" step="0.001" value={refund} onChange={(e) => setRefund(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.000" /></div>
+          <div><Label className="text-[12px] text-stone-500">Штрафы</Label><Input type="number" step="0.001" value={fines} onChange={(e) => setFines(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.000" /></div>
+          <div><Label className="text-[12px] text-stone-500">Сверхнорм.</Label><Input type="number" step="0.001" value={surcharge} onChange={(e) => setSurcharge(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.000" /></div>
+          <div><Label className="text-[12px] text-stone-500">ОГЭМ</Label><Input type="number" step="0.001" value={ogem} onChange={(e) => setOgem(e.target.value)} className="h-8 text-[13px] font-mono" placeholder="0.000" /></div>
         </div>
         {/* Multiple payments */}
         <div className="mt-3 border-t pt-3">
@@ -200,7 +200,7 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
             <div className="space-y-1.5">
               {payments.map((p, i) => (
                 <div key={i} className="flex gap-2 items-end">
-                  <div className="w-28"><Label className="text-[10px]">Сумма</Label><Input type="number" step="0.01" value={p.amount} onChange={(e) => { const u = [...payments]; u[i].amount = e.target.value; setPayments(u); }} className="h-7 text-[12px] font-mono" /></div>
+                  <div className="w-28"><Label className="text-[10px]">Сумма</Label><Input type="number" step="0.001" value={p.amount} onChange={(e) => { const u = [...payments]; u[i].amount = e.target.value; setPayments(u); }} className="h-7 text-[12px] font-mono" /></div>
                   <div className="w-24"><Label className="text-[10px]">Валюта</Label>
                     <select value={p.currency} onChange={(e) => { const u = [...payments]; u[i].currency = e.target.value; setPayments(u); }} className="w-full h-7 rounded border border-stone-200 bg-white px-1 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer">
                       <option value="">авто</option>

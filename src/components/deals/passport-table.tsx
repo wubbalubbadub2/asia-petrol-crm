@@ -52,13 +52,14 @@ function shipmentLines(
   return `${rows.length} ${word}\n${rows.join("\n")}`;
 }
 
-// Money fields — always 2 decimals (client request 2026-06-26:
-// «Оплата, дебет, долг, переплата — округление 2 цифры»). Applies to
-// all monetary columns (price, contracted amount, shipped amount,
-// payment, balance/debt, tariff) for consistency.
+// Money fields — always 3 decimals (client request 2026-09-08: «во всех
+// числах, связанных с ценой (деньгами), в сделках и в реестре после
+// запятой должны быть 3 знака»; до этого было 2 — запрос 2026-06-26).
+// Applies to all monetary columns (price, contracted amount, shipped
+// amount, payment, balance/debt, tariff) for consistency.
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 // Volumes always show 3 decimal places (client request — «3 ноля после запятой»).
@@ -69,10 +70,10 @@ function formatVol(val: number | null | undefined): string {
 
 // Computed/auto monetary cells: render "0" explicitly so users see that
 // the calc ran (supplier_balance = shipped − payment is a common
-// legitimate zero). 2 decimals — money convention.
+// legitimate zero). 3 decimals — money convention.
 function formatComputedNum(val: number | null | undefined): string {
   if (val == null) return "";
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 // Same as formatComputedNum, but pads to exactly 3 decimals for tonnage.
@@ -310,7 +311,7 @@ function PaymentEditRow({ p, fallbackCurrency, onPatch, onDelete }: {
       />
       <input
         type="number"
-        step="0.01"
+        step="0.001"
         value={amount}
         placeholder="сумма"
         onClick={(e) => e.stopPropagation()}
@@ -411,7 +412,7 @@ function OffsetEditRow({ p, dealCurrency, dealCodes, dealOpts, onPatch, onDelete
       <div className="flex items-center gap-1">
         <input
           type="number"
-          step="0.01"
+          step="0.001"
           value={amount}
           placeholder="со знаком"
           onClick={(e) => e.stopPropagation()}
@@ -970,7 +971,7 @@ function PaymentBreakdownCell({
           <input
             autoFocus
             type="number"
-            step="0.01"
+            step="0.001"
             value={localVal}
             onChange={(e) => setLocalVal(e.target.value)}
             onBlur={commitEdit}
@@ -1084,7 +1085,7 @@ function EditableNumCell({ value, dealId, field, overrideField, overridden }: {
     </button>
   );
   return (
-    <input autoFocus type="number" step={isVol ? "0.001" : "0.01"} value={localVal}
+    <input autoFocus type="number" step="0.001" value={localVal}
       onChange={(e) => setLocalVal(e.target.value)}
       onBlur={() => { setEditing(false); const num = parseNum(localVal); if (num !== value) { pendingVal.current = num; const patch = overrideField ? { [field]: num, [overrideField]: true } : { [field]: num }; updateDeal(dealId, patch).catch(() => { pendingVal.current = undefined; }); } }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }}
@@ -1904,32 +1905,32 @@ function PassportSkeletonRow() {
 
 const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_contracted_volume: { label: "Объем контракт (Поставщик)", decimals: 3 },
-  supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 2 },
+  supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 3 },
   supplier_price:             { label: "Цена (Поставщик)",           decimals: 3 },
-  supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 2 },
+  supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 3 },
   supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
-  supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 2 },
-  supplier_offset_total:      { label: "Взаимозачет (Поставщик)",    decimals: 2 },
-  supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
+  supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 3 },
+  supplier_offset_total:      { label: "Взаимозачет (Поставщик)",    decimals: 3 },
+  supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 3 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
-  buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
+  buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 3 },
   buyer_price:                { label: "Цена (Покупатель)",           decimals: 3 },
   buyer_ordered_volume:       { label: "Заявлено (Покупатель)",       decimals: 3 },
   buyer_remaining:            { label: "Остаток (Покупатель)",        decimals: 3 },
   buyer_shipped_volume:       { label: "Отгр. тонн (Покупатель)",     decimals: 3 },
-  buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 2 },
-  buyer_payment_gross:        { label: "Оплата (Покупатель)",         decimals: 2 },
-  buyer_offset_total:         { label: "Взаимозачет (Покупатель)",   decimals: 2 },
-  buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
-  planned_tariff:             { label: "Тариф",                       decimals: 2 },
-  actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 2 },
-  shipper_actual_tariff:      { label: "Тариф грузоотправления",     decimals: 2 },
+  buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 3 },
+  buyer_payment_gross:        { label: "Оплата (Покупатель)",         decimals: 3 },
+  buyer_offset_total:         { label: "Взаимозачет (Покупатель)",   decimals: 3 },
+  buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 3 },
+  planned_tariff:             { label: "Тариф",                       decimals: 3 },
+  actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 3 },
+  shipper_actual_tariff:      { label: "Тариф грузоотправления",     decimals: 3 },
   preliminary_tonnage:        { label: "Объем план (Логистика)",      decimals: 3 },
-  preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 2 },
+  preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 3 },
   actual_shipped_volume:      { label: "Факт объем (Логистика)",      decimals: 3 },
-  invoice_amount:             { label: "Сумма (логисты)",             decimals: 2 },
-  supplier_railway_amount:    { label: "Сумма ЖД (поставщик)",        decimals: 2 },
-  additional_expenses_amount: { label: "Сумма грузоотправления",      decimals: 2 },
+  invoice_amount:             { label: "Сумма (логисты)",             decimals: 3 },
+  supplier_railway_amount:    { label: "Сумма ЖД (поставщик)",        decimals: 3 },
+  additional_expenses_amount: { label: "Сумма грузоотправления",      decimals: 3 },
 };
 
 function formatWithDecimals(v: number, decimals: 2 | 3): string {
@@ -2738,7 +2739,8 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
     }
     return s;
   };
-  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Money — always 3 decimals (client request 2026-09-08).
+  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   // Volumes — always 3 decimals (client request).
   const fmtVol = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   // Cell builder — keeps the markup consistent.

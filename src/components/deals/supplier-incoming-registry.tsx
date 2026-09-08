@@ -37,8 +37,9 @@ type DateGroup = {
 
 const fmtVol = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+// Money canon 2026-09-08: 3 decimals.
 const fmtMoney = (v: number | null) =>
-  v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
 /** Тариф = сумма ÷ входящее СНТ. Пустой объём — прочерк, а не ноль. */
 function tariff(amount: number, volume: number): number | null {
@@ -71,7 +72,7 @@ function AmountCell({ value, rowId, field, overrideField, onSaved }: {
     <input
       autoFocus
       type="number"
-      step="0.01"
+      step="0.001"
       value={local}
       onChange={(e) => setLocal(e.target.value)}
       onBlur={() => {

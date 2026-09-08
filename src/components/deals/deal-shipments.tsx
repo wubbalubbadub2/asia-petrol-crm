@@ -29,9 +29,10 @@ type DateGroup = {
   wagons: (ShipmentRow & { amount: number | null })[];
 };
 
-function fmtNum(v: number | null | undefined, d = 2) {
-  // Default d=2 — operator request 2026-06-26: monetary cells (сумма,
-  // тариф) round to 2 decimals. Tonnage uses fmtVol below (3 decimals).
+function fmtNum(v: number | null | undefined, d = 3) {
+  // Default d=3 — client request 2026-09-08: monetary cells (сумма,
+  // тариф) show 3 decimals (было 2 с 2026-06-26). Tonnage uses fmtVol
+  // below (also 3 decimals).
   if (v == null) return "—";
   return v.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
@@ -185,7 +186,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
                 </td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{g.totalLoading > 0 ? fmtVol(g.totalLoading) : "—"}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtVol(g.totalVolume)}</td>
-                <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalAmount, 2)}</td>
+                <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(g.totalAmount)}</td>
                 <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">{fmtNum(g.tariffFact)}</td>
                 {supManual && (
                   <td className="py-1 pr-2" onClick={(e) => e.stopPropagation()}>
@@ -206,7 +207,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
                   <td className="py-0.5 pr-2 pl-6 text-stone-400 font-mono text-[10px]">{w.wagon_number ?? "—"}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-amber-700">{fmtVol(w.loading_volume)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px]">{fmtVol(w.shipment_volume)}</td>
-                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.amount, 2)}</td>
+                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.amount)}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums text-[10px] text-stone-400">{fmtNum(w.railway_tariff)}</td>
                   {supManual && <td className="py-0.5 pr-2" />}
                   {buyManual && <td className="py-0.5 pr-2" />}
@@ -219,9 +220,9 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
             <td className="py-1 pr-2 text-stone-500">Итого</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums text-amber-700">{totalLoading > 0 ? fmtVol(totalLoading) : "—"}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtVol(totalVol)}</td>
-            <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(totalAmt, 2)}</td>
+            <td className="py-1 pr-2 text-right font-mono tabular-nums">{fmtNum(totalAmt)}</td>
             <td className="py-1 pr-2 text-right font-mono tabular-nums text-stone-400">
-              {totalVol > 0 && totalAmt > 0 ? fmtNum(Math.round((totalAmt / Math.ceil(totalVol)) * 100) / 100) : "—"}
+              {totalVol > 0 && totalAmt > 0 ? fmtNum(totalAmt / Math.ceil(totalVol)) : "—"}
             </td>
             {supManual && <td className="py-1 pr-2" />}
             {buyManual && <td className="py-1 pr-2" />}

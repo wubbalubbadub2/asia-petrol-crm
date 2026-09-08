@@ -690,7 +690,7 @@ function VariantRow({
           </Label>
           <Input
             type="number"
-            step="0.01"
+            step="0.001"
             value={v.quotation}
             onChange={(e) => onChange({ quotation: e.target.value, quotationManualEdited: e.target.value !== "" })}
             placeholder={
@@ -706,7 +706,7 @@ function VariantRow({
           <Label className="text-[12px] text-stone-500">Скидка</Label>
           <Input
             type="number"
-            step="0.01"
+            step="0.001"
             value={v.discount}
             onChange={(e) => onChange({ discount: e.target.value })}
             className="h-8 text-[13px] font-mono"
@@ -723,7 +723,7 @@ function VariantRow({
           </Label>
           <Input
             type="number"
-            step="0.01"
+            step="0.001"
             value={v.price}
             onChange={(e) => onChange({ price: e.target.value, priceManualEdited: e.target.value !== "" })}
             placeholder="авто из котировки − скидки"

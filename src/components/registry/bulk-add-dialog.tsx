@@ -369,7 +369,7 @@ export function BulkAddDialog({
               <Sel l="Ст. назначения" v={destinationStationId} fn={setDestinationStationId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div>
                 <Label className="text-[10px] text-stone-500">Ж/Д тариф</Label>
-                <Input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" />
+                <Input type="number" step="0.001" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" />
               </div>
               <div>
                 <Label className="text-[10px] text-stone-500">№ СФ (если общий)</Label>

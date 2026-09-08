@@ -113,10 +113,10 @@ export function DealCompanyChain({
     onReload();
   }
 
-  // Money canon 2026-07-07: prices, tariff, margin → 2 decimals.
+  // Money canon 2026-09-08: prices, tariff, margin → 3 decimals.
   const fmtPrice = (v: number | null) => (v == null ? "—" : formatPrice(v));
   const fmt = (v: number | null) =>
-    v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   return (
     <Card>
@@ -275,7 +275,7 @@ export function DealCompanyChain({
                       </div>
 
                       <Input
-                        type="number" step="0.01"
+                        type="number" step="0.001"
                         defaultValue={cg.quotation ?? ""}
                         placeholder="котир."
                         title={cg.quotation_comment ?? "Котировка"}
@@ -296,7 +296,7 @@ export function DealCompanyChain({
                       />
 
                       <Input
-                        type="number" step="0.01"
+                        type="number" step="0.001"
                         defaultValue={cg.discount ?? ""}
                         placeholder="скидка"
                         onBlur={(e) => {
@@ -317,7 +317,7 @@ export function DealCompanyChain({
                         // defaultValue alone wouldn't refresh visually
                         // (uncontrolled input, React keeps the old DOM value).
                         key={`price-${cg.id}-${cg.price ?? ""}`}
-                        type="number" step="0.01"
+                        type="number" step="0.001"
                         defaultValue={cg.price ?? ""}
                         placeholder="авто = котир. − скидка"
                         onBlur={(e) => {

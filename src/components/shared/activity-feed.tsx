@@ -8,8 +8,8 @@ import { currencySymbol } from "@/lib/constants/currencies";
 import { formatDMYTime, formatPrice } from "@/lib/format";
 
 function formatAmount(n: number): string {
-  // Money canon 2026-07-07: always 2 decimals.
-  return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Money canon 2026-09-08: always 3 decimals.
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 const toNum = (v: unknown): number | null => {

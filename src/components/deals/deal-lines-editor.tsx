@@ -929,7 +929,7 @@ function LinesEditorView({
                   </span>
                   {tier === "manual_formula" && l.preliminary_fx_rate != null && (
                     <span className="text-[10px] text-amber-700/80">
-                      · курс {l.preliminary_fx_rate.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      · курс {l.preliminary_fx_rate.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </span>
                   )}
                   {l.preliminary_set_at && (
@@ -1113,7 +1113,7 @@ function LinesEditorView({
               <span className="text-stone-500">
                 Сумма:{" "}
                 <span className="font-mono tabular-nums font-medium text-stone-700">
-                  {l.rollup.amount.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {l.rollup.amount.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                 </span>
                 <span className="text-stone-500"> {currencySymbol}</span>
                 {l.price != null && l.rollup.volume > 0 && (
@@ -1257,13 +1257,14 @@ function FinalizeStageDialog({
   );
 }
 
-function NumberCell({ label, value, editing, onChange, decimals = 2 }: {
+function NumberCell({ label, value, editing, onChange, decimals = 3 }: {
   label: ReactNode;
   value: number | null;
   editing: boolean;
   onChange: (v: number | null) => void;
-  /** Кол-во знаков после запятой в READ-ONLY отображении. 2 по
-   * умолчанию (деньги). 0 для целых (напр. Кол-во дней триггера). */
+  /** Кол-во знаков после запятой в READ-ONLY отображении. 3 по
+   * умолчанию — деньги (клиент 2026-09-08, было 2). 0 для целых
+   * (напр. Кол-во дней триггера). */
   decimals?: number;
 }) {
   const pendingVal = useRef<number | null | undefined>(undefined);
