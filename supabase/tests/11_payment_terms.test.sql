@@ -184,15 +184,21 @@ BEGIN
    WHERE id = v_deal;
 
   -- ── 9. Отчёт: вагоны одной даты складываются в одну строку ─────────
+  -- Дата взята заведомо древняя и НЕ равная никакому CURRENT_DATE - N.
+  -- Раньше здесь стояло 2026-06-10, и 08.09.2026 тест упал: PT-DUE из
+  -- секции 6 сидит на CURRENT_DATE - 90, а это ровно 10.06.2026 — его
+  -- 60 т попали в ту же корзину, и вместо 100 получилось 160. Ровно то,
+  -- от чего предостерегает шапка файла: «всё, что зависит от текущей
+  -- даты, задаётся смещением от CURRENT_DATE».
   INSERT INTO shipment_registry (deal_id, registry_type, wagon_number,
                                  loading_volume, loading_date)
-  VALUES (v_deal, 'KG', 'PT-AGG-1', 40, DATE '2026-06-10'),
-         (v_deal, 'KG', 'PT-AGG-2', 60, DATE '2026-06-10');
+  VALUES (v_deal, 'KG', 'PT-AGG-1', 40, DATE '2000-01-05'),
+         (v_deal, 'KG', 'PT-AGG-2', 60, DATE '2000-01-05');
 
   SELECT COUNT(*), MAX(shipped_volume), MAX(shipped_amount), MAX(price)
     INTO v_cnt, v_volume, v_amount, v_price
   FROM deal_payment_terms_report
-  WHERE deal_id = v_deal AND side = 'supplier' AND basis_date = DATE '2026-06-10';
+  WHERE deal_id = v_deal AND side = 'supplier' AND basis_date = DATE '2000-01-05';
 
   IF v_cnt <> 1 THEN
     RAISE EXCEPTION 'агрегация по дате: ожидали 1 строку, получили %', v_cnt;
