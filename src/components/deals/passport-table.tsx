@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, createContext, useContext, memo } from "react";
+import { useState, useEffect, useRef, useMemo, createContext, useContext, memo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Trash2, ChevronDown, Eye, EyeOff, RotateCcw } from "lucide-react";
@@ -13,6 +13,11 @@ import {
   summaryOverdue,
   type PaymentTermsSummary,
 } from "@/lib/hooks/use-payment-terms-summary";
+import {
+  usePaymentDatesSummary,
+  paymentDatesKey,
+  type PaymentDatesSummary,
+} from "@/lib/hooks/use-payment-dates-summary";
 import { type Deal, type ShipmentSnap, type PaymentSnap, type DealCodeRef, updateDeal, fetchDealShipments, fetchDealPayments, fetchDealCodeIndex, dealCodeLabel, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
@@ -1126,10 +1131,65 @@ function EditableTextCell({ value, dealId, field, wide = false }: {
 // always visible — without it the select would silently render blank.
 // Дата в ячейке паспорта. Своего редактора не было — сделан по образцу
 // EditableTextCell: правка на месте, откат при ошибке.
-function EditableDateCell({ value, dealId, field }: {
+// Ячейка «Дата оплаты». Клиент 2026-09-14 (скриншот паспорта): «при
+// вводе оплаты мы вводим дату тоже, их нужно показывать. Со стороны
+// поставщика и покупателя».
+//
+// До этого ячейка читала ТОЛЬКО ручное поле deals.*_payment_date, а
+// операторы заводят оплаты строками в deal_payments, где у каждой своя
+// дата — поэтому рядом с непустой «Оплатой» стояла пустая дата.
+// Источник фактических дат — вью deal_payment_dates_summary (00159), её
+// отбор строк совпадает с колонкой «Оплата» один в один.
+//
+// Приоритет — ручная дата (решение клиента: «фактическая с ручным»),
+// она показывается курсивом. Нет ручной — показываем фактические:
+// одна оплата → её дата, несколько → последняя и «+N», весь список в
+// подсказке. Ряд остаётся однострочным: паспорт держит 28px по DESIGN.md.
+function PaymentDateCell({ dealId, side, field, manual }: {
+  dealId: string;
+  side: "supplier" | "buyer";
+  field: string;
+  manual: string | null | undefined;
+}) {
+  const summary = useContext(PassportPayDatesContext).get(paymentDatesKey(dealId, side));
+  const dates = summary?.dates ?? [];
+  const listed = dates.map(formatDMY).join(", ");
+  const extra = dates.length - 1;
+
+  const actual = dates.length === 0 ? null : (
+    <span className="text-stone-700">
+      {formatDMY(dates[dates.length - 1])}
+      {extra > 0 && <span className="ml-1 text-stone-400">+{extra}</span>}
+    </span>
+  );
+
+  return (
+    <td
+      className="border-r px-1 py-0.5 text-stone-700"
+      data-col={field} data-deal-id={dealId}
+      title={dates.length ? `Оплаты: ${listed}` : undefined}
+    >
+      <EditableDateCell
+        value={manual}
+        dealId={dealId}
+        field={field}
+        fallback={actual}
+        titleWhenSet={dates.length
+          ? `Дата введена вручную и перекрывает фактические. Оплаты: ${listed}`
+          : "Дата введена вручную. Фактических оплат по этой стороне нет."}
+      />
+    </td>
+  );
+}
+
+function EditableDateCell({ value, dealId, field, fallback, titleWhenSet }: {
   value: string | null | undefined;
   dealId: string;
   field: string;
+  /** Что показать, пока ручная дата не введена (напр. фактические оплаты). */
+  fallback?: ReactNode;
+  /** Подсказка, когда ручная дата введена и перекрывает fallback. */
+  titleWhenSet?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState("");
@@ -1141,9 +1201,14 @@ function EditableDateCell({ value, dealId, field }: {
     return (
       <button
         onClick={() => { setLocalVal((shown ?? "").slice(0, 10)); setEditing(true); }}
+        // Подсказку берём из пропа, а не из shown: значение ref во время
+        // рендера читать нельзя, а для title разница несущественна.
+        title={value ? titleWhenSet : undefined}
         className="min-h-[18px] w-full cursor-text rounded px-1 text-left hover:bg-amber-50"
       >
-        {shown ? formatDMY(shown) : ""}
+        {/* Ручная дата перебивает фактическую и помечается курсивом —
+            тот же приём, что у ручного тарифа в реестре. */}
+        {shown ? <span className="italic text-amber-700">{formatDMY(shown)}</span> : (fallback ?? "")}
       </button>
     );
   }
@@ -1397,6 +1462,10 @@ const PassportRefsContext = createContext<PassportRefsValue | null>(null);
 // Условия оплаты (00141/00142). Отдельный контекст, а не проп: строка
 // мемоизирована, и лишний проп ломал бы сравнение на каждой перерисовке.
 const PassportTermsContext = createContext<Map<string, PaymentTermsSummary>>(new Map());
+// Даты фактических оплат (00159). Отдельный контекст, а не поле в
+// refs-контексте: карта меняется от правки оплат, и мешать её с редко
+// меняющимися справочниками значит перерисовывать всю таблицу зря.
+const PassportPayDatesContext = createContext<Map<string, PaymentDatesSummary>>(new Map());
 
 function usePassportRefs(): PassportRefsValue {
   const ctx = useContext(PassportRefsContext);
@@ -1544,13 +1613,9 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dataCol="supplier_payment_gross"
         dataValue={deal.supplier_payment_gross}
       />
-      {/* Дата оплаты — клиент 2026-08-12, рядом с самой оплатой. */}
-      <td
-        className="border-r px-1 py-0.5 text-stone-700"
-        data-col="supplier_payment_date" data-deal-id={deal.id}
-      >
-        <EditableDateCell value={deal.supplier_payment_date} dealId={deal.id} field="supplier_payment_date" />
-      </td>
+      {/* Дата оплаты — клиент 2026-08-12, рядом с самой оплатой.
+          С 2026-09-14 показывает фактические даты из deal_payments. */}
+      <PaymentDateCell dealId={deal.id} side="supplier" field="supplier_payment_date" manual={deal.supplier_payment_date} />
       {/* Взаимозачет (00145) — со знаком, в «Оплату» не входит. */}
       <OffsetBreakdownCell
         dealId={deal.id}
@@ -1681,6 +1746,9 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         dataCol="buyer_payment_gross"
         dataValue={deal.buyer_payment_gross}
       />
+      {/* Дата оплаты покупателя — клиент 2026-09-14: «со стороны
+          покупателя нет столбца дат оплат». Зеркало поставщика. */}
+      <PaymentDateCell dealId={deal.id} side="buyer" field="buyer_payment_date" manual={deal.buyer_payment_date} />
       {/* Взаимозачет (00145) — со знаком, в «Оплату» не входит. */}
       <OffsetBreakdownCell
         dealId={deal.id}
@@ -2118,7 +2186,12 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // row useContext reads don't churn on every filter keystroke.
   // Условия оплаты по видимым сделкам (00141/00142). Отдельный запрос:
   // сводка меняется от правки условий, а не от правки самой сделки.
-  const { map: paymentTerms } = usePaymentTermsSummary(useMemo(() => deals.map((d) => d.id), [deals]));
+  const dealIds = useMemo(() => deals.map((d) => d.id), [deals]);
+  const { map: paymentTerms } = usePaymentTermsSummary(dealIds);
+  // Даты фактических оплат по видимым сделкам (00159). Грузятся пачкой,
+  // чтобы дата стояла в строке сразу — клиент 2026-09-14 просил «чтобы
+  // всё рядом отображалось», а не открывалось попапом на каждую оплату.
+  const { map: paymentDates } = usePaymentDatesSummary(dealIds);
 
   const refsContextValue = useMemo<PassportRefsValue>(() => ({
     refs,
@@ -2266,6 +2339,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   return (
     <PassportRefsContext.Provider value={refsContextValue}>
     <PassportTermsContext.Provider value={paymentTerms}>
+    <PassportPayDatesContext.Provider value={paymentDates}>
       {/* Emit CSS for the currently selected cells. Cheap: at most
           selection.ids.size rules re-emitted on selection change, no
           row re-renders. Virtualized rows entering the viewport pick
@@ -2393,6 +2467,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[55px] bg-[#fff2cc]">Отгр. тонн</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Отгр. сумма</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#fff2cc]">Оплата</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fff2cc]">Дата оплаты</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fff2cc]" title="Взаимозачёты со знаком. В «Оплату» не входят, в долг прибавляются.">Взаимозачет</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fff2cc]">Долг</th>
               {/* Logistics: 8 cols */}
@@ -2467,6 +2542,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
         </div>
       )}
       </div>
+    </PassportPayDatesContext.Provider>
     </PassportTermsContext.Provider>
     </PassportRefsContext.Provider>
   );
@@ -2538,6 +2614,7 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "buyer_shipped_volume", label: "Отгр. тонн", band: "buyer" },
   { key: "buyer_shipped_amount", label: "Отгр. сумма", band: "buyer" },
   { key: "buyer_payment", label: "Оплата", band: "buyer" },
+  { key: "buyer_payment_date", label: "Дата оплаты", band: "buyer" },
   { key: "buyer_offset", label: "Взаимозачет", band: "buyer" },
   { key: "buyer_debt", label: "Долг", band: "buyer" },
   { key: "forwarder", label: "Экспедитор", band: "logistics" },
@@ -2590,7 +2667,7 @@ const PT_BAND_LABELS: Record<PtBand, string> = {
 };
 type PassportColumnsPref = { hidden: string[]; pinUntil: string | null };
 
-const TOTAL_COLS = 42;
+const TOTAL_COLS = 43;
 
 type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
 
@@ -2790,8 +2867,9 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("amber", sum((d) => d.supplier_balance))}
       {/* Группы компании (2 cols) */}
       {blank("purple")}{blank("purple")}
-      {/* Покупатель (13 cols): + Остаток inserted between Заявлено
-          and Отгр. тонн (2026-06-23). Sum is shipped − ordered. */}
+      {/* Покупатель (14 cols): + Остаток inserted between Заявлено
+          and Отгр. тонн (2026-06-23), + Дата оплаты после «Оплаты»
+          (2026-09-14) — несуммируемая, пустая ячейка. */}
       {blank("blue")}{blank("blue")}{blank("blue")}
       {blank("blue")}
       {blank("blue")}
@@ -2801,6 +2879,7 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("blue", sum((d) => d.buyer_shipped_volume), 3)}
       {num("blue", sum((d) => d.buyer_shipped_amount))}
       {num("blue", sum((d) => d.buyer_payment_gross))}
+      {blank("blue")}
       {num("blue", sum((d) => d.buyer_offset_total))}
       {num("blue", sum((d) => d.buyer_debt))}
       {/* Логистика (12 cols): expeditor / group / tariff blank-cells,

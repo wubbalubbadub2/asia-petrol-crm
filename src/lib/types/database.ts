@@ -4713,6 +4713,17 @@ export type Database = {
           },
         ]
       }
+      deal_payment_dates_summary: {
+        Row: {
+          dates: string[] | null
+          deal_id: string | null
+          first_date: string | null
+          last_date: string | null
+          payment_count: number | null
+          side: string | null
+        }
+        Relationships: []
+      }
       deal_payment_terms_summary: {
         Row: {
           deal_id: string | null
