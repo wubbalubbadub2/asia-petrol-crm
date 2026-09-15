@@ -31,31 +31,12 @@ import { OFFSET_KINDS, OFFSET_KIND_LABELS, offsetKindLabel } from "@/lib/payment
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
 import { formatDMY, formatPrice } from "@/lib/format";
+import { shipmentLines } from "@/lib/deals/shipment-lines";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
 void useDelayed;
 
-// Format the lazy-loaded shipments into the popover body. Header is
-// «N отгрузок»; each row is «DD.MM.YYYY: объём» sorted by date asc.
-function shipmentLines(
-  shipments: ShipmentSnap[],
-  field: "loading_volume" | "shipment_volume",
-): string {
-  const rows = shipments
-    .filter((s) => s[field] != null)
-    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
-    .map((s) => {
-      const v = (s[field] as number).toLocaleString("ru-RU", {
-        minimumFractionDigits: 3, maximumFractionDigits: 3,
-      });
-      const d = s.date ? formatDMY(s.date) : "—";
-      return `${d}: ${v}`;
-    });
-  if (rows.length === 0) return "Нет отгрузок";
-  const word = rows.length === 1 ? "отгрузка" : "отгрузок";
-  return `${rows.length} ${word}\n${rows.join("\n")}`;
-}
 
 // Money fields — always 3 decimals (client request 2026-09-08: «во всех
 // числах, связанных с ценой (деньгами), в сделках и в реестре после
