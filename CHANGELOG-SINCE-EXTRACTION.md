@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-15 — Итог в попапе отгрузок по тоннажу
+- **What changed:** новый модуль `src/lib/deals/shipment-lines.ts` — функция `shipmentLines` переехала из `src/components/deals/passport-table.tsx` и получила итоговую строку. Новый тест `src/__tests__/shipment-lines.test.ts` (6 проверок).
+- **Type:** [PRESENTATION]
+- **Before → After:** попап тоннажных ячеек показывал «N отгрузок» и список «ДД.ММ.ГГ: объём» без итога — чтобы узнать сумму, приходилось складывать глазами. Теперь под списком разделитель и строка «Итого: N,NNN». Итог считается по ПОКАЗАННЫМ строкам, а не берётся из роллапа в ячейке: если они разойдутся, разница будет видна рядом (ровно тот дефект, что чинили в `00131`). Отбор строк не менялся — по-прежнему только те, где заполнен объём нужной стороны (`loading_volume` для поставщика, `shipment_volume` для покупателя). Затрагивает все три ячейки на `VolumeBreakdownCell`: «Приход, тонн», «Отгр. тонн», «Факт объем». Формулы, суммы и роллапы не трогались.
+- **Client reason:** клиент 2026-09-15: «по сумме отгруженного тоннажа в сделках (покупатель, поставщик) нужно сделать выделение нескольких cells и summary внизу, как с оплатами делали». Уточнено: выделение ячеек с итогом внизу таблицы для этих колонок уже работает с 2026-07-01 (`NUMERIC_COLS`, модификатор-клик) — не хватало именно итога ВНУТРИ попапа, который у оплат есть, а у отгрузок не было.
+- **Rebuild impact:** presentation only
+
 ### 2026-09-14 — Даты оплат видны в паспорте по обеим сторонам
 - **What changed:** миграция `00159_payment_dates_summary.sql` — новое вью `deal_payment_dates_summary` (только чтение поверх `deal_payments`). Новый хук `src/lib/hooks/use-payment-dates-summary.ts`. В `src/components/deals/passport-table.tsx` — новый `PaymentDateCell`, контекст `PassportPayDatesContext`, у `EditableDateCell` появились `fallback` и `titleWhenSet`; добавлена колонка «Дата оплаты» покупателю (после «Оплаты»), `TOTAL_COLS` 42 → 43. Тесты: новый `supabase/tests/19_payment_dates_summary.test.sql`, обновлён `src/__tests__/passport-column-order.test.ts`. Типы вью добавлены в `src/lib/types/database.ts`.
 - **Type:** [UI-FIELD] + [SCHEMA] (вью, таблицы не менялись)
