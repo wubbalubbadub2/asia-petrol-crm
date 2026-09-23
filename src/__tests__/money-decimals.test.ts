@@ -1,19 +1,20 @@
 /**
- * Три знака после запятой в деньгах.
+ * Знаки после запятой в выгрузках.
  *
- * Клиент 2026-09-08 (WhatsApp): «Сделай три знака после запятой везде» —
- * во всех числах, связанных с ценой (деньгами), в сделках, реестре,
- * ДТ-КТ и выгрузках из них. До этого с тремя знаками шли только объём и
- * цена за тонну (клиент 2026-09-04), а суммы, оплаты, сальдо, тарифы,
- * котировки и скидки — с двумя.
+ * Канон клиента 2026-09-22 (Telegram): «для котировки, цены и тоннажа
+ * оставить 3 знака после запятой, а всем суммам кроме цен и объёма
+ * поставить 2». До этого (2026-09-08) три знака стояли у всех денег.
  *
- * Тест держит числовые форматы выгрузок: любая числовая колонка
- * паспорта (краткого и детального), реестра и ДТ-КТ печатает ровно три
- * знака. Колонки дат (dd.mm.yy) сюда не попадают — у них нет дробной
- * части в маске.
+ * Почему у ставок три знака, а не два: клиент проверяет файл, перемножая
+ * «цена × объём» тем числом, которое видит в ячейке. Цена отгрузки в базе
+ * округлена ровно до трёх знаков (00166), поэтому ставку нельзя печатать
+ * короче — иначе сумма в файле снова перестанет сходиться с его Excel.
  *
- * Счета-фактуры под правило не подпадают и остаются с 2 знаками —
- * это закреплено в format-price.test.ts на formatMoney.
+ * Тест держит числовые форматы всех выгрузок и НЕ ДАЁТ появиться
+ * неклассифицированной числовой колонке: новая колонка обязана попасть
+ * либо в ставки/объёмы (3 знака), либо в суммы (2). Экранные хелперы
+ * форматирования лежат по одному на поверхность и тестами не покрыты —
+ * здесь закреплена та часть, которая уходит клиенту файлом.
  */
 import { describe, it, expect } from "vitest";
 import { PASSPORT_COLUMNS } from "@/lib/exports/passport-excel";
@@ -32,18 +33,61 @@ const surfaces: [string, readonly NumFmtCol[]][] = [
   ["реестр полный", REGISTRY_FULL_COLUMNS as unknown as NumFmtCol[]],
 ];
 
-// «#,##0.000;[Red]-#,##0.000» → длины всех дробных частей маски.
-const fractions = (numFmt: string) =>
-  [...numFmt.matchAll(/0\.(0+)/g)].map((m) => m[1].length);
+/** Ставка за единицу: цена $/т, тариф, котировка, скидка, курс, коэффициент. */
+const RATE = /price|tariff|quotation|discount|ratio|rate/;
+/** Объём в тоннах. */
+const VOLUME = /volume|tonnage|remainder|remaining/;
+/** Сумма денег. */
+const SUM = /amount|payment|offset|balance|debt|refund|saldo|opening|fines|surcharge|ogem|expenses/;
 
-describe.each(surfaces)("%s: числовые колонки — 3 знака", (_name, cols) => {
+function expectedDecimals(key: string): 2 | 3 | null {
+  if (RATE.test(key) || VOLUME.test(key)) return 3;
+  if (SUM.test(key)) return 2;
+  return null;
+}
+
+describe.each(surfaces)("%s: знаки после запятой", (_name, cols) => {
+  // «#,##0.00;[Red]-#,##0.00» → все дробные части маски.
+  const fractions = (numFmt: string) =>
+    [...numFmt.matchAll(/0\.(0+)/g)].map((m) => m[1].length);
+
   const numeric = cols.filter((c) => c.numFmt && /0\.0/.test(c.numFmt));
 
   it("в выгрузке есть числовые колонки", () => {
     expect(numeric.length).toBeGreaterThan(0);
   });
 
-  it.each(numeric.map((c) => [c.key, c.numFmt as string]))("%s — %s", (_key, numFmt) => {
-    for (const digits of fractions(numFmt)) expect(digits).toBe(3);
+  it("каждая числовая колонка классифицирована как ставка, объём или сумма", () => {
+    const unknownKeys = numeric.filter((c) => expectedDecimals(c.key) === null).map((c) => c.key);
+    expect(unknownKeys).toEqual([]);
+  });
+
+  it.each(numeric.map((c) => [c.key, c.numFmt as string]))(
+    "%s — %s",
+    (key, numFmt) => {
+      const want = expectedDecimals(key as string);
+      if (want === null) return; // уже поймано проверкой выше
+      for (const digits of fractions(numFmt)) expect(digits).toBe(want);
+    },
+  );
+});
+
+describe("канон: суммы — 2 знака, ставки и объём — 3", () => {
+  it("сумма отгрузки печатается с двумя знаками", () => {
+    const col = (DETAIL_COLUMNS as unknown as NumFmtCol[]).find((c) => c.key === "buyer_shipped_amount");
+    expect(col?.numFmt).toBe("#,##0.00;[Red]-#,##0.00");
+  });
+
+  it("цена и котировка остаются с тремя", () => {
+    const cols = DETAIL_COLUMNS as unknown as NumFmtCol[];
+    expect(cols.find((c) => c.key === "buyer_price")?.numFmt).toBe("#,##0.000");
+    expect(cols.find((c) => c.key === "buyer_quotation")?.numFmt).toBe("#,##0.000");
+  });
+
+  it("тариф логистов в реестре остаётся с тремя, сумма — с двумя", () => {
+    const cols = REGISTRY_FULL_COLUMNS as unknown as NumFmtCol[];
+    expect(cols.find((c) => c.key === "railway_tariff")?.numFmt).toBe("#,##0.000");
+    expect(cols.find((c) => c.key === "rounded_tonnage")?.numFmt).toBe("#,##0.000");
+    expect(cols.find((c) => c.key === "shipped_amount")?.numFmt).toBe("#,##0.00");
   });
 });

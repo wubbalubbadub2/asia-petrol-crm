@@ -46,6 +46,10 @@ export type Deal = {
   supplier_offset_total: number | null;
   supplier_payment_date: string | null;
   supplier_balance: number | null;
+  // 00169 — свод ВТД по отгрузкам сделки: различные номера через
+  // запятую. Роллап, руками не заполняется. Клиент 2026-09-23 просил
+  // колонку в паспорте между «Взаимозачет» и «Баланс» и фильтр по ней.
+  vtd_numbers?: string | null;
   supplier_departure_station_id: string | null;
   buyer_id: string | null;
   buyer_contract: string | null;
@@ -271,6 +275,7 @@ export function fetchDealCodeIndex(): Promise<Map<string, DealCodeRef>> {
       .from("deals")
       .select("id, deal_code, is_archived")
       .order("deal_code", { ascending: false })
+      .order("id", { ascending: false })
       .range(from, to);
     if (error) throw error;
     return (data ?? []) as DealCodeRef[];
@@ -308,9 +313,24 @@ export type DealLineSnapshot = {
   price_stage?: "preliminary" | "final";
   preliminary_price?: number | null;
   preliminary_quotation?: number | null;
-  // «Биржа» in the detailed passport export — the official basis of the
-  // quotation product (FOB MED / CIF NWE / …) from quotation_product_types.
-  quotation_type?: { basis: string | null } | null;
+  // «Биржа» in the detailed passport export. С 2026-09-18 колонка
+  // печатает САМУ котировку (name) плюс биржевой базис, когда он задан —
+  // у части типов basis пустой, и колонка выглядела незаполненной.
+  quotation_type?: { name?: string | null; basis: string | null } | null;
+  // Способ расчёта и котировальный период в детальной выгрузке
+  // (клиент 2026-09-19): «добавить столбцы с наименованием способа
+  // расчёта и котировального периода: например "средний месяц"—"август".
+  // В самой системе менеджеры указывают месяц котировки, но в екселе
+  // нет столбцов».
+  price_condition?: string | null;
+  // Коэффициент барелизации (00164) — печатается в детальной выгрузке
+  // рядом со скидкой.
+  barrel_ratio?: number | null;
+  trigger_basis?: "shipment_date" | "border_crossing_date" | null;
+  trigger_days?: number | null;
+  calc_mode?: "on_date" | "avg_month" | null;
+  selected_month?: string | null;
+  selected_date?: string | null;
 };
 
 // Bulk-fetch the line snapshots for a set of deals. Used by the Excel
@@ -343,7 +363,7 @@ export async function fetchDealLinesForExport(
       fetchAllPaginated<LineRow>((from, to) =>
         sb
           .from(table)
-          .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, quotation_type:quotation_product_types(basis)")
+          .select("id, deal_id, is_default, price, price_stage, preliminary_price, preliminary_quotation, price_condition, trigger_basis, trigger_days, calc_mode, selected_month, selected_date, barrel_ratio, quotation_type:quotation_product_types(name, basis)")
           .in("deal_id", ids)
           .order("deal_id", { ascending: true })
           .order("id", { ascending: true })
@@ -406,6 +426,7 @@ const LIST_SELECT = `
   supplier_shipped_amount, supplier_shipped_volume,
   supplier_payment, supplier_payment_gross, supplier_refund_total, supplier_offset_total,
   supplier_payment_date, supplier_balance,
+  vtd_numbers,
   supplier_currency, supplier_manager_id,
   buyer_id, buyer_contract, buyer_delivery_basis,
   buyer_contracted_volume, buyer_contracted_amount, buyer_price,
@@ -676,7 +697,11 @@ async function fetchDealsList(
     // приходится листать вниз». Sort by year DESC (current year on
     // top), then deal_number DESC inside each year (latest created
     // number first since deal_sequences increments monotonically).
-    return q.order("year", { ascending: false }).order("deal_number", { ascending: false });
+    // `id` последним ключом: (year, deal_number) НЕ уникальна — KG/26/001
+    // и KZ/26/001 делят её, — а страницы .range() без полного порядка
+    // строк теряют и дублируют сделки. Паспорт и все его выгрузки
+    // читают именно этот список (см. lib/dtkt/registry-sums.ts).
+    return q.order("year", { ascending: false }).order("deal_number", { ascending: false }).order("id", { ascending: false });
   };
 
   const all: unknown[] = [];

@@ -36,6 +36,7 @@ import type { Deal } from "@/lib/hooks/use-deals";
 import type { ExportContext } from "@/lib/exports/passport-excel";
 import { roundedTonnage } from "@/lib/exports/registry-excel";
 import { isRefundKind } from "@/lib/payments/totals";
+import { formatDMY } from "@/lib/format";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { FxRateRow } from "@/lib/fx/rates";
 
@@ -74,6 +75,22 @@ type DetailShipment = {
   // ЭТОЙ строки. Пусто в обычной выгрузке.
   fx_supplier_price?: number | null;
   fx_buyer_price?: number | null;
+  // Цена и сумма ЭТОЙ отгрузки из deal_shipment_prices (00166): то, из
+  // чего складываются deals.*_shipped_amount. Раньше под-строка считала
+  // «цена сделки × тоннаж» сама и не сходилась со своим же итогом.
+  // Пусто, если строки цены у отгрузки нет (тогда её нет и в итоге).
+  supplier_ship_price?: number | null;
+  supplier_ship_amount?: number | null;
+  buyer_ship_price?: number | null;
+  buyer_ship_amount?: number | null;
+};
+
+type ShipmentPriceLite = {
+  deal_id: string;
+  side: "supplier" | "buyer";
+  shipment_registry_id: string | null;
+  calculated_price: number | null;
+  amount: number | null;
 };
 
 // Одна оплата (deal_payments) для под-строки. amount — сумма КАК В БД,
@@ -114,10 +131,9 @@ type Column = {
   redIf?: (deal: Deal, s: SubRow) => boolean;
 };
 
-// Client canon 2026-09-08: деньги — 3 знака, как и объём. Отдельный
-// NUM_FMT_PRICE (3 знака у цены за тонну, клиент 2026-09-04) слился
-// с общим NUM_FMT_PRICE.
-const NUM_FMT_AMOUNT = "#,##0.000;[Red]-#,##0.000";
+// Client canon 2026-09-08: money (сумма, цена $/т, котировка, скидка,
+// тариф, FX) — 3 decimals. Volume — 3 decimals.
+const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_PRICE = "#,##0.000";
 const NUM_FMT_DATE = "dd.mm.yy";
@@ -145,9 +161,99 @@ function preliminaryPrice(deal: Deal, side: Side): number | null {
   return (line.price_stage === "final" ? line.preliminary_price : line.price) ?? null;
 }
 
-// «Биржа» — official basis string of the line's quotation product.
+/**
+ * Цена зафиксирована? Клиент 2026-09-18: «финальная должна быть пустой,
+ * пока её не забили». Пока строка-вариант в стадии 'preliminary',
+ * `deals.*_price` держит ту же предварительную цену, поэтому прямое
+ * чтение печатало её как финальную. Ровно та же семантика уже у цен
+ * цепочки групп ниже (`groupPrice` с `price_kind`).
+ */
+function isFinalStage(deal: Deal, side: Side): boolean {
+  return defaultLine(deal, side)?.price_stage === "final";
+}
+
+function finalPrice(deal: Deal, side: Side): number | null {
+  if (!isFinalStage(deal, side)) return null;
+  return (side === "supplier" ? deal.supplier_price : deal.buyer_price) ?? null;
+}
+
+/**
+ * Коэффициент барелизации строки-варианта (00164). Без него цену в файле
+ * не объяснить: котировка стоит в долларах за баррель, а цена — за тонну.
+ */
+function barrelRatio(deal: Deal, side: Side): number | null {
+  return defaultLine(deal, side)?.barrel_ratio ?? null;
+}
+
+/**
+ * «Способ расчёта» и «Котировальный период» — клиент 2026-09-19:
+ * «в детальной выгрузке ексель добавить столбцы с наименованием способа
+ * расчёта и котировального периода: например "средний месяц"—"август".
+ * В самой системе менеджеры указывают месяц котировки, но в екселе нет
+ * столбцов».
+ *
+ * Способ собирается из тех же полей строки-варианта, что показывает
+ * карточка сделки: подтип формулы (price_condition + trigger_basis) и
+ * режим расчёта (calc_mode). В карточке они разнесены по двум селектам,
+ * в файле нужна одна ячейка, поэтому подписи короткие.
+ */
+function priceMethod(deal: Deal, side: Side): string {
+  const line = defaultLine(deal, side);
+  if (!line) return "";
+  switch (line.price_condition) {
+    case "manual":            return "Фикс / Вручную";
+    case "manual_formula":    return "Формульная вручную";
+    case "manual_in_formula": return "Фикс цена";
+    case "trigger":
+      return (line.trigger_basis === "border_crossing_date" ? "Триггер (от границы" : "Триггер (от отгрузки")
+        + (line.trigger_days ? `, ${line.trigger_days} дн.)` : ")");
+    case "avg_to_date":       return "Средний на дату";
+    case "fixed":             return "На дату";
+    case "average_month":     return line.calc_mode === "on_date" ? "Средний месяц (на дату)" : "Средний месяц";
+    default:                  return line.price_condition ?? "";
+  }
+}
+
+/**
+ * Котировальный период — за что берётся котировка: месяц расчёта либо
+ * конкретная дата. У ручных режимов и у триггера пусто: там период задаёт
+ * дата каждой отгрузки, а не строка-вариант. Месяц сделки сюда НЕ
+ * подставляется — в файл идёт ровно то, что выбрал менеджер, иначе
+ * «не выбрано» и «как в сделке» стали бы неразличимы.
+ */
+function quotationPeriod(deal: Deal, side: Side): string {
+  const line = defaultLine(deal, side);
+  if (!line) return "";
+  if (line.price_condition === "fixed" || line.calc_mode === "on_date") {
+    return line.selected_date ? formatDMY(line.selected_date) : "";
+  }
+  if (line.price_condition === "average_month" || line.price_condition === "avg_to_date") {
+    return line.selected_month ?? "";
+  }
+  return "";
+}
+
+/**
+ * «Биржа» — какая котировка выбрана в строке-варианте.
+ *
+ * Клиент 2026-09-18: «столбец биржа не показывает какая котировка —
+ * когда они выбирают котировку при формировании цены, она должна
+ * отображаться в столбце биржа».
+ *
+ * Раньше печатался только биржевой базис (`quotation_product_types.basis`),
+ * а он заполнен не у всех котировок: на 18.09.2026 из 16 типов у двух
+ * базис пустой — «ВГО 2%» и «BRENT DTD (Platts)». Именно на них колонка
+ * и оказывалась пустой, хотя котировка выбрана. Теперь печатается
+ * название котировки, а базис добавляется через «·», когда он есть:
+ *   «МАЗУТ 1,0% Fuel oil · CIF NWE», «BRENT DTD (Platts)».
+ */
 function exchange(deal: Deal, side: Side): string {
-  return defaultLine(deal, side)?.quotation_type?.basis ?? "";
+  const qt = defaultLine(deal, side)?.quotation_type;
+  if (!qt) return "";
+  const name = (qt.name ?? "").trim();
+  const basis = (qt.basis ?? "").trim();
+  if (name && basis) return `${name} · ${basis}`;
+  return name || basis;
 }
 
 function groupAt(deal: Deal, position: number) {
@@ -193,23 +299,27 @@ const COLUMNS: Column[] = [
   { key: "supplier_basis", header: "Базис", width: 14, band: "supplier", read: (d) => d.supplier_delivery_basis ?? "", readShip: (d) => d.supplier_delivery_basis ?? "" },
   { key: "supplier_volume", header: "Объем, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_contracted_volume },
   { key: "supplier_amount", header: "Сумма дог.", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_contracted_amount },
-  { key: "supplier_exchange", header: "Биржа", width: 12, band: "supplier", read: (d) => exchange(d, "supplier"), readShip: (d) => exchange(d, "supplier") },
+  { key: "supplier_exchange", header: "Биржа", width: 26, band: "supplier", read: (d) => exchange(d, "supplier"), readShip: (d) => exchange(d, "supplier") },
+  { key: "supplier_price_method", header: "Способ расчёта", width: 20, band: "supplier", read: (d) => priceMethod(d, "supplier"), readShip: (d) => priceMethod(d, "supplier") },
+  { key: "supplier_quotation_period", header: "Котировальный период", width: 18, band: "supplier", read: (d) => quotationPeriod(d, "supplier"), readShip: (d) => quotationPeriod(d, "supplier") },
   { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation, readShip: (d) => d.supplier_quotation },
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
+  { key: "supplier_barrel_ratio", header: "Коэфф. барелизации", width: 14, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => barrelRatio(d, "supplier") },
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
-  { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price,
-    readShip: (d, s) => s.ship?.fx_supplier_price ?? d.supplier_price },
+  // Под-строка показывает ту же колонку, поэтому и она молчит, пока цена
+  // не зафиксирована. Расчёт «Приход, сумма» ниже это НЕ затрагивает: он
+  // берёт цену сделки напрямую, как в шаблоне клиента (=O$4*P5).
+  { key: "supplier_price", header: "Цена финальная", width: 12, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => finalPrice(d, "supplier"),
+    readShip: (d, s) => (isFinalStage(d, "supplier") ? (s.ship?.fx_supplier_price ?? s.ship?.supplier_ship_price ?? d.supplier_price) : null) },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume, readShip: (_, s) => s.ship?.loading_volume ?? null },
   // С 00119 дата входящего СНТ — собственная колонка loading_date
   // (правило «дата только при своём тоннаже» теперь живёт в данных).
   { key: "supplier_snt_date", header: "Дата вход. СНТ", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.ship?.loading_date ? excelDate(s.ship.loading_date) : "") },
-  // Per-wagon shipped amount mirrors the client's template formula
-  // (=O$4*P5): deal supplier price × wagon's incoming tonnage.
+  // Сумма по вагону — как в БД (deal_shipment_prices.amount, 00166):
+  // цена с тремя знаками × тоннаж. Итог сделки — сумма этих же чисел,
+  // поэтому под-строки сходятся с итогом и с «цена × объём» в Excel.
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount,
-    readShip: (d, s) => {
-      const price = s.ship?.fx_supplier_price ?? d.supplier_price;
-      return price != null && s.ship?.loading_volume != null ? price * s.ship.loading_volume : null;
-    } },
+    readShip: (_, s) => s.ship?.supplier_ship_amount ?? null },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross, readShip: (_, s) => (s.supPay && !isRefundKind(s.supPay.payment_type) ? s.supPay.amount : null) },
   { key: "supplier_offset", header: "Взаимозачет", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_offset_total, readShip: (_, s) => (s.supPay?.payment_type === "offset" ? s.supPay.amount : null) },
   { key: "supplier_payment_date", header: "Дата оплаты", width: 12, band: "supplier", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.supPay?.payment_date ? excelDate(s.supPay.payment_date) : "") },
@@ -239,12 +349,15 @@ const COLUMNS: Column[] = [
   { key: "buyer_basis", header: "Базис", width: 14, band: "buyer", read: (d) => d.buyer_delivery_basis ?? "" },
   { key: "buyer_volume", header: "Объем, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_contracted_volume },
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
-  { key: "buyer_exchange", header: "Биржа", width: 12, band: "buyer", read: (d) => exchange(d, "buyer"), readShip: (d) => exchange(d, "buyer") },
+  { key: "buyer_exchange", header: "Биржа", width: 26, band: "buyer", read: (d) => exchange(d, "buyer"), readShip: (d) => exchange(d, "buyer") },
+  { key: "buyer_price_method", header: "Способ расчёта", width: 20, band: "buyer", read: (d) => priceMethod(d, "buyer"), readShip: (d) => priceMethod(d, "buyer") },
+  { key: "buyer_quotation_period", header: "Котировальный период", width: 18, band: "buyer", read: (d) => quotationPeriod(d, "buyer"), readShip: (d) => quotationPeriod(d, "buyer") },
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
+  { key: "buyer_barrel_ratio", header: "Коэфф. барелизации", width: 14, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => barrelRatio(d, "buyer") },
   { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
-  { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price,
-    readShip: (d, s) => s.ship?.fx_buyer_price ?? d.buyer_price },
+  { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => finalPrice(d, "buyer"),
+    readShip: (d, s) => (isFinalStage(d, "buyer") ? (s.ship?.fx_buyer_price ?? s.ship?.buyer_ship_price ?? d.buyer_price) : null) },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   // Положительный остаток: Заявлено − Отгружено (клиентская аннотация
   // «остаток сделать плюсовой»; template: =AT4-SUM(AV5:AV9) → 387.3).
@@ -253,10 +366,7 @@ const COLUMNS: Column[] = [
   { key: "buyer_shipped_volume", header: "Отгр., т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_shipped_volume, readShip: (_, s) => s.ship?.shipment_volume ?? null },
   { key: "buyer_snt_date", header: "Дата исход. СНТ", width: 12, band: "buyer", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.ship?.shipment_volume != null && s.ship?.date ? excelDate(s.ship.date) : "") },
   { key: "buyer_shipped_amount", header: "Отгр. сумма", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_shipped_amount,
-    readShip: (d, s) => {
-      const price = s.ship?.fx_buyer_price ?? d.buyer_price;
-      return price != null && s.ship?.shipment_volume != null ? price * s.ship.shipment_volume : null;
-    } },
+    readShip: (_, s) => s.ship?.buyer_ship_amount ?? null },
   { key: "buyer_payment", header: "Оплата", width: 13, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_payment_gross, readShip: (_, s) => (s.buyPay && !isRefundKind(s.buyPay.payment_type) ? s.buyPay.amount : null) },
   { key: "buyer_offset", header: "Взаимозачет", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_offset_total, readShip: (_, s) => (s.buyPay?.payment_type === "offset" ? s.buyPay.amount : null) },
   { key: "buyer_payment_date", header: "Дата оплаты", width: 12, band: "buyer", numFmt: NUM_FMT_DATE, read: () => "", readShip: (_, s) => (s.buyPay?.payment_date ? excelDate(s.buyPay.payment_date) : "") },
@@ -399,7 +509,7 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
     fetchAllPaginated<DetailShipment>((from, to) =>
       sb
         .from("shipment_registry")
-        .select("deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix, additional_expenses, supplier_railway_amount, currency")
+        .select("id, deal_id, registry_type, date, loading_date, loading_volume, shipment_volume, shipped_tonnage_amount, rounded_volume_override, round_volume, railway_tariff, shipment_month, supplier_appendix, buyer_appendix, additional_expenses, supplier_railway_amount, currency")
         .in("deal_id", ids)
         // Tie-breaker (deal_id, id) — same determinism reasoning as
         // above; `date` alone has plenty of duplicate values here.
@@ -418,6 +528,39 @@ async function fetchShipmentsByDeals(dealIds: string[]): Promise<Map<string, Det
       const arr = byDeal.get(row.deal_id) ?? [];
       arr.push(row);
       byDeal.set(row.deal_id, arr);
+    }
+  }
+
+  // Цены и суммы отгрузок — из deal_shipment_prices, по shipment_registry_id.
+  // Те же чанки и та же пагинация, что у реестра.
+  const priceResults = await Promise.all(chunks.map((ids) =>
+    fetchAllPaginated<ShipmentPriceLite>((from, to) =>
+      sb
+        .from("deal_shipment_prices")
+        .select("deal_id, side, shipment_registry_id, calculated_price, amount")
+        .in("deal_id", ids)
+        .not("shipment_registry_id", "is", null)
+        .order("deal_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PostgrestPage<ShipmentPriceLite>,
+    ),
+  ));
+  const priceByShip = new Map<string, ShipmentPriceLite>();
+  for (const res of priceResults) {
+    if (res.error) throw new Error(`Цены отгрузок: ${res.error.message}`);
+    for (const p of res.data) {
+      if (p.shipment_registry_id) priceByShip.set(`${p.shipment_registry_id}:${p.side}`, p);
+    }
+  }
+  for (const ships of byDeal.values()) {
+    for (const s of ships) {
+      if (!s.id) continue;
+      const sup = priceByShip.get(`${s.id}:supplier`);
+      const buy = priceByShip.get(`${s.id}:buyer`);
+      s.supplier_ship_price = sup?.calculated_price ?? null;
+      s.supplier_ship_amount = sup?.amount ?? null;
+      s.buyer_ship_price = buy?.calculated_price ?? null;
+      s.buyer_ship_amount = buy?.amount ?? null;
     }
   }
   return byDeal;
@@ -557,6 +700,9 @@ export async function exportPassportDetailToExcel(
           .select("shipment_id, side, deferral_days, date_basis, deferral_mode, planned_pay_date, days_to_pay")
           .in("deal_id", ids)
           .order("shipment_id", { ascending: true })
+          // deal_payment_terms — вью без id; пара (отгрузка, сторона)
+          // уникальна и даёт полный порядок строк для .range().
+          .order("side", { ascending: true })
           .range(from, to) as unknown as PostgrestPage<TermRow>,
       ),
     ));
@@ -626,8 +772,10 @@ export async function exportPassportDetailToExcel(
       const ships = shipmentsByDeal.get(d.id) ?? [];
       shipmentsByDeal.set(d.id, ships.map((s) => ({
         ...s,
-        fx_supplier_price: fx.convert(d.supplier_price, d.supplier_currency, target, s.loading_date, fb),
-        fx_buyer_price: fx.convert(d.buyer_price, d.buyer_currency, target, s.date, fb),
+        fx_supplier_price: fx.convert(s.supplier_ship_price ?? d.supplier_price, d.supplier_currency, target, s.loading_date, fb),
+        fx_buyer_price: fx.convert(s.buyer_ship_price ?? d.buyer_price, d.buyer_currency, target, s.date, fb),
+        supplier_ship_amount: fx.convert(s.supplier_ship_amount ?? null, d.supplier_currency, target, s.loading_date, fb),
+        buyer_ship_amount: fx.convert(s.buyer_ship_amount ?? null, d.buyer_currency, target, s.date, fb),
         shipped_tonnage_amount: fx.convert(
           s.shipped_tonnage_amount, s.currency ?? d.logistics_currency, target, s.loading_date ?? s.date, fb),
         railway_tariff: fx.convert(

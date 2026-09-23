@@ -49,7 +49,10 @@ export default function ArchivePage() {
     const [{ data: archiveData }, { data: deals }] = await Promise.all([
       supabase.from("archive_years").select("*").order("year", { ascending: false }),
       fetchAllPaginated<{ year: number; is_archived: boolean | null }>((from, to) =>
-        supabase.from("deals").select("year, is_archived").range(from, to),
+        // `id` в сортировке — иначе LIMIT/OFFSET между страницами
+        // может задвоить сделку и потерять другую (годы считаются по
+        // этим строкам). См. lib/dtkt/registry-sums.ts.
+        supabase.from("deals").select("year, is_archived").order("id").range(from, to),
       ),
     ]);
 

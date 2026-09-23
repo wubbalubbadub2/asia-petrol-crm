@@ -40,7 +40,9 @@ import { invalidateShipmentPrices } from "@/lib/hooks/use-deal-trigger-prices";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { toast } from "sonner";
-import { formatDMY, formatPrice } from "@/lib/format";
+import { QUOTATION_REQUIRED_MESSAGE, requiresQuotationType } from "@/lib/deals/price-validation";
+import { applyPriceFormula } from "@/lib/deals/price-formula";
+import { formatDMY } from "@/lib/format";
 
 type PriceStage = "preliminary" | "final";
 
@@ -208,6 +210,7 @@ export function SupplierLinesEditor({
         calc_mode: ((l as { calc_mode?: string }).calc_mode ?? "avg_month") as "avg_month" | "on_date",
         selected_date: (l as { selected_date?: string | null }).selected_date ?? null,
         fx_rate: l.fx_rate ?? null,
+        barrel_ratio: (l as { barrel_ratio?: number | null }).barrel_ratio ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
         deferral_days: l.deferral_days ?? null,
@@ -265,6 +268,7 @@ function applyPriceFormulaPatch(
         price: number | null;
         price_condition?: string | null;
         fx_rate?: number | null;
+        barrel_ratio?: number | null;
       }
     | undefined,
 ): Record<string, unknown> {
@@ -272,10 +276,11 @@ function applyPriceFormulaPatch(
   const touchedQuotation = "quotation" in patch;
   const touchedDiscount  = "discount" in patch;
   const touchedFx        = "fx_rate"  in patch;
+  const touchedRatio     = "barrel_ratio" in patch;
   const touchedPrice     = "price"    in patch;
   const flippedToFinal   = patch.price_stage === "final";
   if (touchedPrice) return patch;
-  if (!touchedQuotation && !touchedDiscount && !touchedFx && !flippedToFinal) return patch;
+  if (!touchedQuotation && !touchedDiscount && !touchedFx && !touchedRatio && !flippedToFinal) return patch;
 
   const q   = touchedQuotation ? (patch.quotation as number | null) : line.quotation;
   const d   = touchedDiscount  ? (patch.discount  as number | null) : line.discount;
@@ -288,11 +293,15 @@ function applyPriceFormulaPatch(
   // «Формула: Фикс цена» — цена набивается вручную, автопересчёт
   // не трогает; матчит поведение формы создания сделки.
   if (cond === "manual_in_formula") return patch;
+  // Коэффициент барелизации (00164) переводит котировку долл/баррель в
+  // цену долл/тонна. Формула одна на интерфейс и на БД — см.
+  // lib/deals/price-formula.ts и SQL-функцию apply_price_formula.
+  const ratio = touchedRatio ? (patch.barrel_ratio as number | null) : line.barrel_ratio ?? null;
   if (cond === "manual_formula") {
     if (fx == null) return patch;
-    return { ...patch, price: (q - (d ?? 0)) * fx };
+    return { ...patch, price: applyPriceFormula(q, d, fx, ratio) };
   }
-  return { ...patch, price: q - (d ?? 0) };
+  return { ...patch, price: applyPriceFormula(q, d, null, ratio) };
 }
 
 export function BuyerLinesEditor({
@@ -391,6 +400,7 @@ export function BuyerLinesEditor({
         calc_mode: ((l as { calc_mode?: string }).calc_mode ?? "avg_month") as "avg_month" | "on_date",
         selected_date: (l as { selected_date?: string | null }).selected_date ?? null,
         fx_rate: l.fx_rate ?? null,
+        barrel_ratio: (l as { barrel_ratio?: number | null }).barrel_ratio ?? null,
         preliminary_fx_rate: l.preliminary_fx_rate ?? null,
         appendix: l.appendix ?? null,
         deferral_days: l.deferral_days ?? null,
@@ -430,6 +440,9 @@ type LineVM = {
   quotation_comment: string | null;
   discount: number | null;
   price: number | null;
+  // Коэффициент барелизации (00164): баррелей в тонне. Заполнен —
+  // цена = (котировка − скидка) × коэффициент.
+  barrel_ratio: number | null;
   delivery_basis: string | null;
   delivery_basis_id: string | null;
   delivery_basis_note: string | null;
@@ -561,8 +574,10 @@ function LineAutoFetchQuotation({
       } as never)
       .then(({ data, error }) => {
         if (error || data == null) return;
-        const rounded = Math.round((data as number) * 100) / 100;
-        onUpdate(line.id, { quotation: rounded });
+        // Без предокругления до 2 знаков: БД считает цену отгрузки от
+        // неокруглённой средней (00067), и цена строки обязана сойтись с
+        // ней после ROUND(…, 3) в apply_price_formula (00166).
+        onUpdate(line.id, { quotation: data as number });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -641,6 +656,11 @@ function LinesEditorView({
           {(() => {
             const mode = encodePriceMode(l.price_condition, l.trigger_basis);
             const tier = priceTierOf(mode);
+            // Клиент 2026-09-18: формульная цена без котировки —
+            // нерабочая строка (автоподбор цены ищет её по
+            // quotation_type_id). Поле помечено обязательным, и
+            // зафиксировать цену до выбора нельзя.
+            const quotationMissing = requiresQuotationType(l.price_condition, l.trigger_basis) && !l.quotation_type_id;
             const isTrigger = mode === "trigger_shipment" || mode === "trigger_border";
             const daysHint = "обычно 35-40";
             const tierOptions: Option[] = [
@@ -717,7 +737,13 @@ function LinesEditorView({
               <StageCell
                 value={l.price_stage}
                 editing={editing}
-                onChange={(next) => onUpdate(l.id, { price_stage: next })}
+                onChange={(next) => {
+                  if (next === "final" && quotationMissing) {
+                    toast.error(QUOTATION_REQUIRED_MESSAGE);
+                    return;
+                  }
+                  onUpdate(l.id, { price_stage: next });
+                }}
               />
             )}
 
@@ -804,10 +830,11 @@ function LinesEditorView({
                 auto-seed it so the auto-fetch RPC can fire without an
                 explicit «Подкотировка» pick. */}
             <SelectCell
-              label="Котировка"
+              label={quotationMissing ? "Котировка *" : "Котировка"}
               value={l.quotation_type_id}
               displayValue={l.quotation_type_label ?? "—"}
               editing={editing}
+              error={quotationMissing ? QUOTATION_REQUIRED_MESSAGE : undefined}
               options={quotationTypes}
               onChange={(v) => {
                 if (!v) {
@@ -896,6 +923,21 @@ function LinesEditorView({
               />
             )}
 
+            {/* Коэффициент барелизации (клиент 2026-09-19) — переводит
+                котировку долл/баррель в цену долл/тонна:
+                (котировка − скидка) × коэффициент. Нужен нефтяным
+                сделкам на Brent; пустой — формула как раньше. Показан
+                для всех формульных режимов, включая «Формульную
+                вручную», где просто добавляется вторым множителем. */}
+            {(tier === "formula" || tier === "manual_formula") && (
+              <NumberCell
+                label="Коэфф. барелизации"
+                value={l.barrel_ratio}
+                editing={editing}
+                onChange={(v) => onUpdate(l.id, { barrel_ratio: v })}
+              />
+            )}
+
             {/* Дни триггера — only when this variant uses a trigger */}
             {isTrigger && (
               <NumberCell
@@ -925,7 +967,7 @@ function LinesEditorView({
                     Предв.
                   </span>
                   <span className="font-mono tabular-nums text-[12px] font-medium text-amber-900">
-                    {formatPrice(l.preliminary_price)}
+                    {l.preliminary_price.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                   </span>
                   {tier === "manual_formula" && l.preliminary_fx_rate != null && (
                     <span className="text-[10px] text-amber-700/80">
@@ -1113,12 +1155,13 @@ function LinesEditorView({
               <span className="text-stone-500">
                 Сумма:{" "}
                 <span className="font-mono tabular-nums font-medium text-stone-700">
-                  {l.rollup.amount.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                  {/* Сумма — 2 знака (канон 2026-09-22); цена рядом — 3. */}
+                  {l.rollup.amount.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span className="text-stone-500"> {currencySymbol}</span>
                 {l.price != null && l.rollup.volume > 0 && (
                   <span className="ml-1 text-stone-400">
-                    (по цене {formatPrice(l.price)})
+                    (по цене {l.price.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })})
                   </span>
                 )}
               </span>
@@ -1343,13 +1386,15 @@ function TextCell({ label, value, editing, onChange }: {
   );
 }
 
-function SelectCell({ label, value, displayValue, editing, options, onChange, hint }: {
+function SelectCell({ label, value, displayValue, editing, options, onChange, hint, error }: {
   label: string;
   value: string | null;
   displayValue: string;
   editing: boolean;
   options: Option[];
   onChange: (v: string) => void;
+  // Обязательное поле не заполнено: красная рамка и текст под селектом.
+  error?: string;
   // Подпись под селектом в режиме редактирования. Нужна базису: сам
   // текст («FCA Текесу») собирается в БД, и без подсказки менеджер не
   // видит, что именно уйдёт в паспорт — особенно у исторических строк,
@@ -1387,7 +1432,11 @@ function SelectCell({ label, value, displayValue, editing, options, onChange, hi
             force((n) => n + 1);
             onChange(nv);
           }}
-          className="w-full h-8 rounded border border-stone-300 hover:border-amber-400 bg-white pl-2 pr-7 text-[13px] text-stone-800 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
+          className={`w-full h-8 rounded border bg-white pl-2 pr-7 text-[13px] text-stone-800 focus:outline-none focus:ring-1 cursor-pointer appearance-none transition-colors ${
+            error
+              ? "border-red-400 hover:border-red-500 focus:border-red-500 focus:ring-red-200"
+              : "border-stone-300 hover:border-amber-400 focus:border-amber-500 focus:ring-amber-200"
+          }`}
         >
           <option value="">—</option>
           {!hasCurrent && shown && <option value={shown}>{displayValue || "—"}</option>}
@@ -1395,7 +1444,10 @@ function SelectCell({ label, value, displayValue, editing, options, onChange, hi
         </select>
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
       </div>
-      {hint && (
+      {error && (
+        <span className="mt-0.5 block text-[10px] text-red-600">{error}</span>
+      )}
+      {hint && !error && (
         <span className="mt-0.5 block truncate text-[10px] text-stone-400" title={hint}>{hint}</span>
       )}
     </div>

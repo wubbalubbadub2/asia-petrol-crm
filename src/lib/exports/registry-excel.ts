@@ -39,10 +39,12 @@ export type RegistryExportContext = {
   dealChains: Map<string, string[]>;
 };
 
-// Client canon 2026-09-08: tariff = money = 3 decimals (было 2).
+// Client canon 2026-09-22: ставки за единицу (тариф) и объём — 3 знака,
+// суммы — 2. Клиент перемножает «тариф × округл. тоннаж» тем тарифом,
+// который видит в файле, поэтому у тарифа три знака остаются.
 const NUM_FMT_VOLUME = "#,##0.000";
 const NUM_FMT_TARIFF = "#,##0.000";
-const NUM_FMT_AMOUNT = "#,##0.000";
+const NUM_FMT_AMOUNT = "#,##0.00";
 
 type Column = {
   key: string;
@@ -53,8 +55,9 @@ type Column = {
   read: (r: ShipmentRecord, l: RegistryLabelMaps, ctx?: RegistryExportContext) => string | number | null | undefined;
 };
 
-// Same rule as the on-screen ERound cell (registry/page.tsx:114).
-// For KZ registry rawVolume = loading_volume, for KG = shipment_volume.
+// Same rule as the on-screen ERound cell and compute_registry_amount
+// (00165): rawVolume = loading_volume (входящее СНТ) when present, else
+// shipment_volume (исходящее). registry_type no longer picks the base.
 // Precedence: manual override → ceil(raw) when round_volume !== false → raw.
 // Structural param + export: passport-detail-excel reuses this for its
 // «Объем по счету-фактуре» per-shipment cells.
@@ -66,9 +69,23 @@ export function roundedTonnage(r: {
   round_volume?: boolean | null;
 }): number | null {
   if (r.rounded_volume_override != null) return r.rounded_volume_override;
-  const raw = r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume;
+  const raw = r.loading_volume ?? r.shipment_volume;
   if (raw == null) return null;
   return r.round_volume !== false ? Math.ceil(raw) : raw;
+}
+
+// Входящее СНТ, округлённое по тому же правилу (клиент 2026-09-22:
+// «нужно показывать входящее СНТ тоже в округлении»). Отдельная колонка
+// рядом с входящим: из неё видно, какое число даёт округление входящего,
+// даже когда база суммы взята с исходящего или переопределена вручную.
+// Ручной «округл.» сюда НЕ подставляется — он переопределяет базу суммы,
+// а не показ входящего.
+export function roundedIncoming(r: {
+  loading_volume?: number | null;
+  round_volume?: boolean | null;
+}): number | null {
+  if (r.loading_volume == null) return null;
+  return r.round_volume !== false ? Math.ceil(r.loading_volume) : r.loading_volume;
 }
 
 // PTS — вариант «для экспедитора PTC», по требованию клиента
@@ -100,6 +117,7 @@ const COLUMNS_PTS: Column[] = [
   { key: "manager_tariff",    header: "Тариф (менеджер)",    width: 14, numFmt: NUM_FMT_TARIFF, align: "right", read: (r) => r.manager_tariff ?? null },
   { key: "additional_expenses", header: "Сумма грузоотправителя", width: 18, numFmt: NUM_FMT_AMOUNT, align: "right", read: (r) => r.additional_expenses ?? null },
   { key: "currency",          header: "Валюта",              width: 9,  align: "center", read: (r) => r.currency ?? r.deal?.logistics_currency ?? r.deal?.currency ?? "" },
+  { key: "vtd_number",        header: "ВТД",                 width: 14, read: (r) => r.vtd_number ?? "" },
   { key: "invoice_number",    header: "№ СФ",                width: 14, read: (r) => r.invoice_number ?? "" },
   { key: "comment",           header: "Комментарий",         width: 28, read: (r) => r.comment ?? "" },
 ];
@@ -116,6 +134,7 @@ const COLUMNS_FULL: Column[] = [
   { key: "factory",             header: "Завод",            width: 14, read: (r, l) => (r.factory_id && l.factory.get(r.factory_id)) || "" },
   { key: "supplier",            header: "Поставщик",        width: 22, read: (r, l) => (r.supplier_id && l.supplier.get(r.supplier_id)) || "" },
   { key: "loading_volume",      header: "Входящее СНТ, т",  width: 14, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => r.loading_volume },
+  { key: "rounded_loading_tonnage", header: "Округл. вход.", width: 13, numFmt: NUM_FMT_VOLUME, align: "right", read: (r) => roundedIncoming(r) },
   { key: "loading_date",        header: "Дата вход. СНТ",   width: 12, read: (r) => r.loading_date ?? "" },
   { key: "buyer",               header: "Покупатель",       width: 22, read: (r, l) => (r.buyer_id && l.buyer.get(r.buyer_id)) || "" },
   // Клиент 2026-07-08: 3 колонки цепочки групп компании между
@@ -141,6 +160,7 @@ const COLUMNS_FULL: Column[] = [
   { key: "departure_station",   header: "Ст. отпр.",        width: 16, read: (r, l) => (r.departure_station_id && l.station.get(r.departure_station_id)) || "" },
   { key: "supplier_appendix",   header: "Прил. поставщика", width: 14, read: (r) => r.supplier_appendix ?? "" },
   { key: "buyer_appendix",      header: "Прил. покупателя", width: 14, read: (r) => r.buyer_appendix ?? "" },
+  { key: "vtd_number",          header: "ВТД",              width: 14, read: (r) => r.vtd_number ?? "" },
   { key: "invoice_number",      header: "№ СФ",             width: 14, read: (r) => r.invoice_number ?? "" },
   { key: "comment",             header: "Коммент.",         width: 28, read: (r) => r.comment ?? "" },
 ];
@@ -255,7 +275,7 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
     totalRow.height = 22;
     // Клиент 2026-07-15: «итоги не появились» — входящее СНТ и сумма
     // грузоотправителя не суммировались. Тарифы — ставки, не суммируем.
-    const TOTAL_KEYS = new Set(["shipment_volume", "loading_volume", "rounded_tonnage", "shipped_amount", "additional_expenses", "supplier_railway_amount"]);
+    const TOTAL_KEYS = new Set(["shipment_volume", "loading_volume", "rounded_tonnage", "rounded_loading_tonnage", "shipped_amount", "additional_expenses", "supplier_railway_amount"]);
     columns.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
@@ -299,7 +319,6 @@ export async function exportRegistryToExcel(records: ShipmentRecord[], ctx: Regi
   URL.revokeObjectURL(url);
 }
 
-
-// Открыты для теста числовых форматов (money-decimals.test.ts) — так же,
+// Открыты для тестов формата чисел (money-decimals.test.ts) — так же,
 // как PASSPORT_COLUMNS / DTKT_*_COLUMNS в соседних выгрузках.
 export { COLUMNS_PTS as REGISTRY_PTS_COLUMNS, COLUMNS_FULL as REGISTRY_FULL_COLUMNS };

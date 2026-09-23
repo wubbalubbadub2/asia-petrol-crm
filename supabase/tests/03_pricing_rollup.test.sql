@@ -35,8 +35,9 @@ BEGIN
     RAISE EXCEPTION 'buyer_shipped_amount expected 1200, got %', v_row.buyer_shipped_amount;
   END IF;
 
-  -- Update a row and verify rollup moves
-  UPDATE deal_shipment_prices SET amount = 700
+  -- Update a row and verify rollup moves. С 00166 сумма строки всегда
+  -- = объём × цена (BEFORE-триггер), поэтому двигаем цену: 10 × 70 = 700.
+  UPDATE deal_shipment_prices SET calculated_price = 70
     WHERE deal_id = v_deal_id AND side = 'supplier' AND amount = 500;
   SELECT * INTO v_row FROM deals WHERE id = v_deal_id;
   IF v_row.supplier_shipped_amount <> 700 + 300 THEN

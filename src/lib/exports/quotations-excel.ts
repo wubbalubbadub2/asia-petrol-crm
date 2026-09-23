@@ -70,6 +70,9 @@ async function fetchAllQuotations(
       .from("quotations")
       .select("id, product_type_id, date, price, price_fob_med, price_fob_rotterdam, price_cif_nwe, price_cif_nwe_standalone, comment")
       .order("date", { ascending: true })
+      // + уникальный `id`, иначе страницы «плывут» (см. комментарий в
+      // lib/dtkt/registry-sums.ts) и выгрузка разойдётся с экраном.
+      .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
     if (filter.year != null) {
       q = q.gte("date", `${filter.year}-01-01`).lte("date", `${filter.year}-12-31`);

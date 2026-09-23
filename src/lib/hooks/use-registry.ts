@@ -31,14 +31,23 @@ export type ShipmentRecord = {
   // Migration 00061 — manual override for the rolled-up volume («округл»)
   rounded_volume_override?: number | null;
   // Migration 00086 — per-row CEIL toggle. TRUE = CEIL(base) (current
-  // behavior), FALSE = base as-is. KZ uses loading_volume as base; KG
-  // uses shipment_volume. Optional until generated types catch up.
+  // behavior), FALSE = base as-is. Base (00165): loading_volume when
+  // present, else shipment_volume — regardless of registry_type.
+  // Optional until generated types catch up.
   round_volume?: boolean | null;
   // Migration 00072 — appendix labels per side. Free-text;
   // auto-resolves supplier_line_id / buyer_line_id when the registry
   // form matches them against the deal's variants.
   supplier_appendix?: string | null;
   buyer_appendix?: string | null;
+  // 00054 — вариант цены («домик»), к которому привязана отгрузка. С
+  // 00168 пустым не бывает. В реестре по нему выбирается приложение,
+  // на которое сажают отгрузку.
+  supplier_line_id?: string | null;
+  buyer_line_id?: string | null;
+  // 00169 — ВТД: номер документа по вагону (клиент 2026-09-23).
+  // Не деньги: в суммы и балансы не входит.
+  vtd_number?: string | null;
   invoice_number: string | null;
   comment: string | null;
   loading_volume: number | null;
@@ -52,7 +61,8 @@ export type ShipmentRecord = {
   additional_expenses?: number | null;
   additional_expenses_override?: boolean | null;
   // Клиент 2026-07-10: тариф от менеджера, только KZ. Формула
-  // additional_expenses = ceil(loading_volume) × manager_tariff.
+  // additional_expenses = округл. база × manager_tariff (та же база,
+  // что у Суммы 1: входящее СНТ, если есть, иначе исходящее — 00165).
   manager_tariff?: number | null;
   // Клиент 2026-08-15: «Сумма 2 — сумма ЖД расходов от поставщика»
   // (migration 00150, только KZ). Связь двусторонняя: правишь тариф —
@@ -108,6 +118,8 @@ const REG_SELECT = `
   shipped_tonnage_amount, shipped_tonnage_amount_override,
   rounded_volume_override, round_volume,
   supplier_appendix, buyer_appendix,
+  supplier_line_id, buyer_line_id,
+  vtd_number,
   invoice_number, comment, currency,
   additional_expenses, additional_expenses_override, manager_tariff,
   supplier_railway_tariff, supplier_railway_amount,
@@ -219,6 +231,11 @@ export function useRegistry(type: "KG" | "KZ") {
         .eq("registry_type", requestedType)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
+        // Уникальный ключ последним: даты и created_at в реестре
+        // повторяются, а без полного порядка строк страницы LIMIT/
+        // OFFSET теряют и дублируют отгрузки — и экран, и выгрузка
+        // реестра считают итоги по этому же массиву.
+        .order("id", { ascending: false })
         .range(i * pageSize, (i + 1) * pageSize - 1),
     );
     const settled = await Promise.all(requests);
@@ -286,6 +303,8 @@ import { invalidateAllDealsLists, invalidateDeal } from "./use-deals";
 // shipment_registry. Until the generated database.ts is regenerated,
 // the optional override here keeps inserts/updates type-clean.
 type RegistryInsert = TablesInsert<"shipment_registry"> & {
+  // 00169 — ВТД, номер документа по вагону.
+  vtd_number?: string | null;
   supplier_appendix?: string | null;
   buyer_appendix?: string | null;
   loading_date?: string | null;
@@ -293,6 +312,9 @@ type RegistryInsert = TablesInsert<"shipment_registry"> & {
 // Override field is post-migration-00050; types here may run ahead of the
 // generated database.ts until `npm run types:db` is rerun.
 export type RegistryUpdate = TablesUpdate<"shipment_registry"> & {
+  supplier_line_id?: string | null;
+  buyer_line_id?: string | null;
+  vtd_number?: string | null;
   shipped_tonnage_amount_override?: boolean | null;
   rounded_volume_override?: number | null;
   round_volume?: boolean | null;

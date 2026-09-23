@@ -128,11 +128,12 @@ function Field({ label, value, suffix, editing, field, dealId, inputType, onSave
     pendingVal.current = undefined;
   }
 
-  // Client canon 2026-07-07, деньги пересмотрены 2026-09-08: и объём,
-  // и деньги (сумма, цена, тариф, FX, котировка) — по 3 знака, поэтому
-  // ветвление по isVolume здесь больше не нужно. Old behaviour
-  // ({max:3, no min}) showed ints as «1 200» — no trailing decimals.
-  const numOpts: Intl.NumberFormatOptions = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
+  // Client canon 2026-09-22: суммы — 2 знака, ставки за единицу (цена,
+  // тариф, котировка, скидка, курс) и объём — 3. Поле здесь одно на все
+  // числа карточки, поэтому знаки выбираются по подписи поля.
+  const isRate = /цена|тариф|котировк|скидк|курс|коэфф/i.test(label);
+  const decimals = isVolume || isRate ? 3 : 2;
+  const numOpts: Intl.NumberFormatOptions = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
   const formatted = shown != null && shown !== ""
     ? (typeof shown === "number"
       ? Number(shown).toLocaleString("ru-RU", numOpts)

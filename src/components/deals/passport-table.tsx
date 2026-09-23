@@ -30,7 +30,7 @@ import { splitPaymentTotals, isRefundKind, offsetTotalInDealCurrency } from "@/l
 import { OFFSET_KINDS, OFFSET_KIND_LABELS, offsetKindLabel } from "@/lib/payments/offset-kinds";
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
-import { formatDMY, formatPrice } from "@/lib/format";
+import { formatDMY } from "@/lib/format";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -57,12 +57,17 @@ function shipmentLines(
   return `${rows.length} ${word}\n${rows.join("\n")}`;
 }
 
-// Money fields — always 3 decimals (client request 2026-09-08: «во всех
-// числах, связанных с ценой (деньгами), в сделках и в реестре после
-// запятой должны быть 3 знака»; до этого было 2 — запрос 2026-06-26).
-// Applies to all monetary columns (price, contracted amount, shipped
-// amount, payment, balance/debt, tariff) for consistency.
+// Канон клиента 2026-09-22: СУММЫ (сумма договора, приход/отгрузка,
+// оплата, взаимозачёт, баланс, долг) — 2 знака. СТАВКИ за единицу
+// (цена $/т, тариф, котировка) — 3 знака, см. formatPrice ниже: клиент
+// перемножает «цена × объём» тем числом, которое видит на экране.
 function formatNum(val: number | null | undefined): string {
+  if (val == null || val === 0) return "";
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+/** Ставка за единицу (цена, тариф) — 3 знака, 0 → пусто. */
+function formatPrice(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
@@ -75,8 +80,14 @@ function formatVol(val: number | null | undefined): string {
 
 // Computed/auto monetary cells: render "0" explicitly so users see that
 // the calc ran (supplier_balance = shipped − payment is a common
-// legitimate zero). 3 decimals — money convention.
+// legitimate zero). Суммы — 2 знака (канон 2026-09-22).
 function formatComputedNum(val: number | null | undefined): string {
+  if (val == null) return "";
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+/** Как formatComputedNum, но для ставок за единицу — 3 знака. */
+function formatComputedPrice(val: number | null | undefined): string {
   if (val == null) return "";
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
@@ -1082,11 +1093,13 @@ function EditableNumCell({ value, dealId, field, overrideField, overridden }: {
   const shown = pendingVal.current !== undefined ? pendingVal.current : value;
   if (pendingVal.current !== undefined && value === pendingVal.current) pendingVal.current = undefined;
   const isVol = VOLUME_FIELDS.has(field);
+  // Ставки за тонну — 3 знака, суммы (invoice_amount) — 2 (канон 2026-09-22).
+  const isRate = field === "actual_tariff" || field === "shipper_actual_tariff";
   if (!editing) return (
     <button onClick={() => { setLocalVal(shown?.toString() ?? ""); setEditing(true); }}
       title={overrideField ? (overridden ? "Введено вручную — авто-расчёт не трогает." : "Авто-расчёт. Введите значение, чтобы закрепить вручную.") : undefined}
       className={`w-full text-right font-mono text-[12px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[18px] min-w-[50px] ${overridden ? "italic text-amber-700" : ""}`}>
-      {isVol ? formatVol(shown) : formatNum(shown)}
+      {isVol ? formatVol(shown) : isRate ? formatPrice(shown) : formatNum(shown)}
     </button>
   );
   return (
@@ -1283,7 +1296,7 @@ function EditableCGPrice({ cgId, value, onSaved }: { cgId: string; value: number
   if (!editing) return (
     <button onClick={() => { setLocalVal(value?.toString() ?? ""); setEditing(true); }}
       className="font-mono text-purple-500 hover:bg-purple-50 rounded px-0.5 cursor-text">
-      {value != null && value !== 0 ? formatPrice(value) : ""}
+      {value != null ? formatPrice(value) : ""}
     </button>
   );
   return (
@@ -1587,7 +1600,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)"
         data-col="supplier_price" data-deal-id={deal.id}
         data-value={deal.supplier_price ?? undefined}
-      >{formatPrice(deal.supplier_price)}</td>
+      >{formatComputedPrice(deal.supplier_price)}</td>
       <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="сумма из секции цен"
         data-col="supplier_shipped_amount" data-deal-id={deal.id}
@@ -1643,6 +1656,15 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         data-value={deal.additional_expenses_amount ?? undefined}
       >
         {formatComputedNum(deal.additional_expenses_amount)}
+      </td>
+      {/* ВТД — номера с отгрузок сделки (роллап 00169). Показ и
+          подсказка со всем перечнем: номеров может быть много. */}
+      <td
+        className="border-r border-stone-300 px-2 py-1 text-[11px] text-stone-600 max-w-[140px] truncate"
+        title={deal.vtd_numbers ?? ""}
+        data-col="supplier_vtd" data-deal-id={deal.id}
+      >
+        {deal.vtd_numbers ?? ""}
       </td>
       <td
         className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="auto: отгружено − оплата"
@@ -1700,7 +1722,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)"
         data-col="buyer_price" data-deal-id={deal.id}
         data-value={deal.buyer_price ?? undefined}
-      >{formatPrice(deal.buyer_price)}</td>
+      >{formatComputedPrice(deal.buyer_price)}</td>
       <td
         className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"
         data-col="buyer_ordered_volume" data-deal-id={deal.id}
@@ -1783,7 +1805,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700"
         data-col="planned_tariff" data-deal-id={deal.id}
         data-value={deal.planned_tariff ?? undefined}
-      >{formatComputedNum(deal.planned_tariff)}</td>
+      >{formatComputedPrice(deal.planned_tariff)}</td>
       <td
         className="border-r px-1 py-0.5 text-stone-700"
         data-col="preliminary_tonnage" data-deal-id={deal.id}
@@ -1973,23 +1995,23 @@ function PassportSkeletonRow() {
 
 const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_contracted_volume: { label: "Объем контракт (Поставщик)", decimals: 3 },
-  supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 3 },
+  supplier_contracted_amount: { label: "Сумма дог. (Поставщик)",     decimals: 2 },
   supplier_price:             { label: "Цена (Поставщик)",           decimals: 3 },
-  supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 3 },
+  supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 2 },
   supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
   supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 3 },
   supplier_offset_total:      { label: "Взаимозачет (Поставщик)",    decimals: 3 },
   supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 3 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
-  buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 3 },
+  buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
   buyer_price:                { label: "Цена (Покупатель)",           decimals: 3 },
   buyer_ordered_volume:       { label: "Заявлено (Покупатель)",       decimals: 3 },
   buyer_remaining:            { label: "Остаток (Покупатель)",        decimals: 3 },
   buyer_shipped_volume:       { label: "Отгр. тонн (Покупатель)",     decimals: 3 },
-  buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 3 },
-  buyer_payment_gross:        { label: "Оплата (Покупатель)",         decimals: 3 },
-  buyer_offset_total:         { label: "Взаимозачет (Покупатель)",   decimals: 3 },
-  buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 3 },
+  buyer_shipped_amount:       { label: "Отгр. сумма (Покупатель)",    decimals: 2 },
+  buyer_payment_gross:        { label: "Оплата (Покупатель)",         decimals: 2 },
+  buyer_offset_total:         { label: "Взаимозачет (Покупатель)",   decimals: 2 },
+  buyer_debt:                 { label: "Долг (Покупатель)",           decimals: 2 },
   planned_tariff:             { label: "Тариф",                       decimals: 3 },
   actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 3 },
   shipper_actual_tariff:      { label: "Тариф грузоотправления",     decimals: 3 },
@@ -2451,6 +2473,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[75px] bg-[#fce3d6]" title="Взаимозачёты со знаком. В «Оплату» не входят, в баланс прибавляются.">Взаимозачет</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]" title="Сумма ЖД расходов от поставщика = SUM(shipment_registry.supplier_railway_amount). В баланс поставщика не входит.">Сумма ЖД (поставщик)</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]" title="Сумма грузоотправления = SUM(shipment_registry.additional_expenses).">Сумма грузоотправления</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#fce3d6]" title="ВТД — номера документов с отгрузок сделки. Вводятся в реестре по вагону.">ВТД</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[65px] bg-[#fce3d6]">Баланс</th>
               {/* Company groups: 2 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#bcd7ee]">Компания</th>
@@ -2601,6 +2624,10 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   // только суммы 2 и 3.
   { key: "supplier_railway_amount", label: "Сумма ЖД (поставщик)", band: "supplier" },
   { key: "additional_expenses", label: "Сумма грузоотправления", band: "supplier" },
+  // ВТД — номера документов с отгрузок сделки (00169). Клиент
+  // 2026-09-23: «столбец по ВТД вставить в паспорте в раздел поставщик
+  // между столбцами Взаимозачет и Баланс».
+  { key: "supplier_vtd", label: "ВТД", band: "supplier" },
   { key: "supplier_balance", label: "Баланс", band: "supplier" },
   { key: "groups", label: "Группы компании", band: "groups", hSpan: 2 },
   { key: "buyer", label: "Покупатель", band: "buyer" },
@@ -2816,8 +2843,8 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
     }
     return s;
   };
-  // Money — always 3 decimals (client request 2026-09-08).
-  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  // Суммы — 2 знака (канон клиента 2026-09-22).
+  const fmt = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // Volumes — always 3 decimals (client request).
   const fmtVol = (v: number) => v === 0 ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   // Cell builder — keeps the markup consistent.
@@ -2847,7 +2874,7 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       <td colSpan={5 - hiddenDealCount} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
       </td>
-      {/* Поставщик (11 cols): name/contract/basis blank + numeric sums.
+      {/* Поставщик (15 cols, ВТД добавлена 00169): name/contract/basis blank + numeric sums.
           Клиент 2026-07-08: Объем / Сумма дог. / Цена — это данные
           контракта (одинаковые для всех строк одной сделки, а если
           сделки разные — их сумма всё равно не имеет бизнес-смысла).
@@ -2864,6 +2891,8 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       {num("amber", sum((d) => d.supplier_offset_total))}
       {num("amber", sum((d) => d.supplier_railway_amount))}
       {num("amber", sum((d) => d.additional_expenses_amount))}
+      {/* ВТД — номера, суммировать нечего. */}
+      {blank("amber")}
       {num("amber", sum((d) => d.supplier_balance))}
       {/* Группы компании (2 cols) */}
       {blank("purple")}{blank("purple")}

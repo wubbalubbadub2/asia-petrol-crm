@@ -69,6 +69,11 @@ export function usePaymentTerms({ side, year, dealType }: PaymentTermsFilters) {
         .order("counterparty_name", { ascending: true })
         .order("appendix", { ascending: true })
         .order("basis_date", { ascending: true })
+        // Вью агрегирует по (сделка, сторона, приложение) и своего `id`
+        // не имеет: добиваем сортировку до полного порядка строк, иначе
+        // страницы .range() теряют и дублируют строки отчёта.
+        .order("deal_id", { ascending: true })
+        .order("side", { ascending: true })
         .range(from, to) as unknown as PromiseLike<{ data: PaymentTermsRow[] | null; error: null }>;
     });
 

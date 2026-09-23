@@ -86,6 +86,7 @@ export function useApplications() {
         .from("applications")
         .select(APP_SELECT)
         .order("date", { ascending: false })
+        .order("id", { ascending: false })
         .range(from, to),
     );
 

@@ -36,6 +36,9 @@ const EXPECTED_KEYS = [
   "supplier_amount", "supplier_price", "supplier_shipped_amount",
   "supplier_shipped_volume", "supplier_payment", "supplier_payment_date",
   "supplier_offset", "supplier_railway_amount", "additional_expenses",
+  // ВТД — номера документов с отгрузок (00169). Клиент 2026-09-23:
+  // «между столбцами Взаимозачет и Баланс».
+  "supplier_vtd",
   "supplier_balance",
   "groups",
   "buyer", "buyer_contract", "buyer_basis", "buyer_volume", "buyer_amount",
@@ -55,7 +58,7 @@ const EXPECTED_HEADERS = [
   "Месяц", "Завод", "ГСМ", "%S",
   "Поставщик", "Номер приложения", "Базис", "Объем", "Сумма дог.", "Цена",
   "Приход, сумма", "Приход, тонн", "Оплата", "Дата оплаты", "Взаимозачет",
-  "Сумма ЖД (поставщик)", "Сумма грузоотправления", "Баланс",
+  "Сумма ЖД (поставщик)", "Сумма грузоотправления", "ВТД", "Баланс",
   "Компания", "Цена гр.",
   "Покупатель", "Номер приложения", "Базис", "Объем", "Сумма дог.", "Цена",
   "Заявлено", "Остаток", "Отгр. тонн", "Отгр. сумма", "Оплата",

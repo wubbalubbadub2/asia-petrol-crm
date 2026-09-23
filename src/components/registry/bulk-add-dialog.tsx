@@ -139,13 +139,20 @@ export function BulkAddDialog({
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceNum, setInvoiceNum] = useState("");
   const [bulkComment, setBulkComment] = useState("");
-  // Variant appendix labels for the chosen deal. Picking one auto-
-  // resolves supplier_line_id + buyer_line_id at save time. Identical
-  // mechanic to /registry InlineAdd; see migration 00072.
-  type ApxLine = { id: string; appendix: string | null };
+  // Варианты цены («домики») выбранной сделки. Клиент 2026-09-23: логист
+  // должен сам выбирать, на какую цену / какое приложение сажать отгрузку
+  // — например 1000 т по одной цене и 500 т по другой в одной сделке.
+  // Раньше здесь был только выбор приложения, и если у вариантов не
+  // заполнена подпись приложения (все сделки после КГ/26/345), выбрать
+  // было нечего: строки уходили с пустыми supplier_line_id/buyer_line_id,
+  // и «Окончательная» их потом не видела (00164: цикл идёт по
+  // buyer_line_id). Отсюда же «цена не села» по KZ/26/276.
+  type ApxLine = { id: string; appendix: string | null; is_default: boolean; position: number; price: number | null };
   const [supLines, setSupLines] = useState<ApxLine[]>([]);
   const [buyLinesArr, setBuyLines] = useState<ApxLine[]>([]);
   const [apx, setApx] = useState("");
+  const [supplierLineId, setSupplierLineId] = useState("");
+  const [buyerLineId, setBuyerLineId] = useState("");
 
   // Paste + preview
   const [pasted, setPasted] = useState("");
@@ -216,6 +223,9 @@ export function BulkAddDialog({
     setVolumeTarget("load");
     setDupShipment(false); // recomputed by the chain-loading effect
     setApx("");
+    // Варианты подставит загрузчик ниже — основной по умолчанию.
+    setSupplierLineId("");
+    setBuyerLineId("");
   }, [open, context]);
 
   // Load variant appendix labels + chain positions 1/2 for the picked
@@ -226,12 +236,17 @@ export function BulkAddDialog({
     if (!open || !context?.dealId) { setSupLines([]); setBuyLines([]); setDupShipment(false); return; }
     const sb = createClient();
     Promise.all([
-      sb.from("deal_supplier_lines").select("id, appendix").eq("deal_id", context.dealId),
-      sb.from("deal_buyer_lines").select("id, appendix").eq("deal_id", context.dealId),
+      sb.from("deal_supplier_lines").select("id, appendix, is_default, position, price").eq("deal_id", context.dealId).order("position"),
+      sb.from("deal_buyer_lines").select("id, appendix, is_default, position, price").eq("deal_id", context.dealId).order("position"),
       sb.from("deal_company_groups").select("position, company_group:company_groups(name, full_name)").eq("deal_id", context.dealId).in("position", [1, 2]),
     ]).then(([s, b, chain]) => {
-      setSupLines(((s.data as unknown) ?? []) as ApxLine[]);
-      setBuyLines(((b.data as unknown) ?? []) as ApxLine[]);
+      const sl = ((s.data as unknown) ?? []) as ApxLine[];
+      const bl = ((b.data as unknown) ?? []) as ApxLine[];
+      setSupLines(sl);
+      setBuyLines(bl);
+      // По умолчанию — основной вариант, чтобы привязка была всегда.
+      setSupplierLineId((sl.find((l) => l.is_default) ?? sl[0])?.id ?? "");
+      setBuyerLineId((bl.find((l) => l.is_default) ?? bl[0])?.id ?? "");
       const rows = (chain.data ?? []) as unknown as { position: number; company_group?: { name?: string | null; full_name?: string | null } | null }[];
       const pos1 = rows.find((r) => r.position === 1)?.company_group ?? null;
       const pos2 = rows.find((r) => r.position === 2)?.company_group ?? null;
@@ -247,12 +262,15 @@ export function BulkAddDialog({
   }, [supLines, buyLinesArr]);
 
   // Auto-tariff lookup: tariffs are keyed by SHIPMENT month + year, not the
-  // deal's "месяц формирования". When the existing group has no tariff yet
-  // (e.g. wagons added before the rate was published), fill it now from the
-  // /tariffs reference. Stays out of the way once the user has typed something.
+  // deal's "месяц формирования".
+  //
+  // 2026-09-23 (00167): опрос справочника идёт ВСЕГДА, а не только когда
+  // поле пустое. Раньше диалог подставлял тариф сделки и после этого
+  // справочник не спрашивал — оператор видел одно число, а в базу
+  // ложилось другое (её триггер всё равно берёт ставку справочника).
+  // Теперь в поле сразу то, что реально сохранится.
   useEffect(() => {
     if (!open || !context) return;
-    if (tariff) return;
     const lookupMonth = shipmentMonth || month;
     const year = context.dealYear;
     if (!departureStationId || !destinationStationId || !fuelTypeId || !forwarderId || !lookupMonth || !year) return;
@@ -266,7 +284,10 @@ export function BulkAddDialog({
       .eq("year", year)
       .limit(1).maybeSingle()
       .then(({ data }) => { if (data?.planned_tariff) setTariff(String(data.planned_tariff)); });
-  }, [open, context, departureStationId, destinationStationId, fuelTypeId, forwarderId, shipmentMonth, month, tariff]);
+    // `tariff` намеренно НЕ в зависимостях: опрос идёт на смену ключа, а
+    // не на каждое нажатие клавиши, иначе поле нельзя было бы править.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, context, departureStationId, destinationStationId, fuelTypeId, forwarderId, shipmentMonth, month]);
 
   const parsed: ParsedWagon[] = useMemo(() => parseBulkWagons(pasted), [pasted]);
   const validCount = parsed.filter((p) => !p.error).length;
@@ -279,8 +300,15 @@ export function BulkAddDialog({
     setSaving(true);
 
     const tariffNum = tariff ? parseFloat(tariff) : null;
-    const supLineMatch = apx ? supLines.find((l) => l.appendix === apx) : null;
-    const buyLineMatch = apx ? buyLinesArr.find((l) => l.appendix === apx) : null;
+    // Вариант выбран явно; приложение — быстрый способ его выбрать.
+    // Пустым line_id больше не оставляем: без него отгрузка не попадает
+    // ни в пересчёт «Окончательной», ни в сумму варианта.
+    const supLineMatch = supLines.find((l) => l.id === supplierLineId)
+      ?? (apx ? supLines.find((l) => l.appendix === apx) : null)
+      ?? supLines.find((l) => l.is_default) ?? null;
+    const buyLineMatch = buyLinesArr.find((l) => l.id === buyerLineId)
+      ?? (apx ? buyLinesArr.find((l) => l.appendix === apx) : null)
+      ?? buyLinesArr.find((l) => l.is_default) ?? null;
     const rows = validRows.map((p) => ({
       registry_type: regType,
       deal_id: dealId,
@@ -380,11 +408,58 @@ export function BulkAddDialog({
                   <Label className="text-[10px] text-stone-500">Приложение</Label>
                   <select
                     value={apx}
-                    onChange={(e) => setApx(e.target.value)}
+                    onChange={(e) => {
+                      const a = e.target.value;
+                      setApx(a);
+                      // Приложение — быстрый выбор варианта на обеих сторонах.
+                      const s = supLines.find((l) => (l.appendix ?? "") === a);
+                      const b = buyLinesArr.find((l) => (l.appendix ?? "") === a);
+                      if (s) setSupplierLineId(s.id);
+                      if (b) setBuyerLineId(b.id);
+                    }}
                     className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
                   >
                     <option value="">—</option>
                     {apxOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* Выбор варианта цены («домика»). Показываем, когда вариантов
+                  больше одного: именно так делят одну сделку на 1000 т по
+                  одной цене и 500 т по другой (клиент 2026-09-23). */}
+              {supLines.length > 1 && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Вариант поставщика</Label>
+                  <select
+                    value={supplierLineId}
+                    onChange={(e) => setSupplierLineId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    {supLines.map((l, idx) => (
+                      <option key={l.id} value={l.id}>
+                        {l.appendix ? `${l.appendix} · ` : ""}
+                        {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
+                        {l.price != null ? ` · ${l.price}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {buyLinesArr.length > 1 && (
+                <div>
+                  <Label className="text-[10px] text-stone-500">Вариант покупателя</Label>
+                  <select
+                    value={buyerLineId}
+                    onChange={(e) => setBuyerLineId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    {buyLinesArr.map((l, idx) => (
+                      <option key={l.id} value={l.id}>
+                        {l.appendix ? `${l.appendix} · ` : ""}
+                        {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
+                        {l.price != null ? ` · ${l.price}` : ""}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}

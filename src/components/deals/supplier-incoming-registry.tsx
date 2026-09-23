@@ -37,8 +37,10 @@ type DateGroup = {
 
 const fmtVol = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-// Money canon 2026-09-08: 3 decimals.
+// Money canon 2026-09-22: суммы — 2 знака, ставка за тонну — 3.
 const fmtMoney = (v: number | null) =>
+  v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtTariff = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
 /** Тариф = сумма ÷ входящее СНТ. Пустой объём — прочерк, а не ноль. */
@@ -160,9 +162,9 @@ export function SupplierIncomingRegistry({ dealId }: { dealId: string }) {
                   {g.date === "без даты" ? "без даты" : formatDMY(g.date)}
                 </td>
                 <td className={`${num} text-amber-700`}>{fmtVol(g.volume)}</td>
-                <td className={`${num} text-stone-400`}>{fmtMoney(tariff(g.railwayAmount, g.volume))}</td>
+                <td className={`${num} text-stone-400`}>{fmtTariff(tariff(g.railwayAmount, g.volume))}</td>
                 <td className={num}>{fmtMoney(g.railwayAmount)}</td>
-                <td className={`${num} text-stone-400`}>{fmtMoney(tariff(g.shipperAmount, g.volume))}</td>
+                <td className={`${num} text-stone-400`}>{fmtTariff(tariff(g.shipperAmount, g.volume))}</td>
                 <td className={num}>{fmtMoney(g.shipperAmount)}</td>
               </tr>
               {openDate === g.date && g.wagons.map((w) => (
@@ -170,14 +172,14 @@ export function SupplierIncomingRegistry({ dealId }: { dealId: string }) {
                   <td className="py-0.5 pl-6 pr-2 font-mono text-[10px] text-stone-400">{w.wagon_number ?? "—"}</td>
                   <td className={`${num} text-[10px] text-amber-700`}>{fmtVol(w.loading_volume)}</td>
                   <td className={`${num} text-[10px] text-stone-300`}>
-                    {fmtMoney(tariff(w.shipped_tonnage_amount ?? 0, w.loading_volume ?? 0))}
+                    {fmtTariff(tariff(w.shipped_tonnage_amount ?? 0, w.loading_volume ?? 0))}
                   </td>
                   <td className={`${num} text-[10px]`}>
                     <AmountCell value={w.shipped_tonnage_amount} rowId={w.id} field="shipped_tonnage_amount"
                                 overrideField="shipped_tonnage_amount_override" onSaved={load} />
                   </td>
                   <td className={`${num} text-[10px] text-stone-300`}>
-                    {fmtMoney(tariff(w.additional_expenses ?? 0, w.loading_volume ?? 0))}
+                    {fmtTariff(tariff(w.additional_expenses ?? 0, w.loading_volume ?? 0))}
                   </td>
                   <td className={`${num} text-[10px]`}>
                     <AmountCell value={w.additional_expenses} rowId={w.id} field="additional_expenses"
@@ -190,9 +192,9 @@ export function SupplierIncomingRegistry({ dealId }: { dealId: string }) {
           <tr className="border-t border-stone-300 font-medium">
             <td className="py-1 pr-2 text-stone-500">Итого</td>
             <td className={`${num} text-amber-700`}>{fmtVol(total.v)}</td>
-            <td className={`${num} text-stone-400`}>{fmtMoney(tariff(total.r, total.v))}</td>
+            <td className={`${num} text-stone-400`}>{fmtTariff(tariff(total.r, total.v))}</td>
             <td className={num}>{fmtMoney(total.r)}</td>
-            <td className={`${num} text-stone-400`}>{fmtMoney(tariff(total.s, total.v))}</td>
+            <td className={`${num} text-stone-400`}>{fmtTariff(tariff(total.s, total.v))}</td>
             <td className={num}>{fmtMoney(total.s)}</td>
           </tr>
         </tbody>

@@ -564,9 +564,9 @@ Defined in: 00023_deal_shipment_prices.sql
 | quotation_product_type_id | UUID | NULL | — | FK → quotation_product_types(id) | 00023 |
 | quotation_avg | DECIMAL(14,4) | NULL | — | — | 00023 |
 | discount | DECIMAL(14,4) | NULL | 0 | — | 00023 |
-| calculated_price | DECIMAL(14,4) | NULL | — | — | 00023 |
+| calculated_price | DECIMAL(14,4) | NULL | — | — | 00023; always ROUND(…, 3) since 00166 |
 | volume | DECIMAL(14,6) | NULL | — | — | 00023 |
-| amount | DECIMAL(14,4) | NULL | — | — | 00023 |
+| amount | DECIMAL(14,4) | NULL | — | — | 00023; = volume × calculated_price, enforced by trigger since 00166 |
 | notes | TEXT | NULL | — | — | 00023 |
 | created_at | TIMESTAMPTZ | NULL | now() | — | 00023 |
 | updated_at | TIMESTAMPTZ | NULL | now() | — | 00023 |
@@ -574,7 +574,7 @@ Defined in: 00023_deal_shipment_prices.sql
 
 **Indexes:** idx_deal_shipment_prices_deal, idx_deal_shipment_prices_side  
 **RLS:** Authenticated SELECT, writable INSERT/UPDATE, admin DELETE  
-**Triggers:** trg_deal_shipment_prices_updated: BEFORE UPDATE sets updated_at
+**Triggers:** trg_deal_shipment_prices_updated: BEFORE UPDATE sets updated_at; trg_shipment_price_three_decimals (00166): BEFORE INSERT/UPDATE rounds calculated_price to 3 decimals and sets amount = volume × calculated_price when both are present. Pre-00166 values of recomputed rows are kept in `deal_shipment_prices_backup_00166` (RLS on, no policies; rollback only).
 
 ---
 
@@ -663,7 +663,7 @@ Defined in: 00023_deal_shipment_prices.sql
 | wagon_number | TEXT | NULL | — | — | 00005 |
 | **VOLUMES** | | | | | |
 | shipment_volume | DECIMAL(14,6) | NULL | — | — | 00005 (delivered tonnage) |
-| loading_volume | DECIMAL(14,6) | NULL | — | — | 00025 (loaded tonnage; KZ uses this, KG uses shipment_volume) |
+| loading_volume | DECIMAL(14,6) | NULL | — | — | 00025 (loaded tonnage; amount base when present, else shipment_volume — 00165) |
 | rounded_tonnage_from_forwarder | DECIMAL(14,4) | NULL | — | — | 00005 |
 | shipped_tonnage_amount | DECIMAL(14,4) | NULL | — | — | 00005, auto-computed = CEIL(volume) * tariff, can be overridden (00050, 00086) |
 | shipped_tonnage_amount_override | BOOLEAN | NOT NULL | FALSE | — | 00050 |
@@ -1028,7 +1028,7 @@ The system contains an elaborate mirroring mechanism to maintain backward compat
 
 ### 2. Overlapping Concepts
 
-- **shipment_volume vs. loading_volume** (00025, 00086): On KZ deals, the tariff is computed from loading_volume (налив). On KG deals, from shipment_volume (отгрузка). The migration must preserve this logic in the compute_registry_amount trigger; otherwise tariff calculations will diverge by registry_type.
+- **shipment_volume vs. loading_volume** (00025, 00086, 00165): Until 00165 the amount base depended on registry_type — KZ used loading_volume (налив), KG used shipment_volume (отгрузка). Since 00165 the base is loading_volume when present, else shipment_volume, regardless of registry_type (Sum 1 and Sum 3; Sum 2 still uses loading_volume only). The on-screen «Округл.» cell and the Excel `roundedTonnage` mirror the same rule.
 
 - **supplier_debt vs. buyer_debt** (00060): The formula flipped in 00060. Prior to that, buyer_debt was shipped − payment. Now it is payment − shipped. The direction change is semantic, not a typo—old deployments expect the old sign. Any historical queries over buyer_debt must account for the flip date (migration 00060, likely May 2026).
 
@@ -1072,7 +1072,7 @@ The following columns are predominantly NULL in production (feature blocks are u
   - If shipped_tonnage_amount_override = true, trigger leaves manual value alone.
   - If rounded_volume_override is set (00061), use that instead of shipment_volume.
   - If round_volume = false (00086), use exact volume instead of CEIL(volume).
-  - KZ deals use loading_volume; KG use shipment_volume.
+  - Base = loading_volume when present, else shipment_volume (00165; before that KZ → loading_volume, KG → shipment_volume).
   - Trigger is BEFORE INSERT/UPDATE, so changes fire on every write. Legacy code may expect idempotency; ensure migration logic is same.
 
 ### 6. Enum / CHECK Constraint Migrations

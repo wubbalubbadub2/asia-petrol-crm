@@ -82,7 +82,9 @@ export function useFiscalDocuments(tab: FiscalTabKey, showChain: boolean) {
         .eq("doc_kind", def.docKind);
       if (def.direction) q = q.eq("direction_code", def.direction);
       if (!showChain) q = applyActualFilter(q);
-      return q.order("registration_date", { ascending: false }).range(from, to);
+      // + уникальный `id`: даты регистрации повторяются, а .range()
+      // без полного порядка строк теряет и дублирует документы.
+      return q.order("registration_date", { ascending: false }).order("id", { ascending: false }).range(from, to);
     }).then(({ data, error }) => {
       if (cancelled) return;
       setLoaded({ key, rows: error ? [] : data, error: error?.message ?? null });
@@ -200,6 +202,7 @@ export function useFiscalCounterparties() {
         .from("fiscal_counterparty")
         .select("counterparty_identifier, canonical_name, name_variants, doc_count")
         .order("canonical_name")
+        .order("counterparty_identifier")
         .range(from, to),
     ).then(({ data }) => {
       if (cancelled) return;
@@ -279,6 +282,7 @@ export function useFiscalParties() {
       sb.current
         .from("fiscal_document")
         .select("supplier_identifier, supplier_name, recipient_identifier, recipient_name")
+        .order("id")
         .range(from, to),
     ).then(({ data }) => {
       if (cancelled) return;

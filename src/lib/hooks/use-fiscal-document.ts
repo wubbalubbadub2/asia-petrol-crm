@@ -227,6 +227,7 @@ export function useFiscalDocument(id: string) {
           .select(LINE_SELECT)
           .eq("document_id", id)
           .order("line_no")
+          .order("id")
           .range(from, to),
       );
       if (cancelled) return;

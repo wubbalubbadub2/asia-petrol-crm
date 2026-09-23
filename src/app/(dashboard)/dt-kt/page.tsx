@@ -13,6 +13,13 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import { computeDtKtSaldo } from "@/lib/dtkt/saldo";
+import {
+  fetchDtKtRegistryRows,
+  sumRegistryByPair,
+  avrByPair,
+  dtKtPairKey,
+  type DtKtRegistryRow,
+} from "@/lib/dtkt/registry-sums";
 import { useDelayed } from "@/lib/hooks/use-delayed";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
@@ -34,10 +41,17 @@ type DtKtRecord = {
 };
 
 type DtKtPayment = { id: string; payment_date: string; amount: number; description: string | null; currency: string | null };
-type RegistrySums = { forwarder_id: string; company_group_id: string | null; total_volume: number; total_amount: number };
+// Итоги по парам считает общий модуль — тот же, из которого выгрузка
+// берёт под-строки АВР (клиент 2026-09-17: Excel не должен расходиться
+// с экраном).
 
 function fmt(v: number | null | undefined) {
-  // Money — always 3 decimals per client canon 2026-09-08.
+  // Суммы (сальдо, оплата, отгрузка, штрафы, сверхнорм., ОГЭМ) —
+  // 2 знака, канон клиента 2026-09-22.
+  return v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/** Тоннаж — 3 знака, как и везде. */
+function fmtVol(v: number | null | undefined) {
   return v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 function n(v: number | null | undefined) { return v ?? 0; }
@@ -228,7 +242,7 @@ export default function DtKtPage() {
   const showLoader = useDelayed(loading);
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
   const [showAdd, setShowAdd] = useState(false);
-  const [registrySums, setRegistrySums] = useState<RegistrySums[]>([]);
+  const [registryRows, setRegistryRows] = useState<DtKtRegistryRow[]>([]);
   const [dtktPayments, setDtktPayments] = useState<Record<string, DtKtPayment[]>>({});
   const [expandedPayments, setExpandedPayments] = useState<string | null>(null);
   // Column filters
@@ -243,17 +257,19 @@ export default function DtKtPage() {
     // forwarders × years lives in one bucket), so it WILL hit the
     // PostgREST Max-Rows=1000 cap once the client has ≥3 active years.
     // Paginate to keep the full history visible.
-    const [{ data: recs }, { data: regData }, { data: payData }] = await Promise.all([
+    const [{ data: recs }, { data: payData }] = await Promise.all([
       sb.current.from("dt_kt_logistics")
         .select("id, forwarder_id, company_group_id, year, opening_balance, payment, refund, fines, surcharge_preliminary, ogem, forwarder:forwarders(name), company_group:company_groups(name)")
         .eq("year", yearFilter).order("forwarder_id"),
-      // Placeholder — registry sums computed below
-      Promise.resolve({ data: null }),
-      // Load all payments for these records — paginated.
+      // Load all payments for these records — paginated. Сортировка
+      // добита уникальным `id`: без полного порядка строк LIMIT/OFFSET
+      // между страницами может задвоить одну оплату и потерять другую,
+      // а оплата входит в сальдо (см. lib/dtkt/registry-sums.ts).
       fetchAllPaginated((from, to) =>
         sb.current.from("dt_kt_payments")
           .select("id, dt_kt_id, payment_date, amount, description, currency")
           .order("payment_date")
+          .order("id")
           .range(from, to),
       ),
     ]);
@@ -268,35 +284,17 @@ export default function DtKtPage() {
       pMap[p.dt_kt_id].push(p);
     }
     setDtktPayments(pMap);
-    // Registry sums grouped by (forwarder_id, company_group_id). Each
-    // dt_kt_logistics row is keyed on that triple (+ year), so a forwarder
-    // with multiple group companies has multiple buckets that must NOT be
-    // collapsed. Amount comes from shipped_tonnage_amount (populated by
-    // trigger 00031) so registry / DT-KT / dashboard all show the same number.
-    if (!regData) {
-      // A single year can easily exceed 1000 shipments (Beken's KG side
-      // does already). Paginate so the DT-KT registry-sum column is
-      // accurate for high-volume years.
-      const { data: fallback } = await fetchAllPaginated((from, to) =>
-        sb.current.from("shipment_registry")
-          .select("forwarder_id, company_group_id, shipment_volume, shipped_tonnage_amount")
-          .gte("date", `${yearFilter}-01-01`).lte("date", `${yearFilter}-12-31`)
-          .range(from, to),
-      );
-      if (fallback) {
-        const sums = new Map<string, RegistrySums>();
-        for (const r of fallback as { forwarder_id: string | null; company_group_id: string | null; shipment_volume: number | null; shipped_tonnage_amount: number | null }[]) {
-          if (!r.forwarder_id) continue;
-          const key = `${r.forwarder_id}::${r.company_group_id ?? ""}`;
-          if (!sums.has(key)) sums.set(key, { forwarder_id: r.forwarder_id, company_group_id: r.company_group_id, total_volume: 0, total_amount: 0 });
-          const s = sums.get(key)!;
-          s.total_volume += r.shipment_volume ?? 0;
-          s.total_amount += r.shipped_tonnage_amount ?? 0;
-        }
-        setRegistrySums(Array.from(sums.values()));
-      }
-    } else {
-      setRegistrySums(regData as RegistrySums[]);
+    // Строки реестра за год — ОДИН запрос на экран и на выгрузку.
+    // Итоги по парам «экспедитор + плательщик ЖД» считает общий модуль;
+    // он же отдаёт выгрузке под-строки АВР из ЭТИХ ЖЕ строк, поэтому
+    // Excel не может разойтись с экраном. Сортировка `date, id` внутри
+    // делает постраничное чтение детерминированным — прежний запрос шёл
+    // без ORDER BY вообще и при реестре больше 1000 строк за год мог
+    // задвоить одну отгрузку и потерять другую.
+    try {
+      setRegistryRows(await fetchDtKtRegistryRows(yearFilter));
+    } catch (e) {
+      toast.error(`Не удалось прочитать реестр: ${e instanceof Error ? e.message : String(e)}`);
     }
     setLoading(false);
   }
@@ -368,9 +366,12 @@ export default function DtKtPage() {
     return pays && pays.length > 0 ? pays.reduce((s, p) => s + n(p.amount), 0) : n(rec.payment);
   }, [dtktPayments]);
 
+  // Итоги по парам — из общего модуля, поверх загруженных строк реестра.
+  const registrySums = useMemo(() => sumRegistryByPair(registryRows), [registryRows]);
+
   const getRegistrySum = useCallback((fwId: string | null, cgId: string | null) => {
     if (!fwId) return { vol: 0, amt: 0 };
-    const s = registrySums.find((r) => r.forwarder_id === fwId && r.company_group_id === cgId);
+    const s = registrySums.get(dtKtPairKey(fwId, cgId));
     return { vol: s?.total_volume ?? 0, amt: s?.total_amount ?? 0 };
   }, [registrySums]);
 
@@ -450,6 +451,9 @@ export default function DtKtPage() {
     setExporting(true);
     try {
       const { exportDtKtToExcel } = await import("@/lib/exports/dtkt-excel");
+      // Под-строки АВР собираются из ТЕХ ЖЕ строк реестра, что дали
+      // цифры на экране: выгрузка своего запроса в базу не делает.
+      const avr = avrByPair(registryRows);
       const rows = filtered.map((rec) => {
         const reg = getRegistrySum(rec.forwarder_id, rec.company_group_id);
         const pay = paymentOf(rec);
@@ -476,7 +480,7 @@ export default function DtKtPage() {
           })),
         };
       });
-      await exportDtKtToExcel(rows, { year: yearFilter, variant });
+      await exportDtKtToExcel(rows, { year: yearFilter, variant }, avr);
       toast.success("Файл готов");
     } catch (e) {
       reportExportError(e);
@@ -635,7 +639,7 @@ export default function DtKtPage() {
                           {fmt(pay)} {pays.length > 0 && <span className="text-[9px] text-stone-400">({pays.length})</span>}
                         </button>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-[11px] tabular-nums text-blue-600">{reg.vol > 0 ? fmt(reg.vol) : "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] tabular-nums text-blue-600">{reg.vol > 0 ? fmtVol(reg.vol) : "—"}</TableCell>
                       <TableCell className="text-right font-mono text-[11px] tabular-nums text-blue-600">{reg.amt > 0 ? fmt(reg.amt) : "—"}</TableCell>
                       <TableCell className="text-right">
                         <InlineDtNum value={rec.refund} onSave={(v) => updateDtKt(rec.id, { refund: v })} />
@@ -727,7 +731,7 @@ export default function DtKtPage() {
                 </TableCell>
                 <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.opening)}</TableCell>
                 <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.payment)}</TableCell>
-                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-blue-700">{totals.regVol > 0 ? fmt(totals.regVol) : "—"}</TableCell>
+                <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-blue-700">{totals.regVol > 0 ? fmtVol(totals.regVol) : "—"}</TableCell>
                 <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-blue-700">{totals.regAmt > 0 ? fmt(totals.regAmt) : "—"}</TableCell>
                 <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold">{fmt(totals.refund)}</TableCell>
                 <TableCell className="text-right font-mono text-[11px] tabular-nums font-semibold text-red-600">{fmt(totals.fines)}</TableCell>

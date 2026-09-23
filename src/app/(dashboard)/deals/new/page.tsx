@@ -18,6 +18,7 @@ import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft } from "@/components/deals/deal-create-variants";
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 import { DealPaymentsDraft, type DraftPayment } from "@/components/deals/deal-payments-draft";
+import { QUOTATION_REQUIRED_MESSAGE, requiresQuotationType } from "@/lib/deals/price-validation";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -279,8 +280,34 @@ export default function NewDealPage() {
     });
   }, [supabase]);
 
+  // Формульная цена без выбранной котировки сохраняться не должна
+  // (клиент 2026-09-18): автоподбор цены ищет котировку по
+  // quotation_type_id, и без него строки реестра приезжают без цены.
+  // Возвращает подписи вариантов, которые мешают сохранить.
+  function variantsMissingQuotation(): string[] {
+    const bad: string[] = [];
+    const check = (list: VariantDraft[], sideLabel: string) => {
+      list.forEach((v, idx) => {
+        const patch = variantDraftToLinePatch(v);
+        if (requiresQuotationType(patch.price_condition, patch.trigger_basis) && !v.quotationTypeId) {
+          bad.push(`${sideLabel}${list.length > 1 ? `, вариант ${idx + 1}` : ""}`);
+        }
+      });
+    };
+    check(supplierVariants, "Поставщик");
+    check(buyerVariants, "Покупатель");
+    return bad;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    const missing = variantsMissingQuotation();
+    if (missing.length > 0) {
+      toast.error(`${QUOTATION_REQUIRED_MESSAGE}: ${missing.join("; ")}`);
+      return;
+    }
+
     setSaving(true);
 
     const sv0 = supplierVariants[0] ?? EMPTY_VARIANT;

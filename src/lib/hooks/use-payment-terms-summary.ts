@@ -51,6 +51,9 @@ export function usePaymentTermsSummary(dealIds: string[]) {
           .select("deal_id, side, line_count, single_line_id, deferral_days_list, has_manual_date, worst_days_to_pay, overdue_count, deal_saldo")
           .in("deal_id", chunk)
           .order("deal_id", { ascending: true })
+          // Вью без id; (сделка, сторона) уникальна — полный порядок
+          // строк для постраничного чтения.
+          .order("side", { ascending: true })
           .range(from, to) as unknown as PromiseLike<{ data: PaymentTermsSummary[] | null; error: null }>,
       ),
     ));

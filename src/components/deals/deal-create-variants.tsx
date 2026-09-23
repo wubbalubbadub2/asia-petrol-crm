@@ -19,6 +19,8 @@ import {
 } from "@/lib/constants/deal-types";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
+import { QUOTATION_REQUIRED_MESSAGE, requiresQuotationType } from "@/lib/deals/price-validation";
+import { applyPriceFormula } from "@/lib/deals/price-formula";
 import { createClient } from "@/lib/supabase/client";
 
 export type VariantDraft = {
@@ -66,6 +68,9 @@ export type VariantDraft = {
   // deal_*_lines.fx_rate. Used only when priceMode === 'manual_formula'
   // — price = (quotation − discount) × fxRate.
   fxRate: string;
+  // Коэффициент барелизации (00164): баррелей в тонне. Переводит
+  // котировку долл/баррель в цену долл/тонна.
+  barrelRatio: string;
   // Migration 00072 — free-text appendix label («Прил. 1», «Прил. 2», etc).
   // Registry add form uses this to auto-resolve the variant.
   appendix: string;
@@ -104,6 +109,7 @@ export const EMPTY_VARIANT: VariantDraft = {
   selectedDate: "",
   priceStage: "preliminary",
   fxRate: "",
+  barrelRatio: "",
   appendix: "",
   quotationManualEdited: false,
   priceManualEdited: false,
@@ -124,6 +130,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
   price_stage: "preliminary" | "final";
   price_source: string | null;
   calc_mode: CalcMode;
+  barrel_ratio: number | null;
 } {
   const decoded = decodePriceMode(v.priceMode);
   // Клиент 2026-07-10: для average_month subtype юзер теперь может
@@ -155,6 +162,7 @@ export function variantDraftToLinePatch(v: VariantDraft): {
     // no recompute to do.
     price_stage:     decoded.price_condition === "manual" ? "preliminary" : v.priceStage,
     price_source:    v.priceSource || null,
+    barrel_ratio:    v.barrelRatio ? Number(v.barrelRatio.replace(",", ".")) : null,
     // Migration 00079: calc_mode персистится. Клиент 2026-07-10 разрешил
     // юзеру выбирать calc_mode и для average_month subtype (раньше был
     // hardcode 'avg_month').
@@ -225,6 +233,10 @@ function VariantRow({
 
   const decoded = decodePriceMode(v.priceMode);
   const isTriggerMode = decoded.price_condition === "trigger";
+  // Формульная цена считается ОТ котировки — без неё вариант сохранять
+  // нельзя (клиент 2026-09-18). Проверка та же, что блокирует submit.
+  const quotationRequired = requiresQuotationType(decoded.price_condition, decoded.trigger_basis);
+  const quotationMissing = quotationRequired && !v.quotationTypeId;
 
   // Auto-fetch the quotation VALUE (not price) whenever subtype / calc
   // mode / type / dates change. The price is derived from the quotation
@@ -328,17 +340,25 @@ function VariantRow({
     if (!Number.isFinite(q)) return;
     const d = v.discount ? parseFloat(v.discount.replace(",", ".")) : 0;
     const dNum = Number.isFinite(d) ? d : 0;
-    let next: string;
+    // Коэффициент барелизации — второй множитель той же формулы
+    // (клиент 2026-09-19). Считает общий хелпер, зеркало SQL-функции
+    // apply_price_formula, чтобы предварительная и финальная цены не
+    // разошлись.
+    const ratio = v.barrelRatio ? parseFloat(v.barrelRatio.replace(",", ".")) : NaN;
+    const ratioNum = Number.isFinite(ratio) ? ratio : null;
+    let computed: number | null;
     if (v.priceMode === "manual_formula") {
       const fx = v.fxRate ? parseFloat(v.fxRate.replace(",", ".")) : NaN;
       if (!Number.isFinite(fx)) return;
-      next = String(Math.round((q - dNum) * fx * 100) / 100);
+      computed = applyPriceFormula(q, dNum, fx, ratioNum);
     } else {
-      next = String(Math.round((q - dNum) * 100) / 100);
+      computed = applyPriceFormula(q, dNum, null, ratioNum);
     }
+    if (computed == null) return;
+    const next = String(Math.round(computed * 100) / 100);
     if (next !== v.price) onChange({ price: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.quotation, v.discount, v.fxRate, v.priceMode, v.priceManualEdited]);
+  }, [v.quotation, v.discount, v.fxRate, v.barrelRatio, v.priceMode, v.priceManualEdited]);
 
   return (
     <div className={`rounded-md border p-3 ${isDefault ? "border-amber-200 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}>
@@ -492,7 +512,9 @@ function VariantRow({
             below are gated on price_condition so picking a type on a
             manual tier is harmless (audit-only). */}
         <div>
-          <Label className="text-[12px] text-stone-500">Котировка</Label>
+          <Label className="text-[12px] text-stone-500">
+            Котировка{quotationRequired && <span className="text-red-600"> *</span>}
+          </Label>
           <select
             value={v.quotationTypeId}
             onChange={(e) => {
@@ -511,11 +533,20 @@ function VariantRow({
                 quotationManualEdited: false, priceManualEdited: false,
               });
             }}
-            className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
+            className={`w-full h-8 rounded-md border bg-white px-2 text-[13px] focus:outline-none cursor-pointer ${
+              quotationMissing
+                ? "border-red-400 focus:border-red-500"
+                : "border-stone-200 focus:border-amber-400"
+            }`}
           >
             <option value="">Выбрать котировку...</option>
             {quotationTypes.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
           </select>
+          {/* Клиент 2026-09-18: при формульной цене без котировки дальше
+              идти нельзя — форма не сохранится, и причина видна здесь же. */}
+          {quotationMissing && (
+            <p className="mt-0.5 text-[11px] text-red-600">{QUOTATION_REQUIRED_MESSAGE}</p>
+          )}
         </div>
 
         {decoded.price_condition !== "manual" && decoded.price_condition !== "manual_formula" && (() => {
@@ -632,6 +663,23 @@ function VariantRow({
               value={v.fxRate}
               onChange={(e) => onChange({ fxRate: e.target.value })}
               placeholder="(котировка − скидка) × курс"
+              className="h-8 text-[13px] font-mono"
+            />
+          </div>
+        )}
+
+        {/* Коэффициент барелизации — клиент 2026-09-19: перевод
+            котировки Brent долл/баррель в цену долл/тонна. Пустой —
+            формула остаётся прежней. */}
+        {decoded.price_condition !== "manual" && (
+          <div>
+            <Label className="text-[12px] text-stone-500">Коэфф. барелизации</Label>
+            <Input
+              type="number"
+              step="0.000001"
+              value={v.barrelRatio}
+              onChange={(e) => onChange({ barrelRatio: e.target.value })}
+              placeholder="(котировка − скидка) × коэффициент"
               className="h-8 text-[13px] font-mono"
             />
           </div>

@@ -48,6 +48,10 @@ export function usePaymentDatesSummary(dealIds: string[]) {
           .select("deal_id, side, payment_count, first_date, last_date, dates")
           .in("deal_id", chunk)
           .order("deal_id", { ascending: true })
+          // Вторым ключом — side: у вью нет id, а пара (deal_id, side)
+          // уникальна. Без полного порядка страницы .range() плывут
+          // (см. src/__tests__/paginated-order.test.ts).
+          .order("side", { ascending: true })
           .range(from, to) as unknown as PromiseLike<{ data: PaymentDatesSummary[] | null; error: null }>,
       ),
     ));

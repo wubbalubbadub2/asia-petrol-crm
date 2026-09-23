@@ -7,9 +7,16 @@ import { type ActivityMessage } from "@/lib/hooks/use-deal-activity";
 import { currencySymbol } from "@/lib/constants/currencies";
 import { formatDMYTime, formatPrice } from "@/lib/format";
 
-function formatAmount(n: number): string {
-  // Money canon 2026-09-08: always 3 decimals.
-  return n.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+// Канон 2026-09-22: суммы — 2 знака, ставки за единицу и объём — 3.
+// Журнал пишет и то и другое, поэтому знаки выбираются по имени поля.
+function formatAmount(n: number, decimals = 2): string {
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+/** 3 знака у всего, что является ставкой за единицу или объёмом. */
+function decimalsForField(field: string | undefined): 2 | 3 {
+  if (!field) return 2;
+  return /price|tariff|quotation|discount|ratio|rate|volume|tonnage/.test(field) ? 3 : 2;
 }
 
 const toNum = (v: unknown): number | null => {
@@ -63,14 +70,12 @@ const FIELD_LABELS: Record<string, string> = {
 // Format a single value for display. Numeric values get Russian thousand
 // separators + optional currency/unit suffix. Strings render as-is.
 // Null / undefined renders as «—».
-function formatValue(raw: unknown, suffix: string, isNumeric: boolean, isPrice = false): string {
+function formatValue(raw: unknown, suffix: string, isNumeric: boolean, decimals: 2 | 3 = 2): string {
   if (raw === null || raw === undefined) return "—";
   if (isNumeric) {
     const n = toNum(raw);
     if (n === null) return "—";
-    // Цена за тонну — 3 знака (клиент 2026-09-04), остальные числа — деньги.
-    const text = isPrice ? formatPrice(n) : formatAmount(n);
-    return text + (suffix ? " " + suffix : "");
+    return (decimals === 3 ? formatPrice(n) : formatAmount(n)) + (suffix ? " " + suffix : "");
   }
   const s = String(raw);
   return s === "" ? "—" : s;
@@ -138,8 +143,8 @@ function renderActivityContent(msg: ActivityMessage): string {
     field.includes("tonnage") ||
     field === "surcharge_amount"
   );
-  const isPrice = field.includes("price");
-  return `${label}: ${formatValue(md.old, suffix, isNumeric, isPrice)} → ${formatValue(md.new, suffix, isNumeric, isPrice)}`;
+  const dec = decimalsForField(field);
+  return `${label}: ${formatValue(md.old, suffix, isNumeric, dec)} → ${formatValue(md.new, suffix, isNumeric, dec)}`;
 }
 
 const TYPE_ICONS: Record<string, { icon: typeof MessageSquare; color: string; bg: string }> = {

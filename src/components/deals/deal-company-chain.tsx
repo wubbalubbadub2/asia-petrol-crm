@@ -113,10 +113,11 @@ export function DealCompanyChain({
     onReload();
   }
 
-  // Money canon 2026-09-08: prices, tariff, margin → 3 decimals.
-  const fmtPrice = (v: number | null) => (v == null ? "—" : formatPrice(v));
+  // Канон 2026-09-22: цена, тариф и маржа — всё это ставки за тонну,
+  // поэтому три знака. fmtPrice — то же самое, имя осталось от main.
   const fmt = (v: number | null) =>
     v == null ? "—" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const fmtPrice = fmt;
 
   return (
     <Card>

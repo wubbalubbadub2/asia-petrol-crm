@@ -19,12 +19,19 @@
  * не прятала данные. Сумма берётся из `shipped_tonnage_amount` — та же
  * величина, что и в колонке «Отгр. сумма» на экране.
  *
+ * Строки реестра выгрузка НЕ ЧИТАЕТ САМА: их передаёт страница уже
+ * загруженными (`@/lib/dtkt/registry-sums`). Раньше здесь был свой
+ * запрос с другой сортировкой, и при реестре больше 1000 строк за год
+ * постраничное чтение расходилось с экраном — см. шапку того модуля.
+ *
  * Валюты не конвертируются (как и на экране): у оплат валюта своя, в
  * под-строках она видна отдельной колонкой.
  *
  * exceljs большой, поэтому модуль подключается динамическим import()
  * со страницы по клику.
  */
+
+import { dtKtPairKey, type DtKtAvrDay } from "@/lib/dtkt/registry-sums";
 
 export type DtKtExportPayment = {
   date: string | null;
@@ -60,15 +67,21 @@ export type DtKtExportContext = {
   variant: DtKtExportVariant;
 };
 
-/** Строка АВР: сутки отгрузки, свёрнутые из строк реестра. */
-type AvrRow = { date: string; volume: number; amount: number; wagons: number };
+/**
+ * Строка АВР: сутки отгрузки, свёрнутые из строк реестра. Тип и сама
+ * свёртка живут в `@/lib/dtkt/registry-sums` — там же, где их считает
+ * экран, чтобы под-строки выгрузки не могли разойтись с ним (клиент
+ * 2026-09-17).
+ */
+type AvrRow = DtKtAvrDay;
 
 /** Под-строка детального варианта: i-я оплата рядом с i-м АВР. */
 type SubRow = { pay: DtKtExportPayment | null; avr: AvrRow | null };
 
 // Деньги — 3 знака (клиент 2026-09-08, было 2), красный минус: знак
 // сальдо здесь смысловой.
-const NUM_FMT_AMOUNT = "#,##0.000;[Red]-#,##0.000";
+// Client canon 2026-09-22: суммы — 2 знака, тоннаж — 3.
+const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000";
 const NUM_FMT_DATE = "dd.mm.yy";
 
@@ -158,54 +171,6 @@ const COLUMNS_DETAIL: Column[] = [
 const HEADER_BG = "FF1C1917";   // sidebar dark
 const HEADER_TEXT = "FFFAFAF9"; // background warm
 const RED = "FFB91C1C";
-
-/**
- * АВР по каждой паре «экспедитор + плательщик ЖД» за год: строки
- * реестра, свёрнутые по дате отгрузки. Ключ — `${forwarder}::${group}`,
- * ровно тот же, по которому страница считает «Отгр. сумма», поэтому
- * сумма под-строк сходится с главной строкой.
- */
-async function fetchAvrByPair(year: number): Promise<Map<string, AvrRow[]>> {
-  const [{ createClient }, { fetchAllPaginated }] = await Promise.all([
-    import("@/lib/supabase/client"),
-    import("@/lib/supabase/fetch-all"),
-  ]);
-  const sb = createClient();
-  const { data, error } = await fetchAllPaginated<{
-    date: string | null;
-    forwarder_id: string | null;
-    company_group_id: string | null;
-    shipment_volume: number | null;
-    shipped_tonnage_amount: number | null;
-  }>((from, to) =>
-    sb.from("shipment_registry")
-      .select("date, forwarder_id, company_group_id, shipment_volume, shipped_tonnage_amount")
-      .gte("date", `${year}-01-01`).lte("date", `${year}-12-31`)
-      .order("date")
-      .range(from, to),
-  );
-  if (error) throw new Error(error.message);
-
-  const byPair = new Map<string, Map<string, AvrRow>>();
-  for (const r of data) {
-    if (!r.forwarder_id || !r.date) continue;
-    const key = `${r.forwarder_id}::${r.company_group_id ?? ""}`;
-    let byDate = byPair.get(key);
-    if (!byDate) { byDate = new Map(); byPair.set(key, byDate); }
-    const day = r.date.slice(0, 10);
-    const acc = byDate.get(day) ?? { date: day, volume: 0, amount: 0, wagons: 0 };
-    acc.volume += r.shipment_volume ?? 0;
-    acc.amount += r.shipped_tonnage_amount ?? 0;
-    acc.wagons += 1;
-    byDate.set(day, acc);
-  }
-
-  const out = new Map<string, AvrRow[]>();
-  for (const [key, byDate] of byPair) {
-    out.set(key, Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date)));
-  }
-  return out;
-}
 
 /**
  * Модуль exceljs передаётся снаружи: в браузере — динамическим import(),
@@ -304,7 +269,7 @@ export function buildDtKtWorkbook(
     // Под-строки: i-я оплата рядом с i-м АВР. Списки независимы, длина
     // блока — по длинному из них, недостающая половина пустая (тот же
     // приём, что в passport-detail-excel).
-    const avrs = avrByPair.get(`${row.forwarderId}::${row.companyGroupId}`) ?? [];
+    const avrs = avrByPair.get(dtKtPairKey(row.forwarderId, row.companyGroupId)) ?? [];
     const pays = [...row.payments].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
     const subCount = Math.max(avrs.length, pays.length);
     for (let i = 0; i < subCount; i++) {
@@ -361,12 +326,18 @@ export function buildDtKtWorkbook(
   return wb;
 }
 
-export async function exportDtKtToExcel(rows: DtKtExportRow[], ctx: DtKtExportContext): Promise<void> {
-  // Реестр тянем только для детального варианта — сокращённому хватает
-  // готовых сумм со страницы.
-  const avrByPair = ctx.variant === "detail"
-    ? await fetchAvrByPair(ctx.year)
-    : new Map<string, AvrRow[]>();
+/**
+ * @param avr  АВР по парам, свёрнутые из ТЕХ ЖЕ строк реестра, что
+ *             показывает экран (`avrByPair` из `@/lib/dtkt/registry-sums`).
+ *             Выгрузка нарочно не ходит в базу сама: второй запрос
+ *             читал реестр другой сортировкой и расходился с экраном.
+ */
+export async function exportDtKtToExcel(
+  rows: DtKtExportRow[],
+  ctx: DtKtExportContext,
+  avr: Map<string, AvrRow[]>,
+): Promise<void> {
+  const avrByPair = ctx.variant === "detail" ? avr : new Map<string, AvrRow[]>();
 
   const ExcelJS = (await import("exceljs")).default;
   const wb = buildDtKtWorkbook(ExcelJS, rows, ctx, avrByPair);

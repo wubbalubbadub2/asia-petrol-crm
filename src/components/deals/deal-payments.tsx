@@ -45,7 +45,7 @@ const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   offset: "Взаимозачёт",
 };
 
-// Money canon 2026-09-08: 3 decimals.
+// Money canon 2026-09-22: суммы (оплата, взаимозачёт, возврат) — 2 знака.
 function formatMoney(val: number): string {
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }

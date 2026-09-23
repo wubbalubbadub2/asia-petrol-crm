@@ -14,13 +14,18 @@ import {
   type TriggerBasis,
   type ShipmentPrice,
 } from "@/lib/hooks/use-deal-trigger-prices";
-import { formatDMY, formatPrice } from "@/lib/format";
+import { formatDMY } from "@/lib/format";
+import { shipmentRowPrice } from "@/lib/deals/price-formula";
 
-// Money canon 2026-09-08: 3 decimals for money (котировка, скидка,
-// цена $/т, сумма). formatVol — 3 decimals for tonnage.
+// Money canon 2026-09-22: ставки за единицу (котировка, скидка, цена
+// $/т) — 3 знака, суммы — 2. formatVol — 3 decimals for tonnage.
 function formatMoney(val: number | null | undefined): string {
   if (val == null) return "—";
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+function formatAmount(val: number | null | undefined): string {
+  if (val == null) return "—";
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function formatVol(val: number | null | undefined): string {
   if (val == null) return "—";
@@ -114,15 +119,18 @@ export function DealTriggerPrices({
   const isAutoQuote = isTrigger || isAverageMonth;
   const { data, loading, insert, update, remove } = useDealTriggerPrices(dealId, side);
 
-  // Apply a partial patch to a row and recompute derived fields (calculated_price, amount).
+  // Правка строки: пересчитываем только цену и только когда есть
+  // котировка. Строка с фиксированной ценой (котировки нет, цену
+  // посчитал SQL) свою цену сохраняет — раньше правка объёма её стирала
+  // вместе с суммой (KZ/26/276, клиент 2026-09-23).
+  //
+  // Сумму здесь не считаем вовсе: с 00166 её держит триггер базы,
+  // amount = volume × calculated_price, на любом пути записи.
   function applyRowPatch(row: ShipmentPrice, patch: Partial<ShipmentPrice>) {
     const next: Partial<ShipmentPrice> = { ...patch };
     const q = patch.quotation_avg !== undefined ? patch.quotation_avg : row.quotation_avg;
     const d = patch.discount !== undefined ? patch.discount : row.discount;
-    const v = patch.volume !== undefined ? patch.volume : row.volume;
-    const price = q != null ? q - (d ?? 0) : null;
-    next.calculated_price = price;
-    next.amount = price != null && v != null ? v * price : null;
+    next.calculated_price = shipmentRowPrice(q, d, row.calculated_price);
     return update(row.id, next);
   }
   const [adding, setAdding] = useState(false);
@@ -259,9 +267,9 @@ export function DealTriggerPrices({
                     <td className="py-1 pr-2"><EdNum value={row.trigger_days} onSave={(v) => update(row.id, { trigger_days: v ?? 35 })} /></td>
                     <td className="py-1 pr-2"><EdNum value={row.quotation_avg} onSave={(v) => applyRowPatch(row, { quotation_avg: v })} /></td>
                     <td className="py-1 pr-2"><EdNum value={row.discount} onSave={(v) => applyRowPatch(row, { discount: v })} /></td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatPrice(row.calculated_price)}</td>
+                    <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatMoney(row.calculated_price)}</td>
                     <td className="py-1 pr-2"><EdNum value={row.volume} onSave={(v) => applyRowPatch(row, { volume: v })} /></td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatMoney(row.amount)}</td>
+                    <td className="py-1 pr-2 text-right font-mono tabular-nums font-medium">{formatAmount(row.amount)}</td>
                     <td className="py-1 pr-2 max-w-[120px]"><EdText value={row.notes} onSave={(v) => update(row.id, { notes: v })} /></td>
                     <td className="py-1">
                       <button onClick={() => remove(row.id)} className="text-stone-300 hover:text-red-500 transition-colors">
@@ -274,7 +282,7 @@ export function DealTriggerPrices({
                   <tr className="border-t border-stone-300 font-medium">
                     <td colSpan={6} className="py-1 pr-2 text-right text-stone-500">Итого:</td>
                     <td className="py-1 pr-2 text-right font-mono tabular-nums">{formatVol(totalVolume)}</td>
-                    <td className="py-1 pr-2 text-right font-mono tabular-nums">{formatMoney(totalAmount)} {currencySymbol}</td>
+                    <td className="py-1 pr-2 text-right font-mono tabular-nums">{formatAmount(totalAmount)} {currencySymbol}</td>
                     <td colSpan={2}></td>
                   </tr>
                 )}
@@ -370,7 +378,7 @@ export function DealTriggerPrices({
               </div>
               <div className="w-28">
                 <Label className="text-[10px]">Сумма</Label>
-                <Input value={amount != null ? formatMoney(amount) : ""} readOnly
+                <Input value={amount != null ? formatAmount(amount) : ""} readOnly
                   className="h-7 text-[11px] font-mono bg-stone-50 font-medium" />
               </div>
               <div className="flex-1">

@@ -70,12 +70,24 @@ function hexToRgba(hex: string | null | undefined, alpha: number): string {
 }
 
 function fmtNum(v: number | null | undefined, d = 3) { return v == null ? "" : v.toLocaleString("ru-RU", { maximumFractionDigits: d }); }
-// Money canon 2026-09-08: always 3 decimals (сумма, тариф, etc).
-function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+// Канон 2026-09-22: СУММЫ — 2 знака.
+function fmtMoney(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// СТАВКИ за тонну (тариф логистов / ЖД поставщика / менеджера) — 3 знака:
+// клиент перемножает «тариф × округл. тоннаж» тем числом, что видит.
+function fmtTariff(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 // Tonnage display: always 3 decimals, even for whole / 2-decimal values.
 // Per client request — "после запятой 3 ноля должно быть".
 function fmtVol(v: number | null | undefined) { return v == null ? "" : v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 function fmtDate(d: string | null) { return formatDMY(d); }
+// «Округл. вход.» — входящее СНТ, округлённое тем же правилом, что и база
+// суммы (тумблер ⌈⌉ на строке). Клиент 2026-09-22: «нужно показывать
+// входящее СНТ тоже в округлении». Ручной «округл.» сюда не подставляется:
+// он переопределяет базу суммы, а не показ входящего. Зеркало
+// roundedIncoming() в registry-excel.ts.
+function roundedIncoming(r: { loading_volume: number | null; round_volume?: boolean | null }) {
+  if (r.loading_volume == null) return null;
+  return r.round_volume !== false ? Math.ceil(r.loading_volume) : r.loading_volume;
+}
 // Объявлен на уровне модуля, а не внутри страницы: компонент, созданный
 // во время рендера, пересоздаётся на каждой перерисовке и теряет
 // состояние вместе с фокусом (здесь — открытый список SearchableSelect).
@@ -114,6 +126,60 @@ function MonthSelect({ value, onChange, className = "" }: { value: string; onCha
   );
 }
 
+// Вариант цены сделки («домик»/приложение). Используется и в шапке
+// группы, и в ячейке приложения у строки.
+type VarLine = { id: string; deal_id: string; appendix: string | null; is_default: boolean; position: number; price: number | null };
+
+/** Подпись варианта в списке: приложение, иначе «Основной»/«Вариант N». */
+function variantLabel(l: VarLine, idx: number): string {
+  const base = l.appendix?.trim() || (l.is_default ? "★ Основной" : `Вариант ${idx + 1}`);
+  return l.price != null ? `${base} · ${l.price}` : base;
+}
+
+/**
+ * Выбор приложения (варианта цены) для уже созданной отгрузки.
+ *
+ * Клиент 2026-09-23: «когда логисты будут сажать отгрузки, могли
+ * выбирать, на какую цену или на какое приложение или домик сажать
+ * отгрузку». Смена варианта пишет supplier_line_id / buyer_line_id, а
+ * триггер 00057 пересчитывает цену и сумму отгрузки по цене варианта —
+ * поэтому 1500 т можно разложить на 1000 по одной цене и 500 по другой
+ * прямо в реестре, не заводя вторую сделку.
+ */
+function EVariantCell({ recId, side, lineId, lines, onSaved }: {
+  recId: string;
+  side: "supplier" | "buyer";
+  lineId: string | null | undefined;
+  lines: VarLine[];
+  onSaved: () => void;
+}) {
+  const [pending, setPending] = useState<string | undefined>(undefined);
+  const shown = pending ?? lineId ?? "";
+  return (
+    <select
+      value={shown}
+      title={side === "supplier" ? "Приложение поставщика: на какой вариант цены посажена отгрузка" : "Приложение покупателя: на какой вариант цены посажена отгрузка"}
+      onChange={(e) => {
+        const l = lines.find((x) => x.id === e.target.value);
+        if (!l) return;
+        setPending(l.id);
+        const patch: RegistryUpdate = side === "supplier"
+          ? { supplier_line_id: l.id, supplier_appendix: l.appendix }
+          : { buyer_line_id: l.id, buyer_appendix: l.appendix };
+        updateRegistryEntry(recId, patch)
+          .then(onSaved)
+          .catch(() => setPending(undefined));
+      }}
+      className="w-full h-5 text-[10px] rounded border-0 bg-transparent hover:bg-amber-50 px-0.5 cursor-pointer focus:outline-none focus:bg-amber-50"
+    >
+      {!shown && <option value="">—</option>}
+      {lines.map((l, idx) => (
+        <option key={l.id} value={l.id}>{variantLabel(l, idx)}</option>
+      ))}
+    </select>
+  );
+}
+
 // --- Inline editable cells ---
 function EC({ value, recId, field, onSaved, cls = "" }: { value: string | null | undefined; recId: string; field: string; onSaved: () => void; cls?: string }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<string | null | undefined>(undefined);
@@ -127,11 +193,17 @@ function EN({ value, recId, field, onSaved, overrideField, overridden, titleManu
   // Volume fields render with the always-3-decimals formatter; everything
   // else (tariff/amount — money) с 2 знаками per client canon 2026-07-07.
   const isVol = field === "loading_volume" || field === "shipment_volume";
-  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} title={overrideField ? (overridden ? (titleManual ?? "Тариф введён вручную — справочник Тарифы эту строку не обновляет.") : (titleAuto ?? "Авто из справочника Тарифы. Введите значение, чтобы закрепить вручную.")) : undefined} className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${overridden ? "italic text-amber-700" : ""}`}>{isVol ? fmtVol(sh) : fmtMoney(sh)}</button>;
+  // Суммы в этой же ячейке — 2 знака, тарифы — 3 (канон 2026-09-22).
+  const isAmount = field === "supplier_railway_amount" || field === "additional_expenses";
+  if (!ed) return <button onClick={() => { setLv(sh?.toString() ?? ""); setEd(true); }} title={overrideField ? (overridden ? (titleManual ?? "Тариф введён вручную — справочник Тарифы эту строку не обновляет. Очистите поле, чтобы вернуть ставку из справочника.") : (titleAuto ?? "Авто из справочника Тарифы: значение всегда равно ставке справочника. Введите своё число, чтобы закрепить вручную.")) : undefined} className={`w-full text-right font-mono text-[11px] tabular-nums hover:bg-amber-50 px-1 py-0.5 rounded cursor-text min-h-[20px] min-w-[40px] ${overridden ? "italic text-amber-700" : ""}`}>{isVol ? fmtVol(sh) : isAmount ? fmtMoney(sh) : fmtTariff(sh)}</button>;
   // Ручная правка помечает строку override-флагом (overrideField):
-  // propagation из справочника тарифов её больше не трогает. Очистка —
-  // тоже ручной ввод (клиент: «ручной ввод всегда приоритетнее»).
-  return <input autoFocus onFocus={(e) => e.currentTarget.select()} type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const n = lv.trim()==="" ? null : parseFloat(lv); if (n !== value) { pv.current = n; const patch = overrideField ? { [field]: n, [overrideField]: true } : { [field]: n }; updateRegistryEntry(recId, patch as RegistryUpdate).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
+  // выравнивание по справочнику её больше не трогает. ОЧИСТКА ячейки —
+  // наоборот, снимает пометку и возвращает строку на справочник (00167):
+  // пустая ячейка не содержит ручного ввода, защищать в ней нечего, а
+  // другого способа отменить ручную ставку в интерфейсе не было. Тариф
+  // подставится тем же UPDATE'ом, поэтому оптимистичный null не пишем —
+  // ждём значение с перезагрузки.
+  return <input autoFocus onFocus={(e) => e.currentTarget.select()} type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} onBlur={() => { setEd(false); const raw = lv.trim(); const n = raw === "" ? null : parseFloat(raw); if (n !== value) { const release = raw === "" && !!overrideField; pv.current = release ? undefined : n; const patch = overrideField ? { [field]: n, [overrideField]: !release } : { [field]: n }; updateRegistryEntry(recId, patch as RegistryUpdate).then(onSaved).catch(() => { pv.current = undefined; }); } }} onKeyDown={(e) => { if (e.key==="Enter") (e.target as HTMLInputElement).blur(); if (e.key==="Escape") setEd(false); }} className="w-16 border border-amber-300 rounded px-1 py-0 text-[11px] font-mono text-right bg-amber-50/50 focus:outline-none" />;
 }
 function ED({ value, recId, field, onSaved }: { value: string | null | undefined; recId: string; field: string; onSaved: () => void }) {
   const [ed, setEd] = useState(false); const [lv, setLv] = useState(""); const pv = useRef<string | null | undefined>(undefined);
@@ -241,15 +313,16 @@ function ERound({ rawVolume, override, roundVolume, recId, onSaved }: {
 // грузоотправителя; остальные ячейки пустые. Деньги — по валюте
 // (внутри сделки валюта обычно одна; при смеси перечисляем).
 function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg" | "kz" }) {
-  let loading = 0, shipment = 0, rounded = 0;
+  let loading = 0, shipment = 0, rounded = 0, roundedIn = 0;
   const amountByCur = new Map<string, number>();
   const shipperByCur = new Map<string, number>();
   // «Сумма 2» — ЖД расходы от поставщика (00150), только KZ.
   const supRailByCur = new Map<string, number>();
   for (const r of records) {
     loading += r.loading_volume ?? 0;
+    roundedIn += roundedIncoming(r) ?? 0;
     shipment += r.shipment_volume ?? 0;
-    const raw = r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume;
+    const raw = r.loading_volume ?? r.shipment_volume;
     const rr = r.rounded_volume_override != null
       ? r.rounded_volume_override
       : (raw == null ? null : (r.round_volume !== false ? Math.ceil(raw) : raw));
@@ -267,6 +340,7 @@ function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg"
       {/* checkbox..поставщик (7 колонок) */}
       <td colSpan={7} className="border-r px-2 py-1 text-[11px] font-semibold text-stone-600">Итого · {records.length} отгр.</td>
       <td className={num}>{fmtVol(loading)}</td>
+      <td className={num}>{fmtVol(roundedIn)}</td>
       {/* дата вход. СНТ + Плательщик + покупатель + экспедитор + вагон + накладная */}
       <td colSpan={6} className="border-r" />
       <td className={num}>{fmtVol(shipment)}</td>
@@ -280,8 +354,8 @@ function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg"
       {/* Тариф (менеджер) */}
       {tab === "kz" && <td className="border-r" />}
       <td className={num}>{fmtByCur(shipperByCur)}</td>
-      {/* валюта + ст. назн. + ст. отпр. + прил. + № СФ + коммент + delete */}
-      <td colSpan={7} />
+      {/* валюта + ст. назн. + ст. отпр. + прил. + ВТД + № СФ + коммент + delete */}
+      <td colSpan={8} />
     </tr>
   );
 }
@@ -498,6 +572,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   const [deal, setDeal] = useState<DRef | null>(null);
   const [w, setW] = useState(""); const [v, setV] = useState(""); const [lv, setLv] = useState("");
   const [dt, setDt] = useState(""); const [sm, setSm] = useState(""); const [sf, setSf] = useState("");
+  const [vtd, setVtd] = useState(""); // ВТД — номер документа по вагону (00169)
   const [cm, setCm] = useState(""); const [wb, setWb] = useState("");
   const [tariffVal, setTariffVal] = useState<number | null>(group.tariff);
   const [curOverride, setCurOverride] = useState<string>("");
@@ -506,7 +581,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   // has appendices set on its variants, the operator can pick one and
   // we resolve supplier_line_id / buyer_line_id by matching label on
   // each side independently.
-  type ApxLine = { id: string; appendix: string | null };
+  type ApxLine = { id: string; appendix: string | null; is_default: boolean };
   const [supLines, setSupLines] = useState<ApxLine[]>([]);
   const [buyLinesArr, setBuyLines] = useState<ApxLine[]>([]);
   const [apx, setApx] = useState("");
@@ -525,8 +600,8 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
     // 00072 and doesn't know about the appendix column yet. Postgres
     // returns it fine.
     Promise.all([
-      sb.current.from("deal_supplier_lines").select("id, appendix").eq("deal_id", dealId),
-      sb.current.from("deal_buyer_lines").select("id, appendix").eq("deal_id", dealId),
+      sb.current.from("deal_supplier_lines").select("id, appendix, is_default").eq("deal_id", dealId),
+      sb.current.from("deal_buyer_lines").select("id, appendix, is_default").eq("deal_id", dealId),
     ]).then(([s, b]) => {
       setSupLines(((s.data as unknown) ?? []) as ApxLine[]);
       setBuyLines(((b.data as unknown) ?? []) as ApxLine[]);
@@ -548,8 +623,10 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   // Month resolution priority: form-level pick → row's shipment_month
   // → deal.logistics_shipment_month (deal-level override, migration
   // 00069) → deal.month (the deal's own calendar month).
+  // 00167: справочник спрашиваем всегда, а не только при пустом поле —
+  // в базу всё равно ляжет ставка справочника, и поле должно показывать её.
   useEffect(() => {
-    if (!deal || tariffVal) return;
+    if (!deal) return;
     const firstRec = group.records[0];
     const depId = deal.supplier_departure_station_id || firstRec?.departure_station_id;
     const destId = deal.buyer_destination_station_id || firstRec?.destination_station_id;
@@ -567,7 +644,10 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       .eq("month", month).eq("year", year)
       .limit(1).maybeSingle()
       .then(({ data }) => { if (data?.planned_tariff) setTariffVal(data.planned_tariff); });
-  }, [deal, sm, group.records, tariffVal]);
+    // tariffVal намеренно вне зависимостей: опрос на смену ключа, а не на
+    // каждое нажатие клавиши в поле.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal, sm, group.records]);
 
   const tariff = tariffVal;
   const firstRec = group.records[0];
@@ -575,11 +655,16 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
   async function add() {
     if (!w || !v) return;
     setSaving(true);
-    // Match appendix on each side independently. Unset → leaves
-    // supplier_line_id/buyer_line_id null and the autoprice trigger
-    // falls back to is_default = true.
-    const supLineMatch = apx ? supLines.find((l) => l.appendix === apx) : null;
-    const buyLineMatch = apx ? buyLinesArr.find((l) => l.appendix === apx) : null;
+    // Приложение выбирает вариант на каждой стороне независимо. Если не
+    // выбрано — привязываем к основному варианту, а не оставляем пусто:
+    // строка без supplier_line_id/buyer_line_id выпадает из пересчёта
+    // «Окончательной» (00164 идёт циклом по line_id) и из суммы варианта.
+    // Цена от этого не меняется: автоцена и так берёт основной вариант,
+    // когда привязки нет (00164:123-137).
+    const supLineMatch = (apx ? supLines.find((l) => l.appendix === apx) : null)
+      ?? supLines.find((l) => l.is_default) ?? null;
+    const buyLineMatch = (apx ? buyLinesArr.find((l) => l.appendix === apx) : null)
+      ?? buyLinesArr.find((l) => l.is_default) ?? null;
     await createRegistryEntry({
       registry_type: regType, deal_id: dealId,
       month: deal?.month || group.month || null,
@@ -595,6 +680,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       wagon_number: w, shipment_volume: parseFloat(v),
       waybill_number: wb || null,
       loading_volume: lv ? parseFloat(lv) : null, date: dt || null, invoice_number: sf || null,
+      vtd_number: vtd || null,
       // 00119: дата входящего СНТ — своя колонка; наследует дату строки при записи налива.
       loading_date: lv ? (dt || null) : null,
       currency: curOverride || null, comment: cm || null,
@@ -603,7 +689,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       supplier_appendix: supLineMatch?.appendix ?? null,
       buyer_appendix: buyLineMatch?.appendix ?? null,
     });
-    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setSm(""); setCurOverride(""); setCm(""); setApx(""); setWb(""); onDone();
+    setSaving(false); setW(""); setV(""); setLv(""); setDt(""); setSf(""); setVtd(""); setSm(""); setCurOverride(""); setCm(""); setApx(""); setWb(""); onDone();
   }
 
   // Show deal info in the row (from fetched deal or group)
@@ -624,6 +710,8 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{facName}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{suppName}</td>
       <td className="border-r px-1 py-1"><input type="number" step="0.001" value={lv} onChange={(e) => setLv(e.target.value)} placeholder="налив" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 text-right bg-green-50" /></td>
+      {/* Округление входящего — тот же предпросмотр, что и у исходящего ниже. */}
+      <td className="border-r px-2 py-1 text-right font-mono text-[10px] text-stone-400">{lv ? fmtNum(ceil(parseFloat(lv))) : ""}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{group.companyGroup}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{buyerName}</td>
       <td className="border-r px-2 py-1 text-[10px] text-stone-500">{fwName}</td>
@@ -668,6 +756,9 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
             {apxOptions.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         ) : null}
+      </td>
+      <td className="border-r px-1 py-1">
+        <input value={vtd} onChange={(e) => setVtd(e.target.value)} placeholder="ВТД" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
       </td>
       <td className="border-r px-1 py-1">
         <input value={sf} onChange={(e) => setSf(e.target.value)} placeholder="№ СФ" className="w-full h-6 text-[10px] font-mono border border-green-300 rounded px-1 bg-green-50" />
@@ -1351,6 +1442,9 @@ const COL_FILTER_KEYS = [
   "currency",
   "destination_station_id",
   "departure_station_id",
+  // ВТД — номер документа по вагону (00169). Фильтр по нему клиент
+  // попросил вместе с самой колонкой, 2026-09-23.
+  "vtd_number",
 ] as const;
 type ColFilterKey = (typeof COL_FILTER_KEYS)[number];
 
@@ -1411,6 +1505,40 @@ export default function RegistryPage() {
   // = массив из 3 имён (пустая строка на позициях без группы). Клиент
   // 2026-07-08: показывать цепочку в шапке group-card реестра И
   // добавить 3 колонки в полный Excel. Максимум бывает 3 группы.
+  // Варианты цены («домики») по сделкам. Нужны прямо в таблице: логист
+  // должен уметь перекинуть уже созданную отгрузку на другое приложение
+  // — например разложить 1500 т на 1000 по одной цене и 500 по другой
+  // (клиент 2026-09-23). Смена варианта поднимает пересчёт цены
+  // отгрузки (00057), поэтому сумма едет за приложением сама.
+  const [dealVariants, setDealVariants] = useState<Map<string, { sup: VarLine[]; buy: VarLine[] }>>(new Map());
+  useEffect(() => {
+    const sb = createClient();
+    const load = async (table: "deal_supplier_lines" | "deal_buyer_lines") => {
+      const out: VarLine[] = [];
+      for (let i = 0; ; i += 1000) {
+        const { data } = await sb.from(table)
+          .select("id, deal_id, appendix, is_default, position, price")
+          // id последним ключом — иначе страницы «плывут» (см.
+          // src/__tests__/paginated-order.test.ts).
+          .order("deal_id").order("position").order("id").range(i, i + 999);
+        const rows = ((data as unknown) ?? []) as VarLine[];
+        out.push(...rows);
+        if (rows.length < 1000) return out;
+      }
+    };
+    Promise.all([load("deal_supplier_lines"), load("deal_buyer_lines")]).then(([sup, buy]) => {
+      const m = new Map<string, { sup: VarLine[]; buy: VarLine[] }>();
+      const bucket = (id: string) => {
+        let b = m.get(id);
+        if (!b) { b = { sup: [], buy: [] }; m.set(id, b); }
+        return b;
+      };
+      for (const l of sup) if (l.deal_id) bucket(l.deal_id).sup.push(l);
+      for (const l of buy) if (l.deal_id) bucket(l.deal_id).buy.push(l);
+      setDealVariants(m);
+    });
+  }, []);
+
   const [dealChains, setDealChains] = useState<Map<string, string[]>>(new Map());
   useEffect(() => {
     const sb = createClient();
@@ -1736,6 +1864,7 @@ export default function RegistryPage() {
       currency: make("currency", (v) => v),
       destination_station_id: make("destination_station_id", (id) => stationLabels.get(id) ?? id),
       departure_station_id: make("departure_station_id", (id) => stationLabels.get(id) ?? id),
+      vtd_number: make("vtd_number", (v) => v),
     } as Record<ColFilterKey, CFOption[]>;
   }, [
     records,
@@ -2128,6 +2257,7 @@ export default function RegistryPage() {
                             </span>
                           </th>
                           <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="loading_volume — supplier-side. Operator 2026-06-26: Входящее СНТ = поставщик (SUM(loading_volume) = supplier_shipped_volume per 00044).">Входящее СНТ</th>
+                          <th className="border-r px-2 py-1 text-right font-medium min-w-[55px]" title="Входящее СНТ, округлённое вверх до целой тонны (тумблер ⌈⌉ на строке его выключает). Клиент 2026-09-22: «нужно показывать входящее СНТ тоже в округлении». Колонка «округл» правее — это база, по которой считается сумма: входящее, если оно есть, иначе исходящее, и ручное значение главнее обоих.">округл. вход.</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[80px]" title="loading_date — дата входящего СНТ (клиент 2026-07-15: у каждого СНТ своя дата).">дата вход. СНТ</th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[110px]">
                             <span className="inline-flex items-center gap-1">
@@ -2216,6 +2346,20 @@ export default function RegistryPage() {
                             </span>
                           </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">прил.</th>
+                          {/* ВТД — номер документа по вагону (клиент
+                              2026-09-23). Рядом с прочими номерами, с
+                              фильтром: по нему ищут отгрузки. */}
+                          <th className="border-r px-2 py-1 text-left font-medium min-w-[90px]">
+                            <span className="inline-flex items-center gap-1">
+                              ВТД
+                              <ColumnFilterPopover
+                                colKey="vtd_number"
+                                options={columnFilterOpts.vtd_number}
+                                currentValue={columnFilters.vtd_number ?? ""}
+                                onChange={(v) => setColumnFilter("vtd_number", v)}
+                              />
+                            </span>
+                          </th>
                           <th className="border-r px-2 py-1 text-left font-medium min-w-[100px]">№ СФ</th>
                           <th className="px-2 py-1 text-left font-medium min-w-[130px]">коммент.</th>
                           <th className="px-1 py-1 w-[25px]"></th>
@@ -2263,6 +2407,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ES value={r.factory_id} displayLabel={(r.factory_id && factoryLabels.get(r.factory_id)) || ""} recId={r.id} field="factory_id" options={factoryOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.supplier_id} displayLabel={(r.supplier_id && supplierLabels.get(r.supplier_id)) || ""} recId={r.id} field="supplier_id" options={supplierOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><EN value={r.loading_volume} recId={r.id} field="loading_volume" onSaved={reload} /></td>
+                              <td className="border-r px-1 py-0.5 text-right font-mono text-[11px] tabular-nums text-stone-500">{fmtVol(roundedIncoming(r))}</td>
                               <td className="border-r px-1 py-0.5"><ED value={r.loading_date} recId={r.id} field="loading_date" onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.company_group_id} displayLabel={(r.company_group_id && cgLabels.get(r.company_group_id)) || ""} recId={r.id} field="company_group_id" options={cgOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.buyer_id} displayLabel={(r.buyer_id && buyerLabels.get(r.buyer_id)) || ""} recId={r.id} field="buyer_id" options={buyerOpts} onSaved={reload} className="text-stone-500" /></td>
@@ -2274,7 +2419,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" overrideField="railway_tariff_override" overridden={r.railway_tariff_override} onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ERound
-                                  rawVolume={r.registry_type === "KZ" ? r.loading_volume : r.shipment_volume}
+                                  rawVolume={r.loading_volume ?? r.shipment_volume}
                                   override={r.rounded_volume_override}
                                   roundVolume={r.round_volume}
                                   recId={r.id}
@@ -2321,19 +2466,56 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><ES value={r.destination_station_id} displayLabel={(r.destination_station_id && stationLabels.get(r.destination_station_id)) || ""} recId={r.id} field="destination_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5"><ES value={r.departure_station_id} displayLabel={(r.departure_station_id && stationLabels.get(r.departure_station_id)) || ""} recId={r.id} field="departure_station_id" options={stOpts} onSaved={reload} className="text-stone-500" /></td>
                               <td className="border-r px-1 py-0.5">
-                                {/* Прил. — supplier-side label; buyer-side
-                                    appears as a subscript when it differs.
-                                    Inline edit hits supplier_appendix only;
-                                    buyer side edits via the add dialog. */}
-                                <div className="flex flex-col">
-                                  <EC value={r.supplier_appendix} recId={r.id} field="supplier_appendix" onSaved={reload} cls="text-[10px]" />
-                                  {r.buyer_appendix && r.buyer_appendix !== r.supplier_appendix && (
-                                    <span className="text-[9px] text-stone-400 px-1" title="Приложение покупателя">
-                                      пк: {r.buyer_appendix}
-                                    </span>
-                                  )}
-                                </div>
+                                {/* Прил. — когда у сделки больше одного
+                                    варианта цены, ячейка превращается в
+                                    выбор приложения: им логист сажает
+                                    отгрузку на нужную цену (клиент
+                                    2026-09-23). Один вариант — как было,
+                                    свободный текст на стороне поставщика,
+                                    приложение покупателя подписью снизу. */}
+                                {(() => {
+                                  const vars = r.deal_id ? dealVariants.get(r.deal_id) : undefined;
+                                  const supMulti = (vars?.sup.length ?? 0) > 1;
+                                  const buyMulti = (vars?.buy.length ?? 0) > 1;
+                                  if (!supMulti && !buyMulti) {
+                                    return (
+                                      <div className="flex flex-col">
+                                        <EC value={r.supplier_appendix} recId={r.id} field="supplier_appendix" onSaved={reload} cls="text-[10px]" />
+                                        {r.buyer_appendix && r.buyer_appendix !== r.supplier_appendix && (
+                                          <span className="text-[9px] text-stone-400 px-1" title="Приложение покупателя">
+                                            пк: {r.buyer_appendix}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="flex flex-col gap-0.5">
+                                      {supMulti ? (
+                                        <div className="flex items-center gap-0.5">
+                                          <span className="text-[9px] text-stone-400 shrink-0">пс:</span>
+                                          <EVariantCell recId={r.id} side="supplier" lineId={r.supplier_line_id} lines={vars!.sup} onSaved={reload} />
+                                        </div>
+                                      ) : (
+                                        <EC value={r.supplier_appendix} recId={r.id} field="supplier_appendix" onSaved={reload} cls="text-[10px]" />
+                                      )}
+                                      {buyMulti ? (
+                                        <div className="flex items-center gap-0.5">
+                                          <span className="text-[9px] text-stone-400 shrink-0">пк:</span>
+                                          <EVariantCell recId={r.id} side="buyer" lineId={r.buyer_line_id} lines={vars!.buy} onSaved={reload} />
+                                        </div>
+                                      ) : (
+                                        r.buyer_appendix && r.buyer_appendix !== r.supplier_appendix && (
+                                          <span className="text-[9px] text-stone-400 px-1" title="Приложение покупателя">
+                                            пк: {r.buyer_appendix}
+                                          </span>
+                                        )
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </td>
+                              <td className="border-r px-1 py-0.5"><EC value={r.vtd_number} recId={r.id} field="vtd_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="border-r px-1 py-0.5"><EC value={r.invoice_number} recId={r.id} field="invoice_number" onSaved={reload} cls="font-mono" /></td>
                               <td className="px-1 py-0.5"><EC value={r.comment} recId={r.id} field="comment" onSaved={reload} /></td>
                               <td className="px-1 py-0.5">

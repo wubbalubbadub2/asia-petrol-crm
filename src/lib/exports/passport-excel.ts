@@ -25,11 +25,10 @@ type Column = {
   read: (deal: Deal) => string | number | null | undefined;
 };
 
-// Client canon 2026-09-08: деньги (сумма, цена $/т, котировка, скидка,
-// тариф, FX) — 3 decimals, как и объём. До 2026-09-08 деньги шли с 2
-// знаками, а 3 знака были только у цены за тонну (клиент 2026-09-04) —
-// поэтому отдельный NUM_FMT_PRICE больше не нужен.
-const NUM_FMT_AMOUNT = "#,##0.000;[Red]-#,##0.000";
+// Client canon 2026-09-08: money (сумма, цена $/т, котировка, скидка,
+// тариф, FX) — 3 decimals (было 2). Volume — 3 decimals.
+// Client canon 2026-09-22: суммы — 2 знака, цены/котировки/объёмы — 3.
+const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_PRICE = "#,##0.000";
 
@@ -98,6 +97,30 @@ function preliminaryPrice(deal: Deal, side: Side): number | null {
   return (line.price_stage === "final" ? line.preliminary_price : line.price) ?? null;
 }
 
+/**
+ * «Цена финальная» — ТОЛЬКО когда цену зафиксировали.
+ *
+ * Клиент 2026-09-18: «в некоторых сделках стадия цены предварительная,
+ * но в эксель выгрузке заносится как финальная; финальная должна быть
+ * пустой, пока её не забили».
+ *
+ * Пока строка-вариант в стадии 'preliminary', `deals.*_price` хранит ту
+ * же предварительную цену (проверено на базе 18.09.2026: у всех 1133
+ * незафиксированных сделок `deals.supplier_price` = `price` строки-
+ * варианта), поэтому прежний прямой `d.supplier_price` печатал
+ * предварительную цену в колонке окончательной — и та же цифра стояла
+ * в обеих колонках.
+ *
+ * Строки-варианта нет — стадию определить нечем, колонка пустая: так же
+ * ведёт себя `preliminaryPrice` выше, и такая же семантика уже у цен
+ * цепочки групп в детальной выгрузке (`price_kind`).
+ */
+function finalPrice(deal: Deal, side: Side): number | null {
+  const line = defaultLine(deal, side);
+  if (line?.price_stage !== "final") return null;
+  return (side === "supplier" ? deal.supplier_price : deal.buyer_price) ?? null;
+}
+
 const COLUMNS: Column[] = [
   // ── Сделка ─────────────────────────────────────────────
   { key: "deal_code", header: "№", width: 14, band: "deal", read: (d) => d.deal_code },
@@ -116,11 +139,13 @@ const COLUMNS: Column[] = [
   // can see the build-up: quotation − discount = price (client req 06.2026).
   { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation },
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
-  // Preliminary first, then final. While stage='preliminary' the deal's
+  // Preliminary first, then final. Заголовок «Цена финальная» — как в
+  // детальной выгрузке (клиент 2026-09-18: «окончательную цену
+  // переименовать на финальную»). While stage='preliminary' the deal's
   // supplier_price == preliminary price; after finalize, the snapshot
   // moves to line.preliminary_price and supplier_price holds the final.
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
-  { key: "supplier_price", header: "Цена оконч.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_price },
+  { key: "supplier_price", header: "Цена финальная", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => finalPrice(d, "supplier") },
   { key: "supplier_shipped_amount", header: "Приход, сумма", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_shipped_amount },
   { key: "supplier_shipped_volume", header: "Приход, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_shipped_volume },
   { key: "supplier_payment", header: "Оплата", width: 13, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_payment_gross },
@@ -155,7 +180,7 @@ const COLUMNS: Column[] = [
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
   { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
-  { key: "buyer_price", header: "Цена оконч.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_price },
+  { key: "buyer_price", header: "Цена финальная", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => finalPrice(d, "buyer") },
   { key: "buyer_ordered_volume", header: "Заявлено, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_ordered_volume },
   // Остаток = отгружено − заявлено (operator 2026-06-23). Computed
   // on the fly from the loaded scalars so the export stays in sync
@@ -192,7 +217,34 @@ export type ExportContext = {
   dealType: "KG" | "KZ" | "ALL";
   year: number;
   filters?: Record<string, string | undefined>;
+  // Дата среза (ISO YYYY-MM-DD) для выгрузки «Паспорт на дату».
+  // Цифры к этому моменту уже пересчитаны (см. passport-as-of.ts);
+  // здесь она нужна только шапке и имени файла.
+  asOf?: string;
 };
+
+// «2026-08-31» → «31.08.2026». Год полный: шапка выгрузки — документ,
+// который уходит клиенту, и «31.08.26» в нём читается хуже. Отдельно
+// от formatDMY (тот печатает двузначный год для плотных таблиц).
+function dmy(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+}
+
+// Шапка и имя файла вынесены из экспортёра — на них есть регресс-тест
+// (passport-as-of.test.ts): вся разница между обычной выгрузкой и
+// выгрузкой на дату видна оператору именно здесь.
+export function passportTitle(ctx: ExportContext, sheetName: string, dealCount: number): string {
+  const count = dealCount ? `  ·  ${dealCount} сделок` : "";
+  if (!ctx.asOf) return `${sheetName} · ${ctx.year}${count}`;
+  return `${sheetName} на ${dmy(ctx.asOf)} · ${ctx.year}${count}` +
+    `  ·  отгрузки и оплаты после этой даты не учтены; цены и объёмы договора — текущие`;
+}
+
+export function passportFileName(ctx: ExportContext): string {
+  const suffix = ctx.asOf ? `as-of-${ctx.asOf}` : new Date().toISOString().slice(0, 10);
+  return `passport-${ctx.dealType.toLowerCase()}-${ctx.year}-${suffix}.xlsx`;
+}
 
 export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
   // Enrich deals with line snapshots (DEAL_SELECT ships only `id` per
@@ -266,7 +318,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
   ws.getRow(1).height = 24;
   ws.mergeCells(1, 1, 1, COLUMNS.length);
   const titleCell = ws.getCell(1, 1);
-  titleCell.value = `${sheetName} · ${ctx.year}${deals.length ? `  ·  ${deals.length} сделок` : ""}`;
+  titleCell.value = passportTitle(ctx, sheetName, deals.length);
   titleCell.font = { bold: true, size: 13, color: { argb: HEADER_TEXT } };
   titleCell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
   titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
@@ -402,9 +454,8 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const datestamp = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `passport-${ctx.dealType.toLowerCase()}-${ctx.year}-${datestamp}.xlsx`;
+  a.download = passportFileName(ctx);
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

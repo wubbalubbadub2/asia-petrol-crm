@@ -58,6 +58,9 @@ export function QuotationSummary() {
             .gte("date", `${year}-01-01`)
             .lte("date", `${year}-12-31`)
             .order("date")
+            // + уникальный `id`: страницы LIMIT/OFFSET без полного
+            // порядка строк теряют и дублируют котировки.
+            .order("id")
             .range(from, from + pageSize - 1);
           if (error || !data) break;
           all.push(...(data as DailyQuotation[]));

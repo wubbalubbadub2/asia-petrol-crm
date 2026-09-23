@@ -609,6 +609,9 @@ export default function TariffsPage() {
         .eq("year", yearFilter)
         .order("month")
         .order("planned_tariff")
+        // Уникальный ключ последним — постраничное чтение обязано быть
+        // детерминированным (см. lib/dtkt/registry-sums.ts).
+        .order("id")
         .range(from, to),
     );
 

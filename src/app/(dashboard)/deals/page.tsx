@@ -7,6 +7,8 @@ import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Table,
@@ -59,7 +61,17 @@ function FuelBadge({ name, color }: { name?: string; color?: string }) {
 }
 
 // Dead code (no callers found 2026-07-07). Kept as canonical money
-// helper for future use — 3 decimals per client canon 2026-09-08.
+// helper for future use — суммы 2 знака (канон клиента 2026-09-22).
+/**
+ * Свод ВТД по сделке (deals.vtd_numbers, роллап 00169) — строка вида
+ * «номер, номер». Разбираем в список номеров: по ним и фильтр, и
+ * варианты выпадающего списка.
+ */
+function splitVtd(v: string | null | undefined): string[] {
+  if (!v) return [];
+  return v.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
   return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
@@ -135,6 +147,9 @@ export default function DealsPage() {
   // (клиент 2026-07-23).
   const [companyGroupPos3, setCompanyGroupPos3] = useQueryState("companyGroupPos3", multi);
   const [applicationFilter, setApplicationFilter] = useQueryState("applicationFilter", multi);
+  // ВТД — номера документов с отгрузок сделки (роллап 00169). Клиент
+  // 2026-09-23 просил фильтр вместе с колонкой в паспорте.
+  const [vtdFilter, setVtdFilter] = useQueryState("vtdFilter", multi);
   // Тумблер «Показать скрытые» — ПЕР-ЮЗЕР вид (URL, у каждого свой). Сами
   // скрытые сделки хранятся в user_prefs («passport_hidden_deals», см. ниже)
   // и фильтруются CLIENT-SIDE (predicates memo) — переключение мгновенное.
@@ -159,6 +174,7 @@ export default function DealsPage() {
   const deferredMonth = useDeferredValue(monthFilter);
   const deferredForwarder = useDeferredValue(forwarderFilter);
   const deferredCompanyGroup = useDeferredValue(companyGroupFilter);
+  const deferredVtd = useDeferredValue(vtdFilter);
   const deferredCompanyGroupPos1 = useDeferredValue(companyGroupPos1);
   const deferredCompanyGroupPos2 = useDeferredValue(companyGroupPos2);
   const deferredCompanyGroupPos3 = useDeferredValue(companyGroupPos3);
@@ -213,7 +229,12 @@ export default function DealsPage() {
   // (долги)» — detail export + отсрочка/плановая дата оплаты columns,
   // red font on overdue planned dates (variant of the same exporter).
   const [exporting, setExporting] = useState(false);
-  async function handleExport(variant: "passport" | "detail" | "debt") {
+  // «Паспорт на дату» (клиент 2026-09-17): та же выгрузка, но цифры
+  // пересчитаны на выбранный день. Пересчёт делает Postgres, страница
+  // только накладывает срез на уже загруженные строки.
+  const [asOfOpen, setAsOfOpen] = useState(false);
+  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
+  async function handleExport(variant: "passport" | "detail" | "debt" | "as-of", asOf?: string) {
     if (exporting) return;
     setExporting(true);
     try {
@@ -221,7 +242,23 @@ export default function DealsPage() {
         dealType: (activeTab === "kg" ? "KG" : activeTab === "kz" ? "KZ" : "ALL") as "KG" | "KZ" | "ALL",
         year: yearFilter,
       };
-      if (variant === "detail") {
+      if (variant === "as-of") {
+        if (!asOf) return;
+        const [{ fetchPassportSnapshot, applyPassportSnapshot }, { exportPassportToExcel }] = await Promise.all([
+          import("@/lib/exports/passport-as-of"),
+          import("@/lib/exports/passport-excel"),
+        ]);
+        const snapshot = await fetchPassportSnapshot(asOf, filtered.map((d) => d.id));
+        const { deals: rows, missing } = applyPassportSnapshot(filtered, snapshot);
+        if (missing.length > 0) {
+          toast.warning(`Срез не вернулся по ${missing.length} сделкам — в файл они не попали`);
+        }
+        if (rows.length === 0) {
+          toast.error("На эту дату нечего выгружать");
+          return;
+        }
+        await exportPassportToExcel(rows, { ...ctx, asOf });
+      } else if (variant === "detail") {
         const { exportPassportDetailToExcel } = await import("@/lib/exports/passport-detail-excel");
         await exportPassportDetailToExcel(filtered, ctx);
       } else if (variant === "debt") {
@@ -331,6 +368,7 @@ export default function DealsPage() {
     const cg2 = deferredCompanyGroupPos2;
     const cg3 = deferredCompanyGroupPos3;
     const app = deferredApplication;
+    const vtd = deferredVtd;
     const q = deferredSearch.trim().toLowerCase();
     return {
       hidden: (d: Deal) => showHidden || !hiddenSet.has(d.id),
@@ -367,6 +405,9 @@ export default function DealsPage() {
         const b = d.buyer_contract;
         return (a != null && app.includes(a)) || (b != null && app.includes(b));
       },
+      // Свод ВТД — строка «номер, номер»; сделка подходит, если в ней
+      // есть хотя бы один выбранный номер.
+      vtd: (d: Deal) => vtd.length === 0 || splitVtd(d.vtd_numbers).some((v) => vtd.includes(v)),
       search: (d: Deal) => {
         if (!q) return true;
         const code = d.deal_code.toLowerCase();
@@ -575,9 +616,12 @@ export default function DealsPage() {
       companyGroupPos3: fkOpts(refs.companyGroups, narrowed.companyGroupsPos3, deferredCompanyGroupPos3),
       month: strOpts(narrowed.months, deferredMonth, [...MONTHS_RU]),
       application: strOpts(narrowed.applications, deferredApplication),
+      // ВТД: варианты берём по всем сделкам года, без каскада — номера
+      // документов не пересекаются с прочими фильтрами по смыслу.
+      vtd: strOpts(new Set(deals.flatMap((d) => splitVtd(d.vtd_numbers))), deferredVtd),
     };
   }, [
-    refs, narrowed,
+    refs, narrowed, deals, deferredVtd,
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
     deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3, deferredApplication,
@@ -604,7 +648,8 @@ export default function DealsPage() {
     (companyGroupPos1.length > 0 ? 1 : 0) +
     (companyGroupPos2.length > 0 ? 1 : 0) +
     (companyGroupPos3.length > 0 ? 1 : 0) +
-    (applicationFilter.length > 0 ? 1 : 0);
+    (applicationFilter.length > 0 ? 1 : 0) +
+    (vtdFilter.length > 0 ? 1 : 0);
 
   function clearAllFilters() {
     setSupplierFilter([]); setBuyerFilter([]); setFactoryFilter([]);
@@ -612,6 +657,7 @@ export default function DealsPage() {
     setCompanyGroupFilter([]);
     setCompanyGroupPos1([]); setCompanyGroupPos2([]); setCompanyGroupPos3([]);
     setApplicationFilter([]);
+    setVtdFilter([]);
     setSearch("");
   }
 
@@ -656,8 +702,45 @@ export default function DealsPage() {
                   <span className="text-[11px] text-stone-500">Детальный + отсрочка/плановая оплата</span>
                 </div>
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAsOfOpen(true)} disabled={exporting}>
+                <div className="flex flex-col">
+                  <span className="font-medium">Паспорт на дату…</span>
+                  <span className="text-[11px] text-stone-500">Цифры на выбранный день</span>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Dialog open={asOfOpen} onOpenChange={setAsOfOpen}>
+            <DialogContent className="max-w-[95vw] sm:max-w-md">
+              <DialogHeader><DialogTitle>Паспорт на дату</DialogTitle></DialogHeader>
+              <div>
+                <Label className="text-[12px] text-stone-500">Дата среза</Label>
+                <Input
+                  type="date"
+                  value={asOfDate}
+                  onChange={(e) => setAsOfDate(e.target.value)}
+                  className="h-8 text-[13px] font-mono"
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-stone-500">
+                  Приход, отгрузка, оплата, баланс и долг пересчитываются на эту дату:
+                  события после неё в цифры не входят. Взаимозачёты входят целиком —
+                  у них не всегда есть дата. Цены, котировки и объёмы договора берутся текущие.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button size="sm" variant="outline" onClick={() => setAsOfOpen(false)}>Отмена</Button>
+                <Button
+                  size="sm"
+                  disabled={exporting || !asOfDate || filtered.length === 0}
+                  onClick={() => { setAsOfOpen(false); void handleExport("as-of", asOfDate); }}
+                >
+                  {exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+                  Выгрузить
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Link href="/deals/new">
             <Button size="sm">
               <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -805,6 +888,11 @@ export default function DealsPage() {
             multi value={companyGroupFilter} onChange={setCompanyGroupFilter}
             options={filterOpts.companyGroup}
             placeholder="Все группы комп." searchPlaceholder="Поиск группы…"
+          />
+          <SearchableSelect
+            multi value={vtdFilter} onChange={setVtdFilter}
+            options={filterOpts.vtd}
+            placeholder="Все ВТД" searchPlaceholder="Поиск ВТД…"
           />
           <SearchableSelect
             multi value={companyGroupPos1} onChange={setCompanyGroupPos1}
