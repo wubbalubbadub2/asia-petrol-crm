@@ -117,7 +117,12 @@ export default function NewDealPage() {
     setDealType(t);
     if (!currencyTouched) setCurrencyRaw(DEAL_TYPE_CURRENCY[t]);
   }
-  const [railwayInPrice, setRailwayInPrice] = useState(false);
+  // Обе галочки «в цене» подняты по умолчанию — клиент 2026-09-23: «по
+  // умолчанию ЖД тариф и грузоотправление должны быть с галочкой».
+  // Снимаются вручную в тех редких сделках, где эти суммы в баланс
+  // поставщика не входят.
+  const [railwayInPrice, setRailwayInPrice] = useState(true);
+  const [shipperInPrice, setShipperInPrice] = useState(true);
 
   // Quotation types for price linking
   const [quotationTypes, setQuotationTypes] = useState<RefOption[]>([]);
@@ -344,9 +349,10 @@ export default function NewDealPage() {
       supplier_quotation_comment: sv0.quotationComment || null,
       supplier_discount: sv0.discount ? parseFloat(sv0.discount) : null,
       railway_in_price: railwayInPrice,
-      // Грузоотправитель в цене defaults ON (client 2026-07-24) — matches the
-      // DB column default; new deals always add грузоотправитель to balance.
-      additional_expenses_in_price: true,
+      // Обе галочки идут из формы: клиент 2026-09-23 просил видеть их
+      // поднятыми и иметь возможность снять до создания сделки. Раньше
+      // грузоотправитель проставлялся молча, без поля в форме.
+      additional_expenses_in_price: shipperInPrice,
       buyer_id: buyerId || null,
       buyer_contract: buyerContract || null,
       buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,
@@ -586,15 +592,30 @@ export default function NewDealPage() {
                 <Label className="text-[12px] text-stone-500">Объем (тонн)</Label>
                 <Input type="number" step="0.001" value={supplierVolume} onChange={(e) => setSupplierVolume(e.target.value)} className="h-8 text-[13px] font-mono" />
               </div>
-              <div className="flex items-center gap-2 pt-5">
-                <input
-                  type="checkbox"
-                  id="railway-in-price"
-                  checked={railwayInPrice}
-                  onChange={(e) => setRailwayInPrice(e.target.checked)}
-                  className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                />
-                <Label htmlFor="railway-in-price" className="text-[12px] text-stone-600 cursor-pointer">ЖД в цене (минусует с баланса)</Label>
+              {/* Обе суммы, которые входят в баланс поставщика, — одной
+                  ячейкой: клиент 2026-09-23 хочет видеть их поднятыми и
+                  иметь возможность снять до создания сделки. */}
+              <div className="flex flex-col justify-center gap-1.5 pt-5">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="railway-in-price"
+                    checked={railwayInPrice}
+                    onChange={(e) => setRailwayInPrice(e.target.checked)}
+                    className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <Label htmlFor="railway-in-price" className="text-[12px] text-stone-600 cursor-pointer">ЖД в цене (минусует с баланса)</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="shipper-in-price"
+                    checked={shipperInPrice}
+                    onChange={(e) => setShipperInPrice(e.target.checked)}
+                    className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <Label htmlFor="shipper-in-price" className="text-[12px] text-stone-600 cursor-pointer">Грузоотправление в цене (минусует с баланса)</Label>
+                </div>
               </div>
             </div>
             <div>
