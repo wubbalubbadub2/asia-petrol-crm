@@ -1126,7 +1126,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   index. Picking an appendix auto-selects the line.
                   Selecting the variant keeps the picker in sync via
                   the derived `supplier_appendix` value. */}
-              {supplierLines.length > 1 && (
+              {supplierLines.length > 0 && (
                 <div>
                   <Label className="text-[10px] text-stone-500">Вариант поставщика</Label>
                   <select
@@ -1164,7 +1164,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   </select>
                 </div>
               )}
-              {buyerLines.length > 1 && (
+              {buyerLines.length > 0 && (
                 <div>
                   <Label className="text-[10px] text-stone-500">Вариант покупателя</Label>
                   <select
