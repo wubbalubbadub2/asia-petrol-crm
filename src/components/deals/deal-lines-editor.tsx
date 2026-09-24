@@ -205,6 +205,7 @@ export function SupplierLinesEditor({
         price_stage: l.price_stage ?? "preliminary",
         preliminary_quotation: l.preliminary_quotation ?? null,
         preliminary_price: l.preliminary_price ?? null,
+        price_is_manual: l.price_is_manual ?? false,
         preliminary_set_at: l.preliminary_set_at ?? null,
         selected_month: l.selected_month ?? null,
         calc_mode: ((l as { calc_mode?: string }).calc_mode ?? "avg_month") as "avg_month" | "on_date",
@@ -395,6 +396,7 @@ export function BuyerLinesEditor({
         price_stage: l.price_stage ?? "preliminary",
         preliminary_quotation: l.preliminary_quotation ?? null,
         preliminary_price: l.preliminary_price ?? null,
+        price_is_manual: l.price_is_manual ?? false,
         preliminary_set_at: l.preliminary_set_at ?? null,
         selected_month: l.selected_month ?? null,
         calc_mode: ((l as { calc_mode?: string }).calc_mode ?? "avg_month") as "avg_month" | "on_date",
@@ -455,6 +457,8 @@ type LineVM = {
   price_stage: PriceStage;
   preliminary_quotation: number | null;
   preliminary_price: number | null;
+  // 00171: «Цена» введена руками — отгрузки считаются по ней.
+  price_is_manual: boolean;
   preliminary_set_at: string | null;
   selected_month: string | null;
   // Клиент 2026-07-10: «Режим расчёта» для average_month subtype.
@@ -979,6 +983,13 @@ function LinesEditorView({
                       · зафикс. {formatDMY(l.preliminary_set_at)}
                     </span>
                   )}
+                </div>
+              )}
+              {/* 00171: цена введена руками — отгрузки считаются по ней.
+                  Правка котировки или скидки возвращает формулу. */}
+              {l.price_is_manual && (
+                <div className="mt-1 text-[10px] text-stone-500">
+                  Введена вручную — суммы отгрузок по ней
                 </div>
               )}
             </div>

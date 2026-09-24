@@ -22,6 +22,9 @@ type LineStageFields = {
   // preliminary_quotation / preliminary_price.
   fx_rate?: number | null;
   preliminary_fx_rate?: number | null;
+  // Migration 00171 — «Цена» введена руками: отгрузки считаются по ней,
+  // а не по формуле. Флаг ставит и снимает база, интерфейс только читает.
+  price_is_manual?: boolean;
 };
 
 export type DealSupplierLine = {
