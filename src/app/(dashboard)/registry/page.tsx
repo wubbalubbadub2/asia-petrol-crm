@@ -855,6 +855,10 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
   const [ftId, setFtId] = useState(""); const [facId, setFacId] = useState(""); const [fwId, setFwId] = useState("");
   const [destId, setDestId] = useState(""); const [depId, setDepId] = useState(""); const [cgId, setCgId] = useState("");
   const [tariff, setTariff] = useState("");
+  // ВТД — номер документа, общий на всю партию вагонов (00169). Клиент
+  // 2026-09-24: «нету ВТД» в «Новой записи в реестр» — поле было только
+  // в массовом добавлении из карточки сделки.
+  const [vtd, setVtd] = useState("");
   const [pasted, setPasted] = useState("");
   // Which parsed-volume column to write — "ship" (отгрузка / shipment_volume) is the
   // factory-to-us side, "load" (налив / loading_volume) is the us-to-buyer side.
@@ -992,7 +996,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
 
   function resetAll() {
     setDealId(""); setMonth(""); setShipMonth("");
-    setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff("");
+    setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff(""); setVtd("");
     setPasted(""); setVolumeTarget("ship"); setDupShipment(false); setDupShipmentUserTouched(false);
     setSupplierLineId(""); setBuyerLineId("");
     setSupplierLines([]); setBuyerLines([]);
@@ -1030,6 +1034,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
       // наследует дату строки, если пишется налив.
       loading_date: (dupShipment || volumeTarget === "load") ? (p.date || null) : null,
       waybill_number: p.waybill || null,
+      vtd_number: vtd.trim() || null,
       supplier_line_id: supplierLineId || null,
       buyer_line_id: buyerLineId || null,
       supplier_appendix: supplierLines.find((x) => x.id === supplierLineId)?.appendix ?? null,
@@ -1117,6 +1122,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
               <Sel l="Ст. назначения" v={destId} fn={setDestId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. отправления" v={depId} fn={setDepId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.001" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
+              <div><Label className="text-[10px] text-stone-500">ВТД (если общий)</Label><Input value={vtd} onChange={(e) => setVtd(e.target.value)} className="h-8 text-[12px] font-mono" placeholder="Необязательно" /></div>
 
               {/* Variant pickers — only shown when the deal has >1 line
                   on a side. Below each, a sibling «Приложение» picker

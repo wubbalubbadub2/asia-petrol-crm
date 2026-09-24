@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-24 — ВТД в «Новой записи в реестр»
+- **What changed:** `registry/page.tsx` (`AddDialog`) — поле «ВТД (если общий)» рядом с «Ж/Д тариф»; номер пишется в `vtd_number` всем вагонам партии.
+- **Type:** [UI-FIELD]
+- **Before → After:** До: утренняя правка (`7efee6c`) добавила ВТД только в массовое добавление из карточки сделки; групповая форма страницы реестра его не имела — номер можно было внести лишь построчно в таблице. После: то же поле в обеих формах. Выбор варианта в этой форме появляется после выбора сделки (без изменений).
+- **Client reason:** клиент 2026-09-24, скриншот «Новая запись в реестр KG»: «нету выбора приложения в реестре и ВТД».
+- **Rebuild impact:** presentation only (колонка из 00169, деньги не затронуты)
+
 ### 2026-09-24 — Цена, введённая вручную, главнее формулы
 - **What changed:** миграция `00171_manual_line_price_wins.sql` — колонка `price_is_manual` у `deal_supplier_lines` / `deal_buyer_lines`; триггеры `mark_line_price_manual` (BEFORE UPDATE вариантов), `apply_manual_line_price` (BEFORE INSERT/UPDATE `deal_shipment_prices`, до `trg_shipment_price_three_decimals`), `sync_manual_line_price_to_shipments` (AFTER UPDATE вариантов). `deal-lines-editor.tsx` — пометка «Введена вручную — суммы отгрузок по ней» под «Ценой»; `use-deal-lines.ts` — поле в типе. Тест `supabase/tests/28_manual_line_price.test.sql` (12 проверок).
 - **Type:** [FORMULA] + [SCHEMA] + [UI-FIELD]
