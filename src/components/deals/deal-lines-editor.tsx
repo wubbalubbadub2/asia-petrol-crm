@@ -1240,7 +1240,7 @@ function StageCell({ value, editing, onChange }: {
                 : "text-stone-500 hover:text-stone-700"
             }`}
           >
-            Окончательная
+            Финальная
           </button>
         </div>
       ) : (
@@ -1251,7 +1251,7 @@ function StageCell({ value, editing, onChange }: {
               : "bg-amber-100 text-amber-800"
           }`}
         >
-          {value === "final" ? "Окончательная" : "Предварительная"}
+          {value === "final" ? "Финальная" : "Предварительная"}
         </span>
       )}
     </div>
@@ -1279,7 +1279,7 @@ function FinalizeStageDialog({
             </div>
             <div className="flex flex-col gap-1">
               <DialogTitle className="text-[15px]">
-                Перейти на окончательную цену?
+                Перейти на финальную цену?
               </DialogTitle>
               <DialogDescription className="text-[12px] text-stone-500">
                 Вариант: <span className="font-medium text-stone-700">{variantLabel}</span>
@@ -1290,8 +1290,8 @@ function FinalizeStageDialog({
         <div className="text-[13px] text-stone-700 space-y-2">
           <p>После переключения:</p>
           <ul className="list-disc pl-5 space-y-1 text-stone-600">
-            <li>Все существующие отгрузки этого варианта будут <b>пересчитаны</b> по окончательной цене.</li>
-            <li>Новые отгрузки также будут считаться по окончательной формуле.</li>
+            <li>Все существующие отгрузки этого варианта будут <b>пересчитаны</b> по финальной цене.</li>
+            <li>Новые отгрузки также будут считаться по финальной формуле.</li>
             <li>Текущая <span className="rounded bg-amber-100 px-1 text-[10px] font-medium uppercase tracking-wide text-amber-800">Предварительная</span> цена <b>сохранится в истории</b> и будет видна под полем «Цена».</li>
           </ul>
         </div>
@@ -1303,7 +1303,7 @@ function FinalizeStageDialog({
             onClick={() => { onConfirm(); onOpenChange(false); }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            Перейти на окончательную
+            Перейти на финальную
           </Button>
         </DialogFooter>
       </DialogContent>

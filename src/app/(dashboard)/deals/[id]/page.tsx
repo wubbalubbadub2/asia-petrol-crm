@@ -969,7 +969,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <div className="space-y-1.5">
             <div>
               <h3 className="text-[14px] font-medium text-stone-800">
-                Окончательная цена — по отгрузкам
+                Финальная цена — по отгрузкам
               </h3>
               <p className="text-[12px] text-stone-500">
                 Цена пересчитывается отдельно для каждой отгрузки по выбранному режиму. Можно править вручную.
@@ -1041,7 +1041,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           <div className="space-y-1.5">
             <div>
               <h3 className="text-[14px] font-medium text-stone-800">
-                Окончательная цена — по отгрузкам
+                Финальная цена — по отгрузкам
               </h3>
               <p className="text-[12px] text-stone-500">
                 Цена пересчитывается отдельно для каждой отгрузки по выбранному режиму. Можно править вручную.

@@ -1692,9 +1692,9 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
                       ? "bg-green-100 text-green-700"
                       : "bg-amber-100 text-amber-700"
                   }`}
-                  title={cg.price_kind === "final" ? "Окончательная цена" : "Предварительная цена"}
+                  title={cg.price_kind === "final" ? "Финальная цена" : "Предварительная цена"}
                 >
-                  {cg.price_kind === "final" ? "оконч." : "предв."}
+                  {cg.price_kind === "final" ? "фин." : "предв."}
                 </span>
               </span>
             </span>

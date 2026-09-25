@@ -54,12 +54,12 @@ const final = {
 } as unknown as Deal;
 
 const variants: [string, readonly unknown[], string][] = [
-  ["краткий паспорт", PASSPORT_COLUMNS, "Цена оконч."],
+  ["краткий паспорт", PASSPORT_COLUMNS, "Цена финальная"],
   ["детальный паспорт", DETAIL_COLUMNS, "Цена финальная"],
 ];
 
 describe.each(variants)("%s", (_name, cols) => {
-  it("предварительная стадия — окончательная цена пустая", () => {
+  it("предварительная стадия — финальная цена пустая", () => {
     expect(col(cols, "supplier_price").read(preliminary)).toBeNull();
     expect(col(cols, "buyer_price").read(preliminary)).toBeNull();
   });
@@ -69,7 +69,7 @@ describe.each(variants)("%s", (_name, cols) => {
     expect(col(cols, "buyer_preliminary_price").read(preliminary)).toBe(690.362);
   });
 
-  it("цена зафиксирована — печатаются обе: снапшот и окончательная", () => {
+  it("цена зафиксирована — печатаются обе: снапшот и финальная", () => {
     expect(col(cols, "supplier_preliminary_price").read(final)).toBe(505.48);
     expect(col(cols, "supplier_price").read(final)).toBe(511.2);
     expect(col(cols, "buyer_preliminary_price").read(final)).toBe(690.362);

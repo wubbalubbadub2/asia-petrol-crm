@@ -498,7 +498,7 @@ function VariantRow({
                     : "text-stone-500 hover:text-stone-700"
                 }`}
               >
-                Окончательная
+                Финальная
               </button>
             </div>
           </div>

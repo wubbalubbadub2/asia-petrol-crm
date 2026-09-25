@@ -163,9 +163,9 @@ export function DealCompanyChain({
                             ? "bg-green-100 text-green-700"
                             : "bg-amber-100 text-amber-700"
                         }`}
-                        title={cg.price_kind === "final" ? "Окончательная цена" : "Предварительная цена"}
+                        title={cg.price_kind === "final" ? "Финальная цена" : "Предварительная цена"}
                       >
-                        {cg.price_kind === "final" ? "оконч." : "предв."}
+                        {cg.price_kind === "final" ? "фин." : "предв."}
                       </span>
                     </p>
                   )}
@@ -348,10 +348,10 @@ export function DealCompanyChain({
                             updateGroup(cg.id, { price_kind: v, price: newP });
                           }}
                           className="h-8 w-full rounded border border-stone-300 bg-white px-2 pr-6 text-[12px] text-stone-800 hover:border-amber-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200 cursor-pointer appearance-none transition-colors"
-                          title="Тип цены — предварительная или окончательная"
+                          title="Тип цены — предварительная или финальная"
                         >
                           <option value="preliminary">Предв.</option>
-                          <option value="final">Оконч.</option>
+                          <option value="final">Фин.</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
                       </div>
