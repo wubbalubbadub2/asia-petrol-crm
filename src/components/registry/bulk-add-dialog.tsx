@@ -135,6 +135,12 @@ export function BulkAddDialog({
   const [destinationStationId, setDestinationStationId] = useState("");
   const [departureStationId, setDepartureStationId] = useState("");
   const [tariff, setTariff] = useState("");
+  // Клиент 2026-09-25: «если ж/д тариф введён вручную, он должен браться
+  // для тарифа логистов, если нет — с тарифа (справочника)». Поле
+  // подставляется само (ставка справочника / тариф сделки) — такое
+  // значение ручным не считаем. Правил руками → строка уходит с
+  // railway_tariff_override = TRUE, и справочник её не трогает (00167).
+  const [tariffTouched, setTariffTouched] = useState(false);
   const [currency, setCurrency] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceNum, setInvoiceNum] = useState("");
@@ -217,6 +223,7 @@ export function BulkAddDialog({
     setDestinationStationId(context.destinationStationId ?? "");
     setDepartureStationId(context.departureStationId ?? "");
     setTariff(context.railwayTariff != null ? String(context.railwayTariff) : "");
+    setTariffTouched(false);
     setCurrency(""); // empty = inherit from deal
     setPasted("");
     setInvoiceNum("");
@@ -327,6 +334,7 @@ export function BulkAddDialog({
       destination_station_id: destinationStationId || null,
       departure_station_id: departureStationId || null,
       railway_tariff: tariffNum,
+      railway_tariff_override: tariffTouched && tariffNum != null,
       currency: currency || null,
       wagon_number: p.wagon,
       // dupShipment writes the same volume into both sides — common for
@@ -401,8 +409,8 @@ export function BulkAddDialog({
               <Sel l="Ст. отправления" v={departureStationId} fn={setDepartureStationId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. назначения" v={destinationStationId} fn={setDestinationStationId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <div>
-                <Label className="text-[10px] text-stone-500">Ж/Д тариф</Label>
-                <Input type="number" step="0.001" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" />
+                <Label className="text-[10px] text-stone-500">Ж/Д тариф{tariffTouched && tariff ? " (вручную)" : ""}</Label>
+                <Input type="number" step="0.001" value={tariff} onChange={(e) => { setTariff(e.target.value); setTariffTouched(true); }} className="h-8 text-[12px] font-mono" />
               </div>
               <div>
                 <Label className="text-[10px] text-stone-500">ВТД (если общий)</Label>

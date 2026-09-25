@@ -1,4 +1,9 @@
--- Test: смена даты или месяца отгрузки пересчитывает цену по формуле (00172).
+-- Test: смена даты или месяца отгрузки пересчитывает цену по формуле (00172),
+-- а котировку «Среднего месяца» берёт из варианта (00173).
+--
+-- 00173 (клиент 2026-09-25, тем же днём): котировка отгрузок — котировка
+-- варианта («Месяц расчёта»), месяц отгрузки на неё не влияет. Поэтому
+-- ниже перенос даты на июль цену НЕ меняет: у варианта июньская 575.98.
 --
 -- Клиент 2026-09-25: «если тип цены формульная, то мы должны брать по
 -- формуле, и если мы меняем данные, например месяц отгрузки, цена должна
@@ -61,11 +66,11 @@ BEGIN
   UPDATE shipment_registry SET date = DATE '2099-07-02' WHERE id = v_reg;
   SELECT calculated_price, quotation_avg, amount INTO v_price, v_q, v_amount
     FROM deal_shipment_prices WHERE shipment_registry_id = v_reg AND side = 'supplier';
-  IF v_price IS DISTINCT FROM 376.590 THEN
-    RAISE EXCEPTION '2. дата в июле: 591.59 − 215 = 376.590, получили % (котировка %) — цена не пересчиталась', v_price, v_q;
+  IF v_price IS DISTINCT FROM 360.980 THEN
+    RAISE EXCEPTION '2. 00173: котировка варианта 575.98 → 360.980 и в июле, получили % (котировка %)', v_price, v_q;
   END IF;
-  IF v_amount IS DISTINCT FROM 60 * 376.590 THEN
-    RAISE EXCEPTION '2. сумма должна быть 60 × 376.590, получили %', v_amount;
+  IF v_amount IS DISTINCT FROM 60 * 360.980 THEN
+    RAISE EXCEPTION '2. сумма должна быть 60 × 360.980, получили %', v_amount;
   END IF;
 
   -- ── 2. Строка без даты: решает «Месяц отгрузки» ────────────────────
@@ -82,16 +87,16 @@ BEGIN
   UPDATE shipment_registry SET shipment_month = 'июль' WHERE id = v_reg2;
   SELECT calculated_price INTO v_price
     FROM deal_shipment_prices WHERE shipment_registry_id = v_reg2 AND side = 'supplier';
-  IF v_price IS DISTINCT FROM 376.590 THEN
-    RAISE EXCEPTION '4. месяц отгрузки → июль: ждали 376.590, получили %', v_price;
+  IF v_price IS DISTINCT FROM 360.980 THEN
+    RAISE EXCEPTION '4. 00173: месяц отгрузки котировку варианта не меняет, ждали 360.980, получили %', v_price;
   END IF;
 
   -- ── 3. При заполненной дате «Месяц отгрузки» цену не двигает ───────
   UPDATE shipment_registry SET shipment_month = 'июнь' WHERE id = v_reg;
   SELECT calculated_price INTO v_price
     FROM deal_shipment_prices WHERE shipment_registry_id = v_reg AND side = 'supplier';
-  IF v_price IS DISTINCT FROM 376.590 THEN
-    RAISE EXCEPTION '5. дата в июле главнее «Месяца отгрузки»: ждали 376.590, получили %', v_price;
+  IF v_price IS DISTINCT FROM 360.980 THEN
+    RAISE EXCEPTION '5. ждали 360.980, получили %', v_price;
   END IF;
 
   -- ── 4. Ручная «Цена» (00171) — исключение ──────────────────────────
@@ -112,7 +117,7 @@ BEGIN
     RAISE EXCEPTION '7. предварительная стадия: цена варианта 400, получили %', v_price;
   END IF;
 
-  RAISE NOTICE 'OK: смена даты или месяца отгрузки пересчитывает формульную цену, ручная и предварительная не сбиваются';
+  RAISE NOTICE 'OK: смена даты или месяца отгрузки пересчитывает строку, котировка — варианта; ручная и предварительная не сбиваются';
 END $$;
 
 ROLLBACK;

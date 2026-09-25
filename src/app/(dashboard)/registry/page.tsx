@@ -855,6 +855,12 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
   const [ftId, setFtId] = useState(""); const [facId, setFacId] = useState(""); const [fwId, setFwId] = useState("");
   const [destId, setDestId] = useState(""); const [depId, setDepId] = useState(""); const [cgId, setCgId] = useState("");
   const [tariff, setTariff] = useState("");
+  // Клиент 2026-09-25: «если ж/д тариф введён вручную, он должен браться
+  // для тарифа логистов, если нет — с тарифа (справочника)». Поле
+  // подставляется само (ставка справочника / тариф сделки) — такое
+  // значение ручным не считаем. Правил руками → строка уходит с
+  // railway_tariff_override = TRUE, и справочник её не трогает (00167).
+  const [tariffTouched, setTariffTouched] = useState(false);
   // ВТД — номер документа, общий на всю партию вагонов (00169). Клиент
   // 2026-09-24: «нету ВТД» в «Новой записи в реестр» — поле было только
   // в массовом добавлении из карточки сделки.
@@ -996,7 +1002,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
 
   function resetAll() {
     setDealId(""); setMonth(""); setShipMonth("");
-    setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff(""); setVtd("");
+    setFtId(""); setFacId(""); setFwId(""); setDestId(""); setDepId(""); setCgId(""); setTariff(""); setTariffTouched(false); setVtd("");
     setPasted(""); setVolumeTarget("ship"); setDupShipment(false); setDupShipmentUserTouched(false);
     setSupplierLineId(""); setBuyerLineId("");
     setSupplierLines([]); setBuyerLines([]);
@@ -1023,6 +1029,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
       departure_station_id: depId || null,
       company_group_id: cgId || null,
       railway_tariff: tariffNum,
+      railway_tariff_override: tariffTouched && tariffNum != null,
       wagon_number: p.wagon,
       // dupShipment overrides the single-target rule: write the same
       // volume into BOTH sides. Useful when исходящее СНТ == входящее
@@ -1095,7 +1102,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                 </div>
                 <SearchableSelect
                   value={dealId}
-                  onChange={(v) => { setDealId(v); setTariff(""); }}
+                  onChange={(v) => { setDealId(v); setTariff(""); setTariffTouched(false); }}
                   options={deals.map((d) => ({
                     value: d.id,
                     label: `${d.deal_code} — ${d.supplier?.short_name ?? ""} → ${d.buyer?.short_name ?? ""}`,
@@ -1121,7 +1128,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
               <Sel l="Плательщик ж/д тарифа" v={cgId} fn={setCgId} opts={cgs.map((c) => ({ value: c.id, label: c.name }))} />
               <Sel l="Ст. назначения" v={destId} fn={setDestId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
               <Sel l="Ст. отправления" v={depId} fn={setDepId} opts={stations.map((s) => ({ value: s.id, label: s.name }))} />
-              <div><Label className="text-[10px] text-stone-500">Ж/Д тариф</Label><Input type="number" step="0.001" value={tariff} onChange={(e) => setTariff(e.target.value)} className="h-8 text-[12px] font-mono" /></div>
+              <div><Label className="text-[10px] text-stone-500">Ж/Д тариф{tariffTouched && tariff ? " (вручную)" : ""}</Label><Input type="number" step="0.001" value={tariff} onChange={(e) => { setTariff(e.target.value); setTariffTouched(true); }} className="h-8 text-[12px] font-mono" /></div>
               <div><Label className="text-[10px] text-stone-500">ВТД (если общий)</Label><Input value={vtd} onChange={(e) => setVtd(e.target.value)} className="h-8 text-[12px] font-mono" placeholder="Необязательно" /></div>
 
               {/* Variant pickers — only shown when the deal has >1 line
