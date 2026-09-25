@@ -542,15 +542,28 @@ function LineAutoFetchQuotation({
   onUpdate: (id: string, patch: Record<string, unknown>) => void;
 }) {
   const sbRef = useRef(createClient());
+  // Клиент 2026-09-25: «если тип цены формульная, то берём по формуле, и
+  // если меняем данные, например месяц, цена должна пересчитаться».
+  // Раньше котировка подтягивалась только в пустое поле — после смены
+  // «Месяца расчёта» оставалась от старого месяца (КГ/26/346: выбран
+  // июнь, котировка июльская). Теперь смена любого входа котировки
+  // подтягивает её заново; при первом показе заполненное поле не трогаем.
+  const inputsKey = [
+    line.price_condition, line.quotation_type_id, line.price_source, line.calc_mode,
+    line.selected_month, line.selected_date, dealMonth, dealYear,
+  ].join("|");
+  const prevKeyRef = useRef(inputsKey);
   useEffect(() => {
+    const inputsChanged = prevKeyRef.current !== inputsKey;
+    prevKeyRef.current = inputsKey;
     // Guards: only formula subtypes read from `quotations`.
     const cond = line.price_condition;
     if (cond !== "average_month") return; // fixed/trigger need an anchor
                                           // date we don't surface here yet
     if (!line.quotation_type_id) return;
     if (!line.price_source) return;
-    // Don't overwrite a value the operator already typed.
-    if (line.quotation != null) return;
+    // Заполненное поле не перезаписываем, пока входы котировки те же.
+    if (line.quotation != null && !inputsChanged) return;
 
     // Клиент 2026-07-10: два режима расчёта.
     //   avg_month → target_date = середина selected_month/deal.month;
@@ -578,6 +591,7 @@ function LineAutoFetchQuotation({
       } as never)
       .then(({ data, error }) => {
         if (error || data == null) return;
+        if (data === line.quotation) return;
         // Без предокругления до 2 знаков: БД считает цену отгрузки от
         // неокруглённой средней (00067), и цена строки обязана сойтись с
         // ней после ROUND(…, 3) в apply_price_formula (00166).
@@ -585,9 +599,7 @@ function LineAutoFetchQuotation({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    line.id, line.price_condition, line.quotation_type_id, line.price_source,
-    line.selected_month, line.selected_date, line.calc_mode,
-    line.quotation, dealMonth, dealYear,
+    line.id, line.price_condition, inputsKey, line.quotation,
   ]);
   return null;
 }
