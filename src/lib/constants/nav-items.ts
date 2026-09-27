@@ -17,6 +17,7 @@ import {
   ReceiptText,
   type LucideIcon,
   CalendarClock,
+  TrainTrack,
 } from "lucide-react";
 
 // Сайдбар группирует пункты по `section`: «Навигация» / «Операции» /
@@ -99,6 +100,12 @@ export const navItems: NavItem[] = [
     label: "Сверхнормативы",
     href: "/surcharges",
     icon: AlertTriangle,
+    section: "ops",
+  },
+  {
+    label: "Дислокация",
+    href: "/dislocation",
+    icon: TrainTrack,
     section: "ops",
   },
   {

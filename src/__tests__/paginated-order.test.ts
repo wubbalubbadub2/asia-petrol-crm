@@ -55,6 +55,10 @@ const ALLOWED: Record<string, { key: string; why: string }[]> = {
   "lib/exports/passport-detail-excel.ts": [
     { key: "side", why: "deal_payment_terms — вью; (shipment_id, side) уникальна" },
   ],
+  "lib/hooks/use-dislocation.ts": [
+    { key: "stay_key", why: "rail_demurrage — вью; stay_key = экспедитор|вагон|этап|станция|накладная прибытия, уникален" },
+    { key: "loading_key", why: "rail_demurrage_registry — вью; (month, unloading_key, loading_key) уникальна" },
+  ],
   "lib/hooks/use-payment-dates-summary.ts": [
     { key: "side", why: "deal_payment_dates_summary — вью; (deal_id, side) уникальна" },
   ],
