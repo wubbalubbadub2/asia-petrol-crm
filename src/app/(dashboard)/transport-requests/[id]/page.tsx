@@ -17,6 +17,7 @@ export default function TransportRequestPage() {
   const [heading, setHeading] = useState("Заявка на перевозку");
   const [number, setNumber] = useState<number | null>(null);
   const [payers, setPayers] = useState<PayerLine[]>([]);
+  const [dealIds, setDealIds] = useState<string[]>([]);
   const [missing, setMissing] = useState(false);
   const sbRef = useRef(createClient());
 
@@ -39,7 +40,15 @@ export default function TransportRequestPage() {
           setMissing(true);
           return;
         }
-        setValues(valuesFromRow(data));
+        // Сделки грузим ДО показа формы: форма берёт их в своё состояние
+        // один раз при монтировании.
+        sb.from("transport_request_deals")
+          .select("deal_id")
+          .eq("request_id", id)
+          .then(({ data: links }: { data: { deal_id: string }[] | null }) => {
+            setDealIds((links ?? []).map((l) => l.deal_id));
+            setValues(valuesFromRow(data));
+          });
         setHeading(`Заявка № ${data.request_number}/${String(data.request_year).slice(2)}`);
         setNumber(Number(data.request_number));
         sb.from("transport_request_payers")
@@ -79,6 +88,7 @@ export default function TransportRequestPage() {
       prefillFromLast={false}
       requestNumber={number}
       initialPayers={payers}
+      initialDealIds={dealIds}
     />
   );
 }

@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-28 — Заявки на перевозку привязываются к сделкам; код экспедитора (dev)
+- **What changed:** миграция `00175_transport_request_deals_forwarder_code.sql` — таблица `transport_request_deals` (заявка × сделка, уникальна пара, RLS: читают вошедшие, пишет/удаляет writable), колонка `forwarders.code`. Форма заявки (`request-form.tsx`) — поле «Сделки» (несколько, по умолчанию «Сделка не создана»); список заявок — колонка «Сделки», фильтр «Сделка не создана / Со сделкой», привязка прямо из строки, поиск по коду сделки; справочник экспедиторов — поле «Код». Применено только на dev (asia-petrol-dev), на проде миграции нет.
+- **Type:** [SCHEMA] + [UI-FIELD]
+- **Before → After:** До: заявка со сделкой не связана (решение клиента 25.08, 00153). После: у заявки 0..N сделок; копия заявки сделки не переносит.
+- **Client reason:** клиент 2026-09-28: «при создании заявки нужно выбрать сделку, по умолчанию сделка не создана; фильтр — сделка не создана, найти и привязать; в одну заявку можно добавить 2 сделки; код экспедитора в справочнике».
+- **Rebuild impact:** DATA-MODEL (transport_request_deals, forwarders.code)
+
 ### 2026-09-28 — Дислокация: читается выгрузка слежения Prologistic
 - **What changed:** новый `src/lib/parsers/dislocation-tracking.ts` (`parseAnyDislocationSheet` выбирает формат по шапке, `parseTrackingSnapshotAt`), загрузка (`dislocation/upload/page.tsx`) использует его. Тест `dislocation-tracking-parser.test.ts`.
 - **Type:** [BEHAVIOR]

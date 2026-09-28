@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 type Forwarder = {
   id?: string;
   name: string;
+  /** Код экспедитора (00175, клиент 2026-09-28). */
+  code?: string;
   bin_iin?: string;
   is_active?: boolean;
 };
@@ -21,6 +23,11 @@ const columns: ColumnDef<Forwarder, unknown>[] = [
     accessorKey: "name",
     header: "Наименование",
     cell: ({ row }) => row.original.name ?? "—",
+  },
+  {
+    accessorKey: "code",
+    header: "Код",
+    cell: ({ row }) => row.original.code || "—",
   },
   {
     accessorKey: "bin_iin",
@@ -48,6 +55,7 @@ type FormProps = {
 function ForwarderForm({ item, onSave, onClose }: FormProps) {
   const [form, setForm] = useState<Partial<Forwarder>>({
     name: item?.name ?? "",
+    code: item?.code ?? "",
     bin_iin: item?.bin_iin ?? "",
     is_active: item?.is_active ?? true,
   });
@@ -86,6 +94,14 @@ function ForwarderForm({ item, onSave, onClose }: FormProps) {
       </div>
 
       <div className="space-y-1.5">
+        <Label htmlFor="code">Код экспедитора</Label>
+        <Input
+          id="code"
+          value={form.code ?? ""}
+          onChange={(e) => set("code", e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
         <Label htmlFor="bin_iin">БИН / ИИН</Label>
         <Input
           id="bin_iin"
@@ -122,7 +138,7 @@ export default function ForwardersPage() {
   const { data, loading, save, remove } = useSupabaseTable<Forwarder>(
     "forwarders",
     "name",
-    "id, name, bin_iin, is_active"
+    "id, name, code, bin_iin, is_active"
   );
 
   if (loading) {

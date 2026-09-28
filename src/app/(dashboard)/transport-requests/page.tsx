@@ -16,6 +16,8 @@ import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { CARRIED_OVER_COLUMNS } from "@/components/transport/request-form";
 import { deleteRequestWithFiles } from "@/lib/transport/storage";
 import { useRole } from "@/lib/role-context";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { fetchDealCodeIndex } from "@/lib/hooks/use-deals";
 
 /**
  * Список заявок на перевозку.
@@ -39,12 +41,22 @@ type Row = {
   company_group: { name: string } | null;
   fuel_type: { name: string; full_name: string | null } | null;
   destination_station: { name: string; code: string | null } | null;
+  /** Сделки заявки (00175). Пусто — «сделка не создана». */
+  deals: { deal_id: string; deal: { id: string; deal_code: string | null } | null }[];
+};
+
+type DealFilter = "all" | "none" | "linked";
+const DEAL_FILTER_LABEL: Record<DealFilter, string> = {
+  all: "Все",
+  none: "Сделка не создана",
+  linked: "Со сделкой",
 };
 
 const SELECT =
   "id, request_year, request_number, date, status, tonnage, wagons, period_month, period_year, " +
   "company_group:company_groups(name), fuel_type:fuel_types(name, full_name), " +
-  "destination_station:stations(name, code)";
+  "destination_station:stations(name, code), " +
+  "deals:transport_request_deals(deal_id, deal:deals(id, deal_code))";
 
 function StatusBadge({ status }: { status: Row["status"] }) {
   return status === "issued" ? (
@@ -60,7 +72,10 @@ function StatusBadge({ status }: { status: Row["status"] }) {
 
 export default function TransportRequestsPage() {
   const router = useRouter();
-  const { isAdmin } = useRole();
+  const { isAdmin, isWritable } = useRole();
+  const [dealFilter, setDealFilter] = useState<DealFilter>("all");
+  const [dealOptions, setDealOptions] = useState<{ value: string; label: string }[]>([]);
+  const [linking, setLinking] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -84,6 +99,59 @@ export default function TransportRequestsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Справочник сделок для привязки прямо из списка — постранично, с кэшем.
+  useEffect(() => {
+    let cancelled = false;
+    fetchDealCodeIndex()
+      .then((index) => {
+        if (cancelled) return;
+        setDealOptions(
+          [...index.values()]
+            .filter((d) => d.deal_code)
+            .map((d) => ({
+              value: d.id,
+              label: d.is_archived ? `${d.deal_code} (архив)` : (d.deal_code as string),
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Не удалось загрузить список сделок");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Привязка из списка: добавляем новые сделки, снимаем убранные. */
+  async function setRequestDeals(r: Row, next: string[]) {
+    const current = r.deals.map((d) => d.deal_id);
+    const added = next.filter((id) => !current.includes(id));
+    const removed = current.filter((id) => !next.includes(id));
+    setLinking(r.id);
+    try {
+      const sb = sbRef.current as any;
+      if (removed.length > 0) {
+        const { error } = await sb
+          .from("transport_request_deals")
+          .delete()
+          .eq("request_id", r.id)
+          .in("deal_id", removed);
+        if (error) throw error;
+      }
+      if (added.length > 0) {
+        const { error } = await sb
+          .from("transport_request_deals")
+          .insert(added.map((dealId) => ({ request_id: r.id, deal_id: dealId })));
+        if (error) throw error;
+      }
+      await load();
+    } catch (e) {
+      toast.error(`Не удалось привязать сделку: ${(e as Error).message}`);
+    } finally {
+      setLinking(null);
+    }
+  }
 
   async function copyRequest(id: string) {
     setCopying(id);
@@ -155,18 +223,25 @@ export default function TransportRequestsPage() {
   }
 
   const q = search.trim().toLowerCase();
+  const byDeal = rows.filter((r) =>
+    dealFilter === "none" ? r.deals.length === 0
+      : dealFilter === "linked" ? r.deals.length > 0
+      : true,
+  );
   const filtered = q
-    ? rows.filter((r) =>
+    ? byDeal.filter((r) =>
         [
           `${r.request_number}`,
           r.company_group?.name,
           r.fuel_type?.full_name ?? r.fuel_type?.name,
           r.destination_station?.name,
+          ...r.deals.map((d) => d.deal?.deal_code),
         ]
           .filter(Boolean)
           .some((s) => String(s).toLowerCase().includes(q)),
       )
-    : rows;
+    : byDeal;
+  const unlinkedCount = rows.filter((r) => r.deals.length === 0).length;
 
   return (
     <div className="space-y-4">
@@ -180,14 +255,28 @@ export default function TransportRequestsPage() {
         </Link>
       </div>
 
-      <div className="relative max-w-sm">
+      <div className="flex flex-wrap items-center gap-3">
+      <div className="inline-flex overflow-hidden rounded border border-stone-200 bg-white">
+        {(["all", "none", "linked"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setDealFilter(f)}
+            className={`cursor-pointer px-3 py-1.5 text-[12px] font-medium transition-colors ${dealFilter === f ? "bg-amber-500 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+          >
+            {DEAL_FILTER_LABEL[f]}
+            {f === "none" ? <span className="ml-1 opacity-70">{unlinkedCount}</span> : null}
+          </button>
+        ))}
+      </div>
+      <div className="relative w-full max-w-sm">
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Номер, компания, продукт, станция..."
+          placeholder="Номер, компания, продукт, станция, сделка..."
           className="h-9 pl-8"
         />
+      </div>
       </div>
 
       {loading ? (
@@ -209,6 +298,7 @@ export default function TransportRequestsPage() {
                 <TableHead className="w-20">№</TableHead>
                 <TableHead className="w-28">Дата</TableHead>
                 <TableHead>Компания</TableHead>
+                <TableHead className="min-w-52">Сделки</TableHead>
                 <TableHead>Продукт</TableHead>
                 <TableHead className="text-right">Тонн</TableHead>
                 <TableHead className="text-right">Вагонов</TableHead>
@@ -228,6 +318,35 @@ export default function TransportRequestsPage() {
                   </TableCell>
                   <TableCell className="text-[13px]">{formatDMY(r.date)}</TableCell>
                   <TableCell className="text-[13px]">{r.company_group?.name ?? "—"}</TableCell>
+                  <TableCell className="text-[12px]">
+                    <div className="flex flex-col gap-1">
+                      {r.deals.length > 0 ? (
+                        <div className="flex flex-wrap gap-x-2">
+                          {r.deals.map((d) => (
+                            <Link key={d.deal_id} href={`/deals/${d.deal_id}`} className="font-mono text-amber-700 hover:underline">
+                              {d.deal?.deal_code ?? d.deal_id.slice(0, 8)}
+                            </Link>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-stone-400">сделка не создана</span>
+                      )}
+                      {isWritable ? (
+                        <SearchableSelect
+                          multi
+                          options={dealOptions}
+                          value={r.deals.map((d) => d.deal_id)}
+                          onChange={(next) => setRequestDeals(r, next)}
+                          placeholder={linking === r.id ? "Сохранение…" : "Привязать сделку"}
+                          searchPlaceholder="Код сделки"
+                          emptyMessage="Сделка не найдена"
+                          multiSummary={(n) => `Изменить (${n})`}
+                          clearLabel="Отвязать все"
+                          triggerClassName="h-7 w-44 text-[11px]"
+                        />
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-[13px]">
                     {r.fuel_type?.full_name || r.fuel_type?.name || "—"}
                   </TableCell>

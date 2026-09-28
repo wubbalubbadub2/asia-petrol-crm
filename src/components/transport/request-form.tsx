@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, FileDown, Loader2, Plus, Save, Trash2, X } from "lucide-react";
@@ -39,6 +39,7 @@ import {
   deleteRequestWithFiles,
 } from "@/lib/transport/storage";
 import { useRole } from "@/lib/role-context";
+import { fetchDealCodeIndex } from "@/lib/hooks/use-deals";
 
 /**
  * Форма заявки на перевозку.
@@ -259,6 +260,8 @@ type Props = {
   requestNumber?: number | null;
   /** Строки оплат сохранённой заявки. */
   initialPayers?: PayerLine[];
+  /** Сделки сохранённой заявки (00175). Пусто — «сделка не создана». */
+  initialDealIds?: string[];
 };
 
 export function TransportRequestForm({
@@ -267,12 +270,38 @@ export function TransportRequestForm({
   prefillFromLast,
   requestNumber,
   initialPayers,
+  initialDealIds,
 }: Props) {
   const router = useRouter();
   const { isAdmin } = useRole();
   const { refs, loading } = useTransportRefs();
   const [v, setV] = useState<RequestFormValues>(initial);
   const [payers, setPayers] = useState<PayerLine[]>(initialPayers ?? []);
+  // Сделки заявки (клиент 2026-09-28): можно несколько, пусто — «сделка
+  // не создана». Справочник — постранично и с кэшем, с архивными.
+  const [dealIds, setDealIds] = useState<string[]>(initialDealIds ?? []);
+  const [dealOptions, setDealOptions] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchDealCodeIndex()
+      .then((index) => {
+        if (cancelled) return;
+        setDealOptions(
+          [...index.values()]
+            .filter((d) => d.deal_code)
+            .map((d) => ({
+              value: d.id,
+              label: d.is_archived ? `${d.deal_code} (архив)` : (d.deal_code as string),
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Не удалось загрузить список сделок");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Плательщик по железной дороге — это экспедитор, грузополучатель
@@ -461,6 +490,21 @@ export function TransportRequestForm({
     if (error) throw error;
   }
 
+  /** Сделки заявки переписываются целиком, как и строки оплат. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function saveDeals(sb: any, requestId: string) {
+    const { error: delErr } = await sb
+      .from("transport_request_deals")
+      .delete()
+      .eq("request_id", requestId);
+    if (delErr) throw delErr;
+    if (dealIds.length === 0) return;
+    const { error } = await sb
+      .from("transport_request_deals")
+      .insert(dealIds.map((dealId) => ({ request_id: requestId, deal_id: dealId })));
+    if (error) throw error;
+  }
+
   async function persist(status: "draft" | "issued") {
     if (!v.company_group_id) {
       toast.error("Выберите компанию");
@@ -480,6 +524,7 @@ export function TransportRequestForm({
         const { error } = await sb.from("transport_requests").update(row).eq("id", v.id);
         if (error) throw error;
         await savePayers(sb, v.id);
+        await saveDeals(sb, v.id);
         toast.success("Сохранено");
         router.refresh();
       } else {
@@ -490,6 +535,7 @@ export function TransportRequestForm({
           .single();
         if (error) throw error;
         await savePayers(sb, data.id as string);
+        await saveDeals(sb, data.id as string);
         toast.success("Заявка создана");
         router.replace(`/transport-requests/${data.id}`);
       }
@@ -771,6 +817,23 @@ export function TransportRequestForm({
             </Field>
             <Field label="Дата заявки" hint="Дата составления">
               <Input type="date" value={v.date} onChange={(e) => set("date", e.target.value)} />
+            </Field>
+            <Field
+              label="Сделки"
+              hint="Можно выбрать несколько. Пусто — сделка не создана, привязать можно позже"
+            >
+              <SearchableSelect
+                multi
+                options={dealOptions}
+                value={dealIds}
+                onChange={setDealIds}
+                placeholder="Сделка не создана"
+                searchPlaceholder="Код сделки, например KG/26/700"
+                emptyMessage="Сделка не найдена"
+                multiSummary={(n) => (n === 1 ? "1 сделка" : `${n} сделки`)}
+                clearLabel="Сделка не создана"
+                triggerClassName="w-full"
+              />
             </Field>
             <Field label="Покупатель">
               <SearchableSelect
