@@ -72,7 +72,7 @@ export async function fetchDealEvents(dealIds: string[]): Promise<Map<string, De
     }),
     fetchByDealIds<LogisticsRow>({
       table: "shipment_registry",
-      select: "deal_id, loading_date, date, shipped_tonnage_amount, additional_expenses, currency, id",
+      select: "deal_id, loading_date, date, shipped_tonnage_amount, additional_expenses, supplier_railway_amount, currency, id",
       dealIds,
       orderBy: ["deal_id", "id"],
     }),

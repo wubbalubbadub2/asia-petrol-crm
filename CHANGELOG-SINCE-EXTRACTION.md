@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-29 — Галочка «ЖД поставщика в цене»: Сумма 2 входит в баланс поставщика
+- **What changed:** миграция `00176_supplier_railway_in_price.sql` — колонка `deals.supplier_railway_in_price BOOLEAN NOT NULL DEFAULT FALSE`; `compute_deal_derived_fields` (тело 00120 + одно слагаемое); `passport_snapshot_as_of` (тело 00160 + то же слагаемое — 00160 на проде не применена, 00176 создаёт функцию целиком). `src/lib/fx/convert-deal.ts` + `src/lib/data/deal-events.ts` — то же в «Анализе по валюте». Паспорт сделки: три галочки «… в цене» — один компонент `InPriceToggle`, подпись показывает прибавленную сумму или причину, почему 0. Тесты: `32_supplier_railway_in_price.test.sql`, `fx-convert-deal.test.ts`. Проверено на dev (KZ/26/201), на прод — без 00175 (заявки ↔ сделки остаются на dev на тестировании).
+- **Type:** [FORMULA] + [SCHEMA] + [UI-FIELD]
+- **Before → After:** До: supplier_balance = отгружено − оплата + [Сумма 1, если «ЖД в цене»] + [Сумма 3, если «Грузоотпр. в цене»] (обе — при равных валютах поставщика и логистики); Сумма 2 не входила никогда (00150). После: + [Сумма 2 = supplier_railway_amount, если «ЖД поставщика в цене» и валюты равны]. Умолчание FALSE — существующие балансы не меняются. KZ/26/201 на dev: 53 820 000 → 56 617 951,17 при поднятой галочке.
+- **Client reason:** клиент 2026-09-28, KZ/26/201: «ж/д тариф не плюсуется на сальдо, ЖД и грузоотправление не работают». Тариф введён как ЖД поставщика (Сумма 2); владелец выбрал вариант 1 — отдельная галочка.
+- **Rebuild impact:** PRICING / DATA-MODEL (баланс поставщика), ACCEPTANCE-SCENARIOS (тест 32)
+
 ### 2026-09-28 — Дислокация: читается выгрузка слежения Prologistic
 - **What changed:** новый `src/lib/parsers/dislocation-tracking.ts` (`parseAnyDislocationSheet` выбирает формат по шапке, `parseTrackingSnapshotAt`), загрузка (`dislocation/upload/page.tsx`) использует его. Тест `dislocation-tracking-parser.test.ts`.
 - **Type:** [BEHAVIOR]
