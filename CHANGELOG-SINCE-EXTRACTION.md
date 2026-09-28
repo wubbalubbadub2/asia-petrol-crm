@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-28 — «Сверхнормативы / Штрафы»: сделка выбирается из списка
+- **What changed:** `src/app/(dashboard)/surcharges/page.tsx` — поле «№ сделки» (свободный текст) заменено выбором сделки из справочника (`fetchDealCodeIndex`, постранично, с архивными). Форма пишет `surcharges.deal_id` (колонка есть с 00007, раньше не заполнялась) и дублирует код в `deal_passport_number`. В списке код связанной сделки — ссылка на паспорт.
+- **Type:** [UI-FIELD]
+- **Before → After:** До: «№ сделки» вводился руками, `deal_id` всегда пустой. После: сделка выбирается, `deal_id` заполняется; у старых записей введённый текст остаётся и показывается подсказкой, пока не выбрана сделка.
+- **Client reason:** клиент 2026-09-28: «можно сюда добавить выбор сделки».
+- **Rebuild impact:** FIELD-OWNERSHIP (surcharges.deal_id теперь заполняет форма)
+
 ### 2026-09-27 — Дислокация: загрузка снимков и сверхнормативный простой вагонов (этап 1)
 - **What changed:** миграция `00174_rail_dislocation_demurrage.sql` — таблицы `rail_station_aliases`, `rail_dislocation_uploads`, `rail_dislocation_rows`, `rail_price_protocols`, `rail_price_protocol_routes`, `rail_stay_overrides`, `rail_wagon_trips` (пересчитывается функцией `rail_refresh_trips`); функции `rail_norm_station`, `rail_upload_dislocation`, триггеры пересчёта рейсов на удаление файла и правку справочника станций; представления `rail_dislocation_snapshots`, `rail_wagon_stays`, `rail_demurrage`, `rail_demurrage_by_month`, `rail_demurrage_registry`; индекс `idx_shipment_registry_wagon_trim`. Раздел «Дислокация» (`src/app/(dashboard)/dislocation/*`): загрузка файлов, простой, лента вагона, протоколы цены. Выгрузка реестра в формате PTC (`src/lib/exports/demurrage-registry-excel.ts`). Тесты: `31_rail_demurrage.test.sql`, `dislocation-upload.test.ts`, `demurrage-registry-export.test.ts`. Спека: `docs/superpowers/specs/2026-09-27-dislocation-demurrage-design.md`.
 - **Type:** [SCHEMA] + [FORMULA] + [UI-FIELD] + [EXPORT]

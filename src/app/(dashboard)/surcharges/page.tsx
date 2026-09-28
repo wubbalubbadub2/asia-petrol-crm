@@ -20,12 +20,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { fetchDealCodeIndex } from "@/lib/hooks/use-deals";
+import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 
 type ApprovalStatus = "Рассмотрено" | "на рассмотрении";
 
 type SurchargeRecord = {
   id: string;
+  /** Связь со сделкой (00007). Раньше форма её не заполняла — только текст. */
+  deal_id: string | null;
+  /** Код сделки текстом: для старых записей, введённых руками, и для поиска. */
   deal_passport_number: string | null;
   reason: string | null;
   amount: number | null;
@@ -75,7 +81,9 @@ function SurchargeDialog({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const [dealPassportNumber, setDealPassportNumber] = useState("");
+  const [dealId, setDealId] = useState("");
+  const [dealOptions, setDealOptions] = useState<SelectOption[]>([]);
+  const [dealCodes, setDealCodes] = useState<Map<string, string>>(new Map());
   const [reason, setReason] = useState("");
   const [amount, setAmount] = useState("");
   const [period, setPeriod] = useState("");
@@ -91,7 +99,7 @@ function SurchargeDialog({
   // если оператор откроет разные записи подряд.
   useEffect(() => {
     if (!open) return;
-    setDealPassportNumber(editing?.deal_passport_number ?? "");
+    setDealId(editing?.deal_id ?? "");
     setReason(editing?.reason ?? "");
     setAmount(editing?.amount != null ? String(editing.amount) : "");
     setPeriod(editing?.period ?? "");
@@ -102,6 +110,35 @@ function SurchargeDialog({
     setPaidAmount(editing?.paid_amount != null ? String(editing.paid_amount) : "");
   }, [open, editing]);
 
+  // Справочник сделок — постранично и с кэшем (fetchDealCodeIndex): сделок
+  // больше 1000, а PostgREST режет ответ на max-rows. Архивные тоже нужны:
+  // у старой записи код архивной сделки должен отрисоваться.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchDealCodeIndex()
+      .then((index) => {
+        if (cancelled) return;
+        const refs = [...index.values()].filter((d) => d.deal_code);
+        setDealCodes(new Map(refs.map((d) => [d.id, d.deal_code as string])));
+        setDealOptions(
+          refs.map((d) => ({
+            value: d.id,
+            label: d.is_archived ? `${d.deal_code} (архив)` : (d.deal_code as string),
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Не удалось загрузить список сделок");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Старая запись: сделка введена руками и со справочником не связана.
+  const legacyDealText = !editing?.deal_id ? editing?.deal_passport_number ?? null : null;
+
   async function handleSave() {
     if (!reason.trim()) {
       toast.error("Укажите причину");
@@ -110,7 +147,14 @@ function SurchargeDialog({
     setSaving(true);
     const sb = createClient();
     const payload = {
-      deal_passport_number: dealPassportNumber || null,
+      deal_id: dealId || null,
+      // Код дублируем текстом: по нему работает поиск в списке. Без выбора
+      // сделки у старой записи остаётся то, что было введено руками.
+      deal_passport_number: dealId
+        ? dealCodes.get(dealId) ??
+          // Справочник ещё не догрузился, а сделка не менялась — код прежний.
+          (dealId === editing?.deal_id ? editing?.deal_passport_number ?? null : null)
+        : legacyDealText,
       reason,
       amount: amount ? parseFloat(amount) : null,
       period: period || null,
@@ -157,13 +201,21 @@ function SurchargeDialog({
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-[12px] text-stone-500">№ сделки</Label>
-            <Input
-              value={dealPassportNumber}
-              onChange={(e) => setDealPassportNumber(e.target.value)}
-              placeholder="AP-2024-001"
-              className="h-8 text-[13px]"
+            <Label className="text-[12px] text-stone-500">Сделка</Label>
+            <SearchableSelect
+              options={dealOptions}
+              value={dealId}
+              onChange={setDealId}
+              placeholder={dealOptions.length ? "Выберите сделку" : "Загрузка сделок…"}
+              searchPlaceholder="Код сделки, например KG/26/700"
+              emptyMessage="Сделка не найдена"
+              triggerClassName="h-8 w-full text-[13px]"
             />
+            {legacyDealText && !dealId ? (
+              <p className="mt-1 text-[11px] text-stone-400">
+                Введено вручную: {legacyDealText} — выберите сделку из списка, чтобы связать
+              </p>
+            ) : null}
           </div>
           <div>
             <Label className="text-[12px] text-stone-500">Период</Label>
@@ -296,6 +348,7 @@ export default function SurchargesPage() {
       .from("surcharges")
       .select(
         `id,
+         deal_id,
          deal_passport_number,
          reason,
          amount,
@@ -397,7 +450,18 @@ export default function SurchargesPage() {
                   title="Кликните, чтобы отредактировать"
                 >
                   <TableCell className="font-mono text-[12px] text-amber-700">
-                    {rec.deal_passport_number ?? "—"}
+                    {rec.deal_id ? (
+                      <Link
+                        href={`/deals/${rec.deal_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="hover:underline"
+                        title="Открыть паспорт сделки"
+                      >
+                        {rec.deal_passport_number ?? "сделка"}
+                      </Link>
+                    ) : (
+                      <span className="text-stone-500">{rec.deal_passport_number ?? "—"}</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-[12px] text-stone-700 max-w-[200px] truncate">
                     {rec.reason ?? "—"}
