@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { parseDislocationSheet } from "@/lib/parsers/dislocation";
+import { parseAnyDislocationSheet, parseTrackingSnapshotAt } from "@/lib/parsers/dislocation-tracking";
 import {
   collectStationNames,
   parseSnapshotAtFromFileName,
@@ -70,9 +70,11 @@ export default function DislocationUploadPage() {
       try {
         const wb = XLSX.read(buffer, { cellDates: false });
         const sheet = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) as unknown[][];
-        const res = parseDislocationSheet(sheet);
+        const res = parseAnyDislocationSheet(sheet);
+        // Дата снимка: имя файла 1С → имя файла слежения → подвал файла.
+        if (!base.snapshotAt) base.snapshotAt = parseTrackingSnapshotAt(file.name) ?? res.snapshotAt ?? "";
         if (res.missingColumns.length > 0) {
-          base.error = `Формат не поддерживается: нет колонок ${res.missingColumns.join(", ")}. Этап 1 читает рассылку 1С («Рассылка дислокации»).`;
+          base.error = `Формат не поддерживается: нет колонок ${res.missingColumns.join(", ")}. Читаются рассылка 1С («Рассылка дислокации») и выгрузка слежения («dislocation_…»).`;
         } else if (res.rows.length === 0) {
           base.error = "В файле нет вагонов";
         }

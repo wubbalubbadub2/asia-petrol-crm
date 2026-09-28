@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-09-28 — Дислокация: читается выгрузка слежения Prologistic
+- **What changed:** новый `src/lib/parsers/dislocation-tracking.ts` (`parseAnyDislocationSheet` выбирает формат по шапке, `parseTrackingSnapshotAt`), загрузка (`dislocation/upload/page.tsx`) использует его. Тест `dislocation-tracking-parser.test.ts`.
+- **Type:** [BEHAVIOR]
+- **Before → After:** До: файл «dislocation_…xlsx» Prologistic отклонялся — «Формат не поддерживается». После: читается; накладной в файле нет — рейс определяется датой отправки («б/н ГГГГ-ММ-ДД ЧЧ:ММ»), груж/порож — по весу > 0, суффикс дороги у станций («, КЗХ») снимается, дата снимка — из имени файла или подвала «Дата создания». Рассылка 1С читается как прежде.
+- **Client reason:** клиент 2026-09-28 на показе: файл Prologistic не загружается.
+- **Rebuild impact:** presentation / импорт; схема и формулы не менялись
+
 ### 2026-09-28 — «Сверхнормативы / Штрафы»: сделка выбирается из списка
 - **What changed:** `src/app/(dashboard)/surcharges/page.tsx` — поле «№ сделки» (свободный текст) заменено выбором сделки из справочника (`fetchDealCodeIndex`, постранично, с архивными). Форма пишет `surcharges.deal_id` (колонка есть с 00007, раньше не заполнялась) и дублирует код в `deal_passport_number`. В списке код связанной сделки — ссылка на паспорт.
 - **Type:** [UI-FIELD]
