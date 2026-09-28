@@ -289,6 +289,55 @@ export function fetchDealCodeIndex(): Promise<Map<string, DealCodeRef>> {
   return dealCodeIndexPromise;
 }
 
+export type DealOptionsStatus = "loading" | "ready" | "error";
+
+/**
+ * Варианты для выбора сделки (заявки на перевозку, сверхнормативы).
+ * Пока справочник грузится, список пуст — и поиск честно отвечал
+ * «не найдено». Поэтому наружу отдаём и статус: вызывающий показывает
+ * «Загрузка сделок…» или причину ошибки (клиент 2026-09-28: «сделка не
+ * найдена» на dev, где справочник идёт ~3 с из Мумбаи).
+ */
+export function useDealOptions() {
+  const [state, setState] = useState<{
+    status: DealOptionsStatus;
+    options: { value: string; label: string }[];
+    codes: Map<string, string>;
+  }>({ status: "loading", options: [], codes: new Map() });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDealCodeIndex()
+      .then((index) => {
+        if (cancelled) return;
+        const refs = [...index.values()].filter((d) => d.deal_code);
+        setState({
+          status: "ready",
+          options: refs.map((d) => ({
+            value: d.id,
+            label: d.is_archived ? `${d.deal_code} (архив)` : (d.deal_code as string),
+          })),
+          codes: new Map(refs.map((d) => [d.id, d.deal_code as string])),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setState((prev) => ({ ...prev, status: "error" }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const emptyMessage =
+    state.status === "loading"
+      ? "Загрузка сделок…"
+      : state.status === "error"
+        ? "Список сделок не загрузился — обновите страницу"
+        : "Сделка не найдена";
+
+  return { ...state, emptyMessage };
+}
+
 /** Подпись сделки в списке взаимозачётов: код, а если его нет — хвост id. */
 export function dealCodeLabel(id: string, index: Map<string, DealCodeRef> | null): string {
   return index?.get(id)?.deal_code ?? id.slice(0, 8);

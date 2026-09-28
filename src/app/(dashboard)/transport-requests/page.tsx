@@ -17,7 +17,7 @@ import { CARRIED_OVER_COLUMNS } from "@/components/transport/request-form";
 import { deleteRequestWithFiles } from "@/lib/transport/storage";
 import { useRole } from "@/lib/role-context";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { fetchDealCodeIndex } from "@/lib/hooks/use-deals";
+import { useDealOptions } from "@/lib/hooks/use-deals";
 
 /**
  * Список заявок на перевозку.
@@ -74,7 +74,6 @@ export default function TransportRequestsPage() {
   const router = useRouter();
   const { isAdmin, isWritable } = useRole();
   const [dealFilter, setDealFilter] = useState<DealFilter>("all");
-  const [dealOptions, setDealOptions] = useState<{ value: string; label: string }[]>([]);
   const [linking, setLinking] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,27 +100,7 @@ export default function TransportRequestsPage() {
   }, [load]);
 
   // Справочник сделок для привязки прямо из списка — постранично, с кэшем.
-  useEffect(() => {
-    let cancelled = false;
-    fetchDealCodeIndex()
-      .then((index) => {
-        if (cancelled) return;
-        setDealOptions(
-          [...index.values()]
-            .filter((d) => d.deal_code)
-            .map((d) => ({
-              value: d.id,
-              label: d.is_archived ? `${d.deal_code} (архив)` : (d.deal_code as string),
-            })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) toast.error("Не удалось загрузить список сделок");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const deals = useDealOptions();
 
   /** Привязка из списка: добавляем новые сделки, снимаем убранные. */
   async function setRequestDeals(r: Row, next: string[]) {
@@ -130,6 +109,7 @@ export default function TransportRequestsPage() {
     const removed = current.filter((id) => !next.includes(id));
     setLinking(r.id);
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = sbRef.current as any;
       if (removed.length > 0) {
         const { error } = await sb
@@ -334,12 +314,12 @@ export default function TransportRequestsPage() {
                       {isWritable ? (
                         <SearchableSelect
                           multi
-                          options={dealOptions}
+                          options={deals.options}
                           value={r.deals.map((d) => d.deal_id)}
                           onChange={(next) => setRequestDeals(r, next)}
                           placeholder={linking === r.id ? "Сохранение…" : "Привязать сделку"}
                           searchPlaceholder="Код сделки"
-                          emptyMessage="Сделка не найдена"
+                          emptyMessage={deals.emptyMessage}
                           multiSummary={(n) => `Изменить (${n})`}
                           clearLabel="Отвязать все"
                           triggerClassName="h-7 w-44 text-[11px]"

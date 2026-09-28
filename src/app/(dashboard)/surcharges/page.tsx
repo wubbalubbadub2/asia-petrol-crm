@@ -22,8 +22,8 @@ import {
 } from "@/components/ui/table";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { fetchDealCodeIndex } from "@/lib/hooks/use-deals";
-import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
+import { useDealOptions } from "@/lib/hooks/use-deals";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type ApprovalStatus = "Рассмотрено" | "на рассмотрении";
 
@@ -82,8 +82,6 @@ function SurchargeDialog({
   const [deleting, setDeleting] = useState(false);
 
   const [dealId, setDealId] = useState("");
-  const [dealOptions, setDealOptions] = useState<SelectOption[]>([]);
-  const [dealCodes, setDealCodes] = useState<Map<string, string>>(new Map());
   const [reason, setReason] = useState("");
   const [amount, setAmount] = useState("");
   const [period, setPeriod] = useState("");
@@ -113,28 +111,8 @@ function SurchargeDialog({
   // Справочник сделок — постранично и с кэшем (fetchDealCodeIndex): сделок
   // больше 1000, а PostgREST режет ответ на max-rows. Архивные тоже нужны:
   // у старой записи код архивной сделки должен отрисоваться.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    fetchDealCodeIndex()
-      .then((index) => {
-        if (cancelled) return;
-        const refs = [...index.values()].filter((d) => d.deal_code);
-        setDealCodes(new Map(refs.map((d) => [d.id, d.deal_code as string])));
-        setDealOptions(
-          refs.map((d) => ({
-            value: d.id,
-            label: d.is_archived ? `${d.deal_code} (архив)` : (d.deal_code as string),
-          })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) toast.error("Не удалось загрузить список сделок");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+  const deals = useDealOptions();
+  const dealCodes = deals.codes;
 
   // Старая запись: сделка введена руками и со справочником не связана.
   const legacyDealText = !editing?.deal_id ? editing?.deal_passport_number ?? null : null;
@@ -203,12 +181,12 @@ function SurchargeDialog({
           <div>
             <Label className="text-[12px] text-stone-500">Сделка</Label>
             <SearchableSelect
-              options={dealOptions}
+              options={deals.options}
               value={dealId}
               onChange={setDealId}
-              placeholder={dealOptions.length ? "Выберите сделку" : "Загрузка сделок…"}
+              placeholder={deals.status === "loading" ? "Загрузка сделок…" : "Выберите сделку"}
               searchPlaceholder="Код сделки, например KG/26/700"
-              emptyMessage="Сделка не найдена"
+              emptyMessage={deals.emptyMessage}
               triggerClassName="h-8 w-full text-[13px]"
             />
             {legacyDealText && !dealId ? (
