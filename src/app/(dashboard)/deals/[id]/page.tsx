@@ -252,12 +252,26 @@ function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy, onSa
   );
 }
 
-// "ЖД в цене" — when ON the railway invoice_amount is added to
-// supplier_balance by the DB trigger (see migrations 00052/00063).
-// Rationale: the supplier's price already includes the railway, so we
-// owe him the railway amount on top of the goods value.
-function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
-  dealId: string; value: boolean; editing: boolean; onSaved?: () => void;
+/**
+ * Галочки «… в цене» в блоке «Поставщик»: когда поднята, сумма плюсуется к
+ * балансу поставщика триггером БД — и только при равных валютах поставщика
+ * и логистики (00052/00063/00112/00120/00176):
+ *   • «ЖД в цене»              — Сумма 1, invoice_amount (логисты);
+ *   • «Грузоотправитель в цене» — Сумма 3, additional_expenses_amount;
+ *   • «ЖД поставщика в цене»    — Сумма 2, supplier_railway_amount (00176).
+ * Подпись показывает, СКОЛЬКО реально прибавлено, или почему ничего: клиент
+ * 2026-09-28 (KZ/26/201) видел «Да (плюсует к балансу)» при нулевой сумме.
+ */
+function InPriceToggle({ dealId, label, field, value, amount, sameCurrency, currencySymbol, editing, onSaved }: {
+  dealId: string;
+  label: string;
+  field: "railway_in_price" | "additional_expenses_in_price" | "supplier_railway_in_price";
+  value: boolean;
+  amount: number | null | undefined;
+  sameCurrency: boolean;
+  currencySymbol: string;
+  editing: boolean;
+  onSaved?: () => void;
 }) {
   const pendingVal = useRef<boolean | undefined>(undefined);
   const [, forceRender] = useState(0);
@@ -266,9 +280,18 @@ function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
   if (pendingVal.current !== undefined && value === pendingVal.current) {
     pendingVal.current = undefined;
   }
+  const sum = Number(amount ?? 0);
+  const fmt = (n: number) => n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const note = !shown
+    ? "Нет"
+    : !sameCurrency
+      ? "Да — не плюсуется: валюта поставщика ≠ валюте логистики"
+      : sum === 0
+        ? "Да — плюсует 0: сумма не заполнена"
+        : `Да — плюсует ${fmt(sum)} ${currencySymbol}`;
   return (
     <div>
-      <span className="text-[11px] text-stone-400 block">ЖД в цене</span>
+      <span className="text-[11px] text-stone-400 block">{label}</span>
       <label className="inline-flex items-center gap-1.5 cursor-pointer">
         <input
           type="checkbox"
@@ -278,7 +301,7 @@ function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
             const nv = e.target.checked;
             pendingVal.current = nv;
             forceRender((n) => n + 1);
-            updateDeal(dealId, { railway_in_price: nv })
+            updateDeal(dealId, { [field]: nv } as Parameters<typeof updateDeal>[1])
               .then(() => { onSaved?.(); ctxReload?.(); })
               .catch(() => {
                 pendingVal.current = undefined;
@@ -287,51 +310,8 @@ function RailwayInPriceToggle({ dealId, value, editing, onSaved }: {
           }}
           className={`h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 ${editing ? "" : "cursor-default"}`}
         />
-        <span className="text-[12px] text-stone-700">
-          {shown ? "Да (плюсует к балансу)" : "Нет"}
-        </span>
-      </label>
-    </div>
-  );
-}
-
-// «Грузоотправитель в цене» — переименовано 2026-07-10, было «Доп.
-// расходы в цене». Логика та же: когда ON, сумма всех
-// shipment_registry.additional_expenses по сделке плюсуется к
-// supplier_balance (см. миграцию 00112).
-function AdditionalExpensesInPriceToggle({ dealId, value, editing, onSaved }: {
-  dealId: string; value: boolean; editing: boolean; onSaved?: () => void;
-}) {
-  const pendingVal = useRef<boolean | undefined>(undefined);
-  const [, forceRender] = useState(0);
-  const shown = pendingVal.current ?? value;
-  const ctxReload = useDealReload();
-  if (pendingVal.current !== undefined && value === pendingVal.current) {
-    pendingVal.current = undefined;
-  }
-  return (
-    <div>
-      <span className="text-[11px] text-stone-400 block">Грузоотправитель в цене</span>
-      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={shown}
-          disabled={!editing}
-          onChange={(e) => {
-            const nv = e.target.checked;
-            pendingVal.current = nv;
-            forceRender((n) => n + 1);
-            updateDeal(dealId, { additional_expenses_in_price: nv } as Parameters<typeof updateDeal>[1])
-              .then(() => { onSaved?.(); ctxReload?.(); })
-              .catch(() => {
-                pendingVal.current = undefined;
-                forceRender((n) => n + 1);
-              });
-          }}
-          className={`h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 ${editing ? "" : "cursor-default"}`}
-        />
-        <span className="text-[12px] text-stone-700">
-          {shown ? "Да (плюсует к балансу)" : "Нет"}
+        <span className={`text-[12px] ${shown && (!sameCurrency || sum === 0) ? "text-amber-700" : "text-stone-700"}`}>
+          {note}
         </span>
       </label>
     </div>
@@ -955,8 +935,20 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           {/* Клиент 2026-08-12: обе галочки переехали сюда из «Логистики».
               Место логичное — они прибавляют суммы именно к балансу
               поставщика, а не к логистике. Формула не менялась. */}
-          <RailwayInPriceToggle dealId={deal.id} value={!!deal.railway_in_price} editing={editing} onSaved={reload} />
-          <AdditionalExpensesInPriceToggle dealId={deal.id} value={!!deal.additional_expenses_in_price} editing={editing} onSaved={reload} />
+          <InPriceToggle dealId={deal.id} label="ЖД в цене" field="railway_in_price"
+            value={!!deal.railway_in_price} amount={deal.invoice_amount}
+            sameCurrency={deal.supplier_currency === deal.logistics_currency}
+            currencySymbol={supplierCurrencySymbol} editing={editing} onSaved={reload} />
+          <InPriceToggle dealId={deal.id} label="Грузоотправитель в цене" field="additional_expenses_in_price"
+            value={!!deal.additional_expenses_in_price} amount={deal.additional_expenses_amount}
+            sameCurrency={deal.supplier_currency === deal.logistics_currency}
+            currencySymbol={supplierCurrencySymbol} editing={editing} onSaved={reload} />
+          {/* 00176 (клиент 2026-09-28, KZ/26/201): Сумма 2 — ЖД поставщика. */}
+          <InPriceToggle dealId={deal.id} label="ЖД поставщика в цене" field="supplier_railway_in_price"
+            value={!!(deal as { supplier_railway_in_price?: boolean | null }).supplier_railway_in_price}
+            amount={deal.supplier_railway_amount}
+            sameCurrency={deal.supplier_currency === deal.logistics_currency}
+            currencySymbol={supplierCurrencySymbol} editing={editing} onSaved={reload} />
           {/* Anchor date for «Средний месяц» pickup — migration 00085. */}
           <Field label="Дата котировки (ср. месяц)" value={deal.avg_month_date} inputType="date" editing={editing} field="avg_month_date" dealId={deal.id} />
         </div>

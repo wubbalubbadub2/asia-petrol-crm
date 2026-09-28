@@ -168,7 +168,7 @@ describe("convertDeal — галочки «в цене»", () => {
     prices: [{ deal_id: "d1", side: "supplier", amount: 1000, shipment_date: "2026-06-20" }],
     payments: [],
     logistics: [
-      { deal_id: "d1", loading_date: "2026-06-20", date: "2026-06-20", shipped_tonnage_amount: 200, additional_expenses: 50, currency: null },
+      { deal_id: "d1", loading_date: "2026-06-20", date: "2026-06-20", shipped_tonnage_amount: 200, additional_expenses: 50, supplier_railway_amount: 300, currency: null },
     ],
   };
 
@@ -180,6 +180,22 @@ describe("convertDeal — галочки «в цене»", () => {
   it("грузоотправитель в цене плюсуется к балансу", () => {
     const row = convertDeal(makeDeal({ additional_expenses_in_price: true } as Partial<Deal>), events, fx, "USD");
     expect(row.supplierBalance).toBe(1050);
+  });
+
+  // 00176, клиент 2026-09-28 (KZ/26/201): Сумма 2 — своей галочкой.
+  it("жд поставщика в цене плюсует Сумму 2", () => {
+    const row = convertDeal(makeDeal({ supplier_railway_in_price: true } as Partial<Deal>), events, fx, "USD");
+    expect(row.supplierBalance).toBe(1300);
+  });
+
+  it("без галочки Сумма 2 в баланс не входит", () => {
+    const row = convertDeal(makeDeal(), events, fx, "USD");
+    expect(row.supplierBalance).toBe(1000);
+  });
+
+  it("жд поставщика не плюсуется при разных валютах — как в паспорте", () => {
+    const deal = makeDeal({ supplier_railway_in_price: true, logistics_currency: "KZT" } as Partial<Deal>);
+    expect(convertDeal(deal, events, fx, "USD").supplierBalance).toBe(1000);
   });
 
   it("галочка не срабатывает, когда исходные валюты сделки и логистики разные", () => {

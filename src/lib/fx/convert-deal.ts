@@ -46,6 +46,8 @@ export type LogisticsRow = {
   date: string | null;           // исходящее СНТ — фолбэк, если входящей нет
   shipped_tonnage_amount: number | null;
   additional_expenses: number | null;
+  /** Сумма 2 — ЖД поставщика (00150). В баланс — по галочке 00176. */
+  supplier_railway_amount?: number | null;
   currency: string | null;
 };
 
@@ -191,18 +193,29 @@ export function convertDeal(
     events.logistics, (r) => r.additional_expenses, logisticsDate,
     logisticsCur, fx, target, fallback,
   );
+  const supplierRailAmount = sumConverted(
+    events.logistics, (r) => r.supplier_railway_amount ?? null, logisticsDate,
+    logisticsCur, fx, target, fallback,
+  );
 
   // Формула паспорта (00112). Галочки смотрят на ИСХОДНЫЕ валюты.
   const railInPrice = deal.railway_in_price === true && deal.supplier_currency === deal.logistics_currency;
   const shipperInPrice = deal.additional_expenses_in_price === true && deal.supplier_currency === deal.logistics_currency;
+  // «ЖД поставщика в цене» (00176) — то же условие валют, что у двух других.
+  // Колонки ещё нет в сгенерированных типах, читаем узким приведением.
+  const supplierRailInPrice =
+    (deal as { supplier_railway_in_price?: boolean | null }).supplier_railway_in_price === true
+    && deal.supplier_currency === deal.logistics_currency;
   const balanceParts: (number | null)[] = [supplierAmount, supplierPayment];
   if (railInPrice) balanceParts.push(railAmount);
   if (shipperInPrice) balanceParts.push(shipperAmount);
+  if (supplierRailInPrice) balanceParts.push(supplierRailAmount);
   const supplierBalance = balanceParts.some((x) => x == null)
     ? null
     : (supplierAmount as number) - (supplierPayment as number)
       + (railInPrice ? (railAmount as number) : 0)
-      + (shipperInPrice ? (shipperAmount as number) : 0);
+      + (shipperInPrice ? (shipperAmount as number) : 0)
+      + (supplierRailInPrice ? (supplierRailAmount as number) : 0);
 
   const buyerDebt = buyerPayment == null || buyerAmount == null
     ? null
