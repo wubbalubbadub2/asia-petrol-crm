@@ -3,7 +3,7 @@
 -- Клиент 2026-09-28, сделка KZ/26/201: «ж/д тариф не плюсуется на
 -- сальдо». Тариф там введён как «ЖД поставщика» (Сумма 2, 00150), а она
 -- по 00150 в баланс не входила. Выбран вариант 1: отдельная галочка,
--- по умолчанию снята — ни один существующий баланс не меняется, пока её
+-- по умолчанию снята (с 00177 — поднята у новых сделок) — ни один существующий баланс не меняется, пока её
 -- не поднимут. Условие валют — как у двух других галочек (00120).
 
 BEGIN;
@@ -23,16 +23,17 @@ DECLARE
 BEGIN
   SELECT column_default INTO v_def FROM information_schema.columns
    WHERE table_name = 'deals' AND column_name = 'supplier_railway_in_price';
-  IF v_def IS DISTINCT FROM 'false' THEN
-    RAISE EXCEPTION 'умолчание supplier_railway_in_price: %, ожидали false', v_def;
+  -- 00177: умолчание TRUE (клиент 2026-09-29: «по умолчанию галочки должны стоять»).
+  IF v_def IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'умолчание supplier_railway_in_price: %, ожидали true', v_def;
   END IF;
 
   INSERT INTO deals (id, deal_type, deal_number, year, month, supplier_id, buyer_id,
                      supplier_currency, logistics_currency,
-                     railway_in_price, additional_expenses_in_price)
+                     railway_in_price, additional_expenses_in_price, supplier_railway_in_price)
   VALUES (v_deal, 'KZ', 9976, 2099, 'июнь',
           '00000000-0000-0000-0000-00000000ab01', '00000000-0000-0000-0000-00000000ab02',
-          'KZT', 'KZT', TRUE, TRUE);
+          'KZT', 'KZT', TRUE, TRUE, FALSE);
 
   -- Как на KZ/26/201: одна строка, налив 119,6 т, тариф ЖД поставщика 23 316,2598.
   INSERT INTO shipment_registry (deal_id, registry_type, wagon_number,
@@ -44,10 +45,8 @@ BEGIN
     RAISE EXCEPTION 'фикстура: Сумма 2 не посчиталась (%)', v_amount;
   END IF;
 
-  -- 1. Галочка снята (умолчание): Сумма 2 в баланс не входит.
-  IF (SELECT supplier_railway_in_price FROM deals WHERE id = v_deal) IS DISTINCT FROM FALSE THEN
-    RAISE EXCEPTION 'новая сделка: галочка должна быть снята';
-  END IF;
+  -- 1. Галочка снята (явно, в фикстуре): Сумма 2 в баланс не входит —
+  --    v_base посчитан при снятой галочке.
 
   -- 2. Подняли — баланс вырос ровно на Сумму 2.
   UPDATE deals SET supplier_railway_in_price = TRUE WHERE id = v_deal;

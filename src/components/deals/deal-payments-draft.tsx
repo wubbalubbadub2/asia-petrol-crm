@@ -147,7 +147,8 @@ function SideList({
               <span className="flex flex-wrap gap-x-3 font-mono tabular-nums font-bold text-stone-900">
                 {[...totals.entries()].map(([code, v]) => (
                   <span key={code}>
-                    {v.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} {currencySymbol(code)}
+                    {/* Суммы — 2 знака (канон клиента 2026-09-22). */}
+                    {v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol(code)}
                   </span>
                 ))}
               </span>

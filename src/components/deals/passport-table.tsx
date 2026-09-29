@@ -63,7 +63,7 @@ function shipmentLines(
 // перемножает «цена × объём» тем числом, которое видит на экране.
 function formatNum(val: number | null | undefined): string {
   if (val == null || val === 0) return "";
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** Ставка за единицу (цена, тариф) — 3 знака, 0 → пусто. */
@@ -83,7 +83,7 @@ function formatVol(val: number | null | undefined): string {
 // legitimate zero). Суммы — 2 знака (канон 2026-09-22).
 function formatComputedNum(val: number | null | undefined): string {
   if (val == null) return "";
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** Как formatComputedNum, но для ставок за единицу — 3 знака. */
@@ -1999,9 +1999,9 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   supplier_price:             { label: "Цена (Поставщик)",           decimals: 3 },
   supplier_shipped_amount:    { label: "Приход, сумма (Поставщик)",  decimals: 2 },
   supplier_shipped_volume:    { label: "Приход, тонн (Поставщик)",   decimals: 3 },
-  supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 3 },
-  supplier_offset_total:      { label: "Взаимозачет (Поставщик)",    decimals: 3 },
-  supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 3 },
+  supplier_payment_gross:     { label: "Оплата (Поставщик)",         decimals: 2 },
+  supplier_offset_total:      { label: "Взаимозачет (Поставщик)",    decimals: 2 },
+  supplier_balance:           { label: "Баланс (Поставщик)",         decimals: 2 },
   buyer_contracted_volume:    { label: "Объем контракт (Покупатель)", decimals: 3 },
   buyer_contracted_amount:    { label: "Сумма дог. (Покупатель)",     decimals: 2 },
   buyer_price:                { label: "Цена (Покупатель)",           decimals: 3 },
@@ -2016,11 +2016,11 @@ const NUMERIC_COLS: Record<string, { label: string; decimals: 2 | 3 }> = {
   actual_tariff:              { label: "Тариф факт (Логистика)",      decimals: 3 },
   shipper_actual_tariff:      { label: "Тариф грузоотправления",     decimals: 3 },
   preliminary_tonnage:        { label: "Объем план (Логистика)",      decimals: 3 },
-  preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 3 },
+  preliminary_amount:         { label: "Предв. сумма (Логистика)",    decimals: 2 },
   actual_shipped_volume:      { label: "Факт объем (Логистика)",      decimals: 3 },
-  invoice_amount:             { label: "Сумма (логисты)",             decimals: 3 },
-  supplier_railway_amount:    { label: "Сумма ЖД (поставщик)",        decimals: 3 },
-  additional_expenses_amount: { label: "Сумма грузоотправления",      decimals: 3 },
+  invoice_amount:             { label: "Сумма (логисты)",             decimals: 2 },
+  supplier_railway_amount:    { label: "Сумма ЖД (поставщик)",        decimals: 2 },
+  additional_expenses_amount: { label: "Сумма грузоотправления",      decimals: 2 },
 };
 
 function formatWithDecimals(v: number, decimals: 2 | 3): string {
