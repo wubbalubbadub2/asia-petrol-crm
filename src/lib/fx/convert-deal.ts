@@ -46,7 +46,7 @@ export type LogisticsRow = {
   date: string | null;           // исходящее СНТ — фолбэк, если входящей нет
   shipped_tonnage_amount: number | null;
   additional_expenses: number | null;
-  /** Сумма 2 — ЖД поставщика (00150). В баланс — по галочке 00176. */
+  /** Сумма ЖД поставщика (00150). В баланс — по галочке «ЖД в цене» (00179). */
   supplier_railway_amount?: number | null;
   currency: string | null;
 };
@@ -198,24 +198,26 @@ export function convertDeal(
     logisticsCur, fx, target, fallback,
   );
 
-  // Формула паспорта (00112). Галочки смотрят на ИСХОДНЫЕ валюты.
+  // Формула паспорта (00179). Галочки смотрят на ИСХОДНЫЕ валюты.
+  //   «ЖД в цене»             → Сумма ЖД поставщика (supplierRailAmount);
+  //   «Грузоотпр. в цене»     → Сумма грузоотправления (shipperAmount);
+  //   «Сумма логистов в цене» → Сумма (логисты) (railAmount).
   const railInPrice = deal.railway_in_price === true && deal.supplier_currency === deal.logistics_currency;
   const shipperInPrice = deal.additional_expenses_in_price === true && deal.supplier_currency === deal.logistics_currency;
-  // «ЖД поставщика в цене» (00176) — то же условие валют, что у двух других.
   // Колонки ещё нет в сгенерированных типах, читаем узким приведением.
-  const supplierRailInPrice =
-    (deal as { supplier_railway_in_price?: boolean | null }).supplier_railway_in_price === true
+  const logisticsInPrice =
+    (deal as { logistics_amount_in_price?: boolean | null }).logistics_amount_in_price === true
     && deal.supplier_currency === deal.logistics_currency;
   const balanceParts: (number | null)[] = [supplierAmount, supplierPayment];
-  if (railInPrice) balanceParts.push(railAmount);
+  if (railInPrice) balanceParts.push(supplierRailAmount);
   if (shipperInPrice) balanceParts.push(shipperAmount);
-  if (supplierRailInPrice) balanceParts.push(supplierRailAmount);
+  if (logisticsInPrice) balanceParts.push(railAmount);
   const supplierBalance = balanceParts.some((x) => x == null)
     ? null
     : (supplierAmount as number) - (supplierPayment as number)
-      + (railInPrice ? (railAmount as number) : 0)
+      + (railInPrice ? (supplierRailAmount as number) : 0)
       + (shipperInPrice ? (shipperAmount as number) : 0)
-      + (supplierRailInPrice ? (supplierRailAmount as number) : 0);
+      + (logisticsInPrice ? (railAmount as number) : 0);
 
   const buyerDebt = buyerPayment == null || buyerAmount == null
     ? null

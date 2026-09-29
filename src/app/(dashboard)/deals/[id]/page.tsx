@@ -255,17 +255,17 @@ function SectionCurrencyPicker({ editing, value, dealId, field, syncLegacy, onSa
 /**
  * Галочки «… в цене» в блоке «Поставщик»: когда поднята, сумма плюсуется к
  * балансу поставщика триггером БД — и только при равных валютах поставщика
- * и логистики (00052/00063/00112/00120/00176):
- *   • «ЖД в цене»              — Сумма 1, invoice_amount (логисты);
- *   • «Грузоотправитель в цене» — Сумма 3, additional_expenses_amount;
- *   • «ЖД поставщика в цене»    — Сумма 2, supplier_railway_amount (00176).
+ * и логистики. С 00179 (владелец 2026-09-29):
+ *   • «ЖД в цене»              — Сумма ЖД (поставщик), supplier_railway_amount;
+ *   • «Грузоотправитель в цене» — Сумма грузоотправления, additional_expenses_amount;
+ *   • «Сумма логистов в цене»   — Сумма (логисты), invoice_amount; по умолчанию снята.
  * Подпись показывает, СКОЛЬКО реально прибавлено, или почему ничего: клиент
  * 2026-09-28 (KZ/26/201) видел «Да (плюсует к балансу)» при нулевой сумме.
  */
 function InPriceToggle({ dealId, label, field, value, amount, sameCurrency, currencySymbol, editing, onSaved }: {
   dealId: string;
   label: string;
-  field: "railway_in_price" | "additional_expenses_in_price" | "supplier_railway_in_price";
+  field: "railway_in_price" | "additional_expenses_in_price" | "logistics_amount_in_price";
   value: boolean;
   amount: number | null | undefined;
   sameCurrency: boolean;
@@ -936,17 +936,17 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               Место логичное — они прибавляют суммы именно к балансу
               поставщика, а не к логистике. Формула не менялась. */}
           <InPriceToggle dealId={deal.id} label="ЖД в цене" field="railway_in_price"
-            value={!!deal.railway_in_price} amount={deal.invoice_amount}
+            value={!!deal.railway_in_price} amount={deal.supplier_railway_amount}
             sameCurrency={deal.supplier_currency === deal.logistics_currency}
             currencySymbol={supplierCurrencySymbol} editing={editing} onSaved={reload} />
           <InPriceToggle dealId={deal.id} label="Грузоотправитель в цене" field="additional_expenses_in_price"
             value={!!deal.additional_expenses_in_price} amount={deal.additional_expenses_amount}
             sameCurrency={deal.supplier_currency === deal.logistics_currency}
             currencySymbol={supplierCurrencySymbol} editing={editing} onSaved={reload} />
-          {/* 00176 (клиент 2026-09-28, KZ/26/201): Сумма 2 — ЖД поставщика. */}
-          <InPriceToggle dealId={deal.id} label="ЖД поставщика в цене" field="supplier_railway_in_price"
-            value={!!(deal as { supplier_railway_in_price?: boolean | null }).supplier_railway_in_price}
-            amount={deal.supplier_railway_amount}
+          {/* 00179 (владелец 2026-09-29): Сумма логистов — своя галочка, по умолчанию снята. */}
+          <InPriceToggle dealId={deal.id} label="Сумма логистов в цене" field="logistics_amount_in_price"
+            value={!!(deal as { logistics_amount_in_price?: boolean | null }).logistics_amount_in_price}
+            amount={deal.invoice_amount}
             sameCurrency={deal.supplier_currency === deal.logistics_currency}
             currencySymbol={supplierCurrencySymbol} editing={editing} onSaved={reload} />
           {/* Anchor date for «Средний месяц» pickup — migration 00085. */}
