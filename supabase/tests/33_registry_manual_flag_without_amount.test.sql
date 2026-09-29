@@ -19,7 +19,7 @@ DECLARE
   r      RECORD;
 BEGIN
   INSERT INTO deals (id, deal_type, deal_number, year, month, supplier_id, buyer_id,
-                     supplier_currency, logistics_currency, railway_in_price)
+                     supplier_currency, logistics_currency, logistics_amount_in_price)
   VALUES (v_deal, 'KZ', 9978, 2099, 'июнь',
           '00000000-0000-0000-0000-00000000ac01', '00000000-0000-0000-0000-00000000ac02',
           'KZT', 'KZT', TRUE);
@@ -66,7 +66,7 @@ BEGIN
     RAISE EXCEPTION 'Г: без тарифа сумма %, пометка %', r.shipped_tonnage_amount, r.shipped_tonnage_amount_override;
   END IF;
 
-  -- Роллап и баланс: «ЖД в цене» стоит — Сумма 1 обеих строк в балансе.
+  -- Роллап и баланс: «Сумма логистов в цене» (00179) стоит — Сумма 1 обеих строк в балансе.
   SELECT invoice_amount, supplier_balance INTO r FROM deals WHERE id = v_deal;
   IF r.invoice_amount IS DISTINCT FROM ROUND(228.35 * 16810.03 + 100000, 4) THEN
     RAISE EXCEPTION 'роллап Суммы 1: %, ждали %', r.invoice_amount, ROUND(228.35 * 16810.03 + 100000, 4);

@@ -214,9 +214,10 @@ BEGIN
 
   DELETE FROM shipment_registry WHERE wagon_number = 'ASOF-C';
 
-  -- ── 6. Галочка «ЖД в цене» — баланс среза идёт за паспортом ────────
-  UPDATE deals SET railway_in_price = TRUE WHERE id = v_deal;
-  PERFORM pg_temp.assert_snapshot_matches_deal(v_deal, '6. срез с галочкой «ЖД в цене»');
+  -- ── 6. Галочка «Сумма логистов в цене» (00179; до неё Сумму логистов
+  --       плюсовала «ЖД в цене») — баланс среза идёт за паспортом ────────
+  UPDATE deals SET logistics_amount_in_price = TRUE WHERE id = v_deal;
+  PERFORM pg_temp.assert_snapshot_matches_deal(v_deal, '6. срез с галочкой «Сумма логистов в цене»');
 
   -- Проверяем, что галочка вообще что-то изменила, иначе пункт 6 пустой.
   SELECT * INTO s FROM passport_snapshot_as_of(DATE '2099-12-31', ARRAY[v_deal]);
