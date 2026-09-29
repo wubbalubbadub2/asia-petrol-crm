@@ -47,7 +47,7 @@ const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
 
 // Money canon 2026-09-22: суммы (оплата, взаимозачёт, возврат) — 2 знака.
 function formatMoney(val: number): string {
-  return val.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return val.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Single payment row with inline editable date/amount/description/currency

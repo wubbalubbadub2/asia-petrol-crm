@@ -123,6 +123,10 @@ export default function NewDealPage() {
   // поставщика не входят.
   const [railwayInPrice, setRailwayInPrice] = useState(true);
   const [shipperInPrice, setShipperInPrice] = useState(true);
+  // «ЖД поставщика в цене» (Сумма 2, 00176) — тоже поднята по умолчанию:
+  // клиент 2026-09-29 «по умолчанию галочки должны стоять — сумма ЖД
+  // менеджер и грузоотправление».
+  const [supplierRailwayInPrice, setSupplierRailwayInPrice] = useState(true);
 
   // Quotation types for price linking
   const [quotationTypes, setQuotationTypes] = useState<RefOption[]>([]);
@@ -353,6 +357,7 @@ export default function NewDealPage() {
       // поднятыми и иметь возможность снять до создания сделки. Раньше
       // грузоотправитель проставлялся молча, без поля в форме.
       additional_expenses_in_price: shipperInPrice,
+      supplier_railway_in_price: supplierRailwayInPrice,
       buyer_id: buyerId || null,
       buyer_contract: buyerContract || null,
       buyer_contracted_volume: buyerVolume ? parseFloat(buyerVolume) : null,
@@ -615,6 +620,16 @@ export default function NewDealPage() {
                     className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                   />
                   <Label htmlFor="shipper-in-price" className="text-[12px] text-stone-600 cursor-pointer">Грузоотправление в цене (минусует с баланса)</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="supplier-railway-in-price"
+                    checked={supplierRailwayInPrice}
+                    onChange={(e) => setSupplierRailwayInPrice(e.target.checked)}
+                    className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <Label htmlFor="supplier-railway-in-price" className="text-[12px] text-stone-600 cursor-pointer">ЖД поставщика в цене (минусует с баланса)</Label>
                 </div>
               </div>
             </div>
