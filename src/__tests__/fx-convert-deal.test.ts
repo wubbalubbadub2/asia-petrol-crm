@@ -172,9 +172,11 @@ describe("convertDeal — галочки «в цене»", () => {
     ],
   };
 
-  it("жд в цене плюсуется к балансу", () => {
+  // 00179 (владелец 2026-09-29): «ЖД в цене» — Сумма ЖД поставщика (300),
+  // «Сумма логистов в цене» — Сумма (логисты) (200), грузоотправление (50).
+  it("жд в цене плюсует Сумму ЖД поставщика", () => {
     const row = convertDeal(makeDeal({ railway_in_price: true } as Partial<Deal>), events, fx, "USD");
-    expect(row.supplierBalance).toBe(1200);
+    expect(row.supplierBalance).toBe(1300);
   });
 
   it("грузоотправитель в цене плюсуется к балансу", () => {
@@ -182,20 +184,15 @@ describe("convertDeal — галочки «в цене»", () => {
     expect(row.supplierBalance).toBe(1050);
   });
 
-  // 00176, клиент 2026-09-28 (KZ/26/201): Сумма 2 — своей галочкой.
-  it("жд поставщика в цене плюсует Сумму 2", () => {
-    const row = convertDeal(makeDeal({ supplier_railway_in_price: true } as Partial<Deal>), events, fx, "USD");
-    expect(row.supplierBalance).toBe(1300);
+  it("сумма логистов в цене — своя галочка", () => {
+    const row = convertDeal(makeDeal({ logistics_amount_in_price: true } as Partial<Deal>), events, fx, "USD");
+    expect(row.supplierBalance).toBe(1200);
   });
 
-  it("без галочки Сумма 2 в баланс не входит", () => {
-    const row = convertDeal(makeDeal(), events, fx, "USD");
-    expect(row.supplierBalance).toBe(1000);
-  });
-
-  it("жд поставщика не плюсуется при разных валютах — как в паспорте", () => {
-    const deal = makeDeal({ supplier_railway_in_price: true, logistics_currency: "KZT" } as Partial<Deal>);
-    expect(convertDeal(deal, events, fx, "USD").supplierBalance).toBe(1000);
+  it("без галочек суммы в баланс не входят; устаревшая «ЖД поставщика» ни на что не влияет", () => {
+    expect(convertDeal(makeDeal(), events, fx, "USD").supplierBalance).toBe(1000);
+    const old = makeDeal({ supplier_railway_in_price: true } as Partial<Deal>);
+    expect(convertDeal(old, events, fx, "USD").supplierBalance).toBe(1000);
   });
 
   it("галочка не срабатывает, когда исходные валюты сделки и логистики разные", () => {

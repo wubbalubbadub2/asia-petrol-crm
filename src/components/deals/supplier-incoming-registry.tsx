@@ -9,7 +9,12 @@
 // тариф»), пример клиента её опровергает: 1 050 863 / 123,5 = 8 509,01.
 //
 // Новых величин не заводим: это те же поля реестра отгрузок, просто
-// показанные и правимые здесь. Строка = дата, вагоны внутри неё
+// показанные и правимые здесь. «Сумма ЖД пост.» — supplier_railway_amount
+// (Сумма ЖД поставщика, 00150). До 2026-09-29 столбец по ошибке показывал
+// и правил Сумму логистов (shipped_tonnage_amount): блок сделан 12.08, а
+// отдельная сумма ЖД поставщика появилась 15.08 — на KZ/26/201 паспорт
+// показывал 2 797 951,17, а здесь 0,00. Тариф из суммы выводит триггер
+// (обратная формула 00150/00151), поэтому пишем только сумму. Строка = дата, вагоны внутри неё
 // раскрываются; суммы вводятся по вагону и складываются на дату — так
 // же, как в примере клиента (62,5 + 61,0 = 123,5).
 
@@ -23,7 +28,7 @@ type Row = {
   wagon_number: string | null;
   loading_date: string | null;
   loading_volume: number | null;
-  shipped_tonnage_amount: number | null;
+  supplier_railway_amount: number | null;
   additional_expenses: number | null;
 };
 
@@ -49,12 +54,16 @@ function tariff(amount: number, volume: number): number | null {
   return amount / volume;
 }
 
-/** Правка суммы по вагону. Override не даём триггеру пересчитать введённое. */
-function AmountCell({ value, rowId, field, overrideField, onSaved }: {
+/**
+ * Правка суммы по вагону. Пишем ТОЛЬКО сумму: триггер выведет тариф
+ * (сумма ÷ округл. входящее) и не станет её пересчитывать. Очистка
+ * возвращает строку на формулу — раньше она оставляла пометку «ручная»
+ * без суммы, и формула в строке переставала работать (00178).
+ */
+function AmountCell({ value, rowId, field, onSaved }: {
   value: number | null;
   rowId: string;
-  field: "shipped_tonnage_amount" | "additional_expenses";
-  overrideField: string;
+  field: "supplier_railway_amount" | "additional_expenses";
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -83,7 +92,7 @@ function AmountCell({ value, rowId, field, overrideField, onSaved }: {
         const next = raw === "" ? null : parseFloat(raw.replace(",", "."));
         if (next != null && !Number.isFinite(next)) return;
         if (next === value) return;
-        void updateRegistryEntry(rowId, { [field]: next, [overrideField]: true } as RegistryUpdate)
+        void updateRegistryEntry(rowId, { [field]: next } as RegistryUpdate)
           .then(onSaved)
           .catch(() => {});
       }}
@@ -101,7 +110,7 @@ export function SupplierIncomingRegistry({ dealId }: { dealId: string }) {
   const load = useCallback(() => {
     createClient()
       .from("shipment_registry")
-      .select("id, wagon_number, loading_date, loading_volume, shipped_tonnage_amount, additional_expenses")
+      .select("id, wagon_number, loading_date, loading_volume, supplier_railway_amount, additional_expenses")
       .eq("deal_id", dealId)
       .not("loading_volume", "is", null)
       .order("loading_date", { ascending: true })
@@ -124,7 +133,7 @@ export function SupplierIncomingRegistry({ dealId }: { dealId: string }) {
     if (!g) { g = { date: d, volume: 0, railwayAmount: 0, shipperAmount: 0, wagons: [] }; byDate.set(d, g); groups.push(g); }
     g.wagons.push(r);
     g.volume += r.loading_volume ?? 0;
-    g.railwayAmount += r.shipped_tonnage_amount ?? 0;
+    g.railwayAmount += r.supplier_railway_amount ?? 0;
     g.shipperAmount += r.additional_expenses ?? 0;
   }
 
@@ -172,18 +181,18 @@ export function SupplierIncomingRegistry({ dealId }: { dealId: string }) {
                   <td className="py-0.5 pl-6 pr-2 font-mono text-[10px] text-stone-400">{w.wagon_number ?? "—"}</td>
                   <td className={`${num} text-[10px] text-amber-700`}>{fmtVol(w.loading_volume)}</td>
                   <td className={`${num} text-[10px] text-stone-300`}>
-                    {fmtTariff(tariff(w.shipped_tonnage_amount ?? 0, w.loading_volume ?? 0))}
+                    {fmtTariff(tariff(w.supplier_railway_amount ?? 0, w.loading_volume ?? 0))}
                   </td>
                   <td className={`${num} text-[10px]`}>
-                    <AmountCell value={w.shipped_tonnage_amount} rowId={w.id} field="shipped_tonnage_amount"
-                                overrideField="shipped_tonnage_amount_override" onSaved={load} />
+                    <AmountCell value={w.supplier_railway_amount} rowId={w.id} field="supplier_railway_amount"
+                                onSaved={load} />
                   </td>
                   <td className={`${num} text-[10px] text-stone-300`}>
                     {fmtTariff(tariff(w.additional_expenses ?? 0, w.loading_volume ?? 0))}
                   </td>
                   <td className={`${num} text-[10px]`}>
                     <AmountCell value={w.additional_expenses} rowId={w.id} field="additional_expenses"
-                                overrideField="additional_expenses_override" onSaved={load} />
+                                onSaved={load} />
                   </td>
                 </tr>
               ))}
