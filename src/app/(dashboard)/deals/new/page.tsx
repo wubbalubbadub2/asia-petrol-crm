@@ -294,27 +294,44 @@ export default function NewDealPage() {
   // (клиент 2026-09-18): автоподбор цены ищет котировку по
   // quotation_type_id, и без него строки реестра приезжают без цены.
   // Возвращает подписи вариантов, которые мешают сохранить.
-  function variantsMissingQuotation(): string[] {
-    const bad: string[] = [];
-    const check = (list: VariantDraft[], sideLabel: string) => {
+  function variantsMissingQuotation(): { labels: string[]; sides: ("supplier" | "buyer")[] } {
+    const labels: string[] = [];
+    const sides: ("supplier" | "buyer")[] = [];
+    const check = (list: VariantDraft[], sideLabel: string, side: "supplier" | "buyer") => {
       list.forEach((v, idx) => {
         const patch = variantDraftToLinePatch(v);
         if (requiresQuotationType(patch.price_condition, patch.trigger_basis) && !v.quotationTypeId) {
-          bad.push(`${sideLabel}${list.length > 1 ? `, вариант ${idx + 1}` : ""}`);
+          labels.push(`${sideLabel}${list.length > 1 ? `, вариант ${idx + 1}` : ""}`);
+          if (!sides.includes(side)) sides.push(side);
         }
       });
     };
-    check(supplierVariants, "Поставщик");
-    check(buyerVariants, "Покупатель");
-    return bad;
+    check(supplierVariants, "Поставщик", "supplier");
+    check(buyerVariants, "Покупатель", "buyer");
+    return { labels, sides };
   }
+
+  // Секция с ошибкой может быть свёрнута — раскрываем её и прокручиваем
+  // к ней, иначе оператор не видит, что править.
+  const [openSignal, setOpenSignal] = useState({ supplier: 0, buyer: 0 });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const missing = variantsMissingQuotation();
-    if (missing.length > 0) {
-      toast.error(`${QUOTATION_REQUIRED_MESSAGE}: ${missing.join("; ")}`);
+    if (missing.labels.length > 0) {
+      toast.error(
+        `${QUOTATION_REQUIRED_MESSAGE}: ${missing.labels.join("; ")}. ` +
+        "Либо смените «Тип цены» на «Фикс / Вручную».",
+      );
+      setOpenSignal((prev) => ({
+        supplier: missing.sides.includes("supplier") ? prev.supplier + 1 : prev.supplier,
+        buyer: missing.sides.includes("buyer") ? prev.buyer + 1 : prev.buyer,
+      }));
+      const first = missing.sides[0];
+      requestAnimationFrame(() => {
+        document.getElementById(`deal-new-${first}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
       return;
     }
 
@@ -582,7 +599,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Supplier */}
-        <CollapsibleSection title="Поставщик" headerBg={SECTION_COLORS.supplier} contentClassName="space-y-3">
+        <CollapsibleSection title="Поставщик" id="deal-new-supplier" openSignal={openSignal.supplier} headerBg={SECTION_COLORS.supplier} contentClassName="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <SelectField
                 label="Поставщик"
@@ -652,7 +669,7 @@ export default function NewDealPage() {
         </CollapsibleSection>
 
         {/* Buyer */}
-        <CollapsibleSection title="Покупатель" headerBg={SECTION_COLORS.buyer} contentClassName="space-y-3">
+        <CollapsibleSection title="Покупатель" id="deal-new-buyer" openSignal={openSignal.buyer} headerBg={SECTION_COLORS.buyer} contentClassName="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <SelectField
                 label="Покупатель"
