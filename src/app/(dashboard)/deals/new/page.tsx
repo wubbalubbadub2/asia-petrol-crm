@@ -19,6 +19,7 @@ import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 import { DealPaymentsDraft, type DraftPayment } from "@/components/deals/deal-payments-draft";
 import { QUOTATION_REQUIRED_MESSAGE, requiresQuotationType } from "@/lib/deals/price-validation";
+import { sortByName } from "@/lib/sort-names";
 
 type RefOption = { id: string; name: string };
 type CounterpartyOption = { id: string; full_name: string; short_name: string | null };
@@ -276,14 +277,14 @@ export default function NewDealPage() {
       supabase.from("quotation_product_types").select("id, name").eq("is_active", true).order("sort_order"),
       supabase.from("delivery_bases").select("id, name").eq("is_active", true).order("sort_order"),
     ]).then(([f, ft, s, b, fw, cg, st, m, qt, db]) => {
-      setFactories((f.data ?? []) as RefOption[]);
+      setFactories(sortByName(f.data ?? [], (r) => r.name) as RefOption[]);
       setFuelTypes((ft.data ?? []) as RefOption[]);
-      setSuppliers((s.data ?? []) as CounterpartyOption[]);
-      setBuyers((b.data ?? []) as CounterpartyOption[]);
-      setForwarders((fw.data ?? []) as RefOption[]);
-      setCompanyGroups((cg.data ?? []) as RefOption[]);
-      setStations((st.data ?? []) as RefOption[]);
-      setManagers((m.data ?? []) as ProfileOption[]);
+      setSuppliers(sortByName(s.data ?? [], (r) => r.short_name || r.full_name) as CounterpartyOption[]);
+      setBuyers(sortByName(b.data ?? [], (r) => r.short_name || r.full_name) as CounterpartyOption[]);
+      setForwarders(sortByName(fw.data ?? [], (r) => r.name) as RefOption[]);
+      setCompanyGroups(sortByName(cg.data ?? [], (r) => r.name) as RefOption[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as RefOption[]);
+      setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
       setQuotationTypes((qt.data ?? []) as RefOption[]);
       setDeliveryBases((db.data ?? []) as RefOption[]);
     });

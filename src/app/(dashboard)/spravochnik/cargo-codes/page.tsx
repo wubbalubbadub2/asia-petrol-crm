@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { sortByName } from "@/lib/sort-names";
 
 /**
  * Коды груза для заявки на перевозку — по паре «завод + продукт».
@@ -90,8 +91,8 @@ function CargoCodeForm({ item, onSave, onClose }: FormProps) {
       sb.from("factories").select("id, name").eq("is_active", true).order("name"),
       sb.from("fuel_types").select("id, name").eq("is_active", true).order("name"),
     ]).then(([f, ft]) => {
-      setFactories((f.data ?? []) as Option[]);
-      setFuels((ft.data ?? []) as Option[]);
+      setFactories(sortByName(f.data ?? [], (r) => r.name) as Option[]);
+      setFuels(sortByName(ft.data ?? [], (r) => r.name) as Option[]);
     });
   }, []);
 

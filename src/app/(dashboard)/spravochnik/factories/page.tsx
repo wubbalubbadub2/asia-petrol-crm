@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createClient } from "@/lib/supabase/client";
+import { sortByName } from "@/lib/sort-names";
 
 /**
  * Станция отправления — из таблицы «КОД ГНГ, ТНВЭД» клиента (26.08.2026):
@@ -87,7 +88,7 @@ function FactoryForm({ item, onSave, onClose }: FormProps) {
       .select("id, name, code")
       .eq("is_active", true)
       .order("name")
-      .then(({ data }) => setStations((data ?? []) as StationOption[]));
+      .then(({ data }) => setStations(sortByName(data ?? [], (r) => r.name) as StationOption[]));
   }, []);
 
   function set(key: keyof Factory, value: string | boolean | null) {

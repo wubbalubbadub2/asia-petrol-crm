@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { sortByName } from "@/lib/sort-names";
 
 /**
  * Маршруты перевозки — справочник к заявке (00153).
@@ -296,7 +297,7 @@ export default function RoutesPage() {
       .select("id, name, code")
       .eq("is_active", true)
       .order("name")
-      .then(({ data }) => setStations((data ?? []) as StationOption[]));
+      .then(({ data }) => setStations(sortByName(data ?? [], (r) => r.name) as StationOption[]));
   }, []);
 
   /**

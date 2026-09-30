@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import { FISCAL_TABS, fiscalTab, type FiscalTabKey } from "@/lib/fiscal/constants";
+import { compareNames } from "@/lib/sort-names";
 
 /**
  * Данные реестра фискальных документов.
@@ -267,7 +268,7 @@ function collapse(rows: PartyRow[], idKey: keyof PartyRow, nameKey: keyof PartyR
         identifier,
       doc_count: e.n,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    .sort((a, b) => compareNames(a.name, b.name));
 }
 
 export function useFiscalParties() {

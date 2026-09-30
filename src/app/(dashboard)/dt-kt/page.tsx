@@ -24,6 +24,7 @@ import { useDelayed } from "@/lib/hooks/use-delayed";
 import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import type { TablesUpdate } from "@/lib/types/database";
 import { formatDMY } from "@/lib/format";
+import { compareNames, sortByName } from "@/lib/sort-names";
 
 type DtKtRecord = {
   id: string;
@@ -144,8 +145,8 @@ function AddDtKtDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
       sb.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
       sb.current.from("company_groups").select("id, name").order("name"),
     ]).then(([fw, cg]) => {
-      setForwarders((fw.data ?? []) as { id: string; name: string }[]);
-      setCompanyGroups((cg.data ?? []) as { id: string; name: string }[]);
+      setForwarders(sortByName(fw.data ?? [], (r) => r.name) as { id: string; name: string }[]);
+      setCompanyGroups(sortByName(cg.data ?? [], (r) => r.name) as { id: string; name: string }[]);
     });
   }, [open]);
 
@@ -383,7 +384,7 @@ export default function DtKtPage() {
       const name = (r.forwarder as { name?: string } | null)?.name;
       if (r.forwarder_id && name) m.set(r.forwarder_id, name);
     }
-    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => compareNames(a.name, b.name));
   }, [records]);
 
   const companyGroupOptions = useMemo(() => {
@@ -392,7 +393,7 @@ export default function DtKtPage() {
       const name = (r.company_group as { name?: string } | null)?.name;
       if (r.company_group_id && name) m.set(r.company_group_id, name);
     }
-    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => compareNames(a.name, b.name));
   }, [records]);
 
   const filtered = useMemo(() => {

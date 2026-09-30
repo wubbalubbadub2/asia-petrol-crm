@@ -31,6 +31,7 @@ import Link from "next/link";
 import { useTabs } from "@/lib/contexts/tabs-context";
 import { DoubleScrollX } from "@/components/ui/double-scroll-x";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { compareNames, sortByName } from "@/lib/sort-names";
 
 // Эффективный «допик» (доп. приложение) строки реестра по стороне.
 // Per-row appendix (supplier_appendix / buyer_appendix, migration 00072)
@@ -904,9 +905,9 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
       sb.current.from("factories").select("id, name").eq("is_active", true).order("name"),
       sb.current.from("company_groups").select("id, name").eq("is_active", true).order("name"),
     ]).then(([d, s, ft, fw, fac, cg]) => {
-      setDeals((d.data ?? []) as unknown as DRef[]); setStations((s.data ?? []) as StRef[]);
-      setFuelTypes((ft.data ?? []) as Ref[]); setForwarders((fw.data ?? []) as Ref[]);
-      setFactories((fac.data ?? []) as Ref[]); setCgs((cg.data ?? []) as Ref[]);
+      setDeals((d.data ?? []) as unknown as DRef[]); setStations(sortByName(s.data ?? [], (r) => r.name) as StRef[]);
+      setFuelTypes((ft.data ?? []) as Ref[]); setForwarders(sortByName(fw.data ?? [], (r) => r.name) as Ref[]);
+      setFactories(sortByName(fac.data ?? [], (r) => r.name) as Ref[]); setCgs(sortByName(cg.data ?? [], (r) => r.name) as Ref[]);
     });
   }, [open, regType]);
 
@@ -1354,7 +1355,7 @@ function ColumnFilterPopover({
   const [open, setOpen] = useState(false);
   const active = !!currentValue;
   const sorted = useMemo(
-    () => [...options].sort((a, b) => a.label.localeCompare(b.label, "ru")),
+    () => [...options].sort((a, b) => compareNames(a.label, b.label)),
     [options],
   );
   return (
@@ -1839,12 +1840,12 @@ export default function RegistryPage() {
   const supplierAppendixOpts = useMemo(() => {
     const set = new Set<string>();
     for (const r of facetRecords) { const v = effSupplierAppendix(r); if (v) set.add(v); }
-    return [...set].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+    return [...set].sort(compareNames).map((v) => ({ value: v, label: v }));
   }, [facetRecords]);
   const buyerAppendixOpts = useMemo(() => {
     const set = new Set<string>();
     for (const r of facetRecords) { const v = effBuyerAppendix(r); if (v) set.add(v); }
-    return [...set].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+    return [...set].sort(compareNames).map((v) => ({ value: v, label: v }));
   }, [facetRecords]);
   const stOpts = useMemo(() => refs.stations.map((c) => ({ value: c.id, label: c.name })), [refs.stations]);
   const monthOpts = useMemo(() => MONTHS_RU.map((m) => ({ value: m, label: m })), []);

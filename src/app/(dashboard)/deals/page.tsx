@@ -30,6 +30,7 @@ import { useGlobalRefs } from "@/lib/refs";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { reportExportError } from "@/lib/chunk-error";
+import { compareNames } from "@/lib/sort-names";
 
 const tabs = [
   { key: "kg", label: "Паспорт KG" },
@@ -602,7 +603,7 @@ export default function DealsPage() {
       // For month dropdown we want to preserve the canonical ordering
       // (Jan..Dec) — `all` carries the source order.
       if (all) return all.filter((v) => keep.has(v)).map((v) => ({ value: v, label: v }));
-      return [...keep].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+      return [...keep].sort(compareNames).map((v) => ({ value: v, label: v }));
     };
     return {
       supplier: fkOpts(refs.suppliers, narrowed.suppliers, deferredSupplier),

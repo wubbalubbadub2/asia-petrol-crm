@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { sortByName } from "@/lib/sort-names";
 
 type StationType = "departure" | "destination" | "both";
 
@@ -91,7 +92,7 @@ function StationForm({ item, onSave, onClose }: FormProps) {
 
   useEffect(() => {
     sbRef.current.from("factories").select("id, name").eq("is_active", true).order("name")
-      .then(({ data }) => setFactoryOptions((data ?? []) as { id: string; name: string }[]));
+      .then(({ data }) => setFactoryOptions(sortByName(data ?? [], (r) => r.name) as { id: string; name: string }[]));
   }, []);
 
   function set<K extends keyof Station>(key: K, value: Station[K]) {

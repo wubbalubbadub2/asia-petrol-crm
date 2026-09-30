@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { sortByName } from "@/lib/sort-names";
 
 export type RefOpt = { id: string; name: string };
 export type CounterpartyRef = { id: string; short_name: string | null; full_name: string };
@@ -97,14 +98,18 @@ function fetchAll(): Promise<FetchResult> {
       if (v.error) { failed = true; return []; }
       return v.data ?? [];
     };
+    // Алфавит — сначала латиница, потом кириллица (sort-names.ts); у
+    // контрагентов — по краткому имени, его и видно в списках.
+    const byName = (i: number) => sortByName(pull(i), (r) => r.name as string);
+    const byParty = (i: number) => sortByName(pull(i), (r) => (r.short_name as string) || (r.full_name as string));
     const refs: GlobalRefs = {
-      suppliers: pull(0) as unknown as CounterpartyRef[],
-      buyers: pull(1) as unknown as CounterpartyRef[],
-      forwarders: pull(2) as unknown as RefOpt[],
-      managers: pull(3) as unknown as ProfileRef[],
-      stations: pull(4) as unknown as RefOpt[],
-      companyGroups: pull(5) as unknown as RefOpt[],
-      factories: pull(6) as unknown as RefOpt[],
+      suppliers: byParty(0) as unknown as CounterpartyRef[],
+      buyers: byParty(1) as unknown as CounterpartyRef[],
+      forwarders: byName(2) as unknown as RefOpt[],
+      managers: sortByName(pull(3), (r) => r.full_name as string) as unknown as ProfileRef[],
+      stations: byName(4) as unknown as RefOpt[],
+      companyGroups: byName(5) as unknown as RefOpt[],
+      factories: byName(6) as unknown as RefOpt[],
       fuelTypes: pull(7) as unknown as FuelTypeRef[],
       quotationTypes: [],
       consignees: [],
@@ -150,7 +155,7 @@ async function getLazyRefs(target: GlobalRefs): Promise<void> {
     return v ?? [];
   };
   target.quotationTypes = pull(qt) as unknown as RefOpt[];
-  target.consignees = pull(co) as unknown as RefOpt[];
+  target.consignees = sortByName(pull(co), (r) => r.name as string) as unknown as RefOpt[];
   target.deliveryBases = pull(db) as unknown as RefOpt[];
 }
 
