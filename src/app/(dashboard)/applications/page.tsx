@@ -32,6 +32,7 @@ import { formatDMY } from "@/lib/format";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useApplicationActivity } from "@/lib/hooks/use-deal-activity";
+import { sortByName } from "@/lib/sort-names";
 
 type RefOption = { id: string; name: string };
 type ProfileOption = { id: string; full_name: string };
@@ -87,8 +88,8 @@ function CreateApplicationDialog({
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     ]).then(([ft, st, m]) => {
       setFuelTypes((ft.data ?? []) as RefOption[]);
-      setStations((st.data ?? []) as RefOption[]);
-      setManagers((m.data ?? []) as ProfileOption[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as RefOption[]);
+      setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
     });
   }, [open, supabase]);
 
@@ -243,8 +244,8 @@ function EditApplicationDialog({
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     ]).then(([ft, st, m]) => {
       setFuelTypes((ft.data ?? []) as RefOption[]);
-      setStations((st.data ?? []) as RefOption[]);
-      setManagers((m.data ?? []) as ProfileOption[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as RefOption[]);
+      setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
     });
   }, [open, supabase]);
 

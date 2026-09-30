@@ -28,6 +28,7 @@ import { fetchAllPaginated } from "@/lib/supabase/fetch-all";
 import { useGlobalRefs } from "@/lib/refs";
 import type { TablesUpdate } from "@/lib/types/database";
 import { ImportTariffsDialog } from "@/components/tariffs/import-dialog";
+import { sortByName } from "@/lib/sort-names";
 
 type Station = { id: string; name: string };
 type Forwarder = { id: string; name: string };
@@ -133,10 +134,10 @@ function AddTariffDialog({
       sb.from("fuel_types").select("id, name, color").eq("is_active", true).order("sort_order"),
       sb.from("factories").select("id, name").order("name"),
     ]).then(([st, fw, ft, fa]) => {
-      setStations((st.data ?? []) as (Station & { default_factory_id?: string | null })[]);
-      setForwarders((fw.data ?? []) as Forwarder[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as (Station & { default_factory_id?: string | null })[]);
+      setForwarders(sortByName(fw.data ?? [], (r) => r.name) as Forwarder[]);
       setFuelTypes((ft.data ?? []) as FuelType[]);
-      setFactories((fa.data ?? []) as Factory[]);
+      setFactories(sortByName(fa.data ?? [], (r) => r.name) as Factory[]);
     });
   }, [open]);
 

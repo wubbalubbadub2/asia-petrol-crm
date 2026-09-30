@@ -16,6 +16,7 @@ import {
 } from "@/lib/hooks/use-deal-trigger-prices";
 import { formatDMY } from "@/lib/format";
 import { shipmentRowPrice } from "@/lib/deals/price-formula";
+import { sortByName } from "@/lib/sort-names";
 
 // Money canon 2026-09-22: ставки за единицу (котировка, скидка, цена
 // $/т) — 3 знака, суммы — 2. formatVol — 3 decimals for tonnage.
@@ -151,7 +152,7 @@ export function DealTriggerPrices({
 
   useEffect(() => {
     sbRef.current.from("quotation_product_types").select("id, name").order("name")
-      .then(({ data }) => setProductTypes((data ?? []) as ProductType[]));
+      .then(({ data }) => setProductTypes(sortByName(data ?? [], (r) => r.name) as ProductType[]));
   }, []);
 
   // Pre-fill the quotation from the deal whenever opening the form, EXCEPT in

@@ -28,6 +28,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { type Deal } from "@/lib/hooks/use-deals";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
+import { compareNames } from "@/lib/sort-names";
 
 // throttleMs: 0 — см. комментарий у NUQS_INSTANT в deals/page.tsx: без
 // этого при быстром переключении фильтр → смена вкладки могла бы поймать
@@ -346,7 +347,7 @@ export function usePassportFilters(
       // Для дропдауна месяцев сохраняем канонический порядок (янв..дек) —
       // `all` несёт порядок источника.
       if (all) return all.filter((v) => keep.has(v)).map((v) => ({ value: v, label: v }));
-      return [...keep].sort((a, b) => a.localeCompare(b, "ru")).map((v) => ({ value: v, label: v }));
+      return [...keep].sort(compareNames).map((v) => ({ value: v, label: v }));
     };
     return {
       supplier: fkOpts(refs.suppliers, narrowed.suppliers, deferredSupplier),

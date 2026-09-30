@@ -13,6 +13,7 @@ import { formatDMYTime } from "@/lib/format";
 import { inspectTemplate } from "@/lib/transport/fill-template";
 import { uploadTemplate } from "@/lib/transport/storage";
 import { TEMPLATE_ROWS } from "@/lib/transport/template-rows";
+import { sortByName } from "@/lib/sort-names";
 
 /**
  * Бланки компаний для заявок на перевозку.
@@ -59,7 +60,7 @@ export default function CompanyTemplatesPage() {
     if (co.error || tpl.error) {
       toast.error(`Ошибка загрузки: ${(co.error ?? tpl.error).message}`);
     } else {
-      setCompanies(co.data as Company[]);
+      setCompanies(sortByName(co.data as Company[], (r) => r.name));
       const map: Record<string, Template> = {};
       for (const t of tpl.data as Template[]) map[t.company_group_id] = t;
       setTemplates(map);

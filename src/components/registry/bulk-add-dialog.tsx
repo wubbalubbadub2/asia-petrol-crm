@@ -11,6 +11,7 @@ import { bulkInsertRegistry } from "@/lib/hooks/use-registry";
 import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { toast } from "sonner";
 import { formatDMY } from "@/lib/format";
+import { sortByName } from "@/lib/sort-names";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 
@@ -198,13 +199,13 @@ export function BulkAddDialog({
       sb.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.from("stations").select("id, name").eq("is_active", true).order("name"),
     ]).then(([fac, sup, buy, cg, fw, ft, st]) => {
-      setFactories((fac.data ?? []) as Ref[]);
-      setSuppliers((sup.data ?? []) as { id: string; short_name: string | null; full_name: string }[]);
-      setBuyers((buy.data ?? []) as { id: string; short_name: string | null; full_name: string }[]);
-      setCompanyGroups((cg.data ?? []) as Ref[]);
-      setForwarders((fw.data ?? []) as Ref[]);
+      setFactories(sortByName(fac.data ?? [], (r) => r.name) as Ref[]);
+      setSuppliers(sortByName(sup.data ?? [], (r) => r.short_name || r.full_name) as { id: string; short_name: string | null; full_name: string }[]);
+      setBuyers(sortByName(buy.data ?? [], (r) => r.short_name || r.full_name) as { id: string; short_name: string | null; full_name: string }[]);
+      setCompanyGroups(sortByName(cg.data ?? [], (r) => r.name) as Ref[]);
+      setForwarders(sortByName(fw.data ?? [], (r) => r.name) as Ref[]);
       setFuelTypes((ft.data ?? []) as Ref[]);
-      setStations((st.data ?? []) as Ref[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as Ref[]);
     });
   }, [open]);
 

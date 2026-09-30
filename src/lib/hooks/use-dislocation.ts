@@ -16,6 +16,7 @@ import type {
   Protocol,
   ProtocolRoute,
 } from "@/lib/dislocation/types";
+import { sortByName } from "@/lib/sort-names";
 
 export type Option = { value: string; label: string };
 
@@ -51,7 +52,7 @@ const NO_REFERENCES: References = { forwarders: [], stations: [], companyGroups:
 async function fetchReferences(): Promise<References> {
   const sb = railDb();
   const opt = (rows: { id: string; name: string }[] | null) =>
-    (rows ?? []).map((r) => ({ value: r.id, label: r.name }));
+    sortByName(rows ?? [], (r) => r.name).map((r) => ({ value: r.id, label: r.name }));
   const [f, s, c, t] = await Promise.all([
     sb.from("forwarders").select("id, name").eq("is_active", true).order("name"),
     sb.from("stations").select("id, name").eq("is_active", true).order("name"),

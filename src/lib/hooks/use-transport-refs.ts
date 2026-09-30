@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { sortByName } from "@/lib/sort-names";
 
 /**
  * Справочники для заявки на перевозку — одной загрузкой.
@@ -139,7 +140,9 @@ export function useTransportRefs() {
         setLoading(false);
         return;
       }
-      const [co, fu, st, ca, cn, fa, fw, ro, bu, cc] = results.map((r) => r.data ?? []);
+      const [co, fu, st, ca, cn, fa, fw, ro, bu, cc] = results.map((r, i) =>
+        // Коды груза (9) — не список для выбора, их не сортируем.
+        i === 9 ? r.data ?? [] : sortByName(r.data ?? [], (x: { name?: string; short_name?: string | null; full_name?: string }) => x.name ?? (x.short_name || x.full_name)));
       const next: TransportRefs = {
         companies: co as RefRow[],
         fuels: fu as FuelRef[],
