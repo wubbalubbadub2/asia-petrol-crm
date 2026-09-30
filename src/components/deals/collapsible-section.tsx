@@ -33,6 +33,8 @@ export function CollapsibleSection({
   contentClassName,
   headerBg,
   storageKey,
+  id,
+  openSignal,
 }: {
   title: string;
   defaultOpen?: boolean;
@@ -55,6 +57,11 @@ export function CollapsibleSection({
   // key like `deal:<id>:section:<title>` and we mirror the open state
   // into localStorage.
   storageKey?: string;
+  id?: string;
+  // Меняется число — секция раскрывается. Форма так показывает поле с
+  // ошибкой, спрятанное в свёрнутой секции (клиент 2026-09-30: «Выберите
+  // котировку… Покупатель» при свёрнутом «Покупателе» было не найти).
+  openSignal?: number;
 }) {
   // Initial state respects defaultOpen; a client-side effect below
   // hydrates from localStorage on mount. We deliberately DON'T read
@@ -79,11 +86,19 @@ export function CollapsibleSection({
       /* quota — ignore */
     }
   }, [open, storageKey]);
+  // Новый сигнал — раскрыть. Сравнение при рендере, а не в эффекте:
+  // так React советует подстраивать состояние под смену пропа.
+  const [seenSignal, setSeenSignal] = useState(openSignal);
+  if (openSignal !== seenSignal) {
+    setSeenSignal(openSignal);
+    if (openSignal) setOpen(true);
+  }
   const cardStyle: React.CSSProperties | undefined = headerBg
     ? { backgroundColor: headerBg, borderWidth: 2, borderColor: headerBg }
     : undefined;
   return (
     <Card
+      id={id}
       style={cardStyle}
       // Kill Card's default py-4 + gap-4 when tinted so the header sits
       // flush at the top edge and the white body starts immediately
