@@ -33,8 +33,12 @@ import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useApplicationActivity } from "@/lib/hooks/use-deal-activity";
 import { sortByName } from "@/lib/sort-names";
+import { useRole } from "@/lib/role-context";
+import { defaultManagerId, stationCodeOnPick } from "@/lib/application-autofill";
 
 type RefOption = { id: string; name: string };
+/** Станция с кодом — из него подставляется «Код станции». */
+type StationOption = RefOption & { code: string | null };
 type ProfileOption = { id: string; full_name: string };
 
 function StatusBadge({ ordered }: { ordered: boolean }) {
@@ -62,7 +66,7 @@ function CreateApplicationDialog({
 }) {
   const supabase = createClient();
   const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
-  const [stations, setStations] = useState<RefOption[]>([]);
+  const [stations, setStations] = useState<StationOption[]>([]);
   const [managers, setManagers] = useState<ProfileOption[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -77,21 +81,33 @@ function CreateApplicationDialog({
   const [consigneeBin, setConsigneeBin] = useState("");
   const [consignor, setConsignor] = useState("");
   const [carrier, setCarrier] = useState("");
-  const [managerId, setManagerId] = useState("");
+  // null — менеджера ещё не выбирали: тогда в поле текущий пользователь,
+  // если он есть в списке менеджеров. Выбор руками (и «Выберите...»)
+  // перебивает подстановку.
+  const [pickedManagerId, setManagerId] = useState<string | null>(null);
   const [sourceEmail, setSourceEmail] = useState("");
+  const { profile } = useRole();
+  const managerId = pickedManagerId ?? defaultManagerId(profile?.id, managers);
 
   useEffect(() => {
     if (!open) return;
     Promise.all([
       supabase.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      supabase.from("stations").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("stations").select("id, name, code").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     ]).then(([ft, st, m]) => {
       setFuelTypes((ft.data ?? []) as RefOption[]);
-      setStations(sortByName(st.data ?? [], (r) => r.name) as RefOption[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as StationOption[]);
       setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
     });
   }, [open, supabase]);
+
+  /** Выбор станции подставляет её код из справочника; поле остаётся правимым. */
+  function pickStation(id: string) {
+    setStationId(id);
+    const code = stations.find((s) => s.id === id)?.code;
+    setStationCode((prev) => stationCodeOnPick(prev, code));
+  }
 
   async function handleSave() {
     if (!date) { return; }
@@ -151,7 +167,7 @@ function CreateApplicationDialog({
           <SelectField
             label="Станция назначения"
             value={stationId}
-            onChange={setStationId}
+            onChange={pickStation}
             options={stations.map((s) => ({ value: s.id, label: s.name }))}
           />
           <div>
@@ -218,7 +234,7 @@ function EditApplicationDialog({
 }) {
   const supabase = createClient();
   const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
-  const [stations, setStations] = useState<RefOption[]>([]);
+  const [stations, setStations] = useState<StationOption[]>([]);
   const [managers, setManagers] = useState<ProfileOption[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -240,14 +256,21 @@ function EditApplicationDialog({
     if (!open) return;
     Promise.all([
       supabase.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      supabase.from("stations").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("stations").select("id, name, code").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     ]).then(([ft, st, m]) => {
       setFuelTypes((ft.data ?? []) as RefOption[]);
-      setStations(sortByName(st.data ?? [], (r) => r.name) as RefOption[]);
+      setStations(sortByName(st.data ?? [], (r) => r.name) as StationOption[]);
       setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
     });
   }, [open, supabase]);
+
+  /** Выбор станции подставляет её код из справочника; поле остаётся правимым. */
+  function pickStation(id: string) {
+    setStationId(id);
+    const code = stations.find((s) => s.id === id)?.code;
+    setStationCode((prev) => stationCodeOnPick(prev, code));
+  }
 
   // Load current application values into form
   useEffect(() => {
@@ -300,7 +323,7 @@ function EditApplicationDialog({
           <Sel label="Вид ГСМ" value={fuelTypeId} onChange={setFuelTypeId} options={fuelTypes.map((f) => ({ value: f.id, label: f.name }))} />
           <div><Label className="text-[12px] text-stone-500">Продукт (текст)</Label><Input value={productName} onChange={(e) => setProductName(e.target.value)} className="h-8 text-[13px]" /></div>
           <div><Label className="text-[12px] text-stone-500">Тоннаж</Label><Input type="number" step="0.01" value={tonnage} onChange={(e) => setTonnage(e.target.value)} className="h-8 text-[13px] font-mono" /></div>
-          <Sel label="Станция назначения" value={stationId} onChange={setStationId} options={stations.map((s) => ({ value: s.id, label: s.name }))} />
+          <Sel label="Станция назначения" value={stationId} onChange={pickStation} options={stations.map((s) => ({ value: s.id, label: s.name }))} />
           <div><Label className="text-[12px] text-stone-500">Код станции</Label><Input value={stationCode} onChange={(e) => setStationCode(e.target.value)} className="h-8 text-[13px]" /></div>
           <div><Label className="text-[12px] text-stone-500">Грузополучатель</Label><Input value={consigneeName} onChange={(e) => setConsigneeName(e.target.value)} className="h-8 text-[13px]" /></div>
           <div><Label className="text-[12px] text-stone-500">БИН грузополучателя</Label><Input value={consigneeBin} onChange={(e) => setConsigneeBin(e.target.value)} className="h-8 text-[13px]" /></div>
