@@ -57,7 +57,7 @@ const columns: ColumnDef<Station, unknown>[] = [
   },
   {
     accessorKey: "factory",
-    header: "Завод по умолч.",
+    header: "Грузоотправитель",
     cell: ({ row }) => row.original.factory?.name ?? "—",
   },
   {
@@ -141,6 +141,9 @@ function StationForm({ item, onSave, onClose }: FormProps) {
         <Label>Тип станции</Label>
         <Select
           value={form.type ?? "departure"}
+          // items — чтобы в поле было «Отправление», а не значение
+          // «departure» (так показывал Select без подписей, 2026-10-04).
+          items={STATION_TYPE_LABELS}
           onValueChange={(val) => set("type", val as StationType)}
         >
           <SelectTrigger className="w-full">
@@ -155,7 +158,9 @@ function StationForm({ item, onSave, onClose }: FormProps) {
       </div>
 
       <div className="space-y-1.5">
-        <Label>Завод по умолчанию</Label>
+        {/* Поле default_factory_id: грузоотправитель на станции — завод
+            из справочника «Заводы» (клиент 2026-10-04). */}
+        <Label>Грузоотправитель</Label>
         <select
           value={form.default_factory_id ?? ""}
           onChange={(e) => setForm((prev) => ({ ...prev, default_factory_id: e.target.value || null }))}

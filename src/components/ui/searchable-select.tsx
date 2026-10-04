@@ -141,7 +141,10 @@ export function SearchableSelect(props: SingleProps | MultiProps) {
         )}
       </PopoverTrigger>
       <PopoverContent
-        className={cn("p-0 w-[260px]", className)}
+        // Ширина по содержимому, от 260 до 560px: длинные названия
+        // контрагентов («Товарищество с ограниченной ответственностью …»)
+        // обрезались в 260px, и выбрать нужного было нельзя (2026-10-04).
+        className={cn("p-0 w-max min-w-[260px] max-w-[min(560px,calc(100vw-32px))]", className)}
         align="start"
         sideOffset={4}
       >
@@ -199,7 +202,7 @@ export function SearchableSelect(props: SingleProps | MultiProps) {
                         )}
                       />
                     )}
-                    <span className="truncate">{o.label}</span>
+                    <span className="truncate" title={o.label}>{o.label}</span>
                   </CommandItem>
                 );
               })}
