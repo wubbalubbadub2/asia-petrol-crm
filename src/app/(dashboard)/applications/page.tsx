@@ -35,6 +35,9 @@ import { useApplicationActivity } from "@/lib/hooks/use-deal-activity";
 import { sortByName } from "@/lib/sort-names";
 import { useRole } from "@/lib/role-context";
 import { defaultManagerId, stationCodeOnPick } from "@/lib/application-autofill";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { dealLinkStatus, loadDealOptions, localToday, type DealOption } from "@/lib/applications/deal-link";
+import Link from "next/link";
 
 type RefOption = { id: string; name: string };
 /** Станция с кодом — из него подставляется «Код станции». */
@@ -86,6 +89,10 @@ function CreateApplicationDialog({
   // перебивает подстановку.
   const [pickedManagerId, setManagerId] = useState<string | null>(null);
   const [sourceEmail, setSourceEmail] = useState("");
+  // Сделку можно выбрать сразу; по умолчанию — «Сделка не создана»
+  // (клиент 2026-10-05: «добавить выбор существующей сделки»).
+  const [dealId, setDealId] = useState("");
+  const dealOptions = useDealOptions(open);
   const { profile } = useRole();
   const managerId = pickedManagerId ?? defaultManagerId(profile?.id, managers);
 
@@ -127,6 +134,14 @@ function CreateApplicationDialog({
       assigned_manager_id: managerId || null,
       source_email: sourceEmail || null,
     });
+    if (result && dealId) {
+      const { error } = await supabase.from("application_deals").insert({
+        application_id: result.id,
+        deal_id: dealId,
+        allocated_volume: null,
+      });
+      if (error) toast.error(`Заявка создана, но сделка не привязалась: ${error.message}`);
+    }
     setSaving(false);
     if (result) {
       onCreated();
@@ -196,6 +211,18 @@ function CreateApplicationDialog({
             onChange={setManagerId}
             options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
           />
+          <div className="col-span-2">
+            <Label className="text-[12px] text-stone-500">Сделка</Label>
+            <SearchableSelect
+              options={[{ value: "", label: "Сделка не создана" }, ...dealOptions.options]}
+              value={dealId}
+              onChange={setDealId}
+              placeholder={dealOptions.loading ? "Загрузка сделок…" : "Сделка не создана"}
+              searchPlaceholder="Номер сделки"
+              emptyMessage={dealOptions.loading ? "Загрузка сделок…" : "Сделка не найдена"}
+              triggerClassName="h-8 text-[13px]"
+            />
+          </div>
           <div className="col-span-2">
             <Label className="text-[12px] text-stone-500">Email источника</Label>
             <Input value={sourceEmail} onChange={(e) => setSourceEmail(e.target.value)} placeholder="buyer@company.com" className="h-8 text-[13px]" />
@@ -341,6 +368,29 @@ function EditApplicationDialog({
   );
 }
 
+/**
+ * Сделки для выбора — все неархивные, постранично (сделок больше 1000,
+ * а PostgREST отдаёт не больше 1000 за раз). Пока грузятся — «Загрузка
+ * сделок…», а не «Сделка не найдена».
+ */
+function useDealOptions(open: boolean): { options: { value: string; label: string }[]; loading: boolean } {
+  const [deals, setDeals] = useState<DealOption[] | null>(null);
+  useEffect(() => {
+    if (!open || deals) return;
+    let cancelled = false;
+    loadDealOptions()
+      .then((rows) => { if (!cancelled) setDeals(rows); })
+      .catch((e: { message?: string }) => {
+        if (!cancelled) { toast.error(`Сделки не загрузились: ${e.message ?? e}`); setDeals([]); }
+      });
+    return () => { cancelled = true; };
+  }, [open, deals]);
+  return {
+    options: (deals ?? []).map((d) => ({ value: d.id, label: d.deal_code })),
+    loading: deals == null,
+  };
+}
+
 function LinkDealDialog({
   open,
   onClose,
@@ -353,20 +403,10 @@ function LinkDealDialog({
   onLinked: () => void;
 }) {
   const supabase = createClient();
-  const [deals, setDeals] = useState<{ id: string; deal_code: string }[]>([]);
+  const dealOptions = useDealOptions(open);
   const [dealId, setDealId] = useState("");
   const [volume, setVolume] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    supabase
-      .from("deals")
-      .select("id, deal_code")
-      .eq("is_archived", false)
-      .order("deal_code")
-      .then(({ data }) => setDeals((data ?? []) as { id: string; deal_code: string }[]));
-  }, [open, supabase]);
 
   async function handleLink() {
     if (!dealId) return;
@@ -395,16 +435,15 @@ function LinkDealDialog({
         <div className="space-y-3">
           <div>
             <Label className="text-[12px] text-stone-500">Сделка</Label>
-            <select
+            <SearchableSelect
+              options={dealOptions.options}
               value={dealId}
-              onChange={(e) => setDealId(e.target.value)}
-              className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-            >
-              <option value="">Выберите сделку...</option>
-              {deals.map((d) => (
-                <option key={d.id} value={d.id}>{d.deal_code}</option>
-              ))}
-            </select>
+              onChange={setDealId}
+              placeholder={dealOptions.loading ? "Загрузка сделок…" : "Выберите сделку..."}
+              searchPlaceholder="Номер сделки"
+              emptyMessage={dealOptions.loading ? "Загрузка сделок…" : "Сделка не найдена"}
+              triggerClassName="h-8 text-[13px]"
+            />
           </div>
           <div>
             <Label className="text-[12px] text-stone-500">Выделенный объем (тонн)</Label>
@@ -460,10 +499,16 @@ function Sel({ label, value, onChange, options }: { label: string; value: string
 export default function ApplicationsPage() {
   const { data: applications, loading, reload } = useApplications();
   const [search, setSearch] = useState("");
+  // «Без сделки» — заявки, к которым ещё не привязана ни одна сделка.
+  const [dealFilter, setDealFilter] = useState<"all" | "unlinked" | "linked">("all");
+  const [today] = useState(() => localToday());
   const [showCreate, setShowCreate] = useState(false);
   const [linkAppId, setLinkAppId] = useState<string | null>(null);
 
   const filtered = applications.filter((a) => {
+    const linked = (a.deal_links?.length ?? 0) > 0;
+    if (dealFilter === "unlinked" && linked) return false;
+    if (dealFilter === "linked" && !linked) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -499,6 +544,15 @@ export default function ApplicationsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm h-7 text-[12px]"
         />
+        <select
+          value={dealFilter}
+          onChange={(e) => setDealFilter(e.target.value as typeof dealFilter)}
+          className="h-7 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
+        >
+          <option value="all">Все заявки</option>
+          <option value="unlinked">Без сделки</option>
+          <option value="linked">Со сделкой</option>
+        </select>
         <span className="text-[11px] text-stone-400 ml-auto">{filtered.length} заявок</span>
       </div>
 
@@ -526,6 +580,7 @@ export default function ApplicationsPage() {
                 <TableHead className="text-[11px]">Грузополучатель</TableHead>
                 <TableHead className="text-[11px]">Коммерция</TableHead>
                 <TableHead className="text-[11px] text-center">Статус</TableHead>
+                <TableHead className="text-[11px]">Привязка</TableHead>
                 <TableHead className="text-[11px]">Сделка</TableHead>
               </TableRow>
             </TableHeader>
@@ -563,6 +618,9 @@ export default function ApplicationsPage() {
                       <StatusBadge ordered={app.is_ordered} />
                     </button>
                   </TableCell>
+                  <TableCell className="text-[11px]">
+                    <DealLinkCell app={app} today={today} />
+                  </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <button onClick={() => setEditApp(app)}
@@ -596,11 +654,15 @@ export default function ApplicationsPage() {
         </div>
       )}
 
-      <CreateApplicationDialog
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreated={reload}
-      />
+      {/* Монтируем только открытым: иначе поля (и выбранная сделка)
+          прошлой заявки оставались в форме следующей. */}
+      {showCreate && (
+        <CreateApplicationDialog
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreated={reload}
+        />
+      )}
 
       <EditApplicationDialog
         open={editApp != null}
@@ -631,6 +693,30 @@ export default function ApplicationsPage() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/** Привязанные сделки или «Сделка не создана · N дн.» (с 8-го дня — красным). */
+function DealLinkCell({ app, today }: { app: Application; today: string }) {
+  const links = app.deal_links ?? [];
+  const st = dealLinkStatus(app.date, links.length, today);
+  if (st.kind === "linked") {
+    return (
+      <span className="flex flex-wrap gap-1">
+        {links.map((l) => (
+          <Link key={l.deal_id} href={`/deals/${l.deal_id}`} className="font-mono text-amber-700 hover:underline">
+            {l.deal?.deal_code ?? "сделка"}
+          </Link>
+        ))}
+      </span>
+    );
+  }
+  return st.kind === "overdue" ? (
+    <span className="whitespace-nowrap rounded bg-red-50 px-1.5 py-0.5 font-medium text-red-700" title="Заявка без сделки 8 дней и дольше">
+      Не привязана · {st.days} дн.
+    </span>
+  ) : (
+    <span className="whitespace-nowrap text-stone-500">Сделка не создана · {st.days} дн.</span>
   );
 }
 

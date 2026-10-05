@@ -28,13 +28,16 @@ export type Application = {
   fuel_type?: { name: string; color: string } | null;
   destination_station?: { name: string } | null;
   assigned_manager?: { full_name: string } | null;
+  // Привязанные сделки — по ним «Сделка не создана / N дн.» в списке.
+  deal_links?: { deal_id: string; deal: { deal_code: string } | null }[];
 };
 
 const APP_SELECT = `
   *,
   fuel_type:fuel_types(name, color),
   destination_station:stations!destination_station_id(name),
-  assigned_manager:profiles!assigned_manager_id(full_name)
+  assigned_manager:profiles!assigned_manager_id(full_name),
+  deal_links:application_deals(deal_id, deal:deals(deal_code))
 `;
 
 // Stale-while-revalidate cache so navigating back to /applications
