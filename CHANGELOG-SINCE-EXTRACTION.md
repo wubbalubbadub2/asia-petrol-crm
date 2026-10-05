@@ -26,6 +26,34 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-05 — «Закупка»: у кого наша компания купила товар под сделку KG (00180)
+- **What changed:** миграция `00180_deal_upstream_purchases.sql`: `counterparties.is_own_supplier` (засеян по id: Taur Trading, НАЗС, Таур Импекс — строки-поставщики); таблица `deal_upstream_purchases` (our_company_id, seller_id, factory_id, fuel_type_id, appendix, volume_tons, comment; RLS: читать — вошедшие, писать — `is_writable_role()`, удалять — `is_admin()`; audit_trigger); `deals.upstream_purchase_id` (ON DELETE RESTRICT); триггеры `check_deal_upstream_purchase`, `check_deal_upstream_link`, `log_deal_upstream_link`; view `deal_upstream_purchase_totals` (security_invoker). Тест `supabase/tests/34_deal_upstream_purchases.test.sql`.
+- **Type:** [SCHEMA] [BEHAVIOR]
+- **Before → After:** предыстории закупки не было → у сделки KG с нашей компанией-поставщиком можно указать закупку (продавец, приложение, объём выкупа; без цены). Продано = Σ `supplier_contracted_volume` привязанных сделок без архива/черновиков/скрытых; остаток = объём выкупа − продано (может быть < 0). У привязанной сделки нельзя сменить поставщика/завод/продукт; закупку со сделками нельзя удалить. Балансы и цены не меняются.
+- **Client reason:** «добавить начало сделки — у кого купил Таур Трейдинг / НАЗС / Таур Импекс, объём, завод, продукт, номер приложения, без цены»; одна закупка → несколько сделок; только KG.
+- **Rebuild impact:** DATA-MODEL (новая таблица и колонки), ACCEPTANCE-SCENARIOS (тест 34); PRICING не затронут.
+
+### 2026-10-04 — Списки с поиском шире; у станции поле «Грузоотправитель»
+- **What changed:** `src/components/ui/searchable-select.tsx` (ширина по содержимому 260–560px, полное название в подсказке); `src/app/(dashboard)/spravochnik/stations/page.tsx` («Завод по умолчанию» → «Грузоотправитель», то же поле `default_factory_id`; «Тип станции» показывает подпись, а не `departure`).
+- **Type:** [PRESENTATION] [UI-FIELD]
+- **Before → After:** длинные названия контрагентов обрезались в 260px → видны целиком (до 560px). Схема не менялась.
+- **Client reason:** «не видно названия контрагентов»; «добавить в станции отправления графу Грузоотправитель».
+- **Rebuild impact:** presentation only.
+
+### 2026-09-30 — Новая сделка: тип цены по умолчанию «Фикс / Вручную»; ошибка котировки раскрывает секцию
+- **What changed:** `src/components/deals/deal-create-variants.tsx` (`EMPTY_VARIANT.priceMode`: `fixed` → `manual`); `src/app/(dashboard)/deals/new/page.tsx` + `src/components/deals/collapsible-section.tsx` (`openSignal`, `id`).
+- **Type:** [BEHAVIOR]
+- **Before → After:** новая сделка — «Формула: На дату» на обеих сторонах → «Фикс / Вручную». Ошибка «Выберите котировку» теперь раскрывает и прокручивает к нужной секции. Правило проверки котировки не менялось.
+- **Client reason:** менеджеры не могли сохранить сделку — свёрнутый «Покупатель» оставался на формуле без котировки.
+- **Rebuild impact:** ACCEPTANCE-SCENARIOS (создание сделки); PRICING не затронут.
+
+### 2026-09-30 — Справочники в списках по алфавиту: сначала английские, потом русские
+- **What changed:** `src/lib/sort-names.ts` (`compareNames`, `sortByName`), применено в `src/lib/refs.ts` и формах/фильтрах со своими запросами справочников.
+- **Type:** [PRESENTATION]
+- **Before → After:** поставщики/покупатели сортировались по полному имени («ТОО "…"»), фильтры — `localeCompare("ru")` (кириллица раньше латиницы) → по видимому имени: цифры → латиница → кириллица, без учёта регистра и кавычек. ГСМ и базис — по-прежнему `sort_order`.
+- **Client reason:** «по выборке поставщиков, покупателей, экспедиторов… порядок алфавитный, сначала английские, потом русские».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-04 — «Заявки»: код станции из справочника, менеджер по умолчанию — текущий пользователь
 - **What changed:** `src/app/(dashboard)/applications/page.tsx` (диалоги создания и редактирования), новый `src/lib/application-autofill.ts` (`usableStationCode`, `stationCodeOnPick`, `defaultManagerId`), тест `application-autofill.test.ts`. Миграций нет.
 - **Type:** [BEHAVIOR]
