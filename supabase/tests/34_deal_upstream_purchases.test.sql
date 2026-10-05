@@ -159,44 +159,33 @@ BEGIN
   RAISE NOTICE 'OK: закупка — продано / остаток, проверки привязки, лента и аудит';
 END $$;
 
--- 11. RLS: finance читает, но не пишет; manager пишет; удалять — только admin.
-INSERT INTO auth.users (id, email) VALUES
-  ('00000000-0000-0000-0000-0000000c0d01', 't-up-fin@test.local'),
-  ('00000000-0000-0000-0000-0000000c0d02', 't-up-mgr@test.local');
-INSERT INTO profiles (id, full_name, role) VALUES
-  ('00000000-0000-0000-0000-0000000c0d01', 'T-UP Финансы', 'finance'),
-  ('00000000-0000-0000-0000-0000000c0d02', 'T-UP Менеджер', 'manager')
-ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role;
-
-SET LOCAL ROLE authenticated;
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0d01', true);
+-- 11. RLS: читать — любой вошедший, писать — is_writable_role(), удалять —
+-- только is_admin(). Проверяем сами политики: в CI is_writable_role(),
+-- is_admin() и auth.uid() заглушены, поэтому прогон под ролью там
+-- ничего не доказал бы.
 DO $$
-DECLARE v_ok BOOLEAN := FALSE;
+DECLARE r RECORD; v_n INT := 0;
 BEGIN
-  BEGIN
-    INSERT INTO deal_upstream_purchases (our_company_id, seller_id, factory_id, fuel_type_id, appendix, volume_tons)
-    VALUES ('00000000-0000-0000-0000-0000000c0a01', '00000000-0000-0000-0000-0000000c0a03',
-            '00000000-0000-0000-0000-0000000c0b01', '00000000-0000-0000-0000-0000000c0c01', 'fin', 1);
-  EXCEPTION WHEN insufficient_privilege THEN v_ok := TRUE;
-  END;
-  IF NOT v_ok THEN RAISE EXCEPTION 'RLS: finance создал закупку'; END IF;
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'deal_upstream_purchases'::regclass) THEN
+    RAISE EXCEPTION 'RLS: на deal_upstream_purchases не включён';
+  END IF;
+  FOR r IN SELECT cmd, coalesce(qual, '') AS q, coalesce(with_check, '') AS w
+             FROM pg_policies WHERE tablename = 'deal_upstream_purchases' LOOP
+    v_n := v_n + 1;
+    IF r.cmd = 'SELECT' AND r.q NOT LIKE '%auth.uid() IS NOT NULL%' THEN
+      RAISE EXCEPTION 'RLS SELECT: ждали auth.uid() IS NOT NULL, есть %', r.q;
+    ELSIF r.cmd = 'INSERT' AND r.w NOT LIKE '%is_writable_role()%' THEN
+      RAISE EXCEPTION 'RLS INSERT: ждали is_writable_role(), есть %', r.w;
+    ELSIF r.cmd = 'UPDATE' AND (r.q NOT LIKE '%is_writable_role()%' OR r.w NOT LIKE '%is_writable_role()%') THEN
+      RAISE EXCEPTION 'RLS UPDATE: ждали is_writable_role(), есть % / %', r.q, r.w;
+    ELSIF r.cmd = 'DELETE' AND r.q NOT LIKE '%is_admin()%' THEN
+      RAISE EXCEPTION 'RLS DELETE: ждали is_admin(), есть %', r.q;
+    ELSIF r.cmd = 'ALL' THEN
+      RAISE EXCEPTION 'RLS: политика FOR ALL на закупках не ожидалась';
+    END IF;
+  END LOOP;
+  IF v_n <> 4 THEN RAISE EXCEPTION 'RLS: ждали 4 политики, есть %', v_n; END IF;
+  RAISE NOTICE 'OK: RLS — читать вошедшим, писать is_writable_role(), удалять is_admin()';
 END $$;
-
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0d02', true);
-DO $$
-DECLARE v_id UUID; v_n INT;
-BEGIN
-  INSERT INTO deal_upstream_purchases (our_company_id, seller_id, factory_id, fuel_type_id, appendix, volume_tons)
-  VALUES ('00000000-0000-0000-0000-0000000c0a01', '00000000-0000-0000-0000-0000000c0a03',
-          '00000000-0000-0000-0000-0000000c0b01', '00000000-0000-0000-0000-0000000c0c01', 'mgr', 10)
-  RETURNING id INTO v_id;
-  SELECT remaining_tons INTO v_n FROM deal_upstream_purchase_totals WHERE purchase_id = v_id;
-  IF v_n IS DISTINCT FROM 10 THEN RAISE EXCEPTION 'RLS: менеджер не видит остаток своей закупки (%)', v_n; END IF;
-  DELETE FROM deal_upstream_purchases WHERE id = v_id;
-  GET DIAGNOSTICS v_n = ROW_COUNT;
-  IF v_n <> 0 THEN RAISE EXCEPTION 'RLS: менеджер удалил закупку'; END IF;
-  RAISE NOTICE 'OK: RLS — finance не пишет, manager пишет, удаляет только admin';
-END $$;
-RESET ROLE;
 
 ROLLBACK;
