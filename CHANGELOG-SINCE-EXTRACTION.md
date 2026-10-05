@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-05 — «Заявки»: выбор сделки при создании, пометка «не привязана» с 8-го дня
+- **What changed:** `src/app/(dashboard)/applications/page.tsx` (поле «Сделка» в «Новой заявке», колонка «Привязка», фильтр «Все / Без сделки / Со сделкой», диалог «Привязать к сделке» с поиском); `src/lib/applications/deal-link.ts` (`dealLinkStatus`, `UNLINKED_ALERT_DAYS = 8`, `loadDealOptions` постранично); `src/lib/hooks/use-applications.ts` (embed `application_deals`). Схема не менялась.
+- **Type:** [UI-FIELD] [BEHAVIOR]
+- **Before → After:** сделку можно было привязать только после создания заявки, список сделок обрезался на 1000 строк (PostgREST Max-Rows) → сделку выбирают сразу (по умолчанию «Сделка не создана»), список грузится постранично. В списке: привязанные сделки ссылками; без сделки — «Сделка не создана · N дн.», с 8-го дня от даты заявки — красным «Не привязана · N дн.». Форма «Новая заявка» каждый раз пустая (раньше держала значения прошлой заявки).
+- **Client reason:** «добавить выбор существующей сделки»; «через 8–9 дней обозначилось, что заявка не привязана».
+- **Rebuild impact:** ACCEPTANCE-SCENARIOS (заявки); DATA-MODEL не затронут.
+
 ### 2026-10-05 — «Закупка»: у кого наша компания купила товар под сделку KG (00180)
 - **What changed:** миграция `00180_deal_upstream_purchases.sql`: `counterparties.is_own_supplier` (засеян по id: Taur Trading, НАЗС, Таур Импекс — строки-поставщики); таблица `deal_upstream_purchases` (our_company_id, seller_id, factory_id, fuel_type_id, appendix, volume_tons, comment; RLS: читать — вошедшие, писать — `is_writable_role()`, удалять — `is_admin()`; audit_trigger); `deals.upstream_purchase_id` (ON DELETE RESTRICT); триггеры `check_deal_upstream_purchase`, `check_deal_upstream_link`, `log_deal_upstream_link`; view `deal_upstream_purchase_totals` (security_invoker). Тест `supabase/tests/34_deal_upstream_purchases.test.sql`.
 - **Type:** [SCHEMA] [BEHAVIOR]
