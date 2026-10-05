@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-05 — Паспорт KG: колонки «Закупка» свёрнуты, раскрываются кнопкой
+- **What changed:** `src/components/deals/passport-table.tsx` — кнопка «Закупка ▸/▾» в тулбаре паспорта KG; настройка пользователя `passport_upstream_open` (по умолчанию `false`).
+- **Type:** [PRESENTATION]
+- **Before → After:** три колонки «Закупка» видны в паспорте KG всегда → скрыты, пока пользователь не нажмёт «Закупка»; выбор запоминается. Excel-выгрузка не менялась (колонки в ней есть всегда).
+- **Client reason:** «скрыть блок закупки в таблице сделок, раскрывать только по кнопке».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-05 — «Заявки»: выбор сделки при создании, пометка «не привязана» с 8-го дня
 - **What changed:** `src/app/(dashboard)/applications/page.tsx` (поле «Сделка» в «Новой заявке», колонка «Привязка», фильтр «Все / Без сделки / Со сделкой», диалог «Привязать к сделке» с поиском); `src/lib/applications/deal-link.ts` (`dealLinkStatus`, `UNLINKED_ALERT_DAYS = 8`, `loadDealOptions` постранично); `src/lib/hooks/use-applications.ts` (embed `application_deals`). Схема не менялась.
 - **Type:** [UI-FIELD] [BEHAVIOR]
