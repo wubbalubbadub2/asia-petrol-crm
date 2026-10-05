@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllPages } from "@/lib/supabase/paginate";
 import type { TablesInsert } from "@/lib/types/database";
+import type { UpstreamPurchaseEmbed } from "@/lib/deals/upstream-purchase";
 import { toast } from "sonner";
 
 export type Deal = {
@@ -133,8 +134,15 @@ export type Deal = {
   // Joined fields
   factory?: { name: string } | null;
   fuel_type?: { name: string; color: string } | null;
-  supplier?: { full_name: string; short_name: string | null } | null;
+  // is_own_supplier — наша компания (Taur Trading / НАЗС / Таур Импекс).
+  // Приезжает из get_deal_bundle (to_jsonb(counterparties)); в списке нет.
+  supplier?: { full_name: string; short_name: string | null; is_own_supplier?: boolean } | null;
   buyer?: { full_name: string; short_name: string | null } | null;
+  // «Закупка» — у кого наша компания купила топливо (только KG). Ссылка
+  // есть и в списке, и в карточке; встраивание — только в списке
+  // (паспорт KG и его выгрузки), см. LIST_SELECT.
+  upstream_purchase_id?: string | null;
+  upstream_purchase?: UpstreamPurchaseEmbed | null;
   forwarder?: { name: string } | null;
   supplier_manager?: { full_name: string } | null;
   buyer_manager?: { full_name: string } | null;
@@ -417,6 +425,12 @@ export async function fetchDealLinesForExport(
 //
 // company_group name on each deal_company_groups row also resolves
 // from the refs cache — no nested join needed.
+// Закупка (только KG): встраивание с явными ключами. У
+// deal_upstream_purchases два внешних ключа на counterparties
+// (our_company_id и seller_id) — без `!seller_id` PostgREST не выберет
+// и вернёт ошибку неоднозначности. ВАЖНО: пока миграция закупок не
+// применена, PostgREST не знает таблицу, и весь список сделок упадёт —
+// фронтенд выкатывать только после миграции.
 const LIST_SELECT = `
   id, deal_type, deal_number, year, deal_code, quarter, month,
   factory_id, fuel_type_id, sulfur_percent,
@@ -446,6 +460,8 @@ const LIST_SELECT = `
   supplier_lines_count, buyer_lines_count,
   supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date,
   buyer_deferral_days, buyer_deferral_mode, buyer_deferral_note, buyer_planned_pay_date,
+  upstream_purchase_id,
+  upstream_purchase:deal_upstream_purchases!upstream_purchase_id(appendix, volume_tons, seller:counterparties!seller_id(short_name, full_name)),
   deal_company_groups(id, position, company_group_id, price, price_kind)
 `;
 // quotation + discount were missing from this projection — operator

@@ -13,6 +13,7 @@
  */
 
 import type { Deal } from "@/lib/hooks/use-deals";
+import { upstreamSeller, upstreamAppendix, upstreamVolume } from "@/lib/deals/upstream-purchase";
 
 type Side = "supplier" | "buyer";
 
@@ -20,7 +21,7 @@ type Column = {
   key: string;
   header: string;
   width: number;
-  band: "deal" | "supplier" | "groups" | "buyer" | "logistics";
+  band: "deal" | "upstream" | "supplier" | "groups" | "buyer" | "logistics";
   numFmt?: string;
   read: (deal: Deal) => string | number | null | undefined;
 };
@@ -202,8 +203,28 @@ const COLUMNS: Column[] = [
   { key: "supplier_manager", header: "Коммерция", width: 16, band: "logistics", read: (d) => d.supplier_manager?.full_name ?? "" },
 ];
 
+// «Закупка» (только KG): у кого наша компания купила топливо. Стоит
+// перед «Поставщиком», как на экране паспорта KG. «Объём выкупа» в
+// итог НЕ входит (решение D5): одна закупка стоит в нескольких сделках.
+export const UPSTREAM_COLUMNS: Column[] = [
+  { key: "upstream_seller", header: "У кого купили", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
+  { key: "upstream_appendix", header: "Номер приложения", width: 18, band: "upstream", read: (d) => upstreamAppendix(d) },
+  { key: "upstream_volume", header: "Объём выкупа, т", width: 12, band: "upstream", numFmt: NUM_FMT_VOLUME, read: (d) => upstreamVolume(d) },
+];
+
+/** Колонки выгрузки для вкладки: в KG — с «Закупкой» перед «Поставщиком». */
+export function passportColumns(dealType: "KG" | "KZ" | "ALL"): Column[] {
+  if (dealType !== "KG") return COLUMNS;
+  const at = COLUMNS.findIndex((c) => c.band === "supplier");
+  return [...COLUMNS.slice(0, at), ...UPSTREAM_COLUMNS, ...COLUMNS.slice(at)];
+}
+
+// Жёлтая шапка — как в Excel клиента (FFFF00).
+export const UPSTREAM_HEADER_FILL = "FFFFFF00";
+
 const BAND_STYLE: Record<Column["band"], { label: string; bg: string; text: string }> = {
   deal:      { label: "Сделка",          bg: "FFF1F0EE", text: "FF44403C" },
+  upstream:  { label: "Закупка",         bg: UPSTREAM_HEADER_FILL, text: "FF1C1917" },
   supplier:  { label: "Поставщик",       bg: "FFFFF7E6", text: "FF92400E" },
   groups:    { label: "Группы компании", bg: "FFF3E8FF", text: "FF6B21A8" },
   buyer:     { label: "Покупатель",      bg: "FFE0F2FE", text: "FF1E40AF" },
@@ -247,6 +268,7 @@ export function passportFileName(ctx: ExportContext): string {
 }
 
 export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): Promise<void> {
+  const columns = passportColumns(ctx.dealType);
   // Enrich deals with line snapshots (DEAL_SELECT ships only `id` per
   // line for the list view's count badge) AND with the joined ref
   // names (LIST_SELECT no longer embeds factory / supplier / buyer /
@@ -316,7 +338,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
 
   // ── Title row ────────────────────────────────────────────
   ws.getRow(1).height = 24;
-  ws.mergeCells(1, 1, 1, COLUMNS.length);
+  ws.mergeCells(1, 1, 1, columns.length);
   const titleCell = ws.getCell(1, 1);
   titleCell.value = passportTitle(ctx, sheetName, deals.length);
   titleCell.font = { bold: true, size: 13, color: { argb: HEADER_TEXT } };
@@ -328,10 +350,10 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
   // band label centered.
   ws.getRow(2).height = 18;
   let bandStart = 1;
-  for (let i = 0; i < COLUMNS.length; i++) {
-    const next = COLUMNS[i + 1];
-    if (!next || next.band !== COLUMNS[i].band) {
-      const band = COLUMNS[i].band;
+  for (let i = 0; i < columns.length; i++) {
+    const next = columns[i + 1];
+    if (!next || next.band !== columns[i].band) {
+      const band = columns[i].band;
       const style = BAND_STYLE[band];
       if (i + 1 > bandStart) {
         ws.mergeCells(2, bandStart, 2, i + 1);
@@ -349,12 +371,13 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
   // ── Column header row ────────────────────────────────────
   const headerRow = ws.getRow(3);
   headerRow.height = 22;
-  COLUMNS.forEach((col, idx) => {
+  columns.forEach((col, idx) => {
     const cell = headerRow.getCell(idx + 1);
     cell.value = col.header;
-    cell.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
+    const yellow = col.band === "upstream";
+    cell.font = { bold: true, size: 10, color: { argb: yellow ? "FF1C1917" : HEADER_TEXT } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: yellow ? UPSTREAM_HEADER_FILL : HEADER_BG } };
     cell.border = { bottom: { style: "medium", color: { argb: "FFD97706" } } };
     ws.getColumn(idx + 1).width = col.width;
     if (col.numFmt) {
@@ -374,7 +397,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
     // alternation; rows now read as flat tinted strips of the
     // product's color, white where the fuel type has no color set.
     const fuelHex = deal.fuel_type?.color ?? null;
-    COLUMNS.forEach((col, colIdx) => {
+    columns.forEach((col, colIdx) => {
       const cell = row.getCell(colIdx + 1);
       const v = col.read(deal);
       cell.value = v == null ? "" : v;
@@ -398,7 +421,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
     // Highlight negative balance / debt cells in red bold so accountants
     // can scan them without reading the sign.
     for (const key of ["supplier_balance", "buyer_debt"] as const) {
-      const idx = COLUMNS.findIndex((c) => c.key === key);
+      const idx = columns.findIndex((c) => c.key === key);
       if (idx === -1) continue;
       const cell = row.getCell(idx + 1);
       const v = cell.value;
@@ -420,7 +443,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
       "preliminary_tonnage", "preliminary_amount", "actual_shipped_volume", "invoice_amount",
       "supplier_railway_amount", "additional_expenses_amount",
     ]);
-    COLUMNS.forEach((col, idx) => {
+    columns.forEach((col, idx) => {
       const cell = totalRow.getCell(idx + 1);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
       cell.font = { bold: true, size: 10 };
@@ -444,7 +467,7 @@ export async function exportPassportToExcel(deals: Deal[], ctx: ExportContext): 
   // ── Auto-filter on the column-header row ─────────────────
   ws.autoFilter = {
     from: { row: 3, column: 1 },
-    to: { row: 3, column: COLUMNS.length },
+    to: { row: 3, column: columns.length },
   };
 
   // ── Download ────────────────────────────────────────────

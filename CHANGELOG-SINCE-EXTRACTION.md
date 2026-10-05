@@ -53,6 +53,12 @@ Entry template:
 - **Before → After:** поставщики/покупатели сортировались по полному имени («ТОО "…"»), фильтры — `localeCompare("ru")` (кириллица раньше латиницы) → по видимому имени: цифры → латиница → кириллица, без учёта регистра и кавычек. ГСМ и базис — по-прежнему `sort_order`.
 - **Client reason:** «по выборке поставщиков, покупателей, экспедиторов… порядок алфавитный, сначала английские, потом русские».
 - **Rebuild impact:** presentation only.
+### 2026-10-05 — «Закупка (у кого купили)»: интерфейс (миграция 00180 — отдельно)
+- **What changed:** новый блок `src/components/deals/deal-upstream-purchase.tsx` в карточке сделки KG перед «Поставщиком» (выбор / новая / изменить / отвязать закупку; «Продано» и «Остаток» — из вью `deal_upstream_purchase_totals`); чекбокс и колонка «Наша компания» (`counterparties.is_own_supplier`) в справочнике «Поставщики»; копия сделки сохраняет `upstream_purchase_id`; паспорт KG — бэнд «Закупка» (3 колонки: У кого купили / Номер приложения / Объём выкупа) перед «Поставщиком», в KZ и «Все сделки» скрыт; то же в краткой и детальной Excel-выгрузке KG (жёлтая шапка FFFF00). `LIST_SELECT` встраивает `deal_upstream_purchases!upstream_purchase_id(… seller:counterparties!seller_id(…))`. Хелперы — `src/lib/deals/upstream-purchase.ts`, тесты — `upstream-purchase.test.ts`, `passport-column-order.test.ts`.
+- **Type:** [UI-FIELD] [EXPORT]
+- **Before → After:** итог по «Объёму выкупа» не считается (D5: одна закупка — несколько сделок). Формулы в React нет — числа из вью БД.
+- **Client reason:** видеть, у кого наша компания купила топливо и сколько из закупки уже продано.
+- **Rebuild impact:** DATA-MODEL (закупка, 00180). Фронтенд выкатывать только после миграции 00180: без неё список сделок падает на встраивании.
 
 ### 2026-10-04 — «Заявки»: код станции из справочника, менеджер по умолчанию — текущий пользователь
 - **What changed:** `src/app/(dashboard)/applications/page.tsx` (диалоги создания и редактирования), новый `src/lib/application-autofill.ts` (`usableStationCode`, `stationCodeOnPick`, `defaultManagerId`), тест `application-autofill.test.ts`. Миграций нет.

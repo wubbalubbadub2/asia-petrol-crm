@@ -31,6 +31,7 @@ import { OFFSET_KINDS, OFFSET_KIND_LABELS, offsetKindLabel } from "@/lib/payment
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
 import { formatDMY } from "@/lib/format";
+import { upstreamSeller, upstreamAppendix, upstreamVolume } from "@/lib/deals/upstream-purchase";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -1580,6 +1581,13 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
       </td>
       <td className="border-r border-stone-300 px-1 py-0.5 text-stone-700"><EditableTextCell value={deal.sulfur_percent} dealId={deal.id} field="sulfur_percent" /></td>
 
+      {/* Закупка (только KG; в KZ и «Все» колонки скрыты CSS-правилом
+          ptHidden). Только показ: привязка и правка — в карточке сделки,
+          там же триггеры БД проверяют поставщика/завод/продукт. */}
+      <td className="border-r px-2 py-1 text-stone-700 max-w-[140px] truncate" title={upstreamSeller(deal)}>{upstreamSeller(deal)}</td>
+      <td className="border-r px-2 py-1 text-stone-700">{upstreamAppendix(deal)}</td>
+      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="Объём закупки целиком — одна закупка может стоять в нескольких сделках">{formatComputedVol(upstreamVolume(deal))}</td>
+
       {/* Supplier: 9 cols */}
       <td className="border-r px-1 py-0.5 bg-amber-50/10 text-stone-700">
         <EditableSelectCell value={deal.supplier_id} displayLabel={(deal.supplier_id && supplierLabels.get(deal.supplier_id)) || ""} dealId={deal.id} field="supplier_id" options={refs.suppliers} color="amber" />
@@ -2088,9 +2096,13 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // просто нет. 2026-08-15: invoice_amount отсюда убран — это Сумма 1
   // (расходы логистов), она есть и в KG; вместо неё в списке Сумма 2.
   const KZ_ONLY_COLS = ["supplier_railway_amount", "additional_expenses"];
+  // «Закупка» (у кого наша компания купила топливо) бывает только у
+  // сделок KG — в паспорте KZ и во «Всех сделках» колонки не нужны.
+  const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"];
   const ptHidden = useMemo(() => {
     const set = new Set(colPref.hidden);
     if (dealType === "KG") for (const k of KZ_ONLY_COLS) set.add(k);
+    if (dealType !== "KG") for (const k of KG_ONLY_COLS) set.add(k);
     return set;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colPref.hidden, dealType]);
@@ -2101,7 +2113,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // Видимые колонки на band — для динамических colSpan бэндовой шапки.
   // «№» входит в deal, колонка удаления — в logistics.
   const ptBandSpan = useMemo(() => {
-    const span: Record<PtBand, number> = { deal: 1, supplier: 0, groups: 0, buyer: 0, logistics: 0, payment: 1 };
+    const span: Record<PtBand, number> = { deal: 1, upstream: 0, supplier: 0, groups: 0, buyer: 0, logistics: 0, payment: 1 };
     for (const u of PT_UNITS) if (!ptHidden.has(u.key)) span[u.band] += u.h.length;
     return span;
   }, [ptHidden]);
@@ -2427,6 +2439,11 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
                 single visual identity. */}
             <tr>
               {ptBandSpan.deal > 0 && <th colSpan={ptBandSpan.deal} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#b4c6e7]">Сделка</th>}
+              {/* Закупка — жёлтый, как в Excel клиента (там FFFF00). На экране
+                  смягчён до #ffff99 (светло-жёлтый из стандартной палитры
+                  Excel): тот же тон, но не режет глаз и не путается с
+                  кремовым #fff2cc «Покупателя». */}
+              {ptBandSpan.upstream > 0 && <th colSpan={ptBandSpan.upstream} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#ffff99]">Закупка</th>}
               {ptBandSpan.supplier > 0 && <th colSpan={ptBandSpan.supplier} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fce3d6]">Поставщик</th>}
               {ptBandSpan.groups > 0 && <th colSpan={ptBandSpan.groups} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#bcd7ee]">Группы компании</th>}
               {ptBandSpan.buyer > 0 && <th colSpan={ptBandSpan.buyer} className="sticky top-0 z-20 h-7 border-r border-stone-300 px-2 text-center text-[11px] font-semibold text-stone-700 uppercase tracking-wider bg-[#fff2cc]">Покупатель</th>}
@@ -2459,6 +2476,10 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#b4c6e7]">Завод</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#b4c6e7]">ГСМ</th>
               <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[40px] bg-[#b4c6e7]">%S</th>
+              {/* Закупка: 3 cols (только KG) */}
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#ffff99]">У кого купили</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#ffff99]">Номер приложения</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#ffff99]" title="Объём закупки целиком. В «Итого» не суммируется: одна закупка стоит в нескольких сделках.">Объём выкупа</th>
               {/* Supplier: 10 cols */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[110px] bg-[#fce3d6]">Поставщик</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#fce3d6]">Номер приложения</th>
@@ -2595,7 +2616,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
 //  т.к. первая ячейка «Итого» спанит колонки 1..5.
 //  «№» (h1) и колонка удаления (h43) не скрываются и не закрепляются
 //  отдельно («№» закреплена всегда).
-type PtBand = "deal" | "supplier" | "groups" | "buyer" | "logistics" | "payment";
+type PtBand = "deal" | "upstream" | "supplier" | "groups" | "buyer" | "logistics" | "payment";
 type PtUnit = { key: string; label: string; band: PtBand; h: number[]; body: number };
 // Описание колонки без номеров: порядок в массиве и есть их источник.
 type PtUnitDef = { key: string; label: string; band: PtBand; hSpan?: number };
@@ -2604,6 +2625,10 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "factory", label: "Завод", band: "deal" },
   { key: "fuel", label: "ГСМ", band: "deal" },
   { key: "sulfur", label: "%S", band: "deal" },
+  // Закупка (только KG): у кого наша компания купила топливо.
+  { key: "upstream_seller", label: "У кого купили", band: "upstream" },
+  { key: "upstream_appendix", label: "Номер приложения", band: "upstream" },
+  { key: "upstream_volume", label: "Объём выкупа", band: "upstream" },
   { key: "supplier", label: "Поставщик", band: "supplier" },
   { key: "supplier_contract", label: "Номер приложения", band: "supplier" },
   { key: "supplier_basis", label: "Базис", band: "supplier" },
@@ -2689,12 +2714,12 @@ const PT_UNITS: PtUnit[] = (() => {
   });
 })();
 const PT_BAND_LABELS: Record<PtBand, string> = {
-  deal: "Сделка", supplier: "Поставщик", groups: "Группы компании", buyer: "Покупатель", logistics: "Логистика",
+  deal: "Сделка", upstream: "Закупка", supplier: "Поставщик", groups: "Группы компании", buyer: "Покупатель", logistics: "Логистика",
   payment: "Условия оплаты",
 };
 type PassportColumnsPref = { hidden: string[]; pinUntil: string | null };
 
-const TOTAL_COLS = 43;
+const TOTAL_COLS = 46;
 
 type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
 
@@ -2778,7 +2803,7 @@ function ColumnManager({ pref, onChange }: { pref: PassportColumnsPref; onChange
     }
     onChange({ hidden: [...next], pinUntil });
   }
-  const bands: PtBand[] = ["deal", "supplier", "groups", "buyer", "logistics"];
+  const bands: PtBand[] = ["deal", "upstream", "supplier", "groups", "buyer", "logistics"];
   const pinnable = PT_UNITS.filter((u) => !hidden.has(u.key));
   const customized = pref.hidden.length > 0 || pref.pinUntil != null;
   return (
@@ -2856,8 +2881,9 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       "bg-stone-100/60 text-stone-700"
     }`}>{digits === 3 ? fmtVol(v) : fmt(v)}</td>
   );
-  const blank = (band: "amber" | "blue" | "stone" | "purple") => (
+  const blank = (band: "amber" | "blue" | "stone" | "purple" | "yellow") => (
     <td className={`border-r px-2 py-1 ${
+      band === "yellow" ? "bg-yellow-100/60" :
       band === "amber" ? "bg-amber-100/60" :
       band === "blue"  ? "bg-blue-100/60" :
       band === "purple" ? "bg-purple-100/60" :
@@ -2874,6 +2900,10 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
       <td colSpan={5 - hiddenDealCount} className="sticky left-0 z-10 bg-stone-100 border-r border-stone-300 px-2 py-1 text-right text-[12px] font-semibold text-stone-600 uppercase tracking-wider">
         Итого ({deals.length})
       </td>
+      {/* Закупка (3 cols, только KG): всё пустое. «Объём выкупа» НЕ
+          суммируется — одна закупка стоит в нескольких сделках, и сумма
+          по строкам многократно завысила бы объём. */}
+      {blank("yellow")}{blank("yellow")}{blank("yellow")}
       {/* Поставщик (15 cols, ВТД добавлена 00169): name/contract/basis blank + numeric sums.
           Клиент 2026-07-08: Объем / Сумма дог. / Цена — это данные
           контракта (одинаковые для всех строк одной сделки, а если

@@ -32,6 +32,8 @@ const SRC = readFileSync(
 // (invoice_amount) — у логистов; суммы 2 и 3 — у поставщика.
 const EXPECTED_KEYS = [
   "month", "factory", "fuel", "sulfur",
+  // Закупка (только KG) — перед «Поставщиком», как в Excel клиента.
+  "upstream_seller", "upstream_appendix", "upstream_volume",
   "supplier", "supplier_contract", "supplier_basis", "supplier_volume",
   "supplier_amount", "supplier_price", "supplier_shipped_amount",
   "supplier_shipped_volume", "supplier_payment", "supplier_payment_date",
@@ -56,6 +58,7 @@ const EXPECTED_KEYS = [
 // что расхождения зафиксированы здесь и видны при правке.
 const EXPECTED_HEADERS = [
   "Месяц", "Завод", "ГСМ", "%S",
+  "У кого купили", "Номер приложения", "Объём выкупа",
   "Поставщик", "Номер приложения", "Базис", "Объем", "Сумма дог.", "Цена",
   "Приход, сумма", "Приход, тонн", "Оплата", "Дата оплаты", "Взаимозачет",
   "Сумма ЖД (поставщик)", "Сумма грузоотправления", "ВТД", "Баланс",
@@ -141,5 +144,26 @@ describe("паспорт: порядок колонок", () => {
     expect(bandOf("invoice_amount")).toBe("logistics");
     expect(bandOf("supplier_railway_amount")).toBe("supplier");
     expect(bandOf("additional_expenses")).toBe("supplier");
+  });
+
+  it("Закупка — свой бэнд перед «Поставщиком» и только в паспорте KG", () => {
+    const start = SRC.indexOf("const PT_UNITS_ORDER: PtUnitDef[] = [");
+    const block = SRC.slice(start, SRC.indexOf("\n];", start));
+    for (const key of ["upstream_seller", "upstream_appendix", "upstream_volume"]) {
+      expect(block).toMatch(new RegExp(`key:\\s*"${key}",[^}]*band:\\s*"upstream"`));
+    }
+    const keys = parseUnitKeys();
+    expect(keys.indexOf("supplier")).toBe(keys.indexOf("upstream_volume") + 1);
+    // В KZ и «Всех сделках» колонки прячутся принудительно.
+    expect(SRC).toContain('const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"]');
+    expect(SRC).toContain('if (dealType !== "KG") for (const k of KG_ONLY_COLS) set.add(k)');
+  });
+
+  it("итог по «Объёму выкупа» не считается", () => {
+    // Решение D5: одна закупка стоит в нескольких сделках — сумма по
+    // строкам многократно завысила бы объём. Ячейки бэнда в «Итого» пустые.
+    const totals = SRC.slice(SRC.indexOf("function PassportTotalsRow"));
+    expect(totals).toContain('{blank("yellow")}{blank("yellow")}{blank("yellow")}');
+    expect(totals).not.toMatch(/upstream/i);
   });
 });

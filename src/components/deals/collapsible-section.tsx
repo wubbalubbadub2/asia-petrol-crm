@@ -19,6 +19,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // page and the new-deal form pick from a single source of truth.
 export const SECTION_COLORS = {
   deal:      "#b4c6e7", // Сделка / Ответственные / Основные данные
+  // Закупка (у кого купили). В Excel клиента — FFFF00; здесь светло-
+  // жёлтый #ffff99 из стандартной палитры Excel: тот же тон, но спокойнее
+  // и не сливается с кремовым #fff2cc «Покупателя». Тот же цвет — у
+  // бэнда «Закупка» в паспорте KG.
+  upstream:  "#ffff99",
   supplier:  "#fce3d6", // Поставщик / Оплата заранее
   buyer:     "#fff2cc", // Покупатель
   chain:     "#bcd7ee", // Группы компании

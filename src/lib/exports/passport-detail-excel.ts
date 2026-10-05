@@ -37,6 +37,7 @@ import type { ExportContext } from "@/lib/exports/passport-excel";
 import { roundedTonnage } from "@/lib/exports/registry-excel";
 import { isRefundKind } from "@/lib/payments/totals";
 import { formatDMY } from "@/lib/format";
+import { upstreamSeller, upstreamAppendix, upstreamVolume } from "@/lib/deals/upstream-purchase";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { FxRateRow } from "@/lib/fx/rates";
 
@@ -122,7 +123,7 @@ type Column = {
   key: string;
   header: string;
   width: number;
-  band: "deal" | "supplier" | "groups" | "buyer" | "logistics" | "debt";
+  band: "deal" | "upstream" | "supplier" | "groups" | "buyer" | "logistics" | "debt";
   numFmt?: string;
   read: (deal: Deal) => string | number | Date | null | undefined;
   // Sub-row value. Omitted → cell stays empty on sub-rows.
@@ -388,8 +389,28 @@ const COLUMNS: Column[] = [
   { key: "buyer_manager", header: "Менеджер по продаже", width: 16, band: "logistics", read: (d) => d.buyer_manager?.full_name ?? "" },
 ];
 
+// «Закупка» (только KG) — перед «Поставщиком», как в кратком паспорте и
+// на экране. Величины уровня сделки: в под-строках вагонов пусто, а
+// «Объём выкупа» не суммируется в итог (D5: одна закупка — несколько сделок).
+export const DETAIL_UPSTREAM_COLUMNS: Column[] = [
+  { key: "upstream_seller", header: "У кого купили", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
+  { key: "upstream_appendix", header: "Номер приложения", width: 18, band: "upstream", read: (d) => upstreamAppendix(d) },
+  { key: "upstream_volume", header: "Объём выкупа, т", width: 12, band: "upstream", numFmt: NUM_FMT_VOLUME, read: (d) => upstreamVolume(d) },
+];
+
+/** Колонки детальной выгрузки: в KG — с «Закупкой» перед «Поставщиком». */
+export function detailColumns(dealType: "KG" | "KZ" | "ALL"): Column[] {
+  if (dealType !== "KG") return COLUMNS;
+  const at = COLUMNS.findIndex((c) => c.band === "supplier");
+  return [...COLUMNS.slice(0, at), ...DETAIL_UPSTREAM_COLUMNS, ...COLUMNS.slice(at)];
+}
+
+// Жёлтая шапка «Закупки» — как в Excel клиента (FFFF00).
+const UPSTREAM_HEADER_FILL = "FFFFFF00";
+
 const BAND_STYLE: Record<Column["band"], { label: string; bg: string; text: string }> = {
   deal:      { label: "Сделка",          bg: "FFF1F0EE", text: "FF44403C" },
+  upstream:  { label: "Закупка",         bg: UPSTREAM_HEADER_FILL, text: "FF1C1917" },
   supplier:  { label: "Поставщик",       bg: "FFFFF7E6", text: "FF92400E" },
   groups:    { label: "Группы компании", bg: "FFF3E8FF", text: "FF6B21A8" },
   buyer:     { label: "Покупатель",      bg: "FFE0F2FE", text: "FF1E40AF" },
@@ -637,7 +658,7 @@ export async function exportPassportDetailToExcel(
 ): Promise<void> {
   const isDebt = opts?.variant === "debt";
   // Долговые колонки достраиваются ниже, когда приедут сроки из БД.
-  let columns: Column[] = COLUMNS;
+  let columns: Column[] = detailColumns(ctx.dealType);
   const [{ fetchDealLinesForExport }, { getGlobalRefs, getCachedRefsSync }, { fetchAllPaginated }] = await Promise.all([
     import("@/lib/hooks/use-deals"),
     import("@/lib/refs"),
@@ -710,7 +731,7 @@ export async function exportPassportDetailToExcel(
       if (res.error) throw new Error(`Условия оплаты: ${res.error.message}`);
       for (const row of res.data) termsByShipSide.set(termKey(row.shipment_id, row.side), row);
     }
-    columns = [...COLUMNS, ...buildDebtColumns(termsByShipSide)];
+    columns = [...detailColumns(ctx.dealType), ...buildDebtColumns(termsByShipSide)];
   }
 
   const dcgByDeal = new Map<string, DcgRow[]>();
@@ -899,9 +920,10 @@ export async function exportPassportDetailToExcel(
   columns.forEach((col, idx) => {
     const cell = headerRow.getCell(idx + 1);
     cell.value = col.header;
-    cell.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
+    const yellow = col.band === "upstream";
+    cell.font = { bold: true, size: 10, color: { argb: yellow ? "FF1C1917" : HEADER_TEXT } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BG } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: yellow ? UPSTREAM_HEADER_FILL : HEADER_BG } };
     cell.border = { bottom: { style: "medium", color: { argb: "FFD97706" } } };
     ws.getColumn(idx + 1).width = col.width;
     if (col.numFmt) ws.getColumn(idx + 1).numFmt = col.numFmt;
