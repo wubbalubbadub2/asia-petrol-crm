@@ -17,6 +17,10 @@ type Counterparty = {
   legal_address?: string;
   is_active?: boolean;
   type?: string;
+  // Наша компания (Taur Trading / НАЗС / Таур Импекс): покупает топливо
+  // у внешнего продавца — «Закупка» в сделке KG. Такой поставщик не
+  // может быть продавцом в закупке (проверяет триггер БД).
+  is_own_supplier?: boolean;
 };
 
 const columns: ColumnDef<Counterparty, unknown>[] = [
@@ -34,6 +38,16 @@ const columns: ColumnDef<Counterparty, unknown>[] = [
     accessorKey: "bin_iin",
     header: "БИН / ИИН",
     cell: ({ row }) => row.original.bin_iin ?? "—",
+  },
+  {
+    accessorKey: "is_own_supplier",
+    header: "Наша компания",
+    cell: ({ row }) =>
+      row.original.is_own_supplier ? (
+        <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Наша</span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
   },
   {
     accessorKey: "is_active",
@@ -60,6 +74,7 @@ function SupplierForm({ item, onSave, onClose }: FormProps) {
     bin_iin: item?.bin_iin ?? "",
     legal_address: item?.legal_address ?? "",
     is_active: item?.is_active ?? true,
+    is_own_supplier: item?.is_own_supplier ?? false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -136,6 +151,18 @@ function SupplierForm({ item, onSave, onClose }: FormProps) {
         <Label htmlFor="is_active">Активен</Label>
       </div>
 
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="is_own_supplier"
+          checked={form.is_own_supplier ?? false}
+          onChange={(e) => set("is_own_supplier", e.target.checked)}
+          className="h-4 w-4 rounded border-input"
+        />
+        <Label htmlFor="is_own_supplier">Наша компания</Label>
+        <span className="text-[11px] text-muted-foreground">— в сделках KG у неё ведётся «Закупка»</span>
+      </div>
+
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Отмена
@@ -157,14 +184,16 @@ export default function SuppliersPage() {
     setLoading(true);
     const { data: rows, error } = await supabase
       .from("counterparties")
-      .select("id, full_name, short_name, bin_iin, legal_address, is_active, type")
+      .select("id, full_name, short_name, bin_iin, legal_address, is_active, type, is_own_supplier")
       .eq("type", "supplier")
       .order("full_name", { ascending: true });
 
     if (error) {
       toast.error(`Ошибка загрузки: ${error.message}`);
     } else {
-      setData((rows ?? []) as Counterparty[]);
+      // database.ts ещё не знает is_own_supplier (миграция закупок) —
+      // строка приходит с колонкой, тип её не видит.
+      setData((rows ?? []) as unknown as Counterparty[]);
     }
     setLoading(false);
   }, [supabase]);

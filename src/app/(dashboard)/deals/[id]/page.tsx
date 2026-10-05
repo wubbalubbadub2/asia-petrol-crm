@@ -24,6 +24,8 @@ import { DealTriggerPrices } from "@/components/deals/deal-trigger-prices";
 import { DealShipments } from "@/components/deals/deal-shipments";
 import { SupplierIncomingRegistry } from "@/components/deals/supplier-incoming-registry";
 import { DealCompanyChain } from "@/components/deals/deal-company-chain";
+import { DealUpstreamPurchase } from "@/components/deals/deal-upstream-purchase";
+import { showsUpstreamBlock } from "@/lib/deals/upstream-purchase";
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 import { AuditHistory } from "@/components/shared/audit-history";
 import { ChangeDealNumberDialog } from "@/components/deals/change-deal-number-dialog";
@@ -578,6 +580,10 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         avg_month_date: deal.avg_month_date,
         // Supplier scalars (pricing config copied, derived totals reset).
         supplier_id: deal.supplier_id,
+        // Закупка (только KG): копия остаётся привязанной к той же
+        // закупке — решение D3. Поставщик/завод/продукт копируются те же,
+        // так что триггер БД привязку пропустит.
+        upstream_purchase_id: deal.upstream_purchase_id ?? null,
         supplier_contract: deal.supplier_contract,
         // Договор (не приложение) копируется: он у стороны один и тот же
         // от сделки к сделке, перенабирать его вручную незачем.
@@ -884,6 +890,11 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </div>
       </div>
+
+      {/* ===== ЗАКУПКА (у кого купили) — только KG, поставщик = наша компания ===== */}
+      {showsUpstreamBlock(deal.deal_type, deal.supplier?.is_own_supplier, deal.upstream_purchase_id) && (
+        <DealUpstreamPurchase deal={deal} canWrite={isWritable} onChanged={reload} />
+      )}
 
       {/* ===== SUPPLIER SECTION (fields + pricing + payments + docs) ===== */}
       <CollapsibleSection
