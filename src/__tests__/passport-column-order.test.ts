@@ -156,7 +156,9 @@ describe("паспорт: порядок колонок", () => {
     expect(keys.indexOf("supplier")).toBe(keys.indexOf("upstream_volume") + 1);
     // В KZ и «Всех сделках» колонки прячутся принудительно.
     expect(SRC).toContain('const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"]');
-    expect(SRC).toContain('if (dealType !== "KG") for (const k of KG_ONLY_COLS) set.add(k)');
+    // Клиент 2026-10-05: «Закупка» свёрнута по умолчанию, раскрывается кнопкой.
+    expect(SRC).toContain('useUserPref<boolean>("passport_upstream_open", false)');
+    expect(SRC).toMatch(/dealType !== "KG" \|\| !upstreamOpen\) for \(const k of KG_ONLY_COLS\) set\.add\(k\)/);
   });
 
   it("итог по «Объёму выкупа» не считается", () => {

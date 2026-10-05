@@ -2099,13 +2099,17 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // «Закупка» (у кого наша компания купила топливо) бывает только у
   // сделок KG — в паспорте KZ и во «Всех сделках» колонки не нужны.
   const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"];
+  // «Закупка» в таблице свёрнута, раскрывается кнопкой (клиент 2026-10-05:
+  // «скрыть блок закупки, раскрывать только по кнопке»). Выбор помнится
+  // у пользователя, как и остальные настройки колонок.
+  const [upstreamOpen, setUpstreamOpen] = useUserPref<boolean>("passport_upstream_open", false);
   const ptHidden = useMemo(() => {
     const set = new Set(colPref.hidden);
     if (dealType === "KG") for (const k of KZ_ONLY_COLS) set.add(k);
-    if (dealType !== "KG") for (const k of KG_ONLY_COLS) set.add(k);
+    if (dealType !== "KG" || !upstreamOpen) for (const k of KG_ONLY_COLS) set.add(k);
     return set;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colPref.hidden, dealType]);
+  }, [colPref.hidden, dealType, upstreamOpen]);
   const ptHiddenDealCount = useMemo(
     () => PT_UNITS.filter((u) => u.band === "deal" && ptHidden.has(u.key)).length,
     [ptHidden],
@@ -2389,7 +2393,17 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
       {ptColCss && <style>{ptColCss}</style>}
       <div className="flex flex-col h-full pt-scope">
       {/* Тулбар настроек колонок — per-user (00121). */}
-      <div className="flex justify-end pb-1">
+      <div className="flex justify-end gap-1.5 pb-1">
+        {dealType === "KG" && (
+          <button
+            type="button"
+            onClick={() => setUpstreamOpen(!upstreamOpen)}
+            title={upstreamOpen ? "Скрыть колонки «Закупка»" : "Показать колонки «Закупка»: у кого купили, приложение, объём выкупа"}
+            className={`inline-flex items-center gap-1 h-6 rounded-md border px-2 text-[11px] transition-colors cursor-pointer ${upstreamOpen ? "border-amber-300 bg-[#ffff99] text-stone-800" : "border-stone-200 bg-white text-stone-500 hover:bg-stone-50"}`}
+          >
+            Закупка {upstreamOpen ? "▾" : "▸"}
+          </button>
+        )}
         <ColumnManager pref={colPref} onChange={setColPref} />
       </div>
       {/* Пара кастомных скроллбаров (top + bottom) синхронизированных
