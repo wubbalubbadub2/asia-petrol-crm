@@ -1018,6 +1018,7 @@ function LinesEditorView({
             <NumberCell
               label="Котировка значение"
               value={l.quotation}
+              editDecimals={3}
               editing={editing}
               onChange={(v) => onUpdate(l.id, { quotation: v })}
             />
@@ -1323,7 +1324,22 @@ function FinalizeStageDialog({
   );
 }
 
-function NumberCell({ label, value, editing, onChange, decimals = 3 }: {
+/** Текст поля ввода числа: как есть, либо округлённый до editDecimals
+ *  (только показ — значение в базе не трогается). */
+export function numberInputText(value: number | null | undefined, editDecimals?: number): string {
+  if (value == null) return "";
+  if (editDecimals == null) return String(value);
+  // Как ROUND(x, n) в Postgres — половина от нуля. toFixed ошибается на
+  // двоичном хвосте (593.3465 → «593.346»), поэтому сдвиг через запись
+  // с экспонентой: «593.3465e3» читается ровно как 593346.5.
+  const n = Number(value);
+  const raw = Number(`${Math.abs(n)}e${editDecimals}`);
+  // Совсем мелкие числа печатаются с экспонентой («1e-7») — тогда обычный toFixed.
+  if (!Number.isFinite(raw)) return String(Number(n.toFixed(editDecimals)));
+  return String(Math.sign(n) * Number(`${Math.round(raw)}e-${editDecimals}`));
+}
+
+function NumberCell({ label, value, editing, onChange, decimals = 3, editDecimals }: {
   label: ReactNode;
   value: number | null;
   editing: boolean;
@@ -1332,6 +1348,13 @@ function NumberCell({ label, value, editing, onChange, decimals = 3 }: {
    * умолчанию — деньги (клиент 2026-09-08, было 2). 0 для целых
    * (напр. Кол-во дней триггера). */
   decimals?: number;
+  /** Сколько знаков показывать и в поле ввода. Только отображение:
+   * значение в базе не округляется, и пока текст не тронули — на blur
+   * ничего не пишется. Нужно котировке: средняя приходит из БД
+   * неокруглённой и хранится так намеренно (00067/00166), а клиент
+   * 2026-10-07 видел в поле 4 знака. Курс и коэффициент баррелизации
+   * этим не пользуются — им нужна точность. */
+  editDecimals?: number;
 }) {
   const pendingVal = useRef<number | null | undefined>(undefined);
   const [, force] = useState(0);
@@ -1339,6 +1362,7 @@ function NumberCell({ label, value, editing, onChange, decimals = 3 }: {
   if (pendingVal.current !== undefined && pendingVal.current === value) {
     pendingVal.current = undefined;
   }
+  const initialText = numberInputText(shown, editDecimals);
 
   return (
     <div>
@@ -1348,9 +1372,12 @@ function NumberCell({ label, value, editing, onChange, decimals = 3 }: {
           key={String(value ?? "")}
           type="number"
           step="0.0001"
-          defaultValue={shown == null ? "" : String(shown)}
+          defaultValue={initialText}
           onBlur={(e) => {
             const raw = e.target.value;
+            // Текст не меняли — ничего не пишем: иначе округлённый показ
+            // молча перезаписал бы точное значение в базе.
+            if (raw === initialText) return;
             const nv = raw.trim() === "" ? null : parseFloat(raw.replace(",", "."));
             if (nv !== value) {
               pendingVal.current = nv;
