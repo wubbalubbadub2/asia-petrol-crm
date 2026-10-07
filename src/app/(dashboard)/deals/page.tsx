@@ -3,6 +3,7 @@
 import { useState, useMemo, useDeferredValue, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useQueryState, parseAsInteger, parseAsStringEnum, parseAsArrayOf, parseAsString, parseAsBoolean } from "nuqs";
+import { matchesPrice, priceOptions } from "@/lib/deals/price-filter";
 import { Plus, Filter, X, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,6 +152,10 @@ export default function DealsPage() {
   // ВТД — номера документов с отгрузок сделки (роллап 00169). Клиент
   // 2026-09-23 просил фильтр вместе с колонкой в паспорте.
   const [vtdFilter, setVtdFilter] = useQueryState("vtdFilter", multi);
+  // Фильтр по цене поставщика / покупателя (клиент 2026-10-07). Значения —
+  // цены с 3 знаками, как в колонке «Цена».
+  const [supplierPriceFilter, setSupplierPriceFilter] = useQueryState("supplierPriceFilter", multi);
+  const [buyerPriceFilter, setBuyerPriceFilter] = useQueryState("buyerPriceFilter", multi);
   // Тумблер «Показать скрытые» — ПЕР-ЮЗЕР вид (URL, у каждого свой). Сами
   // скрытые сделки хранятся в user_prefs («passport_hidden_deals», см. ниже)
   // и фильтруются CLIENT-SIDE (predicates memo) — переключение мгновенное.
@@ -176,6 +181,8 @@ export default function DealsPage() {
   const deferredForwarder = useDeferredValue(forwarderFilter);
   const deferredCompanyGroup = useDeferredValue(companyGroupFilter);
   const deferredVtd = useDeferredValue(vtdFilter);
+  const deferredSupplierPrice = useDeferredValue(supplierPriceFilter);
+  const deferredBuyerPrice = useDeferredValue(buyerPriceFilter);
   const deferredCompanyGroupPos1 = useDeferredValue(companyGroupPos1);
   const deferredCompanyGroupPos2 = useDeferredValue(companyGroupPos2);
   const deferredCompanyGroupPos3 = useDeferredValue(companyGroupPos3);
@@ -370,6 +377,8 @@ export default function DealsPage() {
     const cg3 = deferredCompanyGroupPos3;
     const app = deferredApplication;
     const vtd = deferredVtd;
+    const sPrice = deferredSupplierPrice;
+    const bPrice = deferredBuyerPrice;
     const q = deferredSearch.trim().toLowerCase();
     return {
       hidden: (d: Deal) => showHidden || !hiddenSet.has(d.id),
@@ -409,6 +418,8 @@ export default function DealsPage() {
       // Свод ВТД — строка «номер, номер»; сделка подходит, если в ней
       // есть хотя бы один выбранный номер.
       vtd: (d: Deal) => vtd.length === 0 || splitVtd(d.vtd_numbers).some((v) => vtd.includes(v)),
+      supplierPrice: (d: Deal) => matchesPrice(d.supplier_price, sPrice),
+      buyerPrice: (d: Deal) => matchesPrice(d.buyer_price, bPrice),
       search: (d: Deal) => {
         if (!q) return true;
         const code = d.deal_code.toLowerCase();
@@ -432,6 +443,9 @@ export default function DealsPage() {
     deferredMonth, deferredForwarder, deferredCompanyGroup,
     deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3,
     deferredApplication, deferredSearch, labelMaps, showHidden, hiddenSet,
+    // deferredVtd раньше в списке не было — смена фильтра ВТД не
+    // пересчитывала отбор, пока не менялся другой фильтр.
+    deferredVtd, deferredSupplierPrice, deferredBuyerPrice,
   ]);
 
   // Client-side filter pass. All predicates AND-combined.
@@ -620,9 +634,12 @@ export default function DealsPage() {
       // ВТД: варианты берём по всем сделкам года, без каскада — номера
       // документов не пересекаются с прочими фильтрами по смыслу.
       vtd: strOpts(new Set(deals.flatMap((d) => splitVtd(d.vtd_numbers))), deferredVtd),
+      // Цены — по сделкам текущей вкладки, без каскада (как ВТД).
+      supplierPrice: priceOptions(deals.filter(predicates.dealType).map((d) => d.supplier_price), deferredSupplierPrice),
+      buyerPrice: priceOptions(deals.filter(predicates.dealType).map((d) => d.buyer_price), deferredBuyerPrice),
     };
   }, [
-    refs, narrowed, deals, deferredVtd,
+    refs, narrowed, deals, deferredVtd, predicates, deferredSupplierPrice, deferredBuyerPrice,
     deferredSupplier, deferredBuyer, deferredFactory, deferredFuelType,
     deferredMonth, deferredForwarder, deferredCompanyGroup,
     deferredCompanyGroupPos1, deferredCompanyGroupPos2, deferredCompanyGroupPos3, deferredApplication,
@@ -650,7 +667,9 @@ export default function DealsPage() {
     (companyGroupPos2.length > 0 ? 1 : 0) +
     (companyGroupPos3.length > 0 ? 1 : 0) +
     (applicationFilter.length > 0 ? 1 : 0) +
-    (vtdFilter.length > 0 ? 1 : 0);
+    (vtdFilter.length > 0 ? 1 : 0) +
+    (supplierPriceFilter.length > 0 ? 1 : 0) +
+    (buyerPriceFilter.length > 0 ? 1 : 0);
 
   function clearAllFilters() {
     setSupplierFilter([]); setBuyerFilter([]); setFactoryFilter([]);
@@ -659,6 +678,7 @@ export default function DealsPage() {
     setCompanyGroupPos1([]); setCompanyGroupPos2([]); setCompanyGroupPos3([]);
     setApplicationFilter([]);
     setVtdFilter([]);
+    setSupplierPriceFilter([]); setBuyerPriceFilter([]);
     setSearch("");
   }
 
@@ -894,6 +914,16 @@ export default function DealsPage() {
             multi value={vtdFilter} onChange={setVtdFilter}
             options={filterOpts.vtd}
             placeholder="Все ВТД" searchPlaceholder="Поиск ВТД…"
+          />
+          <SearchableSelect
+            multi value={supplierPriceFilter} onChange={setSupplierPriceFilter}
+            options={filterOpts.supplierPrice}
+            placeholder="Все цены пост." searchPlaceholder="Цена поставщика…"
+          />
+          <SearchableSelect
+            multi value={buyerPriceFilter} onChange={setBuyerPriceFilter}
+            options={filterOpts.buyerPrice}
+            placeholder="Все цены покуп." searchPlaceholder="Цена покупателя…"
           />
           <SearchableSelect
             multi value={companyGroupPos1} onChange={setCompanyGroupPos1}
