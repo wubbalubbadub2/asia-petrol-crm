@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-07 — «Закупка» в конце паспорта; «У кого купили» → «Первичный поставщик»
+- **What changed:** `src/components/deals/passport-table.tsx` (бэнд «Закупка» после «Условий оплаты»: шапка, строка, итог, `PT_UNITS_ORDER`, порядок в настройке колонок); `src/lib/exports/passport-excel.ts`, `passport-detail-excel.ts` (колонки закупки в конце, в детальном — сразу после «Менеджер по продаже»); `src/components/deals/deal-upstream-purchase.tsx` (подписи).
+- **Type:** [PRESENTATION] [EXPORT]
+- **Before → After:** «Закупка» перед «Поставщиком» → в конце паспорта и выгрузок; колонка «У кого купили» → «Первичный поставщик». Данные и схема не менялись.
+- **Client reason:** «перенеси это в конец паспорта»; «название не "у кого купили", а "первичный поставщик"».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-05 — Паспорт KG: колонки «Закупка» свёрнуты, раскрываются кнопкой
 - **What changed:** `src/components/deals/passport-table.tsx` — кнопка «Закупка ▸/▾» в тулбаре паспорта KG; настройка пользователя `passport_upstream_open` (по умолчанию `false`).
 - **Type:** [PRESENTATION]

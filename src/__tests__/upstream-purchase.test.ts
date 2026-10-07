@@ -86,12 +86,13 @@ describe.each([
   ["краткий паспорт", passportColumns as (t: "KG" | "KZ" | "ALL") => readonly unknown[], PASSPORT_COLUMNS as readonly unknown[]],
   ["детальный паспорт", detailColumns as (t: "KG" | "KZ" | "ALL") => readonly unknown[], DETAIL_COLUMNS as readonly unknown[]],
 ])("%s: колонки закупки", (_name, build, base) => {
-  it("в KG три колонки стоят прямо перед «Поставщиком»", () => {
+  it("в KG три колонки стоят в конце (клиент 2026-10-07)", () => {
     const cols = build("KG") as Col[];
     const keys = cols.map((c) => c.key);
     const at = keys.indexOf("upstream_seller");
-    expect(keys.slice(at, at + 4)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume", "supplier"]);
-    expect(cols.slice(at, at + 3).map((c) => c.header)).toEqual(["У кого купили", "Номер приложения", "Объём выкупа, т"]);
+    expect(at).toBe(cols.length - 3);
+    expect(keys.slice(at)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume"]);
+    expect(cols.slice(at).map((c) => c.header)).toEqual(["Первичный поставщик", "Номер приложения", "Объём выкупа, т"]);
     expect(cols.slice(at, at + 3).every((c) => c.band === "upstream")).toBe(true);
     expect(cols.length).toBe(base.length + 3);
   });

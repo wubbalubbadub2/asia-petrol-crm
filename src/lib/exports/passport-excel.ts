@@ -203,20 +203,20 @@ const COLUMNS: Column[] = [
   { key: "supplier_manager", header: "Коммерция", width: 16, band: "logistics", read: (d) => d.supplier_manager?.full_name ?? "" },
 ];
 
-// «Закупка» (только KG): у кого наша компания купила топливо. Стоит
-// перед «Поставщиком», как на экране паспорта KG. «Объём выкупа» в
+// «Закупка» (только KG): первичный поставщик — у кого наша компания
+// купила топливо. Стоит в конце, как на экране паспорта KG. «Объём выкупа» в
 // итог НЕ входит (решение D5): одна закупка стоит в нескольких сделках.
 export const UPSTREAM_COLUMNS: Column[] = [
-  { key: "upstream_seller", header: "У кого купили", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
+  { key: "upstream_seller", header: "Первичный поставщик", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
   { key: "upstream_appendix", header: "Номер приложения", width: 18, band: "upstream", read: (d) => upstreamAppendix(d) },
   { key: "upstream_volume", header: "Объём выкупа, т", width: 12, band: "upstream", numFmt: NUM_FMT_VOLUME, read: (d) => upstreamVolume(d) },
 ];
 
-/** Колонки выгрузки для вкладки: в KG — с «Закупкой» перед «Поставщиком». */
+/** Колонки выгрузки для вкладки: в KG — с «Закупкой» в конце. */
 export function passportColumns(dealType: "KG" | "KZ" | "ALL"): Column[] {
   if (dealType !== "KG") return COLUMNS;
-  const at = COLUMNS.findIndex((c) => c.band === "supplier");
-  return [...COLUMNS.slice(0, at), ...UPSTREAM_COLUMNS, ...COLUMNS.slice(at)];
+  // В конце, как на экране паспорта (клиент 2026-10-07).
+  return [...COLUMNS, ...UPSTREAM_COLUMNS];
 }
 
 // Жёлтая шапка — как в Excel клиента (FFFF00).

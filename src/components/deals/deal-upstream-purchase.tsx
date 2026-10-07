@@ -1,6 +1,6 @@
 "use client";
 
-// Блок «Закупка (у кого купили)» в карточке сделки KG (миграция 00180).
+// Блок «Закупка (первичный поставщик)» в карточке сделки KG (миграция 00180).
 // Наша компания (поставщик сделки с флагом is_own_supplier) купила
 // топливо у внешнего продавца по приложению; одна закупка питает
 // несколько сделок. Цены нет, на балансы не влияет.
@@ -214,14 +214,14 @@ export function DealUpstreamPurchase({ deal, canWrite, onChanged }: {
 
   return (
     <CollapsibleSection
-      title="Закупка (у кого купили)"
+      title="Закупка (первичный поставщик)"
       headerBg={SECTION_COLORS.upstream}
       storageKey={`deal:${deal.id}:section:upstream`}
       contentClassName="space-y-3"
     >
       {linked ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-x-6 gap-y-2">
-          {cell("У кого купили", sellerLabel(linked.seller) || "—")}
+          {cell("Первичный поставщик", sellerLabel(linked.seller) || "—")}
           {cell("Номер приложения", linked.appendix)}
           {cell("Объём выкупа", fmtVol(volume), true)}
           {cell("Продано", fmtVol(linkedTotals?.sold ?? 0), true)}
@@ -306,7 +306,7 @@ export function DealUpstreamPurchase({ deal, canWrite, onChanged }: {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
             <div>
-              <span className="text-[11px] text-stone-400 block">У кого купили</span>
+              <span className="text-[11px] text-stone-400 block">Первичный поставщик</span>
               <SearchableSelect
                 value={form.sellerId}
                 onChange={(v) => setForm((f) => ({ ...f, sellerId: v }))}

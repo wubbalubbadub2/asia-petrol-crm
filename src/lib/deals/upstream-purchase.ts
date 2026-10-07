@@ -55,7 +55,7 @@ export function sellerLabel(seller: { short_name: string | null; full_name: stri
 
 type WithUpstream = { upstream_purchase?: UpstreamPurchaseEmbed | null };
 
-/** «У кого купили» для строки паспорта / выгрузки. */
+/** «Первичный поставщик» для строки паспорта / выгрузки. */
 export function upstreamSeller(d: WithUpstream): string {
   return sellerLabel(d.upstream_purchase?.seller);
 }

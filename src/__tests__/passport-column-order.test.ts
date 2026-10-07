@@ -32,8 +32,6 @@ const SRC = readFileSync(
 // (invoice_amount) — у логистов; суммы 2 и 3 — у поставщика.
 const EXPECTED_KEYS = [
   "month", "factory", "fuel", "sulfur",
-  // Закупка (только KG) — перед «Поставщиком», как в Excel клиента.
-  "upstream_seller", "upstream_appendix", "upstream_volume",
   "supplier", "supplier_contract", "supplier_basis", "supplier_volume",
   "supplier_amount", "supplier_price", "supplier_shipped_amount",
   "supplier_shipped_volume", "supplier_payment", "supplier_payment_date",
@@ -51,6 +49,8 @@ const EXPECTED_KEYS = [
   "preliminary_amount", "actual_tariff", "actual_volume", "invoice_amount",
   "shipper_tariff", "manager",
   "pay_terms_sup", "pay_days_sup", "pay_terms_buy", "pay_days_buy",
+  // Закупка (только KG) — в конце паспорта (клиент 2026-10-07).
+  "upstream_seller", "upstream_appendix", "upstream_volume",
 ];
 
 // Заголовки <th> в том же порядке. Расходятся с label в PT_UNITS_ORDER
@@ -58,7 +58,6 @@ const EXPECTED_KEYS = [
 // что расхождения зафиксированы здесь и видны при правке.
 const EXPECTED_HEADERS = [
   "Месяц", "Завод", "ГСМ", "%S",
-  "У кого купили", "Номер приложения", "Объём выкупа",
   "Поставщик", "Номер приложения", "Базис", "Объем", "Сумма дог.", "Цена",
   "Приход, сумма", "Приход, тонн", "Оплата", "Дата оплаты", "Взаимозачет",
   "Сумма ЖД (поставщик)", "Сумма грузоотправления", "ВТД", "Баланс",
@@ -70,6 +69,7 @@ const EXPECTED_HEADERS = [
   "Тариф факт", "Факт объем", "Сумма (логисты)", "Тариф грузоотправления",
   "Коммерция",
   "Условия (Пост.)", "Дней (Пост.)", "Условия (Покуп.)", "Дней (Покуп.)",
+  "Первичный поставщик", "Номер приложения", "Объём выкупа",
 ];
 
 // ── Разбор файла ────────────────────────────────────────────────────
@@ -146,14 +146,15 @@ describe("паспорт: порядок колонок", () => {
     expect(bandOf("additional_expenses")).toBe("supplier");
   });
 
-  it("Закупка — свой бэнд перед «Поставщиком» и только в паспорте KG", () => {
+  it("Закупка — свой бэнд в конце паспорта и только в паспорте KG", () => {
     const start = SRC.indexOf("const PT_UNITS_ORDER: PtUnitDef[] = [");
     const block = SRC.slice(start, SRC.indexOf("\n];", start));
     for (const key of ["upstream_seller", "upstream_appendix", "upstream_volume"]) {
       expect(block).toMatch(new RegExp(`key:\\s*"${key}",[^}]*band:\\s*"upstream"`));
     }
     const keys = parseUnitKeys();
-    expect(keys.indexOf("supplier")).toBe(keys.indexOf("upstream_volume") + 1);
+    // Клиент 2026-10-07: «перенеси в конец паспорта».
+    expect(keys.slice(-3)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume"]);
     // В KZ и «Всех сделках» колонки прячутся принудительно.
     expect(SRC).toContain('const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"]');
     // Клиент 2026-10-05: «Закупка» свёрнута по умолчанию, раскрывается кнопкой.
