@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
+import { UpstreamPurchasePayments } from "@/components/deals/upstream-purchase-payments";
 import { createClient } from "@/lib/supabase/client";
 import { updateDeal, invalidateDeal, type Deal } from "@/lib/hooks/use-deals";
 import { parseNum } from "@/lib/utils/parse-num";
@@ -246,6 +247,16 @@ export function DealUpstreamPurchase({ deal, canWrite, onChanged }: {
         </div>
       ) : (
         <p className="text-[12px] text-stone-500">Закупка не привязана.</p>
+      )}
+
+      {linked && mode === "view" && (
+        <UpstreamPurchasePayments
+          purchaseId={linked.id}
+          defaultCurrency={deal.supplier_currency}
+          canWrite={canWrite}
+          dealCount={linkedTotals?.dealCount ?? 0}
+          onChanged={afterChange}
+        />
       )}
 
       {canWrite && mode === "view" && (

@@ -37,7 +37,7 @@ import type { ExportContext } from "@/lib/exports/passport-excel";
 import { roundedTonnage } from "@/lib/exports/registry-excel";
 import { isRefundKind } from "@/lib/payments/totals";
 import { formatDMY } from "@/lib/format";
-import { upstreamSeller, upstreamAppendix, upstreamVolume } from "@/lib/deals/upstream-purchase";
+import { upstreamSeller, upstreamAppendix, upstreamVolume, upstreamPaidLabel, upstreamLastPaymentDate } from "@/lib/deals/upstream-purchase";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { FxRateRow } from "@/lib/fx/rates";
 
@@ -395,6 +395,10 @@ export const DETAIL_UPSTREAM_COLUMNS: Column[] = [
   { key: "upstream_seller", header: "Первичный поставщик", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
   { key: "upstream_appendix", header: "Номер приложения", width: 18, band: "upstream", read: (d) => upstreamAppendix(d) },
   { key: "upstream_volume", header: "Объём выкупа, т", width: 12, band: "upstream", numFmt: NUM_FMT_VOLUME, read: (d) => upstreamVolume(d) },
+  // Оплаты первичному поставщику (00181): по валютам текстом — в одной
+  // ячейке могут быть разные валюты; итог не считается.
+  { key: "upstream_paid", header: "Сумма оплаты", width: 22, band: "upstream", read: (d) => upstreamPaidLabel(d) },
+  { key: "upstream_paid_date", header: "Дата оплаты", width: 12, band: "upstream", numFmt: NUM_FMT_DATE, read: (d) => { const v = upstreamLastPaymentDate(d); return v ? excelDate(v) : ""; } },
 ];
 
 /** Колонки детальной выгрузки: в KG — с «Закупкой» в конце. */
