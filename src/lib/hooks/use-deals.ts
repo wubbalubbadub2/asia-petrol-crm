@@ -461,7 +461,7 @@ const LIST_SELECT = `
   supplier_deferral_days, supplier_deferral_mode, supplier_deferral_note, supplier_planned_pay_date,
   buyer_deferral_days, buyer_deferral_mode, buyer_deferral_note, buyer_planned_pay_date,
   upstream_purchase_id,
-  upstream_purchase:deal_upstream_purchases!upstream_purchase_id(appendix, volume_tons, seller:counterparties!seller_id(short_name, full_name)),
+  upstream_purchase:deal_upstream_purchases!upstream_purchase_id(appendix, volume_tons, seller:counterparties!seller_id(short_name, full_name), payments:deal_upstream_purchase_payments(amount, currency, payment_date)),
   deal_company_groups(id, position, company_group_id, price, price_kind)
 `;
 // quotation + discount were missing from this projection — operator

@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-07 — Оплаты по закупке первичному поставщику (00181)
+- **What changed:** миграция `00181_deal_upstream_purchase_payments.sql`: таблица `deal_upstream_purchase_payments` (purchase_id → закупка ON DELETE RESTRICT, amount NUMERIC(16,2) > 0, currency ∈ USD/KZT/KGS/RUB, payment_date NOT NULL, comment; RLS как у закупок; audit_trigger), view `deal_upstream_purchase_payment_totals` (по закупке и валюте: число, сумма, последняя дата). Тест `supabase/tests/35_upstream_purchase_payments.test.sql`. UI: `src/components/deals/upstream-purchase-payments.tsx` (список, итог из view, добавление; удаление — admin); паспорт и обе выгрузки — колонки «Сумма оплаты», «Дата оплаты» в конце блока «Закупка»; `use-deals.ts` — embed оплат.
+- **Type:** [SCHEMA] [UI-FIELD] [EXPORT]
+- **Before → After:** оплат первичному поставщику не было → у закупки список оплат; в паспорте «Сумма оплаты» по валютам без пересчёта («150 000,75 USD; 9 000 000,00 KZT») и дата последней оплаты; в «Итого» не суммируется (одна закупка — несколько сделок). Балансы не меняются.
+- **Client reason:** «добавить в тот же раздел колонки — Сумма оплаты и дата оплаты», после «Менеджер по продаже».
+- **Rebuild impact:** DATA-MODEL (новая таблица), ACCEPTANCE-SCENARIOS (тест 35). Фронтенд — только после применения 00181: список сделок встраивает оплаты.
+
 ### 2026-10-07 — «Закупка» в конце паспорта; «У кого купили» → «Первичный поставщик»
 - **What changed:** `src/components/deals/passport-table.tsx` (бэнд «Закупка» после «Условий оплаты»: шапка, строка, итог, `PT_UNITS_ORDER`, порядок в настройке колонок); `src/lib/exports/passport-excel.ts`, `passport-detail-excel.ts` (колонки закупки в конце, в детальном — сразу после «Менеджер по продаже»); `src/components/deals/deal-upstream-purchase.tsx` (подписи).
 - **Type:** [PRESENTATION] [EXPORT]

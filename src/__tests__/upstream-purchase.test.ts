@@ -13,6 +13,9 @@ import {
   upstreamSeller,
   upstreamAppendix,
   upstreamVolume,
+  upstreamPaidByCurrency,
+  upstreamPaidLabel,
+  upstreamLastPaymentDate,
   totalsNumbers,
   isOversold,
   showsUpstreamBlock,
@@ -86,15 +89,15 @@ describe.each([
   ["краткий паспорт", passportColumns as (t: "KG" | "KZ" | "ALL") => readonly unknown[], PASSPORT_COLUMNS as readonly unknown[]],
   ["детальный паспорт", detailColumns as (t: "KG" | "KZ" | "ALL") => readonly unknown[], DETAIL_COLUMNS as readonly unknown[]],
 ])("%s: колонки закупки", (_name, build, base) => {
-  it("в KG три колонки стоят в конце (клиент 2026-10-07)", () => {
+  it("в KG колонки закупки стоят в конце (клиент 2026-10-07)", () => {
     const cols = build("KG") as Col[];
     const keys = cols.map((c) => c.key);
     const at = keys.indexOf("upstream_seller");
-    expect(at).toBe(cols.length - 3);
-    expect(keys.slice(at)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume"]);
-    expect(cols.slice(at).map((c) => c.header)).toEqual(["Первичный поставщик", "Номер приложения", "Объём выкупа, т"]);
-    expect(cols.slice(at, at + 3).every((c) => c.band === "upstream")).toBe(true);
-    expect(cols.length).toBe(base.length + 3);
+    expect(at).toBe(cols.length - 5);
+    expect(keys.slice(at)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume", "upstream_paid", "upstream_paid_date"]);
+    expect(cols.slice(at).map((c) => c.header)).toEqual(["Первичный поставщик", "Номер приложения", "Объём выкупа, т", "Сумма оплаты", "Дата оплаты"]);
+    expect(cols.slice(at).every((c) => c.band === "upstream")).toBe(true);
+    expect(cols.length).toBe(base.length + 5);
   });
 
   it("в KZ и «Всех сделках» колонок нет", () => {
@@ -118,5 +121,49 @@ describe("выгрузки: «Объём выкупа» в итог не вхо�
     expect(start).toBeGreaterThan(-1);
     const block = src.slice(start, src.indexOf("]);", start));
     expect(block).not.toContain("upstream");
+  });
+});
+
+// Оплаты по закупке (00181, клиент 2026-10-07): сумма по валютам и
+// последняя дата; одна закупка — несколько сделок, итог не суммируется.
+describe("оплаты закупки в паспорте", () => {
+  const withPays = (payments: { amount: number | string; currency: string; payment_date: string }[] | null) => ({
+    upstream_purchase: { appendix: "1", volume_tons: 1, seller: null, payments },
+  });
+
+  it("сумма по валютам, без пересчёта, валюты по алфавиту", () => {
+    const d = withPays([
+      { amount: 100000.5, currency: "USD", payment_date: "2026-09-16" },
+      { amount: "9000000", currency: "KZT", payment_date: "2026-09-18" },
+      { amount: 50000.25, currency: "USD", payment_date: "2026-09-20" },
+    ]);
+    expect(upstreamPaidByCurrency(d)).toEqual([
+      { currency: "KZT", amount: 9000000 },
+      { currency: "USD", amount: 150000.75 },
+    ]);
+    expect(upstreamPaidLabel(d).replace(/ /g, " ")).toBe("9 000 000,00 KZT; 150 000,75 USD");
+  });
+
+  it("копейки складываются без хвоста дроби", () => {
+    const d = withPays([
+      { amount: 0.1, currency: "USD", payment_date: "2026-09-01" },
+      { amount: 0.2, currency: "USD", payment_date: "2026-09-02" },
+    ]);
+    expect(upstreamPaidByCurrency(d)).toEqual([{ currency: "USD", amount: 0.3 }]);
+  });
+
+  it("дата оплаты — последняя", () => {
+    const d = withPays([
+      { amount: 1, currency: "USD", payment_date: "2026-09-20" },
+      { amount: 1, currency: "KZT", payment_date: "2026-10-02" },
+      { amount: 1, currency: "USD", payment_date: "2026-09-16" },
+    ]);
+    expect(upstreamLastPaymentDate(d)).toBe("2026-10-02");
+  });
+
+  it("без закупки или без оплат — пусто", () => {
+    expect(upstreamPaidLabel({})).toBe("");
+    expect(upstreamPaidLabel(withPays(null))).toBe("");
+    expect(upstreamLastPaymentDate(withPays([]))).toBeNull();
   });
 });

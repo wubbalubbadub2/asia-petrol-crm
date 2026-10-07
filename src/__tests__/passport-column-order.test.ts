@@ -51,6 +51,8 @@ const EXPECTED_KEYS = [
   "pay_terms_sup", "pay_days_sup", "pay_terms_buy", "pay_days_buy",
   // Закупка (только KG) — в конце паспорта (клиент 2026-10-07).
   "upstream_seller", "upstream_appendix", "upstream_volume",
+  // Оплаты первичному поставщику (00181, клиент 2026-10-07).
+  "upstream_paid", "upstream_paid_date",
 ];
 
 // Заголовки <th> в том же порядке. Расходятся с label в PT_UNITS_ORDER
@@ -70,6 +72,7 @@ const EXPECTED_HEADERS = [
   "Коммерция",
   "Условия (Пост.)", "Дней (Пост.)", "Условия (Покуп.)", "Дней (Покуп.)",
   "Первичный поставщик", "Номер приложения", "Объём выкупа",
+  "Сумма оплаты", "Дата оплаты",
 ];
 
 // ── Разбор файла ────────────────────────────────────────────────────
@@ -149,14 +152,14 @@ describe("паспорт: порядок колонок", () => {
   it("Закупка — свой бэнд в конце паспорта и только в паспорте KG", () => {
     const start = SRC.indexOf("const PT_UNITS_ORDER: PtUnitDef[] = [");
     const block = SRC.slice(start, SRC.indexOf("\n];", start));
-    for (const key of ["upstream_seller", "upstream_appendix", "upstream_volume"]) {
+    for (const key of ["upstream_seller", "upstream_appendix", "upstream_volume", "upstream_paid", "upstream_paid_date"]) {
       expect(block).toMatch(new RegExp(`key:\\s*"${key}",[^}]*band:\\s*"upstream"`));
     }
     const keys = parseUnitKeys();
     // Клиент 2026-10-07: «перенеси в конец паспорта».
-    expect(keys.slice(-3)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume"]);
+    expect(keys.slice(-5)).toEqual(["upstream_seller", "upstream_appendix", "upstream_volume", "upstream_paid", "upstream_paid_date"]);
     // В KZ и «Всех сделках» колонки прячутся принудительно.
-    expect(SRC).toContain('const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"]');
+    expect(SRC).toContain('const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume", "upstream_paid", "upstream_paid_date"]');
     // Клиент 2026-10-05: «Закупка» свёрнута по умолчанию, раскрывается кнопкой.
     expect(SRC).toContain('useUserPref<boolean>("passport_upstream_open", false)');
     expect(SRC).toMatch(/dealType !== "KG" \|\| !upstreamOpen\) for \(const k of KG_ONLY_COLS\) set\.add\(k\)/);
@@ -167,6 +170,8 @@ describe("паспорт: порядок колонок", () => {
     // строкам многократно завысила бы объём. Ячейки бэнда в «Итого» пустые.
     const totals = SRC.slice(SRC.indexOf("function PassportTotalsRow"));
     expect(totals).toContain('{blank("yellow")}{blank("yellow")}{blank("yellow")}');
+    // «Сумма оплаты» / «Дата оплаты» (00181) — тоже пустые в «Итого».
+    expect(totals.match(/blank\("yellow"\)/g)?.length).toBe(5);
     expect(totals).not.toMatch(/upstream/i);
   });
 });
