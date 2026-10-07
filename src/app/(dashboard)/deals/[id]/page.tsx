@@ -891,7 +891,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* ===== ЗАКУПКА (у кого купили) — только KG, поставщик = наша компания ===== */}
+      {/* ===== ЗАКУПКА (первичный поставщик) — только KG, поставщик = наша компания ===== */}
       {showsUpstreamBlock(deal.deal_type, deal.supplier?.is_own_supplier, deal.upstream_purchase_id) && (
         <DealUpstreamPurchase deal={deal} canWrite={isWritable} onChanged={reload} />
       )}

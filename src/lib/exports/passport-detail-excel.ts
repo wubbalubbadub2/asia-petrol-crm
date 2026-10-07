@@ -389,20 +389,19 @@ const COLUMNS: Column[] = [
   { key: "buyer_manager", header: "Менеджер по продаже", width: 16, band: "logistics", read: (d) => d.buyer_manager?.full_name ?? "" },
 ];
 
-// «Закупка» (только KG) — перед «Поставщиком», как в кратком паспорте и
-// на экране. Величины уровня сделки: в под-строках вагонов пусто, а
+// «Закупка» (только KG) — в конце, как в кратком паспорте и на экране. Величины уровня сделки: в под-строках вагонов пусто, а
 // «Объём выкупа» не суммируется в итог (D5: одна закупка — несколько сделок).
 export const DETAIL_UPSTREAM_COLUMNS: Column[] = [
-  { key: "upstream_seller", header: "У кого купили", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
+  { key: "upstream_seller", header: "Первичный поставщик", width: 22, band: "upstream", read: (d) => upstreamSeller(d) },
   { key: "upstream_appendix", header: "Номер приложения", width: 18, band: "upstream", read: (d) => upstreamAppendix(d) },
   { key: "upstream_volume", header: "Объём выкупа, т", width: 12, band: "upstream", numFmt: NUM_FMT_VOLUME, read: (d) => upstreamVolume(d) },
 ];
 
-/** Колонки детальной выгрузки: в KG — с «Закупкой» перед «Поставщиком». */
+/** Колонки детальной выгрузки: в KG — с «Закупкой» в конце. */
 export function detailColumns(dealType: "KG" | "KZ" | "ALL"): Column[] {
   if (dealType !== "KG") return COLUMNS;
-  const at = COLUMNS.findIndex((c) => c.band === "supplier");
-  return [...COLUMNS.slice(0, at), ...DETAIL_UPSTREAM_COLUMNS, ...COLUMNS.slice(at)];
+  // В конце, как на экране паспорта (клиент 2026-10-07).
+  return [...COLUMNS, ...DETAIL_UPSTREAM_COLUMNS];
 }
 
 // Жёлтая шапка «Закупки» — как в Excel клиента (FFFF00).
