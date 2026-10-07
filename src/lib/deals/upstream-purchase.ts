@@ -18,6 +18,17 @@ export type UpstreamPurchaseEmbed = {
   // numeric приходит из PostgREST числом, но на всякий случай терпим строку.
   volume_tons: number | string | null;
   seller: { short_name: string | null; full_name: string } | null;
+  // Оплаты нашей компании первичному поставщику (00181).
+  payments?: UpstreamPayment[] | null;
+};
+
+/** Оплата по закупке (deal_upstream_purchase_payments, 00181). */
+export type UpstreamPayment = {
+  id?: string;
+  amount: number | string;
+  currency: string;
+  payment_date: string;
+  comment?: string | null;
 };
 
 /** Строка deal_upstream_purchases (как её читает карточка сделки). */
@@ -95,4 +106,39 @@ export function showsUpstreamBlock(
 ): boolean {
   if (dealType !== "KG") return false;
   return !!supplierIsOwn || !!linkedPurchaseId;
+}
+
+const fmtMoney = (n: number) =>
+  n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * «Сумма оплаты» в паспорте / выгрузке: по валютам, без пересчёта —
+ * «150 000,75 USD; 9 000 000,00 KZT». Одна закупка стоит в нескольких
+ * сделках, поэтому в «Итого» колонка не суммируется. Карточка сделки
+ * берёт тот же итог из вью deal_upstream_purchase_payment_totals.
+ */
+export function upstreamPaidByCurrency(d: WithUpstream): { currency: string; amount: number }[] {
+  const byCur = new Map<string, number>();
+  for (const p of d.upstream_purchase?.payments ?? []) {
+    const n = toNum(p.amount);
+    if (n == null) continue;
+    // Копейки — целыми, чтобы сумма не набирала хвост двоичной дроби.
+    byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + Math.round(n * 100));
+  }
+  return [...byCur.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, cents]) => ({ currency, amount: cents / 100 }));
+}
+
+export function upstreamPaidLabel(d: WithUpstream): string {
+  return upstreamPaidByCurrency(d).map((x) => `${fmtMoney(x.amount)} ${x.currency}`).join("; ");
+}
+
+/** «Дата оплаты» — последняя оплата по закупке, `YYYY-MM-DD` или null. */
+export function upstreamLastPaymentDate(d: WithUpstream): string | null {
+  let last: string | null = null;
+  for (const p of d.upstream_purchase?.payments ?? []) {
+    if (p.payment_date && (last == null || p.payment_date > last)) last = p.payment_date;
+  }
+  return last;
 }

@@ -31,7 +31,7 @@ import { OFFSET_KINDS, OFFSET_KIND_LABELS, offsetKindLabel } from "@/lib/payment
 import { PairedSyncedScrollbars } from "@/components/ui/double-scroll-x";
 import { useUserPref } from "@/lib/hooks/use-user-pref";
 import { formatDMY } from "@/lib/format";
-import { upstreamSeller, upstreamAppendix, upstreamVolume } from "@/lib/deals/upstream-purchase";
+import { upstreamSeller, upstreamAppendix, upstreamVolume, upstreamPaidLabel, upstreamLastPaymentDate } from "@/lib/deals/upstream-purchase";
 
 // Keep useDelayed imported (used elsewhere conceptually + kept here in case
 // future surfaces want the delayed-loader pattern again).
@@ -1869,7 +1869,12 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
           в карточке сделки, там же триггеры БД. */}
       <td className="border-l border-r border-stone-300 px-2 py-1 text-stone-700 max-w-[140px] truncate" title={upstreamSeller(deal)}>{upstreamSeller(deal)}</td>
       <td className="border-r px-2 py-1 text-stone-700">{upstreamAppendix(deal)}</td>
-      <td className="border-r border-stone-300 px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="Объём закупки целиком — одна закупка может стоять в нескольких сделках">{formatComputedVol(upstreamVolume(deal))}</td>
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700" title="Объём закупки целиком — одна закупка может стоять в нескольких сделках">{formatComputedVol(upstreamVolume(deal))}</td>
+      {/* Оплаты первичному поставщику по закупке (00181): сумма по валютам
+          и последняя дата. Одна закупка — несколько сделок, в «Итого» не
+          суммируется. */}
+      <td className="border-r px-2 py-1 text-right font-mono tabular-nums text-stone-700 whitespace-nowrap" title={upstreamPaidLabel(deal)}>{upstreamPaidLabel(deal)}</td>
+      <td className="border-r border-stone-300 px-2 py-1 font-mono text-stone-700">{(() => { const d = upstreamLastPaymentDate(deal); return d ? formatDMY(d) : ""; })()}</td>
       <td className="px-1 py-1">
         {/* Скрытие сделки перенесено в левую identity-ячейку (2026-07-24);
             здесь остаётся только удаление. */}
@@ -2098,7 +2103,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   const KZ_ONLY_COLS = ["supplier_railway_amount", "additional_expenses"];
   // «Закупка» (у кого наша компания купила топливо) бывает только у
   // сделок KG — в паспорте KZ и во «Всех сделках» колонки не нужны.
-  const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume"];
+  const KG_ONLY_COLS = ["upstream_seller", "upstream_appendix", "upstream_volume", "upstream_paid", "upstream_paid_date"];
   // «Закупка» в таблице свёрнута, раскрывается кнопкой (клиент 2026-10-05:
   // «скрыть блок закупки, раскрывать только по кнопке»). Выбор помнится
   // у пользователя, как и остальные настройки колонок.
@@ -2542,7 +2547,9 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
               {/* Закупка: 3 cols (только KG), в конце паспорта */}
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[120px] bg-[#ffff99] border-l border-stone-300">Первичный поставщик</th>
               <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-left font-medium text-stone-700 min-w-[70px] bg-[#ffff99]">Номер приложения</th>
-              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#ffff99]" title="Объём закупки целиком. В «Итого» не суммируется: одна закупка стоит в нескольких сделках.">Объём выкупа</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[70px] bg-[#ffff99]" title="Объём закупки целиком. В «Итого» не суммируется: одна закупка стоит в нескольких сделках.">Объём выкупа</th>
+              <th className="sticky top-7 z-20 border-r px-2 py-1.5 text-right font-medium text-stone-700 min-w-[110px] bg-[#ffff99]" title="Оплачено первичному поставщику по закупке, по валютам. В «Итого» не суммируется.">Сумма оплаты</th>
+              <th className="sticky top-7 z-20 border-r border-stone-300 px-2 py-1.5 text-left font-medium text-stone-700 min-w-[80px] bg-[#ffff99]" title="Дата последней оплаты по закупке">Дата оплаты</th>
               <th className="sticky top-7 z-20 px-1 py-1.5 w-[30px] bg-[#d9d9d9]"></th>
             </tr>
           </thead>
@@ -2705,6 +2712,8 @@ const PT_UNITS_ORDER: PtUnitDef[] = [
   { key: "upstream_seller", label: "Первичный поставщик", band: "upstream" },
   { key: "upstream_appendix", label: "Номер приложения", band: "upstream" },
   { key: "upstream_volume", label: "Объём выкупа", band: "upstream" },
+  { key: "upstream_paid", label: "Сумма оплаты", band: "upstream" },
+  { key: "upstream_paid_date", label: "Дата оплаты", band: "upstream" },
 ];
 
 // Номера колонок выводятся ИЗ ПОРЯДКА списка, а не проставляются руками.
@@ -2734,7 +2743,7 @@ const PT_BAND_LABELS: Record<PtBand, string> = {
 };
 type PassportColumnsPref = { hidden: string[]; pinUntil: string | null };
 
-const TOTAL_COLS = 46;
+const TOTAL_COLS = 48;
 
 type VirtualizerInstance = ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>;
 
@@ -2969,6 +2978,8 @@ function PassportTotalsRow({ deals, hiddenDealCount = 0 }: { deals: Deal[]; hidd
           суммируется — одна закупка стоит в нескольких сделках, и сумма
           по строкам многократно завысила бы объём. */}
       {blank("yellow")}{blank("yellow")}{blank("yellow")}
+      {/* «Сумма оплаты» / «Дата оплаты» — тоже уровень закупки, не суммируются. */}
+      {blank("yellow")}{blank("yellow")}
       {blank("stone")}
     </tr>
   );
