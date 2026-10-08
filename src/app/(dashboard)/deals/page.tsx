@@ -634,9 +634,18 @@ export default function DealsPage() {
       // ВТД: варианты берём по всем сделкам года, без каскада — номера
       // документов не пересекаются с прочими фильтрами по смыслу.
       vtd: strOpts(new Set(deals.flatMap((d) => splitVtd(d.vtd_numbers))), deferredVtd),
-      // Цены — по сделкам текущей вкладки, без каскада (как ВТД).
-      supplierPrice: priceOptions(deals.filter(predicates.dealType).map((d) => d.supplier_price), deferredSupplierPrice),
-      buyerPrice: priceOptions(deals.filter(predicates.dealType).map((d) => d.buyer_price), deferredBuyerPrice),
+      // Цены — каскадом: только по сделкам, прошедшим ВСЕ остальные
+      // фильтры (клиент 2026-10-08: «фильтр берёт все цены даже после
+      // фильтрации по покупателям»). Свой фильтр цены исключаем, чтобы
+      // в списке остались соседние цены и выбор можно было расширить.
+      supplierPrice: priceOptions(
+        deals.filter((d) => Object.entries(predicates).every(([k, p]) => k === "supplierPrice" || p(d))).map((d) => d.supplier_price),
+        deferredSupplierPrice,
+      ),
+      buyerPrice: priceOptions(
+        deals.filter((d) => Object.entries(predicates).every(([k, p]) => k === "buyerPrice" || p(d))).map((d) => d.buyer_price),
+        deferredBuyerPrice,
+      ),
     };
   }, [
     refs, narrowed, deals, deferredVtd, predicates, deferredSupplierPrice, deferredBuyerPrice,

@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-08 — Фильтры по цене — каскадом от остальных фильтров
+- **What changed:** `src/app/(dashboard)/deals/page.tsx` — пункты «Все цены пост.» / «Все цены покуп.» строятся по сделкам, прошедшим все остальные фильтры (кроме самого фильтра цены).
+- **Type:** [PRESENTATION]
+- **Before → After:** список цен по всем сделкам вкладки → только по отобранным (выбрали покупателя — видны его цены).
+- **Client reason:** «фильтр берёт все цены даже после фильтрации по покупателям».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-07 — Котировка в поле — 3 знака; фильтры паспорта по цене поставщика и покупателя
 - **What changed:** `src/components/deals/deal-lines-editor.tsx` (`NumberCell.editDecimals`, `numberInputText` — только показ, половина от нуля как ROUND в Postgres; на blur без правки текста ничего не пишется); `src/lib/deals/price-filter.ts`; `src/app/(dashboard)/deals/page.tsx` (фильтры «Все цены пост.» / «Все цены покуп.», URL `supplierPriceFilter` / `buyerPriceFilter`; в зависимости отбора добавлен пропущенный `deferredVtd`).
 - **Type:** [PRESENTATION] [BEHAVIOR]
