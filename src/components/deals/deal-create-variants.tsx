@@ -827,7 +827,9 @@ function VariantRow({
           <Input
             value={v.appendix}
             onChange={(e) => onChange({ appendix: e.target.value })}
-            placeholder="Прил. 1"
+            // Пустое поле — в реестре подставится «Номер приложения» сделки.
+            // Раньше стояло «Прил. 1», и его принимали за введённое значение.
+            placeholder="пусто = номер приложения сделки"
             className="h-8 text-[13px]"
           />
         </div>
