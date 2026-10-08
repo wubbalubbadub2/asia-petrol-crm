@@ -13,12 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
-import {
-  useTransportRefs,
-  printedRoute,
-  codesForPair,
-  type TransportRefs,
-} from "@/lib/hooks/use-transport-refs";
+import { resolveCargoCodes } from "@/lib/transport/cargo-codes";
+import { useTransportRefs, printedRoute, type TransportRefs } from "@/lib/hooks/use-transport-refs";
 import { fillTemplate } from "@/lib/transport/fill-template";
 import {
   buildRequestPdf,
@@ -364,7 +360,8 @@ export function TransportRequestForm({
    * неверный.
    */
   function applyPair(factoryId: string, fuelId: string) {
-    const { etsng, gng } = codesForPair(refs.cargoCodes, factoryId, fuelId);
+    // Пара → коды вида ГСМ (00182, владелец 2026-10-08).
+    const { etsng, gng } = resolveCargoCodes(refs.cargoCodes, refs.fuelCodes, refs.fuels, factoryId, fuelId);
     setV((prev) => ({
       ...prev,
       consignor_factory_id: factoryId,
@@ -873,10 +870,14 @@ export function TransportRequestForm({
             {codesMissing && (
               <div className="sm:col-span-2 rounded border border-amber-300 bg-amber-50 px-2.5 py-2">
                 <p className="text-[12px] leading-snug text-amber-900">
-                  Для пары «{fuel?.name}» + «{consignorName}» кодов в справочнике нет — в
-                  заявке строка «Код ЕТСНГ, ГНГ» останется пустой.{" "}
+                  Для пары «{fuel?.name}» + «{consignorName}» кодов нет ни в «Кодах груза», ни
+                  у вида ГСМ — в заявке строка «Код ЕТСНГ, ГНГ» останется пустой.{" "}
                   <Link href="/spravochnik/cargo-codes" className="underline">
-                    Добавить в справочник «Коды груза»
+                    Добавить в «Коды груза»
+                  </Link>
+                  {" или "}
+                  <Link href="/spravochnik/fuel-codes" className="underline">
+                    в «Коды по видам ГСМ»
                   </Link>
                 </p>
               </div>

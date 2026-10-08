@@ -59,6 +59,12 @@ const sections = [
     description: "ЕТСНГ и ГНГ по паре «завод + продукт»",
   },
   {
+    title: "Коды по видам ГСМ",
+    href: "/spravochnik/fuel-codes",
+    icon: Barcode,
+    description: "ГНГ и ТН ВЭД по виду ГСМ и % серы — когда нет пары",
+  },
+  {
     title: "Бланки компаний",
     href: "/spravochnik/company-templates",
     icon: FileSignature,
