@@ -21,6 +21,8 @@ type FuelType = {
   name: string;
   full_name?: string;
   sulfur_percent?: number;
+  // Код ЕТСНГ (00153): в заявку идёт, когда нет пары «завод + продукт» (00182).
+  etsng_code?: string | null;
   color?: string;
   sort_order?: number;
   is_active?: boolean;
@@ -49,6 +51,11 @@ const columns: ColumnDef<FuelType, unknown>[] = [
       const val = row.original.sulfur_percent;
       return val != null ? `${val}%` : "—";
     },
+  },
+  {
+    accessorKey: "etsng_code",
+    header: "Код ЕТСНГ",
+    cell: ({ row }) => row.original.etsng_code ?? "—",
   },
   {
     accessorKey: "color",
@@ -100,6 +107,7 @@ function FuelTypeForm({ item, onSave, onClose }: FormProps) {
     name: item?.name ?? "",
     full_name: item?.full_name ?? "",
     sulfur_percent: item?.sulfur_percent ?? undefined,
+    etsng_code: item?.etsng_code ?? "",
     color: item?.color ?? "#cccccc",
     sort_order: item?.sort_order ?? undefined,
     is_active: item?.is_active ?? true,
@@ -151,6 +159,18 @@ function FuelTypeForm({ item, onSave, onClose }: FormProps) {
         </p>
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor="etsng_code">Код ЕТСНГ</Label>
+        <Input
+          id="etsng_code"
+          value={form.etsng_code ?? ""}
+          onChange={(e) => set("etsng_code", e.target.value || null)}
+          placeholder="221066"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          В заявку на перевозку — когда для пары «завод + продукт» нет записи в «Кодах груза». ГНГ и ТН ВЭД по сере — в «Кодах по видам ГСМ».
+        </p>
+      </div>
       <div className="space-y-1.5">
         <Label htmlFor="sulfur_percent">Содержание серы, %</Label>
         <Input
@@ -231,7 +251,7 @@ export default function FuelTypesPage() {
   const { data, loading, save, remove } = useSupabaseTable<FuelType>(
     "fuel_types",
     "sort_order",
-    "id, name, full_name, sulfur_percent, color, sort_order, is_active"
+    "id, name, full_name, sulfur_percent, etsng_code, color, sort_order, is_active"
   );
 
   if (loading) {

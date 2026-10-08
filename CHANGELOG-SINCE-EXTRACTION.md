@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-08 — «Коды по видам ГСМ» (00182), «Код ЕТСНГ» в «Видах ГСМ», коды вида — запасной источник для заявки
+- **What changed:** миграция `00182_fuel_type_codes.sql`: таблица `fuel_type_codes` (fuel_type_id, sulfur_percent NUMERIC(6,3), gng_code, tnved_code, comment; UNIQUE NULLS NOT DISTINCT (fuel_type_id, sulfur_percent); RLS как у справочников; audit). Тест `36_fuel_type_codes.test.sql`. UI: новая страница `spravochnik/fuel-codes`; «Виды ГСМ» показывают и правят `fuel_types.etsng_code` (колонка с 00153); `src/lib/transport/cargo-codes.ts` (`resolveCargoCodes`): пара «завод + продукт» → иначе ЕТСНГ с вида и ГНГ из `fuel_type_codes`, если у вида ровно одна строка; `use-transport-refs.ts` грузит `fuel_type_codes` и `fuel_types.etsng_code`.
+- **Type:** [SCHEMA] [UI-FIELD] [BEHAVIOR]
+- **Before → After:** заявка брала коды только из пары, без пары — пусто → без пары подставляются коды вида ГСМ (ГНГ только при одной строке). ТН ВЭД по-прежнему не печатается.
+- **Client reason:** «добавить столбец Код ЕТСНГ в виды ГСМ и раздел «Коды по видам ГСМ» (вид, % серы, ГНГ, ТН ВЭД) — логисты занесут коды по каждому виду».
+- **Rebuild impact:** DATA-MODEL (новая таблица), ACCEPTANCE-SCENARIOS (тест 36). Фронтенд — только после 00182 в проде: справочники заявки читают новую таблицу.
+
 ### 2026-10-08 — Реестр: выбор варианта по приложению виден всегда; пустая подпись = номер приложения сделки
 - **What changed:** `src/lib/deals/line-appendix.ts` (`effectiveAppendix`, `appendixLabel`, `appendixOptions`); `src/app/(dashboard)/registry/page.tsx` и `src/components/registry/bulk-add-dialog.tsx` — «Прилож. поставщика/покупателя» и «Приложение» показываются при любом числе вариантов, у основного варианта без своей подписи — «Номер приложения» сделки (`deals.supplier_contract` / `buyer_contract`), как уже делает показ строк (`effSupplierAppendix`); `deal-create-variants.tsx` — placeholder поля «Приложение» вместо «Прил. 1».
 - **Type:** [PRESENTATION] [BEHAVIOR]

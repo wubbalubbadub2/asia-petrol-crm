@@ -44,7 +44,11 @@ export type FuelRef = {
   id: string;
   name: string;
   full_name: string | null;
+  // Код ЕТСНГ вида — в заявку, когда нет пары «завод + продукт» (00182).
+  etsng_code: string | null;
 };
+/** Строка «Кодов по видам ГСМ» (fuel_type_codes, 00182). */
+export type FuelCodeRef = { fuel_type_id: string; sulfur_percent: number | null; gng_code: string | null; tnved_code: string | null };
 export type ConsigneeRef = {
   id: string;
   name: string;
@@ -70,6 +74,7 @@ export type TransportRefs = {
   consignees: ConsigneeRef[];
   factories: FactoryRef[];
   cargoCodes: CargoCodeRef[];
+  fuelCodes: FuelCodeRef[];
   forwarders: RefRow[];
   routes: RouteRef[];
   buyers: RefRow[];
@@ -78,7 +83,7 @@ export type TransportRefs = {
 const EMPTY: TransportRefs = {
   companies: [], fuels: [], stations: [], carriers: [],
   consignees: [], factories: [], forwarders: [], routes: [], buyers: [],
-  cargoCodes: [],
+  cargoCodes: [], fuelCodes: [],
 };
 
 let cache: TransportRefs | null = null;
@@ -111,7 +116,7 @@ export function useTransportRefs() {
 
     Promise.all([
       active("company_groups", "id, name"),
-      active("fuel_types", "id, name, full_name"),
+      active("fuel_types", "id, name, full_name, etsng_code"),
       active("stations", "id, name, code"),
       active("transport_carriers", "id, name"),
       active("consignees", "id, name, bin_iin, code_4, okpo, address"),
@@ -132,6 +137,9 @@ export function useTransportRefs() {
       // столько же, сколько пар «завод × продукт», это десятки.
       sb.from("transport_cargo_codes")
         .select("factory_id, fuel_type_id, etsng_code, gng_code"),
+      // Коды по видам ГСМ (00182) — запасной источник, когда пары нет.
+      sb.from("fuel_type_codes")
+        .select("fuel_type_id, sulfur_percent, gng_code, tnved_code"),
     ]).then((results) => {
       if (cancelled) return;
       const bad = results.find((r) => r.error);
@@ -140,9 +148,9 @@ export function useTransportRefs() {
         setLoading(false);
         return;
       }
-      const [co, fu, st, ca, cn, fa, fw, ro, bu, cc] = results.map((r, i) =>
-        // Коды груза (9) — не список для выбора, их не сортируем.
-        i === 9 ? r.data ?? [] : sortByName(r.data ?? [], (x: { name?: string; short_name?: string | null; full_name?: string }) => x.name ?? (x.short_name || x.full_name)));
+      const [co, fu, st, ca, cn, fa, fw, ro, bu, cc, fc] = results.map((r, i) =>
+        // Коды груза (9) и коды видов ГСМ (10) — не списки для выбора, не сортируем.
+        i >= 9 ? r.data ?? [] : sortByName(r.data ?? [], (x: { name?: string; short_name?: string | null; full_name?: string }) => x.name ?? (x.short_name || x.full_name)));
       const next: TransportRefs = {
         companies: co as RefRow[],
         fuels: fu as FuelRef[],
@@ -155,6 +163,7 @@ export function useTransportRefs() {
         buyers: (bu as { id: string; full_name: string; short_name: string | null }[])
           .map((b) => ({ id: b.id, name: b.short_name || b.full_name })),
         cargoCodes: cc as CargoCodeRef[],
+        fuelCodes: fc as FuelCodeRef[],
       };
       cache = next;
       setRefs(next);
