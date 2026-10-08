@@ -21,6 +21,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { reportExportError } from "@/lib/chunk-error";
 import { BulkAddDialog, type BulkAddGroupContext } from "@/components/registry/bulk-add-dialog";
+import { appendixLabel, effectiveAppendix } from "@/lib/deals/line-appendix";
 import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useGlobalRefs } from "@/lib/refs";
@@ -779,7 +780,7 @@ function InlineAdd({ dealId, group, regType, onDone, onCancel }: {
 type Ref = { id: string; name: string };
 type DRef2 = { id: string; short_name: string | null; full_name: string };
 type StRef = { id: string; name: string; default_factory_id: string | null };
-type DRef = { id: string; deal_code: string; year: number | null; month: string | null; logistics_shipment_month?: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null; deal_company_groups?: { position: number; company_group?: { name?: string | null; full_name?: string | null } | null }[] };
+type DRef = { id: string; deal_code: string; year: number | null; month: string | null; supplier_contract?: string | null; buyer_contract?: string | null; logistics_shipment_month?: string | null; factory_id: string | null; fuel_type_id: string | null; supplier_id: string | null; buyer_id: string | null; forwarder_id: string | null; buyer_destination_station_id: string | null; supplier_departure_station_id: string | null; logistics_company_group_id: string | null; supplier?: { short_name: string | null; full_name: string } | null; buyer?: { short_name: string | null; full_name: string } | null; factory?: { name: string } | null; fuel_type?: { name: string; color: string } | null; forwarder?: { name: string } | null; deal_company_groups?: { position: number; company_group?: { name?: string | null; full_name?: string | null } | null }[] };
 
 // «Продублировать отгрузку» auto-rule (operator 2026-06-24): if chain
 // positions 1 AND 2 are BOTH «ОсОО» or «Singularity» companies, default
@@ -894,11 +895,13 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
   const [buyerLines, setBuyerLines]       = useState<BuyLine[]>([]);
   const [supplierLineId, setSupplierLineId] = useState("");
   const [buyerLineId, setBuyerLineId]       = useState("");
+  // Номера приложений сделки — подпись основного варианта без своей.
+  const selectedDeal = deals.find((d) => d.id === dealId);
 
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      sb.current.from("deals").select("id, deal_code, year, month, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), deal_company_groups(position, company_group:company_groups(name, full_name))").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
+      sb.current.from("deals").select("id, deal_code, year, month, supplier_contract, buyer_contract, logistics_shipment_month, factory_id, fuel_type_id, supplier_id, buyer_id, forwarder_id, buyer_destination_station_id, supplier_departure_station_id, logistics_company_group_id, supplier:counterparties!supplier_id(short_name, full_name), buyer:counterparties!buyer_id(short_name, full_name), deal_company_groups(position, company_group:company_groups(name, full_name))").eq("deal_type", regType).eq("is_archived", false).or("is_draft.is.null,is_draft.eq.false").order("deal_code"),
       sb.current.from("stations").select("id, name, default_factory_id").eq("is_active", true).order("name"),
       sb.current.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
       sb.current.from("forwarders").select("id, name").eq("is_active", true).order("name"),
@@ -1150,7 +1153,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   >
                     {supplierLines.map((l, idx) => (
                       <option key={l.id} value={l.id}>
-                        {l.appendix ? `${l.appendix} · ` : ""}
+                        {effectiveAppendix(l, selectedDeal?.supplier_contract) ? `${effectiveAppendix(l, selectedDeal?.supplier_contract)} · ` : ""}
                         {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
                         {l.departure_station?.name ? ` — ${l.departure_station.name}` : ""}
                         {l.price != null ? ` · ${l.price}` : ""}
@@ -1159,20 +1162,20 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   </select>
                 </div>
               )}
-              {supplierLines.some((l) => l.appendix) && (
+              {/* Приложение: подпись варианта, у основного без подписи —
+                  номер приложения сделки (как в строках реестра). Показываем
+                  всегда, когда есть варианты (клиент 2026-10-08). */}
+              {supplierLines.length > 0 && (
                 <div>
                   <Label className="text-[10px] text-stone-500">Прилож. поставщика</Label>
                   <select
-                    value={supplierLines.find((l) => l.id === supplierLineId)?.appendix ?? ""}
-                    onChange={(e) => {
-                      const match = supplierLines.find((l) => (l.appendix ?? "") === e.target.value);
-                      if (match) setSupplierLineId(match.id);
-                    }}
+                    value={supplierLineId}
+                    onChange={(e) => setSupplierLineId(e.target.value)}
                     className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
                   >
                     {supplierLines.map((l) => (
-                      <option key={l.id} value={l.appendix ?? ""}>
-                        {l.appendix || "(без приложения)"}
+                      <option key={l.id} value={l.id}>
+                        {appendixLabel(l, selectedDeal?.supplier_contract)}
                       </option>
                     ))}
                   </select>
@@ -1188,7 +1191,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   >
                     {buyerLines.map((l, idx) => (
                       <option key={l.id} value={l.id}>
-                        {l.appendix ? `${l.appendix} · ` : ""}
+                        {effectiveAppendix(l, selectedDeal?.buyer_contract) ? `${effectiveAppendix(l, selectedDeal?.buyer_contract)} · ` : ""}
                         {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
                         {l.destination_station?.name ? ` — ${l.destination_station.name}` : ""}
                         {l.price != null ? ` · ${l.price}` : ""}
@@ -1197,20 +1200,17 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   </select>
                 </div>
               )}
-              {buyerLines.some((l) => l.appendix) && (
+              {buyerLines.length > 0 && (
                 <div>
                   <Label className="text-[10px] text-stone-500">Прилож. покупателя</Label>
                   <select
-                    value={buyerLines.find((l) => l.id === buyerLineId)?.appendix ?? ""}
-                    onChange={(e) => {
-                      const match = buyerLines.find((l) => (l.appendix ?? "") === e.target.value);
-                      if (match) setBuyerLineId(match.id);
-                    }}
+                    value={buyerLineId}
+                    onChange={(e) => setBuyerLineId(e.target.value)}
                     className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
                   >
                     {buyerLines.map((l) => (
-                      <option key={l.id} value={l.appendix ?? ""}>
-                        {l.appendix || "(без приложения)"}
+                      <option key={l.id} value={l.id}>
+                        {appendixLabel(l, selectedDeal?.buyer_contract)}
                       </option>
                     ))}
                   </select>

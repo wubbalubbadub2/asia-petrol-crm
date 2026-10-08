@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-08 — Реестр: выбор варианта по приложению виден всегда; пустая подпись = номер приложения сделки
+- **What changed:** `src/lib/deals/line-appendix.ts` (`effectiveAppendix`, `appendixLabel`, `appendixOptions`); `src/app/(dashboard)/registry/page.tsx` и `src/components/registry/bulk-add-dialog.tsx` — «Прилож. поставщика/покупателя» и «Приложение» показываются при любом числе вариантов, у основного варианта без своей подписи — «Номер приложения» сделки (`deals.supplier_contract` / `buyer_contract`), как уже делает показ строк (`effSupplierAppendix`); `deal-create-variants.tsx` — placeholder поля «Приложение» вместо «Прил. 1».
+- **Type:** [PRESENTATION] [BEHAVIOR]
+- **Before → After:** пикер приложения появлялся только если у варианта заполнено своё поле «Приложение» (в проде — у 30 вариантов из 1277, у всех новых KG-сделок пусто) → появляется всегда после выбора сделки; на строку реестра по-прежнему пишется `line_id`, `supplier_appendix` остаётся NULL (показ подставляет номер сделки). Схема не менялась.
+- **Client reason:** «опять нету выбора по приложению в реестрах… чтобы можно было разделить объём на две цены поставки».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-08 — Фильтры по цене — каскадом от остальных фильтров
 - **What changed:** `src/app/(dashboard)/deals/page.tsx` — пункты «Все цены пост.» / «Все цены покуп.» строятся по сделкам, прошедшим все остальные фильтры (кроме самого фильтра цены).
 - **Type:** [PRESENTATION]

@@ -12,6 +12,7 @@ import { parseBulkWagons, type ParsedWagon } from "@/lib/parsers/bulk-wagons";
 import { toast } from "sonner";
 import { formatDMY } from "@/lib/format";
 import { sortByName } from "@/lib/sort-names";
+import { appendixLabel, appendixOptions, effectiveAppendix } from "@/lib/deals/line-appendix";
 
 const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
 
@@ -163,6 +164,9 @@ export function BulkAddDialog({
   const [apx, setApx] = useState("");
   const [supplierLineId, setSupplierLineId] = useState("");
   const [buyerLineId, setBuyerLineId] = useState("");
+  // Номера приложений сделки — подпись основного варианта без своей
+  // (как в строках реестра; клиент 2026-10-08: «нету выбора по приложению»).
+  const [dealContracts, setDealContracts] = useState<{ supplier: string | null; buyer: string | null }>({ supplier: null, buyer: null });
 
   // Paste + preview
   const [pasted, setPasted] = useState("");
@@ -245,13 +249,15 @@ export function BulkAddDialog({
   // for ОсОО↔Singularity deals. Cast through unknown — generated
   // database.ts pre-dates the appendix column.
   useEffect(() => {
-    if (!open || !context?.dealId) { setSupLines([]); setBuyLines([]); setDupShipment(false); return; }
+    if (!open || !context?.dealId) { setSupLines([]); setBuyLines([]); setDupShipment(false); setDealContracts({ supplier: null, buyer: null }); return; }
     const sb = createClient();
     Promise.all([
       sb.from("deal_supplier_lines").select("id, appendix, is_default, position, price").eq("deal_id", context.dealId).order("position"),
       sb.from("deal_buyer_lines").select("id, appendix, is_default, position, price").eq("deal_id", context.dealId).order("position"),
       sb.from("deal_company_groups").select("position, company_group:company_groups(name, full_name)").eq("deal_id", context.dealId).in("position", [1, 2]),
-    ]).then(([s, b, chain]) => {
+      sb.from("deals").select("supplier_contract, buyer_contract").eq("id", context.dealId).maybeSingle(),
+    ]).then(([s, b, chain, dc]) => {
+      setDealContracts({ supplier: dc.data?.supplier_contract ?? null, buyer: dc.data?.buyer_contract ?? null });
       const sl = ((s.data as unknown) ?? []) as ApxLine[];
       const bl = ((b.data as unknown) ?? []) as ApxLine[];
       setSupLines(sl);
@@ -266,12 +272,10 @@ export function BulkAddDialog({
     });
   }, [open, context?.dealId]);
 
-  const apxOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const l of supLines) if (l.appendix) s.add(l.appendix);
-    for (const l of buyLinesArr) if (l.appendix) s.add(l.appendix);
-    return [...s].sort();
-  }, [supLines, buyLinesArr]);
+  const apxOptions = useMemo(
+    () => appendixOptions(supLines, dealContracts.supplier, buyLinesArr, dealContracts.buyer),
+    [supLines, buyLinesArr, dealContracts],
+  );
 
   // Auto-tariff lookup: tariffs are keyed by SHIPMENT month + year, not the
   // deal's "месяц формирования".
@@ -316,10 +320,10 @@ export function BulkAddDialog({
     // Пустым line_id больше не оставляем: без него отгрузка не попадает
     // ни в пересчёт «Окончательной», ни в сумму варианта.
     const supLineMatch = supLines.find((l) => l.id === supplierLineId)
-      ?? (apx ? supLines.find((l) => l.appendix === apx) : null)
+      ?? (apx ? supLines.find((l) => effectiveAppendix(l, dealContracts.supplier) === apx) : null)
       ?? supLines.find((l) => l.is_default) ?? null;
     const buyLineMatch = buyLinesArr.find((l) => l.id === buyerLineId)
-      ?? (apx ? buyLinesArr.find((l) => l.appendix === apx) : null)
+      ?? (apx ? buyLinesArr.find((l) => effectiveAppendix(l, dealContracts.buyer) === apx) : null)
       ?? buyLinesArr.find((l) => l.is_default) ?? null;
     const rows = validRows.map((p) => ({
       registry_type: regType,
@@ -430,8 +434,8 @@ export function BulkAddDialog({
                       const a = e.target.value;
                       setApx(a);
                       // Приложение — быстрый выбор варианта на обеих сторонах.
-                      const s = supLines.find((l) => (l.appendix ?? "") === a);
-                      const b = buyLinesArr.find((l) => (l.appendix ?? "") === a);
+                      const s = supLines.find((l) => effectiveAppendix(l, dealContracts.supplier) === a);
+                      const b = buyLinesArr.find((l) => effectiveAppendix(l, dealContracts.buyer) === a);
                       if (s) setSupplierLineId(s.id);
                       if (b) setBuyerLineId(b.id);
                     }}
@@ -458,7 +462,7 @@ export function BulkAddDialog({
                   >
                     {supLines.map((l, idx) => (
                       <option key={l.id} value={l.id}>
-                        {l.appendix ? `${l.appendix} · ` : ""}
+                        {effectiveAppendix(l, dealContracts.supplier) ? `${appendixLabel(l, dealContracts.supplier)} · ` : ""}
                         {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
                         {l.price != null ? ` · ${l.price}` : ""}
                       </option>
@@ -476,7 +480,7 @@ export function BulkAddDialog({
                   >
                     {buyLinesArr.map((l, idx) => (
                       <option key={l.id} value={l.id}>
-                        {l.appendix ? `${l.appendix} · ` : ""}
+                        {effectiveAppendix(l, dealContracts.buyer) ? `${appendixLabel(l, dealContracts.buyer)} · ` : ""}
                         {l.is_default ? "★ Основной" : `Вариант ${idx + 1}`}
                         {l.price != null ? ` · ${l.price}` : ""}
                       </option>
