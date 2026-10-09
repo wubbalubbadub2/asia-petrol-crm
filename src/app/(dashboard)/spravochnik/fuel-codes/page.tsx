@@ -29,7 +29,7 @@ type FuelCode = {
   comment?: string | null;
   fuel_type?: { name: string; etsng_code: string | null } | null;
 };
-type Option = { id: string; name: string };
+type Option = { id: string; name: string; etsng_code?: string | null };
 
 const fmtSulfur = (v: number | null | undefined) =>
   v == null ? "—" : `${Number(v).toLocaleString("ru-RU", { maximumFractionDigits: 3 })}%`;
@@ -88,8 +88,9 @@ function FuelCodeForm({ item, onSave, onClose }: {
   const sbRef = useRef(createClient());
 
   useEffect(() => {
-    sbRef.current.from("fuel_types").select("id, name").eq("is_active", true)
-      .then(({ data }) => setFuels(sortByName(data ?? [], (r) => r.name) as Option[]));
+    sbRef.current.from("fuel_types").select("id, name, etsng_code").eq("is_active", true)
+            // etsng_code (00153) нет в сгенерированных типах — через unknown.
+      .then(({ data }) => setFuels(sortByName(((data ?? []) as unknown) as Option[], (r) => r.name)));
   }, []);
 
   const set = (key: keyof FormState, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -133,6 +134,18 @@ function FuelCodeForm({ item, onSave, onClose }: {
           triggerClassName="w-full"
         />
       </div>
+      {/* ЕТСНГ — с вида ГСМ, здесь только показывается (клиент 2026-10-09:
+          «код ЕТСНГ дублируется — должен автоматом прописываться с вида»). */}
+      <div className="space-y-1.5">
+        <Label htmlFor="etsng">Код ЕТСНГ (из «Видов ГСМ»)</Label>
+        <Input
+          id="etsng"
+          readOnly
+          value={fuels.find((f) => f.id === form.fuel_type_id)?.etsng_code ?? ""}
+          placeholder={form.fuel_type_id ? "у вида не задан — заполните в «Видах ГСМ»" : "выберите вид ГСМ"}
+          className="font-mono bg-stone-50 text-stone-600"
+        />
+      </div>
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="sulfur">% серы</Label>
@@ -152,7 +165,7 @@ function FuelCodeForm({ item, onSave, onClose }: {
         <Input id="comment" value={form.comment} onChange={(e) => set("comment", e.target.value)} />
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Пусто в «% серы» — строка для вида без уточнения серы (одна на вид). Код ЕТСНГ задаётся в справочнике «Виды ГСМ».
+        Пусто в «% серы» — строка для вида без уточнения серы (одна на вид). Код ЕТСНГ задаётся в справочнике «Виды ГСМ» и сюда подставляется сам.
       </p>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>

@@ -32,17 +32,15 @@ import { formatDMY } from "@/lib/format";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { useApplicationActivity } from "@/lib/hooks/use-deal-activity";
-import { sortByName } from "@/lib/sort-names";
 import { useRole } from "@/lib/role-context";
-import { defaultManagerId, stationCodeOnPick } from "@/lib/application-autofill";
+import {
+  ApplicationForm, applicationPayload, emptyApplicationValues, resolvedManagerId,
+  useApplicationRefs, valuesFromApplication, type ApplicationFormValues, type ApplicationRefs,
+} from "@/components/applications/application-form";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dealLinkStatus, loadDealOptions, localToday, type DealOption } from "@/lib/applications/deal-link";
 import Link from "next/link";
 
-type RefOption = { id: string; name: string };
-/** Станция с кодом — из него подставляется «Код станции». */
-type StationOption = RefOption & { code: string | null };
-type ProfileOption = { id: string; full_name: string };
 
 function StatusBadge({ ordered }: { ordered: boolean }) {
   return ordered ? (
@@ -68,72 +66,21 @@ function CreateApplicationDialog({
   onCreated: () => void;
 }) {
   const supabase = createClient();
-  const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
-  const [stations, setStations] = useState<StationOption[]>([]);
-  const [managers, setManagers] = useState<ProfileOption[]>([]);
+  const refs = useApplicationRefs(open);
   const [saving, setSaving] = useState(false);
-
-  const [appNumber, setAppNumber] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [fuelTypeId, setFuelTypeId] = useState("");
-  const [productName, setProductName] = useState("");
-  const [tonnage, setTonnage] = useState("");
-  const [stationId, setStationId] = useState("");
-  const [stationCode, setStationCode] = useState("");
-  const [consigneeName, setConsigneeName] = useState("");
-  const [consigneeBin, setConsigneeBin] = useState("");
-  const [consignor, setConsignor] = useState("");
-  const [carrier, setCarrier] = useState("");
-  // null — менеджера ещё не выбирали: тогда в поле текущий пользователь,
-  // если он есть в списке менеджеров. Выбор руками (и «Выберите...»)
-  // перебивает подстановку.
-  const [pickedManagerId, setManagerId] = useState<string | null>(null);
-  const [sourceEmail, setSourceEmail] = useState("");
+  const [values, setValues] = useState<ApplicationFormValues>(() => emptyApplicationValues());
   // Сделку можно выбрать сразу; по умолчанию — «Сделка не создана»
   // (клиент 2026-10-05: «добавить выбор существующей сделки»).
   const [dealId, setDealId] = useState("");
   const dealOptions = useDealOptions(open);
   const { profile } = useRole();
-  const managerId = pickedManagerId ?? defaultManagerId(profile?.id, managers);
-
-  useEffect(() => {
-    if (!open) return;
-    Promise.all([
-      supabase.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      supabase.from("stations").select("id, name, code").eq("is_active", true).order("name"),
-      supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-    ]).then(([ft, st, m]) => {
-      setFuelTypes((ft.data ?? []) as RefOption[]);
-      setStations(sortByName(st.data ?? [], (r) => r.name) as StationOption[]);
-      setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
-    });
-  }, [open, supabase]);
-
-  /** Выбор станции подставляет её код из справочника; поле остаётся правимым. */
-  function pickStation(id: string) {
-    setStationId(id);
-    const code = stations.find((s) => s.id === id)?.code;
-    setStationCode((prev) => stationCodeOnPick(prev, code));
-  }
 
   async function handleSave() {
-    if (!date) { return; }
+    if (!values.date) { return; }
     setSaving(true);
-    const result = await createApplication({
-      application_number: appNumber || null,
-      date,
-      fuel_type_id: fuelTypeId || null,
-      product_name: productName || null,
-      tonnage: tonnage ? parseFloat(tonnage) : null,
-      destination_station_id: stationId || null,
-      station_code: stationCode || null,
-      consignee_name: consigneeName || null,
-      consignee_bin: consigneeBin || null,
-      consignor: consignor || null,
-      carrier: carrier || null,
-      assigned_manager_id: managerId || null,
-      source_email: sourceEmail || null,
-    });
+    const result = await createApplication(
+      applicationPayload(values, refs, resolvedManagerId(values, profile?.id, refs)),
+    );
     if (result && dealId) {
       const { error } = await supabase.from("application_deals").insert({
         application_id: result.id,
@@ -144,11 +91,12 @@ function CreateApplicationDialog({
     }
     setSaving(false);
     if (result) {
+      setValues(emptyApplicationValues());
+      setDealId("");
       onCreated();
       onClose();
     }
   }
-
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
@@ -156,61 +104,7 @@ function CreateApplicationDialog({
         <DialogHeader>
           <DialogTitle>Новая заявка</DialogTitle>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label className="text-[12px] text-stone-500">№ заявки</Label>
-            <Input value={appNumber} onChange={(e) => setAppNumber(e.target.value)} placeholder="239" className="h-8 text-[13px]" />
-          </div>
-          <div>
-            <Label className="text-[12px] text-stone-500">Дата</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[13px]" />
-          </div>
-          <SelectField
-            label="Вид ГСМ"
-            value={fuelTypeId}
-            onChange={setFuelTypeId}
-            options={fuelTypes.map((f) => ({ value: f.id, label: f.name }))}
-          />
-          <div>
-            <Label className="text-[12px] text-stone-500">Продукт (текст)</Label>
-            <Input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="АИ 92" className="h-8 text-[13px]" />
-          </div>
-          <div>
-            <Label className="text-[12px] text-stone-500">Тоннаж</Label>
-            <Input type="number" step="0.01" value={tonnage} onChange={(e) => setTonnage(e.target.value)} className="h-8 text-[13px] font-mono" />
-          </div>
-          <SelectField
-            label="Станция назначения"
-            value={stationId}
-            onChange={pickStation}
-            options={stations.map((s) => ({ value: s.id, label: s.name }))}
-          />
-          <div>
-            <Label className="text-[12px] text-stone-500">Код станции</Label>
-            <Input value={stationCode} onChange={(e) => setStationCode(e.target.value)} placeholder="700204" className="h-8 text-[13px]" />
-          </div>
-          <div>
-            <Label className="text-[12px] text-stone-500">Грузополучатель</Label>
-            <Input value={consigneeName} onChange={(e) => setConsigneeName(e.target.value)} className="h-8 text-[13px]" />
-          </div>
-          <div>
-            <Label className="text-[12px] text-stone-500">БИН грузополучателя</Label>
-            <Input value={consigneeBin} onChange={(e) => setConsigneeBin(e.target.value)} className="h-8 text-[13px]" />
-          </div>
-          <div>
-            <Label className="text-[12px] text-stone-500">Грузоотправитель</Label>
-            <Input value={consignor} onChange={(e) => setConsignor(e.target.value)} className="h-8 text-[13px]" />
-          </div>
-          <div>
-            <Label className="text-[12px] text-stone-500">Перевозчик</Label>
-            <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} className="h-8 text-[13px]" />
-          </div>
-          <SelectField
-            label="Ответственный менеджер"
-            value={managerId}
-            onChange={setManagerId}
-            options={managers.map((m) => ({ value: m.id, label: m.full_name }))}
-          />
+        <ApplicationForm values={values} onChange={setValues} refs={refs} currentUserId={profile?.id}>
           <div className="col-span-2">
             <Label className="text-[12px] text-stone-500">Сделка</Label>
             <SearchableSelect
@@ -223,19 +117,15 @@ function CreateApplicationDialog({
               triggerClassName="h-8 text-[13px]"
             />
           </div>
-          <div className="col-span-2">
-            <Label className="text-[12px] text-stone-500">Email источника</Label>
-            <Input value={sourceEmail} onChange={(e) => setSourceEmail(e.target.value)} placeholder="buyer@company.com" className="h-8 text-[13px]" />
-          </div>
-          <div className="col-span-2">
-            <Label className="text-[12px] text-stone-500">Файл заявки (PDF)</Label>
-            <input
-              type="file"
-              accept=".pdf,.xlsx,.xls,.doc,.docx"
-              className="w-full h-8 text-[12px] file:mr-2 file:rounded file:border-0 file:bg-amber-50 file:px-2 file:py-1 file:text-[11px] file:font-medium file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
-            />
-            <p className="text-[10px] text-stone-400 mt-0.5">PDF, Excel или Word файл от покупателя</p>
-          </div>
+        </ApplicationForm>
+        <div className="mt-3">
+          <Label className="text-[12px] text-stone-500">Файл заявки (PDF)</Label>
+          <input
+            type="file"
+            accept=".pdf,.xlsx,.xls,.doc,.docx"
+            className="w-full h-8 text-[12px] file:mr-2 file:rounded file:border-0 file:bg-amber-50 file:px-2 file:py-1 file:text-[11px] file:font-medium file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+          />
+          <p className="text-[10px] text-stone-400 mt-0.5">PDF, Excel или Word файл от покупателя</p>
         </div>
         <div className="flex gap-2 mt-2">
           <Button onClick={handleSave} disabled={saving} className="flex-1">
@@ -259,112 +149,46 @@ function EditApplicationDialog({
   onSaved: () => void;
   application: Application | null;
 }) {
-  const supabase = createClient();
-  const [fuelTypes, setFuelTypes] = useState<RefOption[]>([]);
-  const [stations, setStations] = useState<StationOption[]>([]);
-  const [managers, setManagers] = useState<ProfileOption[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  const [appNumber, setAppNumber] = useState("");
-  const [date, setDate] = useState("");
-  const [fuelTypeId, setFuelTypeId] = useState("");
-  const [productName, setProductName] = useState("");
-  const [tonnage, setTonnage] = useState("");
-  const [stationId, setStationId] = useState("");
-  const [stationCode, setStationCode] = useState("");
-  const [consigneeName, setConsigneeName] = useState("");
-  const [consigneeBin, setConsigneeBin] = useState("");
-  const [consignor, setConsignor] = useState("");
-  const [carrier, setCarrier] = useState("");
-  const [managerId, setManagerId] = useState("");
-  const [sourceEmail, setSourceEmail] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    Promise.all([
-      supabase.from("fuel_types").select("id, name").eq("is_active", true).order("sort_order"),
-      supabase.from("stations").select("id, name, code").eq("is_active", true).order("name"),
-      supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-    ]).then(([ft, st, m]) => {
-      setFuelTypes((ft.data ?? []) as RefOption[]);
-      setStations(sortByName(st.data ?? [], (r) => r.name) as StationOption[]);
-      setManagers(sortByName(m.data ?? [], (r) => r.full_name) as ProfileOption[]);
-    });
-  }, [open, supabase]);
-
-  /** Выбор станции подставляет её код из справочника; поле остаётся правимым. */
-  function pickStation(id: string) {
-    setStationId(id);
-    const code = stations.find((s) => s.id === id)?.code;
-    setStationCode((prev) => stationCodeOnPick(prev, code));
-  }
-
-  // Load current application values into form
-  useEffect(() => {
-    if (!open || !application) return;
-    setAppNumber(application.application_number ?? "");
-    setDate(application.date ? application.date.split("T")[0] : "");
-    setFuelTypeId(application.fuel_type_id ?? "");
-    setProductName(application.product_name ?? "");
-    setTonnage(application.tonnage != null ? String(application.tonnage) : "");
-    setStationId(application.destination_station_id ?? "");
-    setStationCode(application.station_code ?? "");
-    setConsigneeName(application.consignee_name ?? "");
-    setConsigneeBin(application.consignee_bin ?? "");
-    setConsignor(application.consignor ?? "");
-    setCarrier(application.carrier ?? "");
-    setManagerId(application.assigned_manager_id ?? "");
-    setSourceEmail(application.source_email ?? "");
-  }, [open, application]);
-
-  async function handleSave() {
-    if (!application) return;
-    setSaving(true);
-    const ok = await updateApplication(application.id, {
-      application_number: appNumber || null,
-      date: date || undefined,
-      fuel_type_id: fuelTypeId || null,
-      product_name: productName || null,
-      tonnage: tonnage ? parseFloat(tonnage) : null,
-      destination_station_id: stationId || null,
-      station_code: stationCode || null,
-      consignee_name: consigneeName || null,
-      consignee_bin: consigneeBin || null,
-      consignor: consignor || null,
-      carrier: carrier || null,
-      assigned_manager_id: managerId || null,
-      source_email: sourceEmail || null,
-    });
-    setSaving(false);
-    if (ok) { onSaved(); onClose(); }
-  }
-
-
+  const refs = useApplicationRefs(open);
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Редактировать заявку</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label className="text-[12px] text-stone-500">№ заявки</Label><Input value={appNumber} onChange={(e) => setAppNumber(e.target.value)} className="h-8 text-[13px]" /></div>
-          <div><Label className="text-[12px] text-stone-500">Дата</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-[13px]" /></div>
-          <Sel label="Вид ГСМ" value={fuelTypeId} onChange={setFuelTypeId} options={fuelTypes.map((f) => ({ value: f.id, label: f.name }))} />
-          <div><Label className="text-[12px] text-stone-500">Продукт (текст)</Label><Input value={productName} onChange={(e) => setProductName(e.target.value)} className="h-8 text-[13px]" /></div>
-          <div><Label className="text-[12px] text-stone-500">Тоннаж</Label><Input type="number" step="0.01" value={tonnage} onChange={(e) => setTonnage(e.target.value)} className="h-8 text-[13px] font-mono" /></div>
-          <Sel label="Станция назначения" value={stationId} onChange={pickStation} options={stations.map((s) => ({ value: s.id, label: s.name }))} />
-          <div><Label className="text-[12px] text-stone-500">Код станции</Label><Input value={stationCode} onChange={(e) => setStationCode(e.target.value)} className="h-8 text-[13px]" /></div>
-          <div><Label className="text-[12px] text-stone-500">Грузополучатель</Label><Input value={consigneeName} onChange={(e) => setConsigneeName(e.target.value)} className="h-8 text-[13px]" /></div>
-          <div><Label className="text-[12px] text-stone-500">БИН грузополучателя</Label><Input value={consigneeBin} onChange={(e) => setConsigneeBin(e.target.value)} className="h-8 text-[13px]" /></div>
-          <div><Label className="text-[12px] text-stone-500">Грузоотправитель</Label><Input value={consignor} onChange={(e) => setConsignor(e.target.value)} className="h-8 text-[13px]" /></div>
-          <div><Label className="text-[12px] text-stone-500">Перевозчик</Label><Input value={carrier} onChange={(e) => setCarrier(e.target.value)} className="h-8 text-[13px]" /></div>
-          <Sel label="Ответственный менеджер" value={managerId} onChange={setManagerId} options={managers.map((m) => ({ value: m.id, label: m.full_name }))} />
-          <div className="col-span-2"><Label className="text-[12px] text-stone-500">Email источника</Label><Input value={sourceEmail} onChange={(e) => setSourceEmail(e.target.value)} className="h-8 text-[13px]" /></div>
-        </div>
-        <div className="flex gap-2 mt-2">
-          <Button onClick={handleSave} disabled={saving} className="flex-1">{saving ? "Сохранение..." : "Сохранить"}</Button>
-          <Button variant="outline" onClick={onClose}>Отмена</Button>
-        </div>
+        {/* key — форма заново берёт значения из заявки при смене строки,
+            без setState в эффекте. */}
+        {application && (
+          <EditApplicationBody key={application.id} application={application} refs={refs} onClose={onClose} onSaved={onSaved} />
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EditApplicationBody({ application, refs, onClose, onSaved }: {
+  application: Application;
+  refs: ApplicationRefs;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [values, setValues] = useState<ApplicationFormValues>(() => valuesFromApplication(application));
+
+  async function handleSave() {
+    setSaving(true);
+    const payload = applicationPayload(values, refs, values.managerId ?? "");
+    const ok = await updateApplication(application.id, { ...payload, date: payload.date || undefined });
+    setSaving(false);
+    if (ok) { onSaved(); onClose(); }
+  }
+
+  return (
+    <>
+      <ApplicationForm values={values} onChange={setValues} refs={refs} />
+      <div className="flex gap-2 mt-2">
+        <Button onClick={handleSave} disabled={saving} className="flex-1">{saving ? "Сохранение..." : "Сохранить"}</Button>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+      </div>
+    </>
   );
 }
 
@@ -461,41 +285,6 @@ function LinkDealDialog({
 // Объявлены на уровне модуля, а не внутри диалогов: компонент,
 // созданный во время рендера, пересоздаётся на каждой перерисовке и
 // теряет состояние вместе с фокусом. Оба берут всё из пропсов.
-function SelectField({
-  label, value, onChange, options,
-}: {
-  label: string; value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div>
-      <Label className="text-[12px] text-stone-500">{label}</Label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer"
-      >
-        <option value="">Выберите...</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function Sel({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-  return (
-    <div>
-      <Label className="text-[12px] text-stone-500">{label}</Label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[13px] focus:border-amber-400 focus:outline-none cursor-pointer">
-        <option value="">—</option>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
 export default function ApplicationsPage() {
   const { data: applications, loading, reload } = useApplications();
   const [search, setSearch] = useState("");

@@ -19,6 +19,15 @@ export type Application = {
   consignee_bin: string | null;
   consignor: string | null;
   carrier: string | null;
+  // Груз и справочники (00183).
+  sulfur_percent: number | null;
+  etsng_code: string | null;
+  gng_code: string | null;
+  tnved_code: string | null;
+  departure_station_id: string | null;
+  consignor_factory_id: string | null;
+  consignee_id: string | null;
+  carrier_id: string | null;
   is_ordered: boolean;
   assigned_manager_id: string | null;
   pdf_file_path: string | null;

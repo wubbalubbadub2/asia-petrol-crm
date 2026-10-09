@@ -99,6 +99,14 @@ export type Database = {
           buyer_bin_for_snt: string | null
           buyer_name_for_snt: string | null
           carrier: string | null
+          carrier_id: string | null
+          consignee_id: string | null
+          consignor_factory_id: string | null
+          departure_station_id: string | null
+          etsng_code: string | null
+          gng_code: string | null
+          sulfur_percent: number | null
+          tnved_code: string | null
           consignee_bin: string | null
           consignee_code_12: string | null
           consignee_code_4: string | null
@@ -133,6 +141,14 @@ export type Database = {
           buyer_bin_for_snt?: string | null
           buyer_name_for_snt?: string | null
           carrier?: string | null
+          carrier_id?: string | null
+          consignee_id?: string | null
+          consignor_factory_id?: string | null
+          departure_station_id?: string | null
+          etsng_code?: string | null
+          gng_code?: string | null
+          sulfur_percent?: number | null
+          tnved_code?: string | null
           consignee_bin?: string | null
           consignee_code_12?: string | null
           consignee_code_4?: string | null
@@ -167,6 +183,14 @@ export type Database = {
           buyer_bin_for_snt?: string | null
           buyer_name_for_snt?: string | null
           carrier?: string | null
+          carrier_id?: string | null
+          consignee_id?: string | null
+          consignor_factory_id?: string | null
+          departure_station_id?: string | null
+          etsng_code?: string | null
+          gng_code?: string | null
+          sulfur_percent?: number | null
+          tnved_code?: string | null
           consignee_bin?: string | null
           consignee_code_12?: string | null
           consignee_code_4?: string | null
@@ -195,6 +219,34 @@ export type Database = {
           wagon_operator?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "applications_carrier_id_fkey"
+            columns: ["carrier_id"]
+            isOneToOne: false
+            referencedRelation: "transport_carriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_consignee_id_fkey"
+            columns: ["consignee_id"]
+            isOneToOne: false
+            referencedRelation: "consignees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_consignor_factory_id_fkey"
+            columns: ["consignor_factory_id"]
+            isOneToOne: false
+            referencedRelation: "factories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_departure_station_id_fkey"
+            columns: ["departure_station_id"]
+            isOneToOne: false
+            referencedRelation: "stations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "applications_assigned_by_fkey"
             columns: ["assigned_by"]
