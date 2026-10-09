@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-09 — Выгрузка паспорта в Excel: колонки «Валюта»
+- **What changed:** `src/lib/exports/passport-excel.ts` и `src/lib/exports/passport-detail-excel.ts` — три текстовые колонки «Валюта»: `supplier_currency` сразу после «Базис» поставщика, `buyer_currency` сразу после «Базис» покупателя, `logistics_currency` после «Группа комп.» / «Плательщик жд тарифа». В детальной выгрузке под-строки показывают ту же валюту (`readShip`); в режиме «Сбор по валюте» (`opts.fx`) все три колонки показывают целевую валюту, пересчёт по-прежнему идёт по исходной валюте стороны. В «Итого» колонки пустые, как «Базис». Тест `src/__tests__/passport-excel-currency.test.ts`.
+- **Type:** [EXPORT]
+- **Before → After:** суммы и цены в выгрузках без указания валюты → у каждой стороны сделки видна её валюта (`deals.supplier_currency` / `buyer_currency` / `logistics_currency`, как есть, без пересчёта). Формулы, округление и порядок остальных колонок не менялись.
+- **Client reason:** 2026-10-09 «При выгрузке паспорта в Эксель нужно что бы отображалась валюта».
+- **Rebuild impact:** presentation only
+
 ### 2026-10-07 — Оплаты по закупке первичному поставщику (00181)
 - **What changed:** миграция `00181_deal_upstream_purchase_payments.sql`: таблица `deal_upstream_purchase_payments` (purchase_id → закупка ON DELETE RESTRICT, amount NUMERIC(16,2) > 0, currency ∈ USD/KZT/KGS/RUB, payment_date NOT NULL, comment; RLS как у закупок; audit_trigger), view `deal_upstream_purchase_payment_totals` (по закупке и валюте: число, сумма, последняя дата). Тест `supabase/tests/35_upstream_purchase_payments.test.sql`. UI: `src/components/deals/upstream-purchase-payments.tsx` (список, итог из view, добавление; удаление — admin); паспорт и обе выгрузки — колонки «Сумма оплаты», «Дата оплаты» в конце блока «Закупка»; `use-deals.ts` — embed оплат.
 - **Type:** [SCHEMA] [UI-FIELD] [EXPORT]
