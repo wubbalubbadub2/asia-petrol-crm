@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-09 — Реестр: поле «Приложение» видно и до выбора сделки
+- **What changed:** `src/app/(dashboard)/registry/page.tsx` («Прилож. поставщика/покупателя») и `src/components/registry/bulk-add-dialog.tsx` («Приложение») — поля рендерятся всегда: до выбора сделки неактивные с подсказкой «сначала выберите сделку», пока варианты грузятся — «загрузка…». Ошибка загрузки вариантов теперь показывается тостом, а не прячет поля молча.
+- **Type:** [UI-FIELD]
+- **Before → After:** поля появлялись только после выбора сделки и загрузки её вариантов → поля на месте всегда, заполняются после выбора сделки.
+- **Client reason:** 2026-10-09 «нет выбора приложения при создании новой записи в реестре» — скриншот сделан до выбора сделки, поле ещё не было видно.
+- **Rebuild impact:** presentation only
+
 ### 2026-10-08 — Реестр: выбор варианта по приложению виден всегда; пустая подпись = номер приложения сделки
 - **What changed:** `src/lib/deals/line-appendix.ts` (`effectiveAppendix`, `appendixLabel`, `appendixOptions`); `src/app/(dashboard)/registry/page.tsx` и `src/components/registry/bulk-add-dialog.tsx` — «Прилож. поставщика/покупателя» и «Приложение» показываются при любом числе вариантов, у основного варианта без своей подписи — «Номер приложения» сделки (`deals.supplier_contract` / `buyer_contract`), как уже делает показ строк (`effSupplierAppendix`); `deal-create-variants.tsx` — placeholder поля «Приложение» вместо «Прил. 1».
 - **Type:** [PRESENTATION] [BEHAVIOR]

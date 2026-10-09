@@ -955,6 +955,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
         .eq("deal_id", dealId)
         .order("is_default", { ascending: false }).order("position"),
     ]).then(([s, b]) => {
+      if (s.error || b.error) toast.error(`Не удалось загрузить варианты сделки: ${(s.error ?? b.error)?.message}`);
       const sl = (s.data ?? []) as unknown as SupLine[];
       const bl = (b.data ?? []) as unknown as BuyLine[];
       setSupplierLines(sl); setBuyerLines(bl);
@@ -1163,24 +1164,26 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                 </div>
               )}
               {/* Приложение: подпись варианта, у основного без подписи —
-                  номер приложения сделки (как в строках реестра). Показываем
-                  всегда, когда есть варианты (клиент 2026-10-08). */}
-              {supplierLines.length > 0 && (
-                <div>
-                  <Label className="text-[10px] text-stone-500">Прилож. поставщика</Label>
-                  <select
-                    value={supplierLineId}
-                    onChange={(e) => setSupplierLineId(e.target.value)}
-                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
-                  >
-                    {supplierLines.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {appendixLabel(l, selectedDeal?.supplier_contract)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                  номер приложения сделки (как в строках реестра). Поле видно
+                  всегда — до выбора сделки пустое и неактивное, чтобы было
+                  понятно, где выбирать приложение (клиент 2026-10-08,
+                  2026-10-09: «нет выбора приложения»). */}
+              <div>
+                <Label className="text-[10px] text-stone-500">Прилож. поставщика</Label>
+                <select
+                  value={supplierLineId}
+                  onChange={(e) => setSupplierLineId(e.target.value)}
+                  disabled={supplierLines.length === 0}
+                  className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer disabled:cursor-default disabled:text-stone-400"
+                >
+                  {supplierLines.length === 0 && <option value="">{dealId ? "загрузка…" : "сначала выберите сделку"}</option>}
+                  {supplierLines.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {appendixLabel(l, selectedDeal?.supplier_contract)}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {buyerLines.length > 0 && (
                 <div>
                   <Label className="text-[10px] text-stone-500">Вариант покупателя</Label>
@@ -1200,22 +1203,22 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
                   </select>
                 </div>
               )}
-              {buyerLines.length > 0 && (
-                <div>
-                  <Label className="text-[10px] text-stone-500">Прилож. покупателя</Label>
-                  <select
-                    value={buyerLineId}
-                    onChange={(e) => setBuyerLineId(e.target.value)}
-                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
-                  >
-                    {buyerLines.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {appendixLabel(l, selectedDeal?.buyer_contract)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <div>
+                <Label className="text-[10px] text-stone-500">Прилож. покупателя</Label>
+                <select
+                  value={buyerLineId}
+                  onChange={(e) => setBuyerLineId(e.target.value)}
+                  disabled={buyerLines.length === 0}
+                  className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer disabled:cursor-default disabled:text-stone-400"
+                >
+                  {buyerLines.length === 0 && <option value="">{dealId ? "загрузка…" : "сначала выберите сделку"}</option>}
+                  {buyerLines.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {appendixLabel(l, selectedDeal?.buyer_contract)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
