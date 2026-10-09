@@ -134,6 +134,7 @@ const COLUMNS: Column[] = [
   { key: "supplier", header: "Поставщик", width: 22, band: "supplier", read: (d) => d.supplier?.short_name ?? d.supplier?.full_name ?? "" },
   { key: "supplier_contract", header: "Номер приложения", width: 18, band: "supplier", read: (d) => d.supplier_contract ?? "" },
   { key: "supplier_basis", header: "Базис", width: 14, band: "supplier", read: (d) => d.supplier_delivery_basis ?? "" },
+  { key: "supplier_currency", header: "Валюта", width: 8, band: "supplier", read: (d) => d.supplier_currency ?? "" },
   { key: "supplier_volume", header: "Объем, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_contracted_volume },
   { key: "supplier_amount", header: "Сумма дог.", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_contracted_amount },
   // Quotation/discount inserted BEFORE the final price so accountants
@@ -176,6 +177,7 @@ const COLUMNS: Column[] = [
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
   { key: "buyer_contract", header: "Номер приложения", width: 18, band: "buyer", read: (d) => d.buyer_contract ?? "" },
   { key: "buyer_basis", header: "Базис", width: 14, band: "buyer", read: (d) => d.buyer_delivery_basis ?? "" },
+  { key: "buyer_currency", header: "Валюта", width: 8, band: "buyer", read: (d) => d.buyer_currency ?? "" },
   { key: "buyer_volume", header: "Объем, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_contracted_volume },
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
@@ -196,6 +198,7 @@ const COLUMNS: Column[] = [
   // ── Логистика ──────────────────────────────────────────
   { key: "forwarder", header: "Экспедитор", width: 18, band: "logistics", read: (d) => d.forwarder?.name ?? "" },
   { key: "logistics_company_group", header: "Группа комп.", width: 18, band: "logistics", read: (d) => d.logistics_company_group?.name ?? "" },
+  { key: "logistics_currency", header: "Валюта", width: 8, band: "logistics", read: (d) => d.logistics_currency ?? "" },
   { key: "preliminary_tonnage", header: "Объем план", width: 11, band: "logistics", numFmt: NUM_FMT_VOLUME, read: (d) => d.preliminary_tonnage },
   { key: "preliminary_amount", header: "Предв. сумма", width: 13, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.preliminary_amount },
   { key: "actual_shipped_volume", header: "Факт объем", width: 11, band: "logistics", numFmt: NUM_FMT_VOLUME, read: (d) => d.actual_shipped_volume },

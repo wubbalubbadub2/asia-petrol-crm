@@ -298,6 +298,7 @@ const COLUMNS: Column[] = [
   { key: "supplier", header: "Поставщик", width: 22, band: "supplier", read: (d) => d.supplier?.short_name ?? d.supplier?.full_name ?? "", readShip: (d) => d.supplier?.short_name ?? d.supplier?.full_name ?? "" },
   { key: "supplier_contract", header: "Номер приложения", width: 18, band: "supplier", read: (d) => d.supplier_contract ?? "", readShip: (d, s) => (s.ship ? (s.ship.supplier_appendix || (d.supplier_contract ?? "")) : (d.supplier_contract ?? "")) },
   { key: "supplier_basis", header: "Базис", width: 14, band: "supplier", read: (d) => d.supplier_delivery_basis ?? "", readShip: (d) => d.supplier_delivery_basis ?? "" },
+  { key: "supplier_currency", header: "Валюта", width: 8, band: "supplier", read: (d) => d.supplier_currency ?? "", readShip: (d) => d.supplier_currency ?? "" },
   { key: "supplier_volume", header: "Объем, т", width: 11, band: "supplier", numFmt: NUM_FMT_VOLUME, read: (d) => d.supplier_contracted_volume },
   { key: "supplier_amount", header: "Сумма дог.", width: 14, band: "supplier", numFmt: NUM_FMT_AMOUNT, read: (d) => d.supplier_contracted_amount },
   { key: "supplier_exchange", header: "Биржа", width: 26, band: "supplier", read: (d) => exchange(d, "supplier"), readShip: (d) => exchange(d, "supplier") },
@@ -348,6 +349,7 @@ const COLUMNS: Column[] = [
   { key: "buyer", header: "Покупатель", width: 22, band: "buyer", read: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "", readShip: (d) => d.buyer?.short_name ?? d.buyer?.full_name ?? "" },
   { key: "buyer_contract", header: "Номер приложения", width: 18, band: "buyer", read: (d) => d.buyer_contract ?? "", readShip: (d, s) => (s.ship ? (s.ship.buyer_appendix || (d.buyer_contract ?? "")) : (d.buyer_contract ?? "")) },
   { key: "buyer_basis", header: "Базис", width: 14, band: "buyer", read: (d) => d.buyer_delivery_basis ?? "" },
+  { key: "buyer_currency", header: "Валюта", width: 8, band: "buyer", read: (d) => d.buyer_currency ?? "", readShip: (d) => d.buyer_currency ?? "" },
   { key: "buyer_volume", header: "Объем, т", width: 11, band: "buyer", numFmt: NUM_FMT_VOLUME, read: (d) => d.buyer_contracted_volume },
   { key: "buyer_amount", header: "Сумма дог.", width: 14, band: "buyer", numFmt: NUM_FMT_AMOUNT, read: (d) => d.buyer_contracted_amount },
   { key: "buyer_exchange", header: "Биржа", width: 26, band: "buyer", read: (d) => exchange(d, "buyer"), readShip: (d) => exchange(d, "buyer") },
@@ -376,6 +378,7 @@ const COLUMNS: Column[] = [
   // ── Логистика ──────────────────────────────────────────
   { key: "forwarder", header: "Экспедитор", width: 18, band: "logistics", read: (d) => d.forwarder?.name ?? "", readShip: (d) => d.forwarder?.name ?? "" },
   { key: "logistics_company_group", header: "Плательщик жд тарифа", width: 18, band: "logistics", read: (d) => d.logistics_company_group?.name ?? "" },
+  { key: "logistics_currency", header: "Валюта", width: 8, band: "logistics", read: (d) => d.logistics_currency ?? "", readShip: (d) => d.logistics_currency ?? "" },
   { key: "preliminary_tonnage", header: "Объем план", width: 11, band: "logistics", numFmt: NUM_FMT_VOLUME, read: (d) => d.preliminary_tonnage },
   { key: "planned_tariff", header: "жд тариф план", width: 11, band: "logistics", numFmt: NUM_FMT_PRICE, read: (d) => d.planned_tariff },
   { key: "preliminary_amount", header: "Плановая сумма жд", width: 14, band: "logistics", numFmt: NUM_FMT_AMOUNT, read: (d) => d.preliminary_amount },
@@ -824,6 +827,11 @@ export async function exportPassportDetailToExcel(
       // Итоги сделки — из того же ядра, что и таблица на экране.
       return {
         ...d,
+        // Все деньги ниже пересчитаны в целевую валюту — колонки
+        // «Валюта» показывают её, а не исходную валюту стороны.
+        supplier_currency: target,
+        buyer_currency: target,
+        logistics_currency: target,
         supplier_price: agg.supplierPrice,
         supplier_shipped_amount: agg.supplierAmount,
         supplier_payment: agg.supplierPayment,
