@@ -257,6 +257,7 @@ export function BulkAddDialog({
       sb.from("deal_company_groups").select("position, company_group:company_groups(name, full_name)").eq("deal_id", context.dealId).in("position", [1, 2]),
       sb.from("deals").select("supplier_contract, buyer_contract").eq("id", context.dealId).maybeSingle(),
     ]).then(([s, b, chain, dc]) => {
+      if (s.error || b.error) toast.error(`Не удалось загрузить варианты сделки: ${(s.error ?? b.error)?.message}`);
       setDealContracts({ supplier: dc.data?.supplier_contract ?? null, buyer: dc.data?.buyer_contract ?? null });
       const sl = ((s.data as unknown) ?? []) as ApxLine[];
       const bl = ((b.data as unknown) ?? []) as ApxLine[];
@@ -425,27 +426,28 @@ export function BulkAddDialog({
                 <Label className="text-[10px] text-stone-500">№ СФ (если общий)</Label>
                 <Input value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} className="h-8 text-[12px]" placeholder="Необязательно" />
               </div>
-              {apxOptions.length > 0 && (
-                <div>
-                  <Label className="text-[10px] text-stone-500">Приложение</Label>
-                  <select
-                    value={apx}
-                    onChange={(e) => {
-                      const a = e.target.value;
-                      setApx(a);
-                      // Приложение — быстрый выбор варианта на обеих сторонах.
-                      const s = supLines.find((l) => effectiveAppendix(l, dealContracts.supplier) === a);
-                      const b = buyLinesArr.find((l) => effectiveAppendix(l, dealContracts.buyer) === a);
-                      if (s) setSupplierLineId(s.id);
-                      if (b) setBuyerLineId(b.id);
-                    }}
-                    className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer"
-                  >
-                    <option value="">—</option>
-                    {apxOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </div>
-              )}
+              {/* Поле видно всегда — до выбора сделки неактивное, чтобы
+                  было понятно, где выбирать приложение (клиент 2026-10-09). */}
+              <div>
+                <Label className="text-[10px] text-stone-500">Приложение</Label>
+                <select
+                  value={apx}
+                  disabled={apxOptions.length === 0}
+                  onChange={(e) => {
+                    const a = e.target.value;
+                    setApx(a);
+                    // Приложение — быстрый выбор варианта на обеих сторонах.
+                    const s = supLines.find((l) => effectiveAppendix(l, dealContracts.supplier) === a);
+                    const b = buyLinesArr.find((l) => effectiveAppendix(l, dealContracts.buyer) === a);
+                    if (s) setSupplierLineId(s.id);
+                    if (b) setBuyerLineId(b.id);
+                  }}
+                  className="w-full h-8 rounded-md border border-stone-200 bg-white px-2 text-[12px] focus:border-amber-400 focus:outline-none cursor-pointer disabled:cursor-default disabled:text-stone-400"
+                >
+                  <option value="">{apxOptions.length > 0 ? "—" : context?.dealId ? "у сделки нет приложений" : "сначала выберите сделку"}</option>
+                  {apxOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
               {/* Выбор варианта цены («домика»). Показываем всегда, когда
                   варианты есть: так делят одну сделку на 1000 т по одной
                   цене и 500 т по другой (клиент 2026-09-23). При одном
