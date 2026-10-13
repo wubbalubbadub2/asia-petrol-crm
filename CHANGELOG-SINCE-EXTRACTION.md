@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-13 — «Условия оплаты» на форме создания сделки
+- **What changed:** `src/components/deals/deal-payment-terms-draft.tsx` (новый: блок «Поставщик / Покупатель» с полями «Отсрочка, дн.», «Режим», при «прочее» — «Заметка» и «Плановая дата (ручная)»; `paymentTermsDraftToDealPatch`), `src/app/(dashboard)/deals/new/page.tsx` (секция «Условия оплаты» между «Группы компании» и «Логистика», раскрыта по умолчанию; значения уходят в INSERT сделки). Тест `src/__tests__/deal-payment-terms-draft.test.tsx`.
+- **Type:** [UI-FIELD]
+- **Before → After:** условия оплаты вносились только в карточке после создания → вносятся на форме создания в те же колонки `deals.supplier_/buyer_deferral_days`, `_deferral_mode`, `_deferral_note`, `_planned_pay_date` (00125/00142). Пустые поля — NULL, как раньше; заметка и дата пишутся только при режиме «прочее». Схема, карточка и отчёт «Условия оплаты» не менялись.
+- **Client reason:** 2026-10-13 «Можно эту функцию добавить и при создании сделки, чтобы сразу вносить».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-13 — Карточка сделки: «Котировка» и «Базис поставки» больше не пустые после F5 / прямой ссылки
 - **What changed:** `src/lib/refs.ts` — ленивые справочники (`quotation_product_types`, `delivery_bases`, `consignees`) теперь догружает `getGlobalRefs()` и после догрузки отдаёт подписчикам `useGlobalRefs` новый объект refs (раньше `fetchAll` дописывал их в уже отданный объект молча). Регрессионный тест в `src/__tests__/refs-cache.test.ts` с задержанным ленивым ответом.
 - **Type:** [BEHAVIOR]

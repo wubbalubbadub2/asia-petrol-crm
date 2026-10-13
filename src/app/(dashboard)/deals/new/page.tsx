@@ -18,6 +18,7 @@ import { useDealActivity } from "@/lib/hooks/use-deal-activity";
 import { VariantsCard, EMPTY_VARIANT, variantDraftToLinePatch, type VariantDraft } from "@/components/deals/deal-create-variants";
 import { CollapsibleSection, SECTION_COLORS } from "@/components/deals/collapsible-section";
 import { DealPaymentsDraft, type DraftPayment } from "@/components/deals/deal-payments-draft";
+import { DealPaymentTermsDraft, EMPTY_PAYMENT_TERMS, paymentTermsDraftToDealPatch, type PaymentTermsDraft } from "@/components/deals/deal-payment-terms-draft";
 import { QUOTATION_REQUIRED_MESSAGE, requiresQuotationType } from "@/lib/deals/price-validation";
 import { sortByName } from "@/lib/sort-names";
 
@@ -148,6 +149,11 @@ export default function NewDealPage() {
   const [buyerContract, setBuyerContract] = useState("");
   const [buyerVolume, setBuyerVolume] = useState("");
   const [buyerVariants, setBuyerVariants] = useState<VariantDraft[]>([{ ...EMPTY_VARIANT }]);
+
+  // «Условия оплаты» (отсрочка) по сторонам — клиент 2026-10-13 просил
+  // вносить их сразу при создании, а не только в карточке.
+  const [supplierTerms, setSupplierTerms] = useState<PaymentTermsDraft>(EMPTY_PAYMENT_TERMS);
+  const [buyerTerms, setBuyerTerms] = useState<PaymentTermsDraft>(EMPTY_PAYMENT_TERMS);
 
   // Company groups (up to 6). price = quotation − discount, auto-filled
   // until the user types into the Цена field — same convention as the
@@ -393,6 +399,8 @@ export default function NewDealPage() {
       supplier_manager_id: supplierManagerId || null,
       buyer_manager_id: buyerManagerId || null,
       trader_id: traderId || null,
+      // Условия оплаты — те же колонки 00125/00142, что правит карточка.
+      ...paymentTermsDraftToDealPatch(supplierTerms, buyerTerms),
     };
 
     let deal;
@@ -769,6 +777,18 @@ export default function NewDealPage() {
                 ))}
               </div>
             )}
+        </CollapsibleSection>
+
+        {/* Payment conditions (deferral) — same block and position as in
+            the deal card (client 2026-10-13: «чтобы сразу вносить»).
+            Collapsed like every other section of this form. */}
+        <CollapsibleSection title="Условия оплаты" headerBg={SECTION_COLORS.deal}>
+          <DealPaymentTermsDraft
+            supplier={supplierTerms}
+            buyer={buyerTerms}
+            onSupplierChange={setSupplierTerms}
+            onBuyerChange={setBuyerTerms}
+          />
         </CollapsibleSection>
 
         {/* Logistics */}
