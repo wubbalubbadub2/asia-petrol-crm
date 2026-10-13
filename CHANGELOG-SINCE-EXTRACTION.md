@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-13 — Коэфф. барелизации: сколько знаков ввели, столько и показываем
+- **What changed:** `src/lib/format.ts` (новый `formatBarrelRatio`: без хвостовых нулей, до 6 знаков), `src/components/deals/deal-lines-editor.tsx` (NumberCell получил `formatValue`; «Коэфф. барелизации» показывается через `formatBarrelRatio` вместо фиксированных 4 знаков), `src/lib/exports/passport-detail-excel.ts` (формат колонок `supplier_barrel_ratio` / `buyer_barrel_ratio` — `#,##0.0#####`). Тесты `barrel-ratio-format.test.ts`, `money-decimals.test.ts`.
+- **Type:** [PRESENTATION] [EXPORT]
+- **Before → After:** ровно 4 знака (7,747 → «7,7470») → по фактическому значению, от 1 до 6 знаков (7,7127 → «7,7127», 7,747 → «7,747»). База хранит NUMERIC(14,6) и отдаёт `7.712700`, поэтому хвостовой ноль, введённый вручную («7,7470»), не восстанавливается. Значение и формула цены не менялись.
+- **Client reason:** 2026-10-13 «по барелизации — сколько знаков ввели, столько и показывать».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-13 — Коэфф. барелизации показывается с четырьмя знаками
 - **What changed:** `src/components/deals/deal-lines-editor.tsx` (NumberCell «Коэфф. барелизации» — `decimals={4}` в режиме просмотра), `src/lib/exports/passport-detail-excel.ts` (колонки `supplier_barrel_ratio` / `buyer_barrel_ratio` — формат `#,##0.0000`), тест `src/__tests__/money-decimals.test.ts` (коэффициент — отдельный класс, 4 знака).
 - **Type:** [PRESENTATION] [EXPORT]

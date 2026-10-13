@@ -33,8 +33,8 @@ const surfaces: [string, readonly NumFmtCol[]][] = [
   ["реестр полный", REGISTRY_FULL_COLUMNS as unknown as NumFmtCol[]],
 ];
 
-/** Коэффициент барелизации — четыре знака: клиент 2026-10-13 «вводим
- * 7,7127, а показывает 7,713»; хранится NUMERIC(14,6) (00164). */
+/** Коэффициент барелизации — «сколько ввели, столько и показывать»
+ * (клиент 2026-10-13): маска «0.0#####», от одного до шести знаков. */
 const RATIO = /barrel_ratio/;
 /** Ставка за единицу: цена $/т, тариф, котировка, скидка, курс. */
 const RATE = /price|tariff|quotation|discount|rate/;
@@ -43,8 +43,8 @@ const VOLUME = /volume|tonnage|remainder|remaining/;
 /** Сумма денег. */
 const SUM = /amount|payment|offset|balance|debt|refund|saldo|opening|fines|surcharge|ogem|expenses/;
 
-function expectedDecimals(key: string): 2 | 3 | 4 | null {
-  if (RATIO.test(key)) return 4;
+function expectedDecimals(key: string): 2 | 3 | "ratio" | null {
+  if (RATIO.test(key)) return "ratio";
   if (RATE.test(key) || VOLUME.test(key)) return 3;
   if (SUM.test(key)) return 2;
   return null;
@@ -71,15 +71,16 @@ describe.each(surfaces)("%s: знаки после запятой", (_name, cols
     (key, numFmt) => {
       const want = expectedDecimals(key as string);
       if (want === null) return; // уже поймано проверкой выше
+      if (want === "ratio") { expect(numFmt).toBe("#,##0.0#####"); return; }
       for (const digits of fractions(numFmt)) expect(digits).toBe(want);
     },
   );
 });
 
-describe("канон: суммы — 2 знака, ставки и объём — 3, коэффициент барелизации — 4", () => {
-  it.each(["supplier_barrel_ratio", "buyer_barrel_ratio"])("%s печатается с четырьмя знаками", (key) => {
+describe("канон: суммы — 2 знака, ставки и объём — 3, коэффициент барелизации — как ввели", () => {
+  it.each(["supplier_barrel_ratio", "buyer_barrel_ratio"])("%s печатается от одного до шести знаков", (key) => {
     const col = (DETAIL_COLUMNS as unknown as NumFmtCol[]).find((c) => c.key === key);
-    expect(col?.numFmt).toBe("#,##0.0000");
+    expect(col?.numFmt).toBe("#,##0.0#####");
   });
 
   it("сумма отгрузки печатается с двумя знаками", () => {

@@ -9,8 +9,8 @@
  *   `formatMoney` ниже — канон для сумм (и для счетов-фактур, у них
  *   всегда было 2 знака).
  * • СТАВКИ ЗА ЕДИНИЦУ — 3 знака: цена $/т, котировка, скидка, тариф
- *   (логисты / ЖД поставщика / грузоотправления / факт), FX-курс,
- *   коэффициент барелизации. Клиент перемножает «цена × объём» тем
+ *   (логисты / ЖД поставщика / грузоотправления / факт), FX-курс.
+ *   Коэффициент барелизации — исключение, см. formatBarrelRatio. Клиент перемножает «цена × объём» тем
  *   числом, которое видит на экране, поэтому ставку нельзя печатать
  *   короче, чем она участвует в расчёте (00166: цена отгрузки в базе
  *   тоже округлена до 3 знаков).
@@ -49,6 +49,23 @@ export function formatMoneyOrBlank(v: number | null | undefined): string {
 export function formatPrice(v: number | null | undefined): string {
   if (v == null) return "";
   return v.toLocaleString(RU, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+/**
+ * Коэффициент барелизации — «сколько знаков ввели, столько и показывать»
+ * (клиент 2026-10-13). База хранит NUMERIC(14,6) и число введённых знаков
+ * не помнит (`7.712700`), поэтому печатаем значение без хвостовых нулей,
+ * не больше шести знаков: 7,7127 → «7,7127», 7,747 → «7,747».
+ */
+export const BARREL_RATIO_FORMAT: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 6,
+  useGrouping: false,
+};
+
+export function formatBarrelRatio(v: number | null | undefined): string {
+  if (v == null) return "";
+  return v.toLocaleString(RU, BARREL_RATIO_FORMAT);
 }
 
 /** Как formatPrice, но 0 → "". */

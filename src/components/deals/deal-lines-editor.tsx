@@ -42,7 +42,7 @@ import { getColumnsForProduct } from "@/lib/constants/quotation-columns";
 import { toast } from "sonner";
 import { QUOTATION_REQUIRED_MESSAGE, requiresQuotationType } from "@/lib/deals/price-validation";
 import { applyPriceFormula } from "@/lib/deals/price-formula";
-import { formatDMY } from "@/lib/format";
+import { BARREL_RATIO_FORMAT, formatDMY } from "@/lib/format";
 
 type PriceStage = "preliminary" | "final";
 
@@ -950,10 +950,9 @@ function LinesEditorView({
                 label="Коэфф. барелизации"
                 value={l.barrel_ratio}
                 editing={editing}
-                // Клиент 2026-10-13: «вводим 7,7127, а показывает 7,713».
-                // Коэффициент вводится с четырьмя знаками и хранится
-                // NUMERIC(14,6) (00164) — показ не должен его усекать.
-                decimals={4}
+                // Клиент 2026-10-13: «сколько знаков ввели — столько и
+                // показывать». Хранится NUMERIC(14,6) (00164).
+                numberFormat={BARREL_RATIO_FORMAT}
                 onChange={(v) => onUpdate(l.id, { barrel_ratio: v })}
               />
             )}
@@ -1343,7 +1342,7 @@ export function numberInputText(value: number | null | undefined, editDecimals?:
   return String(Math.sign(n) * Number(`${Math.round(raw)}e-${editDecimals}`));
 }
 
-function NumberCell({ label, value, editing, onChange, decimals = 3, editDecimals }: {
+function NumberCell({ label, value, editing, onChange, decimals = 3, editDecimals, numberFormat }: {
   label: ReactNode;
   value: number | null;
   editing: boolean;
@@ -1352,6 +1351,8 @@ function NumberCell({ label, value, editing, onChange, decimals = 3, editDecimal
    * умолчанию — деньги (клиент 2026-09-08, было 2). 0 для целых
    * (напр. Кол-во дней триггера). */
   decimals?: number;
+  /** Свой формат READ-ONLY отображения вместо фиксированных `decimals`. */
+  numberFormat?: Intl.NumberFormatOptions;
   /** Сколько знаков показывать и в поле ввода. Только отображение:
    * значение в базе не округляется, и пока текст не тронули — на blur
    * ничего не пишется. Нужно котировке: средняя приходит из БД
@@ -1394,7 +1395,7 @@ function NumberCell({ label, value, editing, onChange, decimals = 3, editDecimal
         />
       ) : (
         <span className="text-[13px] text-stone-800 font-mono tabular-nums">
-          {shown != null ? Number(shown).toLocaleString("ru-RU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : "—"}
+          {shown != null ? Number(shown).toLocaleString("ru-RU", numberFormat ?? { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : "—"}
         </span>
       )}
     </div>
