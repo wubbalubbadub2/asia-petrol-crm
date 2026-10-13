@@ -26,6 +26,13 @@ Entry template:
 
 <!-- Entries below, newest first -->
 
+### 2026-10-13 — Коэфф. барелизации показывается с четырьмя знаками
+- **What changed:** `src/components/deals/deal-lines-editor.tsx` (NumberCell «Коэфф. барелизации» — `decimals={4}` в режиме просмотра), `src/lib/exports/passport-detail-excel.ts` (колонки `supplier_barrel_ratio` / `buyer_barrel_ratio` — формат `#,##0.0000`), тест `src/__tests__/money-decimals.test.ts` (коэффициент — отдельный класс, 4 знака).
+- **Type:** [PRESENTATION] [EXPORT]
+- **Before → After:** в карточке сделки и в детальном паспорте коэффициент печатался с тремя знаками (7,7127 → «7,713») → четыре знака («7,7127»). Хранимое значение не менялось (NUMERIC(14,6), 00164), формула цены не менялась. Поле ввода и раньше показывало значение без усечения.
+- **Client reason:** 2026-10-13 «Щас три показывает, а вводим 4 — только коэффициент барелизации».
+- **Rebuild impact:** presentation only.
+
 ### 2026-10-13 — «Условия оплаты» на форме создания сделки
 - **What changed:** `src/components/deals/deal-payment-terms-draft.tsx` (новый: блок «Поставщик / Покупатель» с полями «Отсрочка, дн.», «Режим», при «прочее» — «Заметка» и «Плановая дата (ручная)»; `paymentTermsDraftToDealPatch`), `src/app/(dashboard)/deals/new/page.tsx` (секция «Условия оплаты» между «Группы компании» и «Логистика», раскрыта по умолчанию; значения уходят в INSERT сделки). Тест `src/__tests__/deal-payment-terms-draft.test.tsx`.
 - **Type:** [UI-FIELD]

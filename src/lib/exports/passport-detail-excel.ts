@@ -137,6 +137,9 @@ type Column = {
 const NUM_FMT_AMOUNT = "#,##0.00;[Red]-#,##0.00";
 const NUM_FMT_VOLUME = "#,##0.000;[Red]-#,##0.000";
 const NUM_FMT_PRICE = "#,##0.000";
+// Коэффициент барелизации вводится с четырьмя знаками и хранится
+// NUMERIC(14,6) — клиент 2026-10-13: «вводим 7,7127, а показывает 7,713».
+const NUM_FMT_RATIO = "#,##0.0000";
 const NUM_FMT_DATE = "dd.mm.yy";
 
 const MONTHS_RU = [
@@ -305,7 +308,7 @@ const COLUMNS: Column[] = [
   { key: "supplier_quotation_period", header: "Котировальный период", width: 18, band: "supplier", read: (d) => quotationPeriod(d, "supplier"), readShip: (d) => quotationPeriod(d, "supplier") },
   { key: "supplier_quotation", header: "Котировка", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_quotation, readShip: (d) => d.supplier_quotation },
   { key: "supplier_discount", header: "Скидка", width: 10, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => d.supplier_discount },
-  { key: "supplier_barrel_ratio", header: "Коэфф. барелизации", width: 14, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => barrelRatio(d, "supplier") },
+  { key: "supplier_barrel_ratio", header: "Коэфф. барелизации", width: 14, band: "supplier", numFmt: NUM_FMT_RATIO, read: (d) => barrelRatio(d, "supplier") },
   { key: "supplier_preliminary_price", header: "Цена предв.", width: 11, band: "supplier", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "supplier") },
   // Под-строка показывает ту же колонку, поэтому и она молчит, пока цена
   // не зафиксирована. Расчёт «Приход, сумма» ниже это НЕ затрагивает: он
@@ -355,7 +358,7 @@ const COLUMNS: Column[] = [
   { key: "buyer_quotation_period", header: "Котировальный период", width: 18, band: "buyer", read: (d) => quotationPeriod(d, "buyer"), readShip: (d) => quotationPeriod(d, "buyer") },
   { key: "buyer_quotation", header: "Котировка", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_quotation },
   { key: "buyer_discount", header: "Скидка", width: 10, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => d.buyer_discount },
-  { key: "buyer_barrel_ratio", header: "Коэфф. барелизации", width: 14, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => barrelRatio(d, "buyer") },
+  { key: "buyer_barrel_ratio", header: "Коэфф. барелизации", width: 14, band: "buyer", numFmt: NUM_FMT_RATIO, read: (d) => barrelRatio(d, "buyer") },
   { key: "buyer_preliminary_price", header: "Цена предв.", width: 11, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => preliminaryPrice(d, "buyer") },
   { key: "buyer_price", header: "Цена финальная", width: 12, band: "buyer", numFmt: NUM_FMT_PRICE, read: (d) => finalPrice(d, "buyer"),
     readShip: (d, s) => (isFinalStage(d, "buyer") ? (s.ship?.fx_buyer_price ?? s.ship?.buyer_ship_price ?? d.buyer_price) : null) },

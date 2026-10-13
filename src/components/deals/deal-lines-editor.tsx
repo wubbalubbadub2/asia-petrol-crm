@@ -950,6 +950,10 @@ function LinesEditorView({
                 label="Коэфф. барелизации"
                 value={l.barrel_ratio}
                 editing={editing}
+                // Клиент 2026-10-13: «вводим 7,7127, а показывает 7,713».
+                // Коэффициент вводится с четырьмя знаками и хранится
+                // NUMERIC(14,6) (00164) — показ не должен его усекать.
+                decimals={4}
                 onChange={(v) => onUpdate(l.id, { barrel_ratio: v })}
               />
             )}

@@ -33,14 +33,18 @@ const surfaces: [string, readonly NumFmtCol[]][] = [
   ["реестр полный", REGISTRY_FULL_COLUMNS as unknown as NumFmtCol[]],
 ];
 
-/** Ставка за единицу: цена $/т, тариф, котировка, скидка, курс, коэффициент. */
-const RATE = /price|tariff|quotation|discount|ratio|rate/;
+/** Коэффициент барелизации — четыре знака: клиент 2026-10-13 «вводим
+ * 7,7127, а показывает 7,713»; хранится NUMERIC(14,6) (00164). */
+const RATIO = /barrel_ratio/;
+/** Ставка за единицу: цена $/т, тариф, котировка, скидка, курс. */
+const RATE = /price|tariff|quotation|discount|rate/;
 /** Объём в тоннах. */
 const VOLUME = /volume|tonnage|remainder|remaining/;
 /** Сумма денег. */
 const SUM = /amount|payment|offset|balance|debt|refund|saldo|opening|fines|surcharge|ogem|expenses/;
 
-function expectedDecimals(key: string): 2 | 3 | null {
+function expectedDecimals(key: string): 2 | 3 | 4 | null {
+  if (RATIO.test(key)) return 4;
   if (RATE.test(key) || VOLUME.test(key)) return 3;
   if (SUM.test(key)) return 2;
   return null;
@@ -72,7 +76,12 @@ describe.each(surfaces)("%s: знаки после запятой", (_name, cols
   );
 });
 
-describe("канон: суммы — 2 знака, ставки и объём — 3", () => {
+describe("канон: суммы — 2 знака, ставки и объём — 3, коэффициент барелизации — 4", () => {
+  it.each(["supplier_barrel_ratio", "buyer_barrel_ratio"])("%s печатается с четырьмя знаками", (key) => {
+    const col = (DETAIL_COLUMNS as unknown as NumFmtCol[]).find((c) => c.key === key);
+    expect(col?.numFmt).toBe("#,##0.0000");
+  });
+
   it("сумма отгрузки печатается с двумя знаками", () => {
     const col = (DETAIL_COLUMNS as unknown as NumFmtCol[]).find((c) => c.key === "buyer_shipped_amount");
     expect(col?.numFmt).toBe("#,##0.00;[Red]-#,##0.00");
