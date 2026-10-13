@@ -127,12 +127,9 @@ function fetchAll(): Promise<FetchResult> {
       refs.stations.length > 0 || refs.companyGroups.length > 0 ||
       refs.factories.length > 0 || refs.fuelTypes.length > 0;
     const usable = !failed && anyRows;
-    // Lazy-fire the rarely-needed lookups in the background — they
-    // populate the cache so the few pages that consume them (e.g.
-    // /deals/[id] quotation variant picker, /spravochnik/consignees)
-    // already have them by the time the operator navigates there.
-    // Непригодный ответ догружать нечем — сессии всё равно нет.
-    if (usable) queueMicrotask(() => { void getLazyRefs(refs); });
+    // Редкие справочники (типы котировок, базисы, грузополучатели)
+    // догружает getGlobalRefs() уже после того, как отдал основной
+    // ответ — см. там же, почему подписчиков нужно будить отдельно.
     return { refs, usable };
   });
 }
@@ -180,6 +177,19 @@ export function getGlobalRefs(): Promise<GlobalRefs> {
       // перезапрос (invalidateGlobalRefs + getGlobalRefs) чинит только
       // того, кто его вызвал, а соседние списки остаются пустыми.
       listeners.forEach((l) => l(r.refs));
+      // Ленивые справочники приходят отдельным запросом, когда карточка
+      // уже отрисована. Дописать их в тот же объект мало: карточка
+      // сделки строит опции через useMemo по ссылке на refs и не
+      // узнала бы о них до F5 — «Котировка» и «Базис поставки» так и
+      // оставались с одним «—» (клиент 2026-10-13, KG 726). Поэтому
+      // после догрузки подписчикам отдаётся новый объект. Если за это
+      // время ушёл более свежий запрос — он догрузит своё сам.
+      void getLazyRefs(r.refs).then(() => {
+        if (cached !== state) return;
+        const next: GlobalRefs = { ...r.refs };
+        state.data = next;
+        listeners.forEach((l) => l(next));
+      });
     })
     .catch(() => { if (cached === state) cached = null; });
   return state.promise;

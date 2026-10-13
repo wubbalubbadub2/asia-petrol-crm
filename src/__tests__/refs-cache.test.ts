@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
+import { useMemo } from "react";
 
 /**
  * Регрессия 2026-08-04: «Нет групп. Создайте в справочнике.»
@@ -18,6 +19,10 @@ type Res = { data: Row[] | null; error: { message: string } | null };
 
 let response: (table: string) => Res = () => ({ data: [], error: null });
 let calls: string[] = [];
+// Ленивые справочники в браузере приходят отдельным запросом, уже
+// после первого рендера. В тесте их ответ держится за этим промисом.
+const LAZY_TABLES = new Set(["quotation_product_types", "consignees", "delivery_bases"]);
+let lazyGate: Promise<void> = Promise.resolve();
 
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
@@ -30,7 +35,7 @@ vi.mock("@/lib/supabase/client", () => ({
       builder.eq = chain;
       builder.order = chain;
       builder.then = (ok: (v: Res) => unknown, err?: (e: unknown) => unknown) =>
-        Promise.resolve(res).then(ok, err);
+        (LAZY_TABLES.has(table) ? lazyGate.then(() => res) : Promise.resolve(res)).then(ok, err);
       return builder;
     },
   }),
@@ -50,6 +55,7 @@ const withGroups = (t: string): Res => ({
 
 beforeEach(() => {
   response = () => ({ data: [], error: null });
+  lazyGate = Promise.resolve();
 });
 
 describe("кэш справочников", () => {
@@ -106,5 +112,57 @@ describe("useGlobalRefs", () => {
     await waitFor(() =>
       expect(result.current.refs.companyGroups).toHaveLength(1),
     );
+  });
+});
+
+/**
+ * Регрессия 2026-10-13: «KG 726 — не выбирается котировка».
+ *
+ * Карточка сделки, открытая по прямой ссылке или после F5, показывала
+ * в «Котировка» и «Базис поставки» только «—». Типы котировок и базисы
+ * грузятся лениво (getLazyRefs) и дописывались в уже отданный объект
+ * кэша молча: подписчики useGlobalRefs не будились, а карточка
+ * мемоизирует опции по ссылке на объект — и так и не видела списков.
+ * Сеть при этом отдавала все 16 типов (проверено в проде, 200 OK).
+ */
+describe("ленивые справочники (котировки, базисы, грузополучатели)", () => {
+  const QT: Row[] = [{ id: "qt-1", name: "МАЗУТ 3,5%" }];
+  const DB: Row[] = [{ id: "db-1", name: "DAP" }];
+  const withLazy = (t: string): Res => ({
+    data: t === "company_groups" ? GROUPS
+      : t === "quotation_product_types" ? QT
+      : t === "delivery_bases" ? DB
+      : [],
+    error: null,
+  });
+
+  it("доезжают до компонента, который мемоизирует опции по ссылке на refs", async () => {
+    const refs = await freshModule();
+    response = withLazy;
+    let releaseLazy!: () => void;
+    lazyGate = new Promise<void>((r) => { releaseLazy = r; });
+    // Так карточка сделки строит опции: useMemo(..., [globalRefs]).
+    const { result } = renderHook(() => {
+      const { refs: r } = refs.useGlobalRefs();
+      return useMemo(() => ({
+        quotationTypes: r.quotationTypes.map((x) => x.id),
+        deliveryBases: r.deliveryBases.map((x) => x.id),
+      }), [r]);
+    });
+    // Основные справочники пришли, карточка отрисовалась — котировок ещё нет.
+    await waitFor(() => expect(refs.getCachedRefsSync()).not.toBeNull());
+    expect(result.current.quotationTypes).toEqual([]);
+    // Теперь приехал ленивый запрос.
+    releaseLazy();
+    await waitFor(() => expect(result.current.quotationTypes).toEqual(["qt-1"]));
+    expect(result.current.deliveryBases).toEqual(["db-1"]);
+  });
+
+  it("лежат в синхронном кэше для следующей страницы", async () => {
+    const refs = await freshModule();
+    response = withLazy;
+    await refs.getGlobalRefs();
+    await waitFor(() => expect(refs.getCachedRefsSync()?.quotationTypes).toHaveLength(1));
+    expect(refs.getCachedRefsSync()?.deliveryBases).toHaveLength(1);
   });
 });
