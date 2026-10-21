@@ -366,75 +366,85 @@ export async function deleteBuyerLine(id: string) {
 // snapshot too). Keeping a re-export of the public types here so the
 // public surface is stable for callers.
 
+/**
+ * Отгружено по каждому варианту сделки: объём строк реестра, закреплённых
+ * за вариантом (налив — поставщик, отгрузка — покупатель), и сумма их цен.
+ * Одна функция на карточку («Отгружено по этому варианту») и на паспорт
+ * (подсказка у цены сделки с несколькими вариантами).
+ */
+export async function fetchDealLineRollups(dealId: string): Promise<LineRollups> {
+  const sb = createClient();
+  const [regRes, priceRes] = await Promise.all([
+    sb.from("shipment_registry")
+      .select("supplier_line_id, buyer_line_id, shipment_volume, loading_volume")
+      .eq("deal_id", dealId),
+    sb.from("deal_shipment_prices")
+      .select("side, amount, shipment_registry_id, shipment_registry:shipment_registry_id(supplier_line_id, buyer_line_id)")
+      .eq("deal_id", dealId),
+  ]);
+
+  if (regRes.error)   console.error("rollup: shipment_registry query failed", regRes.error);
+  if (priceRes.error) console.error("rollup: deal_shipment_prices query failed", priceRes.error);
+
+  const supplier: Record<string, LineRollup> = {};
+  const buyer:    Record<string, LineRollup> = {};
+
+  // PostgREST returns NUMERIC as JS number when within Number range, but
+  // can return string for very large values. Always coerce with Number()
+  // so the running sum stays numeric (string concat would silently produce
+  // "54.0452.65" garbage that fails comparisons downstream).
+  const num = (v: unknown) => {
+    const n = typeof v === "number" ? v : v == null ? 0 : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // Налив (loading_volume) is the supplier-side number; отгрузка
+  // (shipment_volume) is the buyer-side number. They're separate events
+  // and should never substitute for each other in the rollup.
+  type RegRow = { supplier_line_id: string | null; buyer_line_id: string | null; shipment_volume: number | string | null; loading_volume: number | string | null };
+  for (const r of (regRes.data ?? []) as RegRow[]) {
+    if (r.supplier_line_id && r.loading_volume != null) {
+      const s = supplier[r.supplier_line_id] ?? { volume: 0, amount: 0 };
+      s.volume += num(r.loading_volume);
+      supplier[r.supplier_line_id] = s;
+    }
+    if (r.buyer_line_id && r.shipment_volume != null) {
+      const b = buyer[r.buyer_line_id] ?? { volume: 0, amount: 0 };
+      b.volume += num(r.shipment_volume);
+      buyer[r.buyer_line_id] = b;
+    }
+  }
+
+  // Embedded relation can come back as either a single object or an array
+  // (PostgREST shape depends on how it resolves the FK). Normalize both.
+  type RegShape = { supplier_line_id: string | null; buyer_line_id: string | null };
+  type PriceRow = { side: string; amount: number | string | null; shipment_registry: RegShape | RegShape[] | null };
+  for (const p of (priceRes.data ?? []) as unknown as PriceRow[]) {
+    const regRaw = p.shipment_registry;
+    const reg = Array.isArray(regRaw) ? regRaw[0] : regRaw;
+    if (!reg) continue;
+    const lineId = p.side === "supplier" ? reg.supplier_line_id : reg.buyer_line_id;
+    if (!lineId) continue;
+    const map = p.side === "supplier" ? supplier : buyer;
+    const it = map[lineId] ?? { volume: 0, amount: 0 };
+    it.amount += num(p.amount);
+    map[lineId] = it;
+  }
+
+  return { supplier, buyer };
+}
+
 export function useDealLineRollups(dealId: string | null) {
   const cached = dealId ? lineRollupsCache.get(dealId) : null;
   const [data, setData] = useState<LineRollups>(cached?.data ?? { supplier: {}, buyer: {} });
   const [loading, setLoading] = useState(!cached);
-  const sb = useRef(createClient());
 
   // Same pattern: don't toggle loading on subsequent loads, just swap
   // data silently so the page stays mounted across edits.
   const load = useCallback(async () => {
     if (!dealId) { setLoading(false); return; }
 
-    const [regRes, priceRes] = await Promise.all([
-      sb.current.from("shipment_registry")
-        .select("supplier_line_id, buyer_line_id, shipment_volume, loading_volume")
-        .eq("deal_id", dealId),
-      sb.current.from("deal_shipment_prices")
-        .select("side, amount, shipment_registry_id, shipment_registry:shipment_registry_id(supplier_line_id, buyer_line_id)")
-        .eq("deal_id", dealId),
-    ]);
-
-    if (regRes.error)   console.error("rollup: shipment_registry query failed", regRes.error);
-    if (priceRes.error) console.error("rollup: deal_shipment_prices query failed", priceRes.error);
-
-    const supplier: Record<string, LineRollup> = {};
-    const buyer:    Record<string, LineRollup> = {};
-
-    // PostgREST returns NUMERIC as JS number when within Number range, but
-    // can return string for very large values. Always coerce with Number()
-    // so the running sum stays numeric (string concat would silently produce
-    // "54.0452.65" garbage that fails comparisons downstream).
-    const num = (v: unknown) => {
-      const n = typeof v === "number" ? v : v == null ? 0 : Number(v);
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    // Налив (loading_volume) is the supplier-side number; отгрузка
-    // (shipment_volume) is the buyer-side number. They're separate events
-    // and should never substitute for each other in the rollup.
-    type RegRow = { supplier_line_id: string | null; buyer_line_id: string | null; shipment_volume: number | string | null; loading_volume: number | string | null };
-    for (const r of (regRes.data ?? []) as RegRow[]) {
-      if (r.supplier_line_id && r.loading_volume != null) {
-        const s = supplier[r.supplier_line_id] ?? { volume: 0, amount: 0 };
-        s.volume += num(r.loading_volume);
-        supplier[r.supplier_line_id] = s;
-      }
-      if (r.buyer_line_id && r.shipment_volume != null) {
-        const b = buyer[r.buyer_line_id] ?? { volume: 0, amount: 0 };
-        b.volume += num(r.shipment_volume);
-        buyer[r.buyer_line_id] = b;
-      }
-    }
-
-    // Embedded relation can come back as either a single object or an array
-    // (PostgREST shape depends on how it resolves the FK). Normalize both.
-    type RegShape = { supplier_line_id: string | null; buyer_line_id: string | null };
-    type PriceRow = { side: string; amount: number | string | null; shipment_registry: RegShape | RegShape[] | null };
-    for (const p of (priceRes.data ?? []) as unknown as PriceRow[]) {
-      const regRaw = p.shipment_registry;
-      const reg = Array.isArray(regRaw) ? regRaw[0] : regRaw;
-      if (!reg) continue;
-      const lineId = p.side === "supplier" ? reg.supplier_line_id : reg.buyer_line_id;
-      if (!lineId) continue;
-      const map = p.side === "supplier" ? supplier : buyer;
-      const it = map[lineId] ?? { volume: 0, amount: 0 };
-      it.amount += num(p.amount);
-      map[lineId] = it;
-    }
-
-    const rollup = { supplier, buyer };
+    const rollup = await fetchDealLineRollups(dealId);
     setData(rollup);
     if (dealId) lineRollupsCache.set(dealId, { data: rollup, ts: Date.now() });
     setLoading(false);

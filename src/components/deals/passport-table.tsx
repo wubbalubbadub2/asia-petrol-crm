@@ -19,6 +19,8 @@ import {
   type PaymentDatesSummary,
 } from "@/lib/hooks/use-payment-dates-summary";
 import { type Deal, type ShipmentSnap, type PaymentSnap, type DealCodeRef, updateDeal, fetchDealShipments, fetchDealPayments, fetchDealCodeIndex, dealCodeLabel, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
+import { useLinePricesSummary } from "@/lib/hooks/use-line-prices-summary";
+import { PassportLinePricesContext, PassportPriceCell } from "@/components/deals/passport-price-cell";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
@@ -1597,11 +1599,10 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         data-col="supplier_contracted_amount" data-deal-id={deal.id}
         data-value={deal.supplier_contracted_amount ?? undefined}
       >{formatComputedNum(deal.supplier_contracted_amount)}</td>
-      <td
-        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="цена за тонну (из условий)"
-        data-col="supplier_price" data-deal-id={deal.id}
-        data-value={deal.supplier_price ?? undefined}
-      >{formatComputedPrice(deal.supplier_price)}</td>
+      <PassportPriceCell
+        dealId={deal.id} side="supplier" price={deal.supplier_price} dataCol="supplier_price"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700"
+      />
       <td
         className="border-r px-2 py-1 text-right font-mono tabular-nums bg-amber-50/10 text-stone-700" title="сумма из секции цен"
         data-col="supplier_shipped_amount" data-deal-id={deal.id}
@@ -1719,11 +1720,10 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
         data-col="buyer_contracted_amount" data-deal-id={deal.id}
         data-value={deal.buyer_contracted_amount ?? undefined}
       >{formatComputedNum(deal.buyer_contracted_amount)}</td>
-      <td
-        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700" title="цена за тонну (из условий)"
-        data-col="buyer_price" data-deal-id={deal.id}
-        data-value={deal.buyer_price ?? undefined}
-      >{formatComputedPrice(deal.buyer_price)}</td>
+      <PassportPriceCell
+        dealId={deal.id} side="buyer" price={deal.buyer_price} dataCol="buyer_price"
+        className="border-r px-2 py-1 text-right font-mono tabular-nums bg-blue-50/10 text-stone-700"
+      />
       <td
         className="border-r px-1 py-0.5 bg-blue-50/10 text-stone-700"
         data-col="buyer_ordered_volume" data-deal-id={deal.id}
@@ -2235,6 +2235,14 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
   // чтобы дата стояла в строке сразу — клиент 2026-09-14 просил «чтобы
   // всё рядом отображалось», а не открывалось попапом на каждую оплату.
   const { map: paymentDates } = usePaymentDatesSummary(dealIds);
+  // Цены всех вариантов — только у сделок, где их больше одного (клиент 2026-10-21).
+  const multiSupplier = useMemo(() => deals.filter((d) => (d.supplier_lines_count ?? 1) > 1), [deals]);
+  const multiBuyer = useMemo(() => deals.filter((d) => (d.buyer_lines_count ?? 1) > 1), [deals]);
+  const { map: linePrices } = useLinePricesSummary(
+    useMemo(() => multiSupplier.map((d) => d.id), [multiSupplier]),
+    useMemo(() => multiBuyer.map((d) => d.id), [multiBuyer]),
+    useMemo(() => [...multiSupplier.map((d) => d.supplier_price), ...multiBuyer.map((d) => d.buyer_price)].join(","), [multiSupplier, multiBuyer]),
+  );
 
   const refsContextValue = useMemo<PassportRefsValue>(() => ({
     refs,
@@ -2383,6 +2391,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
     <PassportRefsContext.Provider value={refsContextValue}>
     <PassportTermsContext.Provider value={paymentTerms}>
     <PassportPayDatesContext.Provider value={paymentDates}>
+    <PassportLinePricesContext.Provider value={linePrices}>
       {/* Emit CSS for the currently selected cells. Cheap: at most
           selection.ids.size rules re-emitted on selection change, no
           row re-renders. Virtualized rows entering the viewport pick
@@ -2607,6 +2616,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
         </div>
       )}
       </div>
+    </PassportLinePricesContext.Provider>
     </PassportPayDatesContext.Provider>
     </PassportTermsContext.Provider>
     </PassportRefsContext.Provider>
