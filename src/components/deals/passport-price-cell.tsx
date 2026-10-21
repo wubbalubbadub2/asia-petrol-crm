@@ -1,7 +1,7 @@
 "use client";
 // «Цена» в паспорте (клиент 2026-10-21): у стороны с несколькими
 // вариантами видны все цены — основная первой, «619,750 / 640,000»; клик
-// раскрывает, сколько отгружено по каждой цене (строки реестра,
+// (или наведение) раскрывает, сколько отгружено по каждой цене (строки реестра,
 // закреплённые за вариантом — то же, что «Отгружено по этому варианту»
 // в карточке). С одним вариантом — как было: цена основного варианта.
 
@@ -33,6 +33,9 @@ export function PassportPriceCell({ dealId, side, price, className, dataCol }: {
   const lines = useContext(PassportLinePricesContext).get(linePricesKey(dealId, side));
   const many = !!lines && lines.length > 1;
   const [open, setOpen] = useState(false);
+  // Наведение показывает сразу (клиент 2026-10-21: «навел мышь на цену и
+  // ничего не выходит»); клик закрепляет попап, второй клик или клик мимо — закрывает.
+  const [pinned, setPinned] = useState(false);
   const [rollups, setRollups] = useState<LineRollups | null>(null);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const cellRef = useRef<HTMLTableCellElement>(null);
@@ -44,22 +47,30 @@ export function PassportPriceCell({ dealId, side, price, className, dataCol }: {
       const t = e.target as Node;
       if (cellRef.current?.contains(t) || popRef.current?.contains(t)) return;
       setOpen(false);
+      setPinned(false);
     }
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [open]);
 
-  async function toggle() {
-    if (!many) return;
-    if (open) { setOpen(false); return; }
+  async function show() {
+    if (!many || open) return;
     const rect = cellRef.current?.getBoundingClientRect();
     if (rect) setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
     setOpen(true);
+    if (rollups !== null) return;
     try {
       setRollups(await fetchDealLineRollups(dealId));
     } catch {
       setRollups({ supplier: {}, buyer: {} });
     }
+  }
+
+  function toggle() {
+    if (!many) return;
+    if (pinned) { setPinned(false); setOpen(false); return; }
+    setPinned(true);
+    void show();
   }
 
   const text = many ? lines!.map((l) => price3(l.price)).join(" / ") : price == null ? "" : price3(price);
@@ -68,8 +79,10 @@ export function PassportPriceCell({ dealId, side, price, className, dataCol }: {
       <td
         ref={cellRef}
         onClick={toggle}
+        onMouseEnter={() => void show()}
+        onMouseLeave={() => { if (!pinned) setOpen(false); }}
         className={`${className}${many ? " cursor-pointer whitespace-nowrap" : ""}${open ? " ring-2 ring-amber-300/70" : ""}`}
-        title={many ? "Несколько цен — нажмите, чтобы увидеть объём по каждой" : "цена за тонну (из условий)"}
+        title={many ? undefined : "цена за тонну (из условий)"}
         data-col={dataCol}
         data-deal-id={dealId}
         data-value={price ?? undefined}
