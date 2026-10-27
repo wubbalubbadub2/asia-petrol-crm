@@ -31,8 +31,8 @@ export type ShipmentRecord = {
   // Migration 00061 — manual override for the rolled-up volume («округл»)
   rounded_volume_override?: number | null;
   // Migration 00086 — per-row CEIL toggle. TRUE = CEIL(base) (current
-  // behavior), FALSE = base as-is. Base (00165): loading_volume when
-  // present, else shipment_volume — regardless of registry_type.
+  // behavior), FALSE = base as-is. Base of «округл»/Сумма 1 (00182):
+  // shipment_volume only — regardless of registry_type.
   // Optional until generated types catch up.
   round_volume?: boolean | null;
   // Migration 00072 — appendix labels per side. Free-text;
@@ -61,8 +61,9 @@ export type ShipmentRecord = {
   additional_expenses?: number | null;
   additional_expenses_override?: boolean | null;
   // Клиент 2026-07-10: тариф от менеджера, только KZ. Формула
-  // additional_expenses = округл. база × manager_tariff (та же база,
-  // что у Суммы 1: входящее СНТ, если есть, иначе исходящее — 00165).
+  // additional_expenses = округл. база × manager_tariff (база —
+  // входящее СНТ, если есть, иначе исходящее — 00165; у Суммы 1 с 00182
+  // база другая — только исходящее).
   manager_tariff?: number | null;
   // Клиент 2026-08-15: «Сумма 2 — сумма ЖД расходов от поставщика»
   // (migration 00150, только KZ). Связь двусторонняя: правишь тариф —

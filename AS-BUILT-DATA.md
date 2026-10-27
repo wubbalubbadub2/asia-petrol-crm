@@ -663,7 +663,7 @@ Defined in: 00023_deal_shipment_prices.sql
 | wagon_number | TEXT | NULL | — | — | 00005 |
 | **VOLUMES** | | | | | |
 | shipment_volume | DECIMAL(14,6) | NULL | — | — | 00005 (delivered tonnage) |
-| loading_volume | DECIMAL(14,6) | NULL | — | — | 00025 (loaded tonnage; amount base when present, else shipment_volume — 00165) |
+| loading_volume | DECIMAL(14,6) | NULL | — | — | 00025 (loaded tonnage; base of Sum 3 when present, else shipment_volume — 00165; NOT the base of «округл»/Sum 1 since 00182) |
 | rounded_tonnage_from_forwarder | DECIMAL(14,4) | NULL | — | — | 00005 |
 | shipped_tonnage_amount | DECIMAL(14,4) | NULL | — | — | 00005, auto-computed = CEIL(volume) * tariff, can be overridden (00050, 00086) |
 | shipped_tonnage_amount_override | BOOLEAN | NOT NULL | FALSE | — | 00050 |
@@ -1028,7 +1028,7 @@ The system contains an elaborate mirroring mechanism to maintain backward compat
 
 ### 2. Overlapping Concepts
 
-- **shipment_volume vs. loading_volume** (00025, 00086, 00165): Until 00165 the amount base depended on registry_type — KZ used loading_volume (налив), KG used shipment_volume (отгрузка). Since 00165 the base is loading_volume when present, else shipment_volume, regardless of registry_type (Sum 1 and Sum 3; Sum 2 still uses loading_volume only). The on-screen «Округл.» cell and the Excel `roundedTonnage` mirror the same rule.
+- **shipment_volume vs. loading_volume** (00025, 00086, 00165): Until 00165 the amount base depended on registry_type — KZ used loading_volume (налив), KG used shipment_volume (отгрузка). Since 00165 the base is loading_volume when present, else shipment_volume, regardless of registry_type. Since 00182 (client via owner 2026-10-27) «Округл.» and Sum 1 use shipment_volume ONLY (KG and KZ); Sum 3 keeps the 00165 base; Sum 2 still uses loading_volume only. The on-screen «Округл.» cell and the Excel `roundedTonnage` mirror the Sum 1 rule. Deal «Тариф факт (логисты)» = invoice_amount ÷ actual_shipped_volume (outgoing) for KG and KZ since 00182. A row with incoming volume only gets no forwarder on insert; one is filled from the deal when outgoing volume appears (trg_forwarder_by_outgoing).
 
 - **supplier_debt vs. buyer_debt** (00060): The formula flipped in 00060. Prior to that, buyer_debt was shipped − payment. Now it is payment − shipped. The direction change is semantic, not a typo—old deployments expect the old sign. Any historical queries over buyer_debt must account for the flip date (migration 00060, likely May 2026).
 
@@ -1072,7 +1072,7 @@ The following columns are predominantly NULL in production (feature blocks are u
   - If shipped_tonnage_amount_override = true, trigger leaves manual value alone.
   - If rounded_volume_override is set (00061), use that instead of shipment_volume.
   - If round_volume = false (00086), use exact volume instead of CEIL(volume).
-  - Base = loading_volume when present, else shipment_volume (00165; before that KZ → loading_volume, KG → shipment_volume).
+  - Base = shipment_volume only (00182; 00165 used loading_volume when present, else shipment_volume; before that KZ → loading_volume, KG → shipment_volume). Incoming-only rows get an empty Sum 1 unless rounded_volume_override or a manual amount is set.
   - Trigger is BEFORE INSERT/UPDATE, so changes fire on every write. Legacy code may expect idempotency; ensure migration logic is same.
 
 ### 6. Enum / CHECK Constraint Migrations

@@ -153,15 +153,16 @@ BEGIN
   IF s.invoice_amount IS DISTINCT FROM v_amt_a THEN
     RAISE EXCEPTION '2. Сумма (логисты) должна быть суммой строки А (%), получили %', v_amt_a, s.invoice_amount;
   END IF;
-  -- Тариф факт в KZ считается от входящего СНТ: сумма строки А ÷ 100.
-  v_exp_a := ROUND(v_amt_a / 100, 4);
+  -- Тариф факт (логисты) и в KZ считается от исходящего СНТ (00182):
+  -- сумма строки А ÷ 98.
+  v_exp_a := ROUND(v_amt_a / 98, 4);
   IF s.actual_tariff IS DISTINCT FROM v_exp_a THEN
-    RAISE EXCEPTION '2. тариф факт должен быть % (сумма А ÷ 100), получили %', v_exp_a, s.actual_tariff;
+    RAISE EXCEPTION '2. тариф факт должен быть % (сумма А ÷ 98), получили %', v_exp_a, s.actual_tariff;
   END IF;
 
   -- ── 3. Срез 02.06: налив А был, исходящего СНТ ещё нет ─────────────
   -- Документирует согласованное правило: Сумма (логисты) признаётся по
-  -- дате исходящего СНТ, даже если её база в KZ — входящий объём.
+  -- дате исходящего СНТ (с 00182 и база у неё — исходящее).
   SELECT * INTO s FROM passport_snapshot_as_of(DATE '2099-06-02', ARRAY[v_deal]);
 
   IF s.supplier_shipped_volume <> 100 THEN

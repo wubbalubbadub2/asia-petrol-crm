@@ -45,9 +45,10 @@ BEGIN
           'KZT', 'KZT', FALSE, FALSE, FALSE);
 
   -- Обе даты: Сумма (логисты) в паспорте на дату идёт по исходящей (00160).
-  INSERT INTO shipment_registry (deal_id, registry_type, wagon_number, loading_volume, loading_date, date,
+  -- 00182: Сумма 1 — от исходящего; оно равно входящему, чтобы суммы теста не менялись.
+  INSERT INTO shipment_registry (deal_id, registry_type, wagon_number, loading_volume, shipment_volume, loading_date, date,
                                  supplier_railway_tariff, railway_tariff, railway_tariff_override, manager_tariff)
-  VALUES (v_deal, 'KZ', 'SRIP-01', 119.6, DATE '2099-06-01', DATE '2099-06-01', 23316.2598, 1000, TRUE, 500);
+  VALUES (v_deal, 'KZ', 'SRIP-01', 119.6, 119.6, DATE '2099-06-01', DATE '2099-06-01', 23316.2598, 1000, TRUE, 500);
 
   SELECT invoice_amount, supplier_railway_amount, additional_expenses_amount, supplier_balance
     INTO v_s1, v_s2, v_ship, v_base FROM deals WHERE id = v_deal;

@@ -119,3 +119,29 @@ describe("книга ДТ-КТ повторяет цифры экрана", () =
     expect(volume).toBeCloseTo(pair.total_volume, 6);
   });
 });
+
+// Клиент через владельца 2026-10-27: логистика ДТ-КТ — только по
+// исходящему СНТ. Строка только со входящим (налив без отгрузки) в
+// «Отгр. тонн» и «Отгр. сумму» не входит, даже если экспедитор на ней
+// уже стоит и сумма в ней есть (ручная, 00182 её не стирает) — иначе
+// груз считается дважды: входящим и вагонами с исходящим.
+describe("ДТ-КТ берёт только строки с исходящим СНТ", () => {
+  const rows: DtKtRegistryRow[] = [
+    { id: "w1", date: "2026-05-02", forwarder_id: "fw-1", company_group_id: "cg-1", shipment_volume: 60.047, shipped_tonnage_amount: 6076.21 },
+    { id: "w2", date: "2026-05-02", forwarder_id: "fw-1", company_group_id: "cg-1", shipment_volume: 957.4, shipped_tonnage_amount: 95426.38 },
+    { id: "in", date: "2026-05-02", forwarder_id: "fw-1", company_group_id: "cg-1", shipment_volume: null, shipped_tonnage_amount: 41836.2 },
+  ];
+
+  it("тонны = Σ исходящего, сумма = Σ сумм строк с исходящим", () => {
+    const pair = sumRegistryByPair(rows).get(dtKtPairKey("fw-1", "cg-1"))!;
+    expect(pair.total_volume).toBeCloseTo(1017.447, 6);
+    expect(pair.total_amount).toBeCloseTo(101502.59, 6);
+  });
+
+  it("АВР в выгрузке совпадает с экраном и не считает налив вагоном", () => {
+    const [day] = avrByPair(rows).get(dtKtPairKey("fw-1", "cg-1"))!;
+    expect(day.amount).toBeCloseTo(101502.59, 6);
+    expect(day.volume).toBeCloseTo(1017.447, 6);
+    expect(day.wagons).toBe(2);
+  });
+});

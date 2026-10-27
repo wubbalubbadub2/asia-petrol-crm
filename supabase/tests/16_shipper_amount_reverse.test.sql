@@ -120,10 +120,11 @@ BEGIN
   END IF;
 
   -- ── 8. Соседние суммы не задеты ────────────────────────────────────
+  -- 00182: Сумма 1 — от исходящего; оно равно входящему, чтобы суммы теста не менялись.
   INSERT INTO shipment_registry (deal_id, registry_type, wagon_number,
-                                 loading_volume, railway_tariff,
+                                 loading_volume, shipment_volume, railway_tariff,
                                  supplier_railway_tariff)
-  VALUES (v_kz, 'KZ', 'EXP-0004', 40.0, 5.00, 7.00);
+  VALUES (v_kz, 'KZ', 'EXP-0004', 40.0, 40.0, 5.00, 7.00);
 
   UPDATE shipment_registry SET additional_expenses = 400.00
    WHERE wagon_number = 'EXP-0004';

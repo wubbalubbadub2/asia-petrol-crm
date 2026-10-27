@@ -56,8 +56,9 @@ type Column = {
 };
 
 // Same rule as the on-screen ERound cell and compute_registry_amount
-// (00165): rawVolume = loading_volume (входящее СНТ) when present, else
-// shipment_volume (исходящее). registry_type no longer picks the base.
+// (00182): rawVolume = shipment_volume (исходящее СНТ) only, KG and KZ.
+// Входящее СНТ — для сравнения, базой «округл» не служит (клиент через
+// владельца 2026-10-27; отменяет 00165 «входящее, если есть»).
 // Precedence: manual override → ceil(raw) when round_volume !== false → raw.
 // Structural param + export: passport-detail-excel reuses this for its
 // «Объем по счету-фактуре» per-shipment cells.
@@ -69,7 +70,7 @@ export function roundedTonnage(r: {
   round_volume?: boolean | null;
 }): number | null {
   if (r.rounded_volume_override != null) return r.rounded_volume_override;
-  const raw = r.loading_volume ?? r.shipment_volume;
+  const raw = r.shipment_volume;
   if (raw == null) return null;
   return r.round_volume !== false ? Math.ceil(raw) : raw;
 }

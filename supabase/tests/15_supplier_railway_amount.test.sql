@@ -154,9 +154,10 @@ BEGIN
 
   -- ── 11. Суммы 1 и 3 живут своей жизнью ─────────────────────────────
   -- Правка Суммы 2 не должна задевать соседей по строке.
+  -- 00182: Сумма 1 — от исходящего; оно равно входящему, чтобы суммы теста не менялись.
   INSERT INTO shipment_registry (deal_id, registry_type, wagon_number,
-                                 loading_volume, railway_tariff, manager_tariff)
-  VALUES (v_deal_a, 'KZ', 'SRW-0003', 40.0, 5.00, 3.00);
+                                 loading_volume, shipment_volume, railway_tariff, manager_tariff)
+  VALUES (v_deal_a, 'KZ', 'SRW-0003', 40.0, 40.0, 5.00, 3.00);
 
   UPDATE shipment_registry SET supplier_railway_tariff = 7.00
    WHERE wagon_number = 'SRW-0003';

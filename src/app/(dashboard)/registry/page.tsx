@@ -223,7 +223,8 @@ function EM({ value, recId, field, onSaved }: { value: string | null | undefined
     </select>
   );
 }
-// Editable «округл» cell. Auto = CEIL(rawVolume) when roundVolume,
+// Editable «округл» cell. rawVolume — исходящее СНТ (00182: «округл» и
+// Сумма 1 только от исходящего). Auto = CEIL(rawVolume) when roundVolume,
 // else rawVolume as-is. Manual override (rounded_volume_override) trumps
 // both. The tiny ⌈⌉ toggle next to the value flips roundVolume per row
 // without losing auto-tracking (unlike the manual override which freezes
@@ -324,7 +325,8 @@ function GroupTotalsRow({ records, tab }: { records: ShipmentRecord[]; tab: "kg"
     loading += r.loading_volume ?? 0;
     roundedIn += roundedIncoming(r) ?? 0;
     shipment += r.shipment_volume ?? 0;
-    const raw = r.loading_volume ?? r.shipment_volume;
+    // «Округл» — только исходящее СНТ (00182), как в ERound и roundedTonnage().
+    const raw = r.shipment_volume;
     const rr = r.rounded_volume_override != null
       ? r.rounded_volume_override
       : (raw == null ? null : (r.round_volume !== false ? Math.ceil(raw) : raw));
@@ -1020,6 +1022,9 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
     setSaving(true);
     const d = deals.find((x) => x.id === dealId);
     const tariffNum = tariff ? parseFloat(tariff) : null;
+    // Только входящее СНТ — налив, а не отгрузка: экспедитора нет (00182;
+    // БД обнуляет его и сама). Экспедитор формы нужен для подбора тарифа.
+    const incomingOnly = !dupShipment && volumeTarget === "load";
     const rows = valid.map((p) => ({
       registry_type: regType,
       deal_id: dealId || null,
@@ -1029,7 +1034,7 @@ function AddDialog({ open, onClose, regType, onDone, minimized = false, onMinimi
       factory_id: facId || null,
       supplier_id: d?.supplier_id || null,
       buyer_id: d?.buyer_id || null,
-      forwarder_id: fwId || null,
+      forwarder_id: incomingOnly ? null : (fwId || null),
       destination_station_id: destId || null,
       departure_station_id: depId || null,
       company_group_id: cgId || null,
@@ -2436,7 +2441,7 @@ export default function RegistryPage() {
                               <td className="border-r px-1 py-0.5"><EN value={r.railway_tariff} recId={r.id} field="railway_tariff" overrideField="railway_tariff_override" overridden={r.railway_tariff_override} onSaved={reload} /></td>
                               <td className="border-r px-1 py-0.5">
                                 <ERound
-                                  rawVolume={r.loading_volume ?? r.shipment_volume}
+                                  rawVolume={r.shipment_volume}
                                   override={r.rounded_volume_override}
                                   roundVolume={r.round_volume}
                                   recId={r.id}

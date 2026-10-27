@@ -35,6 +35,10 @@
  * Ключ пары считает `dtKtPairKey` — раньше страница и выгрузка строили
  * его по-разному (`?? ""` против шаблонной строки с null), и у записи
  * без плательщика ЖД под-строки молча исчезали.
+ *
+ * Только исходящее СНТ (клиент через владельца 2026-10-27, 00182): строка
+ * без исходящего — налив, а не отгрузка экспедитора; в тонны, сумму и
+ * АВР она не входит, даже если экспедитор и сумма на ней остались.
  */
 
 import { createClient } from "@/lib/supabase/client";
@@ -86,11 +90,11 @@ export async function fetchDtKtRegistryRows(year: number): Promise<DtKtRegistryR
   return data;
 }
 
-/** Итоги по парам. Строки без экспедитора не принадлежат ни одной записи ДТ-КТ. */
+/** Итоги по парам. Строки без экспедитора или без исходящего СНТ не принадлежат ни одной записи ДТ-КТ. */
 export function sumRegistryByPair(rows: DtKtRegistryRow[]): Map<string, DtKtPairSums> {
   const out = new Map<string, DtKtPairSums>();
   for (const r of rows) {
-    if (!r.forwarder_id) continue;
+    if (!r.forwarder_id || r.shipment_volume == null) continue;
     const key = dtKtPairKey(r.forwarder_id, r.company_group_id);
     let acc = out.get(key);
     if (!acc) {
@@ -112,7 +116,7 @@ export function sumRegistryByPair(rows: DtKtRegistryRow[]): Map<string, DtKtPair
 export function avrByPair(rows: DtKtRegistryRow[]): Map<string, DtKtAvrDay[]> {
   const byPair = new Map<string, Map<string, DtKtAvrDay>>();
   for (const r of rows) {
-    if (!r.forwarder_id || !r.date) continue;
+    if (!r.forwarder_id || !r.date || r.shipment_volume == null) continue;
     const key = dtKtPairKey(r.forwarder_id, r.company_group_id);
     let byDate = byPair.get(key);
     if (!byDate) { byDate = new Map(); byPair.set(key, byDate); }

@@ -13,6 +13,9 @@ type ShipmentRow = {
   loading_volume: number | null;
   date: string | null;
   railway_tariff: number | null;
+  // Сумма (логисты) строки — как её посчитала БД (00182: только от
+  // исходящего СНТ, с учётом ⌈⌉ и ручных значений).
+  shipped_tonnage_amount: number | null;
   invoice_number: string | null;
   // Плановые даты оплаты по отгрузке (00144). Заполняются вручную,
   // когда у приложения выбран отсчёт «дата вручную».
@@ -45,11 +48,6 @@ function fmtVol(v: number | null | undefined) {
 
 function fmtDate(d: string) {
   return formatDMY(d);
-}
-
-function calcAmount(vol: number | null, tariff: number | null): number | null {
-  if (vol == null || tariff == null) return null;
-  return Math.ceil(vol) * tariff;
 }
 
 // Плановая дата оплаты по отгрузке. Отгрузка здесь — это дата, а не
@@ -109,7 +107,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
   const reloadRows = useCallback(() => {
     sb.current
       .from("shipment_registry")
-      .select("id, wagon_number, shipment_volume, loading_volume, date, railway_tariff, invoice_number, supplier_planned_pay_date, buyer_planned_pay_date")
+      .select("id, wagon_number, shipment_volume, loading_volume, date, railway_tariff, shipped_tonnage_amount, invoice_number, supplier_planned_pay_date, buyer_planned_pay_date")
       .eq("deal_id", dealId)
       .order("date", { ascending: true })
       .then(({ data }) => {
@@ -130,7 +128,8 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
   if (loading) return null;
   if (rows.length === 0) return null;
 
-  // Group by date, compute amounts client-side
+  // Group by date. Сумма — сохранённая в реестре, а не пересчёт здесь:
+  // формула (база, округление, ручные значения) живёт в БД.
   const groups: DateGroup[] = [];
   const dateMap = new Map<string, DateGroup>();
   for (const r of rows) {
@@ -141,7 +140,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
       groups.push(g);
     }
     const g = dateMap.get(d)!;
-    const amount = calcAmount(r.shipment_volume, r.railway_tariff);
+    const amount = r.shipped_tonnage_amount;
     g.wagons.push({ ...r, amount });
     g.totalLoading += r.loading_volume ?? 0;
     g.totalVolume += r.shipment_volume ?? 0;
@@ -155,7 +154,7 @@ export function DealShipments({ dealId, currencySymbol }: { dealId: string; curr
 
   const totalLoading = rows.reduce((s, r) => s + (r.loading_volume ?? 0), 0);
   const totalVol = rows.reduce((s, r) => s + (r.shipment_volume ?? 0), 0);
-  const totalAmt = rows.reduce((s, r) => s + (calcAmount(r.shipment_volume, r.railway_tariff) ?? 0), 0);
+  const totalAmt = rows.reduce((s, r) => s + (r.shipped_tonnage_amount ?? 0), 0);
 
   return (
     <div>

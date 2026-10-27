@@ -26,10 +26,12 @@ BEGIN
 
   -- А. «Ручная» без суммы, тариф и объём есть (как KZ/26/108).
   --    Тариф закреплён вручную, чтобы справочник Тарифы его не стёр (00167).
-  INSERT INTO shipment_registry (deal_id, registry_type, wagon_number, loading_volume, loading_date,
+  --    С 00182 база Суммы 1 — исходящее СНТ, поэтому у строк А и Б оно
+  --    задано равным входящему: тест про пометку, а не про базу.
+  INSERT INTO shipment_registry (deal_id, registry_type, wagon_number, loading_volume, shipment_volume, loading_date,
                                  railway_tariff, railway_tariff_override,
                                  shipped_tonnage_amount, shipped_tonnage_amount_override, round_volume)
-  VALUES (v_deal, 'KZ', 'MF-A', 228.35, DATE '2099-06-01', 16810.03, TRUE, NULL, TRUE, FALSE)
+  VALUES (v_deal, 'KZ', 'MF-A', 228.35, 228.35, DATE '2099-06-01', 16810.03, TRUE, NULL, TRUE, FALSE)
   RETURNING id INTO v_a;
   SELECT shipped_tonnage_amount, shipped_tonnage_amount_override INTO r FROM shipment_registry WHERE id = v_a;
   IF r.shipped_tonnage_amount IS DISTINCT FROM 228.35 * 16810.03 OR r.shipped_tonnage_amount_override THEN
@@ -37,10 +39,10 @@ BEGIN
   END IF;
 
   -- Б. Настоящая ручная сумма — не трогаем, пометка остаётся.
-  INSERT INTO shipment_registry (deal_id, registry_type, wagon_number, loading_volume, loading_date,
+  INSERT INTO shipment_registry (deal_id, registry_type, wagon_number, loading_volume, shipment_volume, loading_date,
                                  railway_tariff, railway_tariff_override,
                                  shipped_tonnage_amount, shipped_tonnage_amount_override, round_volume)
-  VALUES (v_deal, 'KZ', 'MF-B', 100, DATE '2099-06-02', 1000, TRUE, 12345.67, TRUE, FALSE)
+  VALUES (v_deal, 'KZ', 'MF-B', 100, 100, DATE '2099-06-02', 1000, TRUE, 12345.67, TRUE, FALSE)
   RETURNING id INTO v_b;
   UPDATE shipment_registry SET comment = 'правка' WHERE id = v_b;
   SELECT shipped_tonnage_amount, shipped_tonnage_amount_override INTO r FROM shipment_registry WHERE id = v_b;

@@ -326,6 +326,10 @@ export function BulkAddDialog({
     const buyLineMatch = buyLinesArr.find((l) => l.id === buyerLineId)
       ?? (apx ? buyLinesArr.find((l) => effectiveAppendix(l, dealContracts.buyer) === apx) : null)
       ?? buyLinesArr.find((l) => l.is_default) ?? null;
+    // Только входящее СНТ — налив, не отгрузка: экспедитора у такой строки
+    // нет (00182, владелец 2026-10-27; БД обнуляет его и сама). Экспедитор
+    // формы нужен ей только для подбора тарифа.
+    const incomingOnly = !dupShipment && volumeTarget === "load";
     const rows = validRows.map((p) => ({
       registry_type: regType,
       deal_id: dealId,
@@ -335,7 +339,7 @@ export function BulkAddDialog({
       factory_id: factoryId || null,
       supplier_id: supplierId || null,
       buyer_id: buyerId || null,
-      forwarder_id: forwarderId || null,
+      forwarder_id: incomingOnly ? null : (forwarderId || null),
       company_group_id: companyGroupId || null,
       destination_station_id: destinationStationId || null,
       departure_station_id: departureStationId || null,
