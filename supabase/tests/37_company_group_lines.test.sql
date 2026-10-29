@@ -112,6 +112,18 @@ BEGIN
      OR (SELECT volume FROM deal_company_group_line_volumes WHERE line_id = v_460) IS DISTINCT FROM 350.000 THEN
     RAISE EXCEPTION '4. отгрузка без даты должна уйти в первую цену (450)';
   END IF;
+  --    дата у первой цены позже ранних отгрузок — они всё равно в первой (не теряются)
+  UPDATE deal_company_group_lines SET valid_from = '2099-06-05' WHERE id = v_450;
+  IF (SELECT volume FROM deal_company_group_line_volumes WHERE line_id = v_450) IS DISTINCT FROM 666.007 THEN
+    RAISE EXCEPTION '4. отгрузка 01.06 раньше «действует с» 05.06 первой цены должна остаться в ней';
+  END IF;
+  UPDATE deal_company_group_lines SET valid_from = NULL WHERE id = v_450;
+  --    вторая цена без даты к тому же варианту покупателя — нельзя (нужна дата)
+  BEGIN
+    UPDATE deal_company_group_lines SET valid_from = NULL WHERE id = v_460;
+    RAISE EXCEPTION '4. две цены без даты на один вариант покупателя должны быть отклонены';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
   --    та же дата у второй цены того же варианта покупателя — нельзя
   BEGIN
     INSERT INTO deal_company_group_lines (deal_company_group_id, position, price, buyer_line_id, valid_from)
@@ -181,6 +193,15 @@ BEGIN
   SELECT count(*) INTO v_n FROM deal_activity
    WHERE deal_id = v_kg AND content LIKE 'Добавлен вариант цены группы%';
   IF v_n < 3 THEN RAISE EXCEPTION '10. ожидали ≥ 3 записи о вариантах цены группы, получили %', v_n; END IF;
+
+  -- ── 11. Удаление KG-сделки с привязанными вариантами проходит ────────
+  INSERT INTO deal_buyer_lines (deal_id, position, is_default, price) VALUES (v_kg, 5, FALSE, 650.75) RETURNING id INTO v_b3;
+  UPDATE deal_company_group_lines SET buyer_line_id = v_b3, manual_volume = NULL WHERE id = v_440;
+  DELETE FROM shipment_registry WHERE deal_id = v_kg;
+  DELETE FROM deals WHERE id = v_kg;
+  IF EXISTS (SELECT 1 FROM deal_company_group_lines WHERE id IN (v_main, v_450, v_460, v_440)) THEN
+    RAISE EXCEPTION '11. варианты уходят вместе со сделкой';
+  END IF;
 
   RAISE NOTICE 'company group lines: all cases passed';
 END $$;

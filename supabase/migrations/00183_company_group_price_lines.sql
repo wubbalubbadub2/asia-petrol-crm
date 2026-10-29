@@ -9,7 +9,8 @@
 --      варианту» у покупателя, use-deal-lines.ts fetchDealLineRollups);
 --      «цены не постоянные, отгруженный объём фиксируется на цену»: две цены
 --      на один вариант покупателя делятся по дате отгрузки (shipment_registry
---      .date) — у цены «действует с» (valid_from); строка без даты — в первую;
+--      .date) — у цены «действует с» (valid_from); строка без даты или раньше
+--      всех дат — в первую;
 --   2. под вариантом примечание «Отгружено по этому варианту: N т · Сумма S
 --      (по цене P)» — сумма только для показа, ни в какие итоги не идёт;
 --   3. котировка/скидка/цена вводятся вручную, у каждого варианта свои;
@@ -227,7 +228,9 @@ CREATE TRIGGER trg_deal_company_group_lines_activity
 -- ── Объём и сумма варианта ───────────────────────────────────────────
 -- Привязанный: строки реестра его варианта покупателя с исходящим объёмом,
 -- дата ∈ [valid_from; следующий valid_from той же группы и того же варианта
--- покупателя); строка без даты — в первую цену. Без привязки — manual_volume.
+-- покупателя). Первая цена берёт и всё до следующей даты, и строки без даты —
+-- ни одна отгрузка не теряется (без даты у второй цены быть не может: индекс
+-- uq_dcg_lines_link_from). Без привязки — manual_volume.
 -- Сумма = round(объём × цена, 2) — только для показа.
 CREATE VIEW deal_company_group_line_volumes WITH (security_invoker = true) AS
 WITH linked AS (
@@ -241,10 +244,8 @@ WITH linked AS (
   SELECT k.id, SUM(r.shipment_volume) AS volume
     FROM linked k
     JOIN shipment_registry r ON r.buyer_line_id = k.buyer_line_id AND r.shipment_volume IS NOT NULL
-   WHERE (r.date IS NULL AND k.rn = 1)
-      OR (r.date IS NOT NULL
-          AND (k.valid_from IS NULL OR r.date >= k.valid_from)
-          AND (k.next_from IS NULL OR r.date < k.next_from))
+   WHERE (k.rn = 1 AND (r.date IS NULL OR k.next_from IS NULL OR r.date < k.next_from))
+      OR (k.rn > 1 AND r.date >= k.valid_from AND (k.next_from IS NULL OR r.date < k.next_from))
    GROUP BY k.id
 )
 SELECT l.id AS line_id,

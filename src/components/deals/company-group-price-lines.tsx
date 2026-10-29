@@ -59,8 +59,29 @@ export function CompanyGroupPriceLines({ dealId, groupId, groupPrice, currencySy
 
   async function update(id: string, patch: Partial<CompanyGroupLine>) {
     const { error } = await sbLoose().from("deal_company_group_lines").update(patch).eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      // uq_dcg_lines_link_from: две цены одного варианта покупателя — с разных дат
+      toast.error(error.code === "23505"
+        ? "У этого варианта покупателя уже есть цена с той же датой «действует с» — укажите другую дату"
+        : error.message);
+      return;
+    }
     load();
+  }
+
+  /** Привязать к варианту покупателя. Если у него в этой группе уже есть цена
+   *  без даты — эта цена действует с даты, которую спросим сразу. */
+  function linkBuyer(l: CompanyGroupLine, buyerLineId: string | null) {
+    if (buyerLineId === l.buyer_line_id) return;
+    if (!buyerLineId) { void update(l.id, { buyer_line_id: null }); return; }
+    const undated = lines.some((o) => o.id !== l.id && o.buyer_line_id === buyerLineId && o.valid_from == null);
+    if (!undated) { void update(l.id, { buyer_line_id: buyerLineId, manual_volume: null }); return; }
+    const typed = prompt("У этого варианта покупателя уже есть цена. С какой даты действует эта цена? (ДД.ММ.ГГГГ)");
+    if (typed == null) return;
+    const m = typed.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (!m) { toast.error("Дата — в виде ДД.ММ.ГГГГ"); return; }
+    const iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    void update(l.id, { buyer_line_id: buyerLineId, manual_volume: null, valid_from: iso });
   }
 
   async function add() {
@@ -136,11 +157,7 @@ export function CompanyGroupPriceLines({ dealId, groupId, groupPrice, currencySy
                   </>
                 )}
                 <select value={l.buyer_line_id ?? ""} className={selectCls} title="Объём — из отгрузок этого варианта покупателя"
-                  onChange={(e) => {
-                    const v = e.target.value || null;
-                    if (v === l.buyer_line_id) return;
-                    void update(l.id, v ? { buyer_line_id: v, manual_volume: null } : { buyer_line_id: null });
-                  }}>
+                  onChange={(e) => linkBuyer(l, e.target.value || null)}>
                   <option value="">Объём вручную</option>
                   {orderCompanyGroupLines(buyerLines).map((b) => (
                     <option key={b.id} value={b.id}>Покупатель: {buyerLineName(b.id, buyerLines)} ({price3(b.price)})</option>
