@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { CURRENCIES, currencySymbol } from "@/lib/constants/currencies";
 import { toast } from "sonner";
+import { CompanyGroupPriceLines } from "@/components/deals/company-group-price-lines";
 
 type DealCompanyGroup = {
   id: string;
@@ -32,6 +33,8 @@ type DealCompanyGroup = {
 
 type Props = {
   dealId: string;
+  /** Варианты цены группы (00183) — только у KG-сделок. */
+  dealType: string;
   editing: boolean;
   supplierName: string;
   buyerName: string;
@@ -53,6 +56,7 @@ type Props = {
 
 export function DealCompanyChain({
   dealId,
+  dealType,
   editing,
   supplierName,
   buyerName,
@@ -225,6 +229,19 @@ export function DealCompanyChain({
           </div>
         </div>
 
+        {/* Варианты цены группы (KG): объём к цене — из отгрузок варианта покупателя или вручную */}
+        {dealType === "KG" && !editing && sorted.map((cg) => (
+          <CompanyGroupPriceLines
+            key={`lines-${cg.id}`}
+            dealId={dealId}
+            groupId={cg.id}
+            groupPrice={cg.price}
+            currencySymbol={cg.currency ? currencySymbol(cg.currency) : supplierCurrencySymbol}
+            editing={false}
+            title={`Группа ${cg.position} · ${cg.company_group?.name ?? "—"} — варианты цены`}
+          />
+        ))}
+
         {/* Edit mode: explicit labelled form for each group */}
         {editing && (
           <div className="border-t border-stone-200 pt-3">
@@ -249,8 +266,8 @@ export function DealCompanyChain({
                   const currentOption = companyGroupOptions.find((o) => o.value === cg.company_group_id);
                   const currentLabel = currentOption?.label ?? cg.company_group?.name ?? "—";
                   return (
+                    <div key={cg.id}>
                     <div
-                      key={cg.id}
                       className="grid grid-cols-[24px_minmax(240px,_1fr)_100px_100px_100px_90px_80px_160px_36px] gap-2 items-center rounded-md border border-purple-200 bg-purple-50/40 p-2"
                     >
                       <div className="text-[11px] font-mono text-purple-500 text-center">{cg.position}</div>
@@ -391,6 +408,18 @@ export function DealCompanyChain({
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                    </div>
+                    {dealType === "KG" && (
+                      <div className="pl-8">
+                        <CompanyGroupPriceLines
+                          dealId={dealId}
+                          groupId={cg.id}
+                          groupPrice={cg.price}
+                          currencySymbol={cg.currency ? currencySymbol(cg.currency) : supplierCurrencySymbol}
+                          editing
+                        />
+                      </div>
+                    )}
                     </div>
                   );
                 })}

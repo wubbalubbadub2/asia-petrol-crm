@@ -21,6 +21,8 @@ import {
 import { type Deal, type ShipmentSnap, type PaymentSnap, type DealCodeRef, updateDeal, fetchDealShipments, fetchDealPayments, fetchDealCodeIndex, dealCodeLabel, invalidateDealPayments, invalidateDeal, applyDealPatch } from "@/lib/hooks/use-deals";
 import { useLinePricesSummary } from "@/lib/hooks/use-line-prices-summary";
 import { PassportLinePricesContext, PassportPriceCell } from "@/components/deals/passport-price-cell";
+import { PassportCgLines, PassportCgLinesContext } from "@/components/deals/passport-cg-lines";
+import { useCompanyGroupLinesSummary } from "@/lib/hooks/use-company-group-lines";
 import { createClient } from "@/lib/supabase/client";
 import { MONTHS_RU } from "@/lib/constants/months-ru";
 import { useGlobalRefs } from "@/lib/refs";
@@ -1688,6 +1690,7 @@ const PassportRow = memo(function PassportRow({ deal, onDataChanged, rowIndex, i
                   label={cgLabels.get(cg.company_group_id) ?? cg.company_group?.name ?? ""}
                 />
                 <EditableCGPrice cgId={cg.id} value={cg.price} onSaved={onDataChanged} />
+                <PassportCgLines cgId={cg.id} />
                 <span
                   className={`rounded px-1 py-px text-[8px] font-semibold uppercase tracking-wide ${
                     cg.price_kind === "final"
@@ -2244,6 +2247,16 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
     useMemo(() => [...multiSupplier.map((d) => d.supplier_price), ...multiBuyer.map((d) => d.buyer_price)].join(","), [multiSupplier, multiBuyer]),
   );
 
+  // Варианты цены группы компаний — только KG (00183, клиент 2026-10-29).
+  const kgGroups = useMemo(
+    () => deals.filter((d) => d.deal_type === "KG").flatMap((d) => d.deal_company_groups ?? []),
+    [deals],
+  );
+  const cgLines = useCompanyGroupLinesSummary(
+    useMemo(() => kgGroups.map((g) => g.id), [kgGroups]),
+    useMemo(() => kgGroups.map((g) => g.price).join(","), [kgGroups]),
+  );
+
   const refsContextValue = useMemo<PassportRefsValue>(() => ({
     refs,
     supplierLabels,
@@ -2392,6 +2405,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
     <PassportTermsContext.Provider value={paymentTerms}>
     <PassportPayDatesContext.Provider value={paymentDates}>
     <PassportLinePricesContext.Provider value={linePrices}>
+    <PassportCgLinesContext.Provider value={cgLines}>
       {/* Emit CSS for the currently selected cells. Cheap: at most
           selection.ids.size rules re-emitted on selection change, no
           row re-renders. Virtualized rows entering the viewport pick
@@ -2616,6 +2630,7 @@ export function PassportTable({ deals, loading, dealType, onDataChanged, hiddenS
         </div>
       )}
       </div>
+    </PassportCgLinesContext.Provider>
     </PassportLinePricesContext.Provider>
     </PassportPayDatesContext.Provider>
     </PassportTermsContext.Provider>

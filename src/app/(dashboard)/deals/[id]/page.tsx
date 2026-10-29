@@ -1068,6 +1068,7 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       <CollapsibleSection title="Группа компаний" headerBg={SECTION_COLORS.chain} storageKey={`deal:${deal.id}:section:chain`}>
         <DealCompanyChain
           dealId={deal.id}
+          dealType={deal.deal_type}
           editing={editing}
           supplierName={deal.supplier?.short_name ?? deal.supplier?.full_name ?? "—"}
           buyerName={deal.buyer?.short_name ?? deal.buyer?.full_name ?? "—"}
